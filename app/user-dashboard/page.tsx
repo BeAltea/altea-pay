@@ -1,0 +1,398 @@
+import { createClient } from "@/lib/supabase/server"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  CreditCard,
+  DollarSign,
+  TrendingUp,
+  Clock,
+  AlertCircle,
+  CheckCircle,
+  MessageSquare,
+  BarChart3,
+  Calendar,
+  ArrowUpRight,
+} from "lucide-react"
+import Link from "next/link"
+import { Suspense } from "react"
+import { EnhancedDebtCard } from "@/components/user-dashboard/enhanced-debt-card"
+import { EnhancedExportButton } from "@/components/user-dashboard/enhanced-export-button"
+import {
+  MOCK_DEBTS,
+  MOCK_PAYMENTS,
+  MOCK_AGREEMENTS,
+  getOpenDebts,
+  getOverdueDebts,
+  getPaidDebts,
+  getTotalOpenAmount,
+  getTotalPaidAmount,
+  getAveragePaymentScore,
+  getAverageLoanScore,
+} from "@/lib/mock-data"
+import { redirect } from "next/navigation"
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <Skeleton className="h-7 w-64 mb-1" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i} className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-4" />
+            </div>
+            <Skeleton className="h-7 w-16 mb-1" />
+            <Skeleton className="h-3 w-24" />
+          </Card>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default async function UserDashboardPage() {
+  console.log("[v0] UserDashboard - Starting page render")
+
+  try {
+    const supabase = await createClient()
+    console.log("[v0] UserDashboard - Supabase client created")
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    console.log("[v0] UserDashboard - User data:", user?.id, user?.email)
+
+    if (!user) {
+      console.log("[v0] UserDashboard - No user found, redirecting to login")
+      redirect("/auth/login")
+    }
+
+    let profile = null
+    try {
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single()
+
+      if (profileError) {
+        console.error("[v0] UserDashboard - Error fetching profile:", profileError)
+        // Fallback to user email if profile not found
+        profile = {
+          full_name: user.email?.split("@")[0] || "Usuário",
+          email: user.email,
+        }
+      } else {
+        profile = profileData
+        console.log("[v0] UserDashboard - Profile fetched:", profile.full_name)
+      }
+    } catch (error) {
+      console.error("[v0] UserDashboard - Exception fetching profile:", error)
+      profile = {
+        full_name: user.email?.split("@")[0] || "Usuário",
+        email: user.email,
+      }
+    }
+
+    console.log("[v0] UserDashboard - Using centralized mock data")
+
+    const debts = MOCK_DEBTS
+    const payments = MOCK_PAYMENTS
+    const agreements = MOCK_AGREEMENTS
+
+    console.log("[v0] UserDashboard - Data loaded successfully")
+    console.log("[v0] UserDashboard - Profile:", profile)
+    console.log("[v0] UserDashboard - Debts count:", debts?.length || 0)
+    console.log("[v0] UserDashboard - Payments count:", payments?.length || 0)
+    console.log("[v0] UserDashboard - Agreements count:", agreements?.length || 0)
+
+    const totalDebts = debts.length
+    const openDebts = getOpenDebts(debts)
+    const paidDebts = getPaidDebts(debts)
+    const overdueDebts = getOverdueDebts(debts)
+
+    const totalOpenAmount = getTotalOpenAmount(debts)
+    const totalPaidAmount = getTotalPaidAmount(debts)
+
+    const avgPaymentScore = getAveragePaymentScore(debts)
+    const avgLoanScore = getAverageLoanScore(debts)
+
+    // Recent activity based on real data
+    const recentActivity = []
+
+    // Add recent payments
+    if (payments && payments.length > 0) {
+      payments.slice(0, 2).forEach((payment) => {
+        const debt = debts?.find((d) => d.id === payment.debt_id)
+        recentActivity.push({
+          id: `payment-${payment.id}`,
+          type: "payment",
+          message: `Pagamento ${payment.status === "completed" ? "concluído" : payment.status === "pending" ? "pendente" : "falhou"} - ${debt?.description || "Dívida"}`,
+          amount: payment.status === "completed" ? Number(payment.amount) : null,
+          date: new Date(payment.created_at).toLocaleDateString("pt-BR"),
+          icon: payment.status === "completed" ? CheckCircle : payment.status === "pending" ? Clock : AlertCircle,
+          color:
+            payment.status === "completed"
+              ? "text-green-600"
+              : payment.status === "pending"
+                ? "text-blue-600"
+                : "text-red-600",
+        })
+      })
+    }
+
+    // Add recent agreements
+    if (agreements && agreements.length > 0) {
+      agreements.slice(0, 1).forEach((agreement) => {
+        const debt = debts?.find((d) => d.id === agreement.debt_id)
+        recentActivity.push({
+          id: `agreement-${agreement.id}`,
+          type: "negotiation",
+          message: `Negociação ${agreement.status === "accepted" ? "aceita" : agreement.status === "pending" ? "pendente" : "em análise"} - ${debt?.description || "Dívida"}`,
+          date: new Date(agreement.created_at).toLocaleDateString("pt-BR"),
+          icon: MessageSquare,
+          color: agreement.status === "accepted" ? "text-green-600" : "text-blue-600",
+        })
+      })
+    }
+
+    // Add overdue notifications
+    if (overdueDebts.length > 0) {
+      recentActivity.push({
+        id: "overdue-notification",
+        type: "overdue",
+        message: `${overdueDebts.length} dívida${overdueDebts.length > 1 ? "s" : ""} em atraso`,
+        date: "Hoje",
+        icon: AlertCircle,
+        color: "text-red-600",
+      })
+    }
+
+    // Sort by most recent and limit to 5
+    recentActivity.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    const limitedActivity = recentActivity.slice(0, 5)
+
+    return (
+      <Suspense fallback={<DashboardSkeleton />}>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                Olá, {profile?.full_name || "Usuário"}! 👋
+              </h1>
+              <p className="text-muted-foreground text-sm sm:text-base">
+                Acompanhe suas dívidas, histórico de pagamentos e negocie acordos.
+              </p>
+            </div>
+            {overdueDebts.length > 0 && (
+              <div className="flex-shrink-0">
+                <Badge variant="destructive" className="text-xs sm:text-sm">
+                  {overdueDebts.length} dívida{overdueDebts.length > 1 ? "s" : ""} em atraso
+                </Badge>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
+                <CardTitle className="text-sm font-medium">Dívidas em Aberto</CardTitle>
+                <CreditCard className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="text-2xl font-bold">{openDebts.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  R$ {totalOpenAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </p>
+                {overdueDebts.length > 0 && (
+                  <Badge variant="destructive" className="mt-1 text-xs">
+                    {overdueDebts.length} em atraso
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
+                <CardTitle className="text-sm font-medium">Dívidas Pagas</CardTitle>
+                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="text-2xl font-bold">{paidDebts.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  R$ {totalPaidAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </p>
+                {totalDebts > 0 && <Progress value={(paidDebts.length / totalDebts) * 100} className="mt-1" />}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
+                <CardTitle className="text-sm font-medium">Propensão ao Pagamento</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="text-2xl font-bold">{avgPaymentScore.toFixed(1)}%</div>
+                <p className="text-xs text-muted-foreground">Média geral</p>
+                <Progress value={avgPaymentScore} className="mt-1" />
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
+                <CardTitle className="text-sm font-medium">Propensão a Empréstimo</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="text-2xl font-bold">{avgLoanScore.toFixed(1)}%</div>
+                <p className="text-xs text-muted-foreground">Média geral</p>
+                <Progress value={avgLoanScore} className="mt-1" />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            {/* Recent Debts - Ocupa 2 colunas */}
+            <Card className="xl:col-span-2">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-lg">Dívidas Recentes</CardTitle>
+                    <CardDescription className="text-sm">Suas dívidas que precisam de atenção</CardDescription>
+                  </div>
+                  <EnhancedExportButton data={openDebts} filename="dividas-recentes" />
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  {openDebts.slice(0, 4).map((debt) => (
+                    <EnhancedDebtCard key={debt.id} debt={debt} />
+                  ))}
+                  {openDebts.length === 0 && (
+                    <div className="text-center py-6">
+                      <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
+                      <p className="text-muted-foreground text-sm">Parabéns! Nenhuma dívida em aberto</p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3">
+                  <Link href="/user-dashboard/debts">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                    >
+                      Ver Todas as Dívidas
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activity - Ocupa 1 coluna */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Atividade Recente</CardTitle>
+                <CardDescription className="text-sm">Últimas ações e eventos</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  {limitedActivity.length > 0 ? (
+                    limitedActivity.map((activity) => (
+                      <div
+                        key={activity.id}
+                        className="flex items-start space-x-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex-shrink-0">
+                          {activity.icon && (
+                            <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-1.5 rounded-full">
+                              <activity.icon className={`h-3.5 w-3.5 ${activity.color}`} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground leading-tight">{activity.message}</p>
+                          {activity.amount && (
+                            <p className="text-sm text-green-600 font-medium">
+                              R$ {activity.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground">{activity.date}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground py-4 text-sm">Nenhuma atividade recente</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Ações Rápidas</CardTitle>
+              <CardDescription className="text-sm">Acesso rápido às principais funcionalidades</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Link href="/user-dashboard/debts">
+                  <Button className="w-full h-14 flex flex-col space-y-1 bg-altea-navy hover:bg-altea-navy/90 text-altea-gold transition-colors">
+                    <CreditCard className="h-4 w-4" />
+                    <span className="text-sm">Ver Dívidas</span>
+                  </Button>
+                </Link>
+                <Link href="/user-dashboard/history">
+                  <Button
+                    variant="outline"
+                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span className="text-sm">Histórico</span>
+                  </Button>
+                </Link>
+                <Link href="/user-dashboard/negotiation">
+                  <Button
+                    variant="outline"
+                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="text-sm">Negociar</span>
+                  </Button>
+                </Link>
+                <Link href="/user-dashboard/propensity">
+                  <Button
+                    variant="outline"
+                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span className="text-sm">Análise</span>
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="text-center pt-2">
+            <p className="text-xs text-muted-foreground">
+              💡 Dados fictícios para demonstração. Plataforma preparada para integração com dados reais e IA.
+            </p>
+          </div>
+        </div>
+      </Suspense>
+    )
+  } catch (error) {
+    console.error("[v0] UserDashboard - Error:", error)
+    throw error
+  }
+}
