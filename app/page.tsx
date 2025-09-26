@@ -42,7 +42,7 @@ export default function HomePage() {
             </Link>
             <Link href="/auth/register">
               <Button className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90 text-sm sm:text-base px-2 sm:px-4">
-                Já sou cliente
+                Cadastrar
               </Button>
             </Link>
           </div>
