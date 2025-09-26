@@ -9,19 +9,57 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const handleAuthCallback = async () => {
+      console.log("[v0] Callback iniciado")
       const supabase = createClient()
 
       try {
         const { data, error } = await supabase.auth.getSession()
+        console.log("[v0] Sessão obtida:", { user: data.session?.user?.email, error })
 
         if (error || !data.session?.user) {
+          console.log("[v0] Erro ou usuário não encontrado, redirecionando para login")
           router.push("/auth/login")
           return
         }
 
-        router.push("/")
+        const userId = data.session.user.id
+        console.log("[v0] Buscando perfil para usuário:", userId)
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userId)
+          .single()
+
+        console.log("[v0] Perfil encontrado:", { profile, profileError })
+
+        if (profileError || !profile) {
+          console.log("[v0] Perfil não encontrado, criando perfil básico")
+          const { error: insertError } = await supabase.from("profiles").insert({
+            id: userId,
+            email: data.session.user.email,
+            role: "user",
+            full_name: data.session.user.user_metadata?.full_name || null,
+          })
+
+          if (insertError) {
+            console.error("[v0] Erro ao criar perfil:", insertError)
+          }
+
+          console.log("[v0] Redirecionando usuário para dashboard de usuário")
+          router.push("/user-dashboard")
+          return
+        }
+
+        if (profile.role === "admin") {
+          console.log("[v0] Redirecionando admin para dashboard administrativo")
+          router.push("/dashboard")
+        } else {
+          console.log("[v0] Redirecionando usuário para dashboard de usuário")
+          router.push("/user-dashboard")
+        }
       } catch (error) {
-        console.error("Callback error:", error)
+        console.error("[v0] Erro no callback:", error)
         router.push("/auth/login")
       }
     }

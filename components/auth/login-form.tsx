@@ -25,18 +25,61 @@ export function LoginForm() {
     setError(null)
 
     try {
+      console.log("[v0] Tentando fazer login com:", email)
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (error) {
+        console.error("[v0] Erro no login:", error)
+        throw error
+      }
 
       if (data.user) {
-        router.push("/auth/callback")
+        console.log("[v0] Login bem-sucedido para usuário:", data.user.email)
+
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single()
+
+        console.log("[v0] Resultado da busca do perfil:", { profile, profileError })
+
+        if (profileError || !profile) {
+          console.log("[v0] Perfil não encontrado, criando perfil básico")
+          const { error: insertError } = await supabase.from("profiles").insert({
+            id: data.user.id,
+            email: data.user.email,
+            role: "user",
+            full_name: data.user.user_metadata?.full_name || null,
+          })
+
+          if (insertError) {
+            console.error("[v0] Erro ao criar perfil:", insertError)
+            setError("Erro ao criar perfil do usuário")
+            return
+          }
+
+          console.log("[v0] Perfil criado, redirecionando para dashboard de usuário")
+          router.push("/user-dashboard")
+          return
+        }
+
+        if (profile.role === "admin") {
+          console.log("[v0] Redirecionando admin para dashboard administrativo")
+          router.push("/dashboard")
+        } else {
+          console.log("[v0] Redirecionando usuário para dashboard de usuário")
+          router.push("/user-dashboard")
+        }
       }
     } catch (error: unknown) {
-      console.error("Login error:", error)
+      console.error("[v0] Erro no processo de login:", error)
       setError(error instanceof Error ? error.message : "Erro ao fazer login")
     } finally {
       setIsLoading(false)

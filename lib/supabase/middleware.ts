@@ -29,7 +29,12 @@ export async function updateSession(request: NextRequest) {
     const currentPath = request.nextUrl.pathname
     console.log("[v0] Processando caminho:", currentPath)
 
-    if (currentPath.startsWith("/_next") || currentPath.startsWith("/api") || currentPath.startsWith("/_vercel")) {
+    if (
+      currentPath.startsWith("/_next") ||
+      currentPath.startsWith("/api") ||
+      currentPath.startsWith("/_vercel") ||
+      currentPath.includes(".")
+    ) {
       console.log("[v0] Pulando middleware para:", currentPath)
       return supabaseResponse
     }
@@ -41,102 +46,77 @@ export async function updateSession(request: NextRequest) {
 
     console.log("[v0] Status do usuário:", { hasUser: !!user, hasError: !!userError })
 
-    // Se não há usuário autenticado
-    if (userError || !user) {
-      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]
-      const isPublicPath = publicPaths.includes(currentPath) || currentPath.startsWith("/auth/")
+    const publicPaths = ["/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
+    const isPublicPath = publicPaths.includes(currentPath)
 
-      if (!isPublicPath) {
-        console.log("[v0] Redirecionando usuário não autenticado para login")
-        const url = request.nextUrl.clone()
-        url.pathname = "/auth/login"
-        return NextResponse.redirect(url)
+    if ((userError || !user) && !isPublicPath) {
+      console.log("[v0] Redirecionando usuário não autenticado para login")
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/login"
+      return NextResponse.redirect(url)
+    }
+
+    if (user && !userError) {
+      try {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+        const userRole = profile?.role || "user"
+
+        console.log("[v0] Usuário autenticado:", { email: user.email, role: userRole, path: currentPath })
+
+        if (currentPath === "/") {
+          const url = request.nextUrl.clone()
+          if (userRole === "admin") {
+            console.log("[v0] Redirecionando admin da home para dashboard")
+            url.pathname = "/dashboard"
+          } else {
+            console.log("[v0] Redirecionando usuário da home para user-dashboard")
+            url.pathname = "/user-dashboard"
+          }
+          return NextResponse.redirect(url)
+        }
+
+        if (currentPath.startsWith("/dashboard") && !currentPath.startsWith("/user-dashboard")) {
+          if (userRole !== "admin") {
+            console.log("[v0] Usuário sem permissão para área admin")
+            const url = request.nextUrl.clone()
+            url.pathname = "/user-dashboard"
+            return NextResponse.redirect(url)
+          }
+        }
+
+        if (currentPath.startsWith("/user-dashboard")) {
+          if (userRole === "admin") {
+            console.log("[v0] Admin redirecionado para área administrativa")
+            const url = request.nextUrl.clone()
+            url.pathname = "/dashboard"
+            return NextResponse.redirect(url)
+          }
+        }
+      } catch (error) {
+        console.error("[v0] Erro ao verificar perfil:", error)
+        try {
+          await supabase.from("profiles").insert({
+            id: user.id,
+            email: user.email,
+            role: "user",
+            full_name: user.user_metadata?.full_name || null,
+          })
+          console.log("[v0] Perfil básico criado para usuário")
+        } catch (insertError) {
+          console.error("[v0] Erro ao criar perfil básico:", insertError)
+        }
       }
+    }
 
+    if (!user && currentPath === "/") {
       console.log("[v0] Permitindo acesso a rota pública:", currentPath)
       return supabaseResponse
     }
 
-    // Se há usuário autenticado
-    console.log("[v0] Usuário autenticado:", user.email)
-
-    if (currentPath === "/auth/callback") {
-      console.log("[v0] Permitindo callback processar")
-      return supabaseResponse
-    }
-
-    try {
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-
-      console.log("[v0] Perfil:", { hasProfile: !!profile, role: profile?.role, hasError: !!profileError })
-
-      // Se não tem perfil, criar um básico
-      if (!profile && !profileError) {
-        console.log("[v0] Criando perfil básico para usuário")
-        await supabase.from("profiles").insert({
-          id: user.id,
-          email: user.email,
-          role: "user",
-          full_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "Usuário",
-        })
-
-        // Redirecionar para user-dashboard após criar perfil
-        if (currentPath === "/") {
-          const url = request.nextUrl.clone()
-          url.pathname = "/user-dashboard"
-          console.log("[v0] Redirecionando novo usuário para dashboard")
-          return NextResponse.redirect(url)
-        }
-      }
-
-      const userRole = profile?.role || "user"
-      console.log("[v0] Role determinado:", userRole)
-
-      if (currentPath === "/") {
-        const targetPath = userRole === "admin" ? "/dashboard" : "/user-dashboard"
-        console.log("[v0] Redirecionando da página inicial para:", targetPath)
-        const url = request.nextUrl.clone()
-        url.pathname = targetPath
-        return NextResponse.redirect(url)
-      }
-
-      if (currentPath.startsWith("/auth/") && currentPath !== "/auth/callback") {
-        const targetPath = userRole === "admin" ? "/dashboard" : "/user-dashboard"
-        console.log("[v0] Redirecionando de auth para:", targetPath)
-        const url = request.nextUrl.clone()
-        url.pathname = targetPath
-        return NextResponse.redirect(url)
-      }
-
-      if (userRole === "admin" && currentPath.startsWith("/user-dashboard")) {
-        console.log("[v0] Admin redirecionado para dashboard admin")
-        const url = request.nextUrl.clone()
-        url.pathname = "/dashboard"
-        return NextResponse.redirect(url)
-      }
-
-      if (userRole === "user" && currentPath.startsWith("/dashboard") && !currentPath.startsWith("/user-dashboard")) {
-        console.log("[v0] Usuário redirecionado para dashboard de usuário")
-        const url = request.nextUrl.clone()
-        url.pathname = "/user-dashboard"
-        return NextResponse.redirect(url)
-      }
-    } catch (error) {
-      console.error("[v0] Erro ao buscar/criar perfil:", error)
-      // Em caso de erro, redirecionar para callback para tentar novamente
-      const url = request.nextUrl.clone()
-      url.pathname = "/auth/callback"
-      return NextResponse.redirect(url)
-    }
-
-    console.log("[v0] Middleware finalizando - permitindo acesso")
+    console.log("[v0] Middleware permitindo acesso")
     return supabaseResponse
   } catch (error) {
-    console.error("[v0] Erro geral no middleware:", error)
+    console.error("[v0] Erro no middleware:", error)
     return supabaseResponse
   }
 }
