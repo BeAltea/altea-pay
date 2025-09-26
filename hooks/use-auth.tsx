@@ -36,14 +36,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
 
   useEffect(() => {
-    console.log("[v0] AuthProvider: Setting up auth listener")
-
     // Get initial session
     const getInitialSession = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession()
-      console.log("[v0] AuthProvider: Initial session", session?.user?.email)
 
       if (session?.user) {
         setUser(session.user)
@@ -58,8 +55,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[v0] AuthProvider: Auth state changed", event, session?.user?.email)
-
       if (session?.user) {
         setUser(session.user)
         await fetchProfile(session.user.id)
@@ -76,8 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const fetchProfile = async (userId: string) => {
-    console.log("[v0] AuthProvider: Fetching profile for user", userId)
-
     try {
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
@@ -86,7 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      console.log("[v0] AuthProvider: Profile fetched", data?.full_name)
       setProfile(data)
     } catch (error) {
       console.error("[v0] AuthProvider: Exception fetching profile", error)
@@ -94,7 +86,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    console.log("[v0] AuthProvider: Signing out")
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)

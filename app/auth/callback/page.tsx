@@ -12,54 +12,22 @@ export default function AuthCallback() {
       const supabase = createClient()
 
       try {
-        console.log("[v0] Callback - Processing auth callback")
+        // Handle the auth callback from Supabase
+        const { data, error } = await supabase.auth.getSession()
 
-        // Get the current session
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          console.error("[v0] Callback - Session error:", sessionError)
+        if (error) {
+          console.error("[v0] Callback - Session error:", error)
           router.push("/auth/login?error=callback_error")
           return
         }
 
-        if (!session?.user) {
-          console.log("[v0] Callback - No session found, redirecting to login")
+        if (!data.session?.user) {
           router.push("/auth/login")
           return
         }
 
-        console.log("[v0] Callback - User authenticated:", session.user.email)
-
-        // Get user profile to determine redirect
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .single()
-
-        console.log("[v0] Callback - Profile data:", profile, "Error:", profileError)
-
-        if (profileError || !profile) {
-          console.log("[v0] Callback - Profile not found, redirecting to login")
-          router.push("/auth/login?error=profile_not_found")
-          return
-        }
-
-        const userRole = profile.role || "user"
-        console.log("[v0] Callback - User role:", userRole)
-
-        // Redirect based on role
-        if (userRole === "admin") {
-          console.log("[v0] Callback - Redirecting admin to dashboard")
-          router.push("/dashboard")
-        } else {
-          console.log("[v0] Callback - Redirecting user to user-dashboard")
-          router.push("/user-dashboard")
-        }
+        // Just redirect to root and let middleware determine the correct dashboard
+        router.push("/")
       } catch (error) {
         console.error("[v0] Callback - Error:", error)
         router.push("/auth/login?error=callback_error")
