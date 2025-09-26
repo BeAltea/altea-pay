@@ -19,7 +19,6 @@ export default function AuthCallback() {
           return
         }
 
-        // Redireciona para a raiz e deixa o middleware determinar o dashboard correto
         router.push("/")
       } catch (error) {
         console.error("Callback error:", error)

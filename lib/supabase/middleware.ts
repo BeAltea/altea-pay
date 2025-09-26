@@ -38,7 +38,7 @@ export async function updateSession(request: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser()
 
-    if (userError) {
+    if (userError || !user) {
       const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]
       const isPublicPath = publicPaths.some((path) => currentPath.startsWith(path))
 
@@ -51,6 +51,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (user) {
+      // Permitir callback processar
       if (currentPath.startsWith("/auth/callback")) {
         return supabaseResponse
       }
@@ -66,6 +67,12 @@ export async function updateSession(request: NextRequest) {
         }
 
         const userRole = profile.role || "user"
+
+        if (currentPath === "/") {
+          const url = request.nextUrl.clone()
+          url.pathname = userRole === "admin" ? "/dashboard" : "/user-dashboard"
+          return NextResponse.redirect(url)
+        }
 
         if (userRole === "admin") {
           if (currentPath.startsWith("/user-dashboard")) {
@@ -97,20 +104,11 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/auth/callback"
         return NextResponse.redirect(url)
       }
-    } else {
-      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]
-      const isPublicPath = publicPaths.some((path) => currentPath.startsWith(path))
-
-      if (!isPublicPath) {
-        const url = request.nextUrl.clone()
-        url.pathname = "/auth/login"
-        return NextResponse.redirect(url)
-      }
     }
 
     return supabaseResponse
   } catch (error) {
-    console.error("[v0] Middleware - Error:", error)
+    console.error("Middleware error:", error)
     return supabaseResponse
   }
 }
