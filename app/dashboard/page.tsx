@@ -20,28 +20,45 @@ import {
 export default async function DashboardPage() {
   const supabase = await createClient()
 
+  console.log("[v0] Dashboard: Iniciando carregamento da página")
+
   // Get user data
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser()
-  if (!user) return null
 
-  const { data: profile } = await supabase
+  console.log("[v0] Dashboard: Usuário obtido", { user: user?.id, error: userError })
+
+  if (!user) {
+    console.log("[v0] Dashboard: Usuário não encontrado, retornando null")
+    return null
+  }
+
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select(`
-      role,
-      company_id,
-      full_name,
-      companies (
-        id,
-        name,
-        subscription_plan
-      )
-    `)
+    .select("role, company_id, full_name")
     .eq("id", user.id)
     .single()
 
-  if (!profile) return null
+  console.log("[v0] Dashboard: Perfil obtido", { profile, error: profileError })
+
+  if (!profile) {
+    console.log("[v0] Dashboard: Perfil não encontrado, retornando null")
+    return null
+  }
+
+  let companyData = null
+  if (profile.company_id) {
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id, name, subscription_plan")
+      .eq("id", profile.company_id)
+      .single()
+
+    console.log("[v0] Dashboard: Empresa obtida", { company, error: companyError })
+    companyData = company
+  }
 
   const companyId = profile.company_id
 
@@ -55,11 +72,23 @@ export default async function DashboardPage() {
     pendingActions: 0,
   }
 
+  console.log("[v0] Dashboard: Buscando estatísticas para company_id:", companyId)
+
   if (companyId) {
     // Get real stats from database filtered by company
-    const { data: customers } = await supabase.from("customers").select("id").eq("company_id", companyId)
+    const { data: customers, error: customersError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("company_id", companyId)
 
-    const { data: debts } = await supabase.from("debts").select("amount, status").eq("company_id", companyId)
+    console.log("[v0] Dashboard: Clientes obtidos", { count: customers?.length, error: customersError })
+
+    const { data: debts, error: debtsError } = await supabase
+      .from("debts")
+      .select("amount, status")
+      .eq("company_id", companyId)
+
+    console.log("[v0] Dashboard: Dívidas obtidas", { count: debts?.length, error: debtsError })
 
     stats.totalCustomers = customers?.length || 0
     stats.totalDebts = debts?.length || 0
@@ -69,6 +98,7 @@ export default async function DashboardPage() {
     stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
     stats.pendingActions = debts?.filter((d) => d.status === "overdue").length || 0
   } else {
+    console.log("[v0] Dashboard: Usando dados mock (sem company_id)")
     // Mock data for users without company assignment
     stats = {
       totalCustomers: 1247,
@@ -79,6 +109,8 @@ export default async function DashboardPage() {
       pendingActions: 89,
     }
   }
+
+  console.log("[v0] Dashboard: Estatísticas finais", stats)
 
   const recentActivity = [
     {
@@ -113,7 +145,9 @@ export default async function DashboardPage() {
   ]
 
   const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
-  const companyName = profile.companies?.name
+  const companyName = companyData?.name
+
+  console.log("[v0] Dashboard: Renderizando página", { displayName, companyName })
 
   return (
     <div className="space-y-6">
