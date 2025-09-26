@@ -22,11 +22,15 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
 
   useEffect(() => {
-    onFiltersChange({
-      search: searchTerm,
-      role: roleFilter,
-      status: statusFilter,
-    })
+    const timeoutId = setTimeout(() => {
+      onFiltersChange({
+        search: searchTerm,
+        role: roleFilter,
+        status: statusFilter,
+      })
+    }, 300) // Debounce de 300ms
+
+    return () => clearTimeout(timeoutId)
   }, [searchTerm, roleFilter, statusFilter, onFiltersChange])
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {

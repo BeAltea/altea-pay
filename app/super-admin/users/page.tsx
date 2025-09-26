@@ -310,7 +310,7 @@ export default function UsersPage() {
                     <div className="flex items-center space-x-4 mb-3 lg:mb-0">
                       <Avatar className="h-12 w-12">
                         <AvatarImage
-                          src={`/ceholder-svg-key-15a6o-key-user-.jpg?key=15a6o&key=user-${user.id}&height=48&width=48&query=${user.full_name}`}
+                          src={`/user-avatar-.jpg?key=60an0&height=48&width=48&query=user-avatar-${user.full_name}`}
                         />
                         <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
                           {user.full_name
