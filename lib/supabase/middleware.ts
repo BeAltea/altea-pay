@@ -67,7 +67,7 @@ export async function updateSession(request: NextRequest) {
     if ((!user || userError) && !isPublicPath) {
       console.log("[v0] Redirecionando usuário não autenticado para login")
       const url = request.nextUrl.clone()
-      url.pathname = "/auth/login"
+      url.pathname = "/"
       return NextResponse.redirect(url)
     }
 
