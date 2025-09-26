@@ -1,10 +1,21 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { toast } from "@/hooks/use-toast"
 import {
   TrendingUp,
   TrendingDown,
@@ -19,6 +30,9 @@ import {
   CheckCircle,
   Users,
   DollarSign,
+  RefreshCw,
+  Eye,
+  Play,
 } from "lucide-react"
 
 interface AnalyticsData {
@@ -34,10 +48,13 @@ interface AnalyticsData {
     avgAmount: number
   }[]
   predictiveInsights: {
+    id: string
     title: string
     description: string
     impact: "high" | "medium" | "low"
     confidence: number
+    details: string
+    action: string
   }[]
   realTimeMetrics: {
     activeCollections: number
@@ -47,19 +64,76 @@ interface AnalyticsData {
   }
 }
 
-export default async function AnalyticsPage() {
-  const supabase = await createClient()
+const getAnalyticsData = (timeFilter: string): AnalyticsData => {
+  const baseData = {
+    "real-time": {
+      recoveryTrends: [
+        { period: "14:00", value: 45.2, change: 2.1 },
+        { period: "15:00", value: 47.8, change: 2.6 },
+        { period: "16:00", value: 51.3, change: 3.5 },
+        { period: "17:00", value: 49.7, change: -1.6 },
+        { period: "18:00", value: 52.4, change: 2.7 },
+        { period: "19:00", value: 54.1, change: 1.7 },
+      ],
+      realTimeMetrics: {
+        activeCollections: 1247,
+        paymentsToday: 89,
+        avgResponseTime: 2.3,
+        successRate: 67.8,
+      },
+    },
+    hourly: {
+      recoveryTrends: [
+        { period: "09h", value: 42.1, change: 1.8 },
+        { period: "10h", value: 48.3, change: 6.2 },
+        { period: "11h", value: 52.7, change: 4.4 },
+        { period: "14h", value: 46.9, change: -5.8 },
+        { period: "15h", value: 49.2, change: 2.3 },
+        { period: "16h", value: 51.5, change: 2.3 },
+      ],
+      realTimeMetrics: {
+        activeCollections: 1156,
+        paymentsToday: 76,
+        avgResponseTime: 2.1,
+        successRate: 71.2,
+      },
+    },
+    daily: {
+      recoveryTrends: [
+        { period: "Seg", value: 48.5, change: 3.2 },
+        { period: "Ter", value: 52.1, change: 3.6 },
+        { period: "Qua", value: 49.8, change: -2.3 },
+        { period: "Qui", value: 54.3, change: 4.5 },
+        { period: "Sex", value: 51.7, change: -2.6 },
+        { period: "Sáb", value: 38.2, change: -13.5 },
+      ],
+      realTimeMetrics: {
+        activeCollections: 1389,
+        paymentsToday: 124,
+        avgResponseTime: 2.7,
+        successRate: 64.3,
+      },
+    },
+    weekly: {
+      recoveryTrends: [
+        { period: "S1", value: 45.2, change: 2.1 },
+        { period: "S2", value: 47.8, change: 2.6 },
+        { period: "S3", value: 51.3, change: 3.5 },
+        { period: "S4", value: 49.7, change: -1.6 },
+      ],
+      realTimeMetrics: {
+        activeCollections: 1198,
+        paymentsToday: 95,
+        avgResponseTime: 2.5,
+        successRate: 69.1,
+      },
+    },
+  }
 
-  // Mock analytics data
-  const analyticsData: AnalyticsData = {
-    recoveryTrends: [
-      { period: "Jan", value: 45.2, change: 2.1 },
-      { period: "Fev", value: 47.8, change: 2.6 },
-      { period: "Mar", value: 51.3, change: 3.5 },
-      { period: "Abr", value: 49.7, change: -1.6 },
-      { period: "Mai", value: 52.4, change: 2.7 },
-      { period: "Jun", value: 54.1, change: 1.7 },
-    ],
+  const selectedData = baseData[timeFilter as keyof typeof baseData] || baseData["real-time"]
+
+  return {
+    recoveryTrends: selectedData.recoveryTrends,
     customerSegments: [
       { segment: "Alto Valor", count: 234, recoveryRate: 78.5, avgAmount: 15420.5 },
       { segment: "Médio Valor", count: 1456, recoveryRate: 52.3, avgAmount: 5680.25 },
@@ -68,30 +142,94 @@ export default async function AnalyticsPage() {
     ],
     predictiveInsights: [
       {
+        id: "1",
         title: "Aumento de Inadimplência Previsto",
         description: "Modelo prevê aumento de 15% na inadimplência da Enel nos próximos 30 dias",
         impact: "high",
         confidence: 87,
+        details:
+          "Análise detalhada mostra que fatores sazonais e econômicos indicam um aumento significativo na inadimplência. Recomenda-se ação preventiva imediata com campanhas de negociação antecipada.",
+        action:
+          "Iniciar campanha de negociação preventiva para clientes de alto risco identificados pelo modelo preditivo.",
       },
       {
+        id: "2",
         title: "Oportunidade de Recuperação",
         description: "Clientes do segmento médio valor mostram 23% mais propensão a pagamento",
         impact: "medium",
         confidence: 72,
+        details:
+          "Dados comportamentais indicam que clientes do segmento médio valor estão mais receptivos a negociações. Janela de oportunidade de 15 dias identificada.",
+        action:
+          "Intensificar abordagem comercial para segmento médio valor com ofertas personalizadas de parcelamento.",
       },
       {
+        id: "3",
         title: "Padrão Sazonal Identificado",
         description: "Histórico indica queda de 8% nas cobranças durante período de férias",
         impact: "low",
         confidence: 94,
+        details:
+          "Análise histórica de 5 anos confirma padrão consistente de redução na efetividade de cobranças durante dezembro e janeiro. Planejamento estratégico necessário.",
+        action: "Ajustar estratégia de cobrança para período sazonal com foco em acordos antecipados.",
       },
     ],
-    realTimeMetrics: {
-      activeCollections: 1247,
-      paymentsToday: 89,
-      avgResponseTime: 2.3,
-      successRate: 67.8,
-    },
+    realTimeMetrics: selectedData.realTimeMetrics,
+  }
+}
+
+export default function AnalyticsPage() {
+  const [timeFilter, setTimeFilter] = useState("real-time")
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(getAnalyticsData("real-time"))
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [selectedInsight, setSelectedInsight] = useState<AnalyticsData["predictiveInsights"][0] | null>(null)
+
+  useEffect(() => {
+    console.log("[v0] Filtro de tempo alterado para:", timeFilter)
+    setAnalyticsData(getAnalyticsData(timeFilter))
+    toast({
+      title: "Dados atualizados",
+      description: `Visualização alterada para: ${getFilterLabel(timeFilter)}`,
+    })
+  }, [timeFilter])
+
+  const getFilterLabel = (filter: string) => {
+    const labels = {
+      "real-time": "Tempo Real",
+      hourly: "Por Hora",
+      daily: "Diário",
+      weekly: "Semanal",
+    }
+    return labels[filter as keyof typeof labels] || "Tempo Real"
+  }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    console.log("[v0] Atualizando dados do analytics...")
+
+    // Simula chamada de API
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    setAnalyticsData(getAnalyticsData(timeFilter))
+    setIsRefreshing(false)
+
+    toast({
+      title: "Dados atualizados com sucesso",
+      description: "Todas as métricas foram sincronizadas.",
+    })
+  }
+
+  const handleViewDetails = (insight: AnalyticsData["predictiveInsights"][0]) => {
+    console.log("[v0] Visualizando detalhes do insight:", insight.id)
+    setSelectedInsight(insight)
+  }
+
+  const handleApplyAction = (insight: AnalyticsData["predictiveInsights"][0]) => {
+    console.log("[v0] Aplicando ação do insight:", insight.id)
+    toast({
+      title: "Ação aplicada com sucesso",
+      description: `${insight.action}`,
+    })
   }
 
   const getImpactColor = (impact: string) => {
@@ -131,7 +269,7 @@ export default async function AnalyticsPage() {
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
-          <Select defaultValue="real-time">
+          <Select value={timeFilter} onValueChange={setTimeFilter}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
@@ -142,9 +280,9 @@ export default async function AnalyticsPage() {
               <SelectItem value="weekly">Semanal</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline">
-            <Activity className="mr-2 h-4 w-4" />
-            Atualizar
+          <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Atualizando..." : "Atualizar"}
           </Button>
         </div>
       </div>
@@ -229,7 +367,7 @@ export default async function AnalyticsPage() {
                   <TrendingUp className="h-5 w-5" />
                   <span>Evolução da Taxa de Recuperação</span>
                 </CardTitle>
-                <CardDescription>Últimos 6 meses - Todas as empresas</CardDescription>
+                <CardDescription>Filtro atual: {getFilterLabel(timeFilter)}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -386,7 +524,7 @@ export default async function AnalyticsPage() {
             <CardContent>
               <div className="space-y-4">
                 {analyticsData.predictiveInsights.map((insight, index) => (
-                  <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <div key={insight.id} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-2">
@@ -407,10 +545,50 @@ export default async function AnalyticsPage() {
                       </div>
 
                       <div className="flex space-x-2">
-                        <Button size="sm" variant="outline">
-                          Ver Detalhes
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" onClick={() => handleViewDetails(insight)}>
+                              <Eye className="mr-1 h-3 w-3" />
+                              Ver Detalhes
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>{insight.title}</DialogTitle>
+                              <DialogDescription>Análise detalhada do insight preditivo</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="font-medium mb-2">Descrição</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{insight.description}</p>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-2">Análise Detalhada</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{insight.details}</p>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-2">Ação Recomendada</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{insight.action}</p>
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm font-medium">Impacto:</span>
+                                  <Badge className={getImpactColor(insight.impact)}>
+                                    {getImpactLabel(insight.impact)}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm font-medium">Confiança:</span>
+                                  <span className="text-sm">{insight.confidence}%</span>
+                                </div>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                        <Button size="sm" onClick={() => handleApplyAction(insight)}>
+                          <Play className="mr-1 h-3 w-3" />
+                          Aplicar Ação
                         </Button>
-                        <Button size="sm">Aplicar Ação</Button>
                       </div>
                     </div>
                   </div>

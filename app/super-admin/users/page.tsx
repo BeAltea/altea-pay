@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,11 +22,12 @@ interface User {
   total_logins: number
 }
 
-export default async function UsersPage() {
-  const supabase = await createClient()
+export default function UsersPage() {
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([])
+  const [isFiltered, setIsFiltered] = useState(false)
 
   // Mock data for users
-  const users: User[] = [
+  const allUsers: User[] = [
     {
       id: "1",
       email: "super@alteapay.com",
@@ -97,12 +100,50 @@ export default async function UsersPage() {
     },
   ]
 
+  const handleFiltersChange = (filters: {
+    search: string
+    role: string | null
+    status: string | null
+  }) => {
+    console.log("[v0] Aplicando filtros:", filters)
+
+    let filtered = [...allUsers]
+
+    // Apply search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase()
+      filtered = filtered.filter(
+        (user) =>
+          user.full_name.toLowerCase().includes(searchLower) ||
+          user.email.toLowerCase().includes(searchLower) ||
+          (user.company_name && user.company_name.toLowerCase().includes(searchLower)),
+      )
+    }
+
+    // Apply role filter
+    if (filters.role) {
+      filtered = filtered.filter((user) => user.role === filters.role)
+    }
+
+    // Apply status filter
+    if (filters.status) {
+      filtered = filtered.filter((user) => user.status === filters.status)
+    }
+
+    setFilteredUsers(filtered)
+    setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null)
+
+    console.log("[v0] Usuários filtrados:", filtered.length, "de", allUsers.length)
+  }
+
+  const displayUsers = isFiltered ? filteredUsers : allUsers
+
   const totalStats = {
-    totalUsers: users.length,
-    activeUsers: users.filter((u) => u.status === "active").length,
-    superAdmins: users.filter((u) => u.role === "super_admin").length,
-    admins: users.filter((u) => u.role === "admin").length,
-    regularUsers: users.filter((u) => u.role === "user").length,
+    totalUsers: allUsers.length,
+    activeUsers: allUsers.filter((u) => u.status === "active").length,
+    superAdmins: allUsers.filter((u) => u.role === "super_admin").length,
+    admins: allUsers.filter((u) => u.role === "admin").length,
+    regularUsers: allUsers.filter((u) => u.role === "user").length,
   }
 
   const getRoleColor = (role: string) => {
@@ -237,96 +278,110 @@ export default async function UsersPage() {
       </div>
 
       {/* Search and Filters */}
-      <UserFilters />
+      <UserFilters onFiltersChange={handleFiltersChange} />
 
       {/* Users List */}
       <Card>
         <CardHeader>
           <CardTitle>Usuários do Sistema</CardTitle>
-          <CardDescription>Lista completa de todos os usuários cadastrados</CardDescription>
+          <CardDescription>
+            {isFiltered
+              ? `${displayUsers.length} usuários encontrados (de ${allUsers.length} total)`
+              : "Lista completa de todos os usuários cadastrados"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {users.map((user) => (
-              <div
-                key={user.id}
-                className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-4 mb-3 lg:mb-0">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage
-                        src={`/placeholder-svg-key-user-.jpg?key=user-${user.id}&height=48&width=48&query=${user.full_name}`}
-                      />
-                      <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
-                        {user.full_name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.full_name}</h3>
-                        <Badge className={getRoleColor(user.role)}>{getRoleLabel(user.role)}</Badge>
-                        <Badge className={getStatusColor(user.status)}>{getStatusLabel(user.status)}</Badge>
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{user.email}</span>
-                        {user.company_name && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <div className="flex items-center space-x-1">
-                              <Building2 className="h-3 w-3" />
-                              <span>{user.company_name}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 mt-4 lg:mt-0">
-                  <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{user.total_logins}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Logins</p>
-                    </div>
-
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {new Date(user.last_login).toLocaleDateString("pt-BR")}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Último acesso</p>
-                    </div>
-
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {new Date(user.created_at).toLocaleDateString("pt-BR")}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Criado em</p>
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/super-admin/users/${user.id}`}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/super-admin/users/${user.id}/edit`}>
-                        <Edit className="h-4 w-4 mr-1" />
-                        Editar
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
+            {displayUsers.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Nenhum usuário encontrado</h3>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Tente ajustar os filtros para encontrar os usuários desejados.
+                </p>
               </div>
-            ))}
+            ) : (
+              displayUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-4 mb-3 lg:mb-0">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage
+                          src={`/ceholder-svg-key-15a6o-key-user-.jpg?key=15a6o&key=user-${user.id}&height=48&width=48&query=${user.full_name}`}
+                        />
+                        <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
+                          {user.full_name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.full_name}</h3>
+                          <Badge className={getRoleColor(user.role)}>{getRoleLabel(user.role)}</Badge>
+                          <Badge className={getStatusColor(user.status)}>{getStatusLabel(user.status)}</Badge>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span>{user.email}</span>
+                          {user.company_name && (
+                            <>
+                              <span className="hidden sm:inline">•</span>
+                              <div className="flex items-center space-x-1">
+                                <Building2 className="h-3 w-3" />
+                                <span>{user.company_name}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 mt-4 lg:mt-0">
+                    <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
+                      <div className="text-center sm:text-right">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{user.total_logins}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Logins</p>
+                      </div>
+
+                      <div className="text-center sm:text-right">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {new Date(user.last_login).toLocaleDateString("pt-BR")}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Último acesso</p>
+                      </div>
+
+                      <div className="text-center sm:text-right">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {new Date(user.created_at).toLocaleDateString("pt-BR")}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Criado em</p>
+                      </div>
+                    </div>
+
+                    <div className="flex space-x-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/super-admin/users/${user.id}`}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          Ver
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/super-admin/users/${user.id}/edit`}>
+                          <Edit className="h-4 w-4 mr-1" />
+                          Editar
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

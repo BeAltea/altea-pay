@@ -1,10 +1,21 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { toast } from "@/hooks/use-toast"
 import {
   Search,
   Filter,
@@ -50,122 +61,259 @@ interface SecurityEvent {
   status: "resolved" | "investigating" | "open"
 }
 
-export default async function AuditPage() {
-  const supabase = await createClient()
+const mockAuditLogs: AuditLog[] = [
+  {
+    id: "1",
+    timestamp: "2024-03-15T14:30:00Z",
+    user_id: "1",
+    user_name: "Super Administrador",
+    user_email: "super@alteapay.com",
+    action: "CREATE_COMPANY",
+    resource: "companies",
+    resource_id: "33333333-3333-3333-3333-333333333333",
+    details: "Nova empresa CPFL Energia criada no sistema",
+    ip_address: "192.168.1.100",
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    severity: "medium",
+    status: "success",
+  },
+  {
+    id: "2",
+    timestamp: "2024-03-15T13:45:00Z",
+    user_id: "2",
+    user_name: "Maria Santos",
+    user_email: "admin@enel.com.br",
+    company_name: "Enel Distribuição São Paulo",
+    action: "UPDATE_DEBT",
+    resource: "debts",
+    resource_id: "debt-12345",
+    details: "Dívida atualizada - valor alterado de R$ 1.500,00 para R$ 1.200,00",
+    ip_address: "10.0.0.45",
+    user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    severity: "low",
+    status: "success",
+  },
+  {
+    id: "3",
+    timestamp: "2024-03-15T12:20:00Z",
+    user_id: "4",
+    user_name: "Carlos Oliveira",
+    user_email: "admin@sabesp.com.br",
+    company_name: "Sabesp - Companhia de Saneamento",
+    action: "DELETE_USER",
+    resource: "users",
+    resource_id: "user-789",
+    details: "Usuário João Silva removido do sistema",
+    ip_address: "172.16.0.23",
+    user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+    severity: "high",
+    status: "success",
+  },
+  {
+    id: "4",
+    timestamp: "2024-03-15T11:15:00Z",
+    user_id: "6",
+    user_name: "Roberto Lima",
+    user_email: "admin@cpfl.com.br",
+    company_name: "CPFL Energia",
+    action: "LOGIN_FAILED",
+    resource: "auth",
+    details: "Tentativa de login falhada - senha incorreta",
+    ip_address: "203.0.113.45",
+    user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+    severity: "medium",
+    status: "failed",
+  },
+  {
+    id: "5",
+    timestamp: "2024-03-15T10:30:00Z",
+    user_id: "1",
+    user_name: "Super Administrador",
+    user_email: "super@alteapay.com",
+    action: "EXPORT_DATA",
+    resource: "reports",
+    details: "Relatório global exportado - dados de todas as empresas",
+    ip_address: "192.168.1.100",
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    severity: "medium",
+    status: "success",
+  },
+]
 
-  // Mock audit logs data
-  const auditLogs: AuditLog[] = [
-    {
-      id: "1",
-      timestamp: "2024-03-15T14:30:00Z",
-      user_id: "1",
-      user_name: "Super Administrador",
-      user_email: "super@alteapay.com",
-      action: "CREATE_COMPANY",
-      resource: "companies",
-      resource_id: "33333333-3333-3333-3333-333333333333",
-      details: "Nova empresa CPFL Energia criada no sistema",
-      ip_address: "192.168.1.100",
-      user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      severity: "medium",
-      status: "success",
-    },
-    {
-      id: "2",
-      timestamp: "2024-03-15T13:45:00Z",
-      user_id: "2",
-      user_name: "Maria Santos",
-      user_email: "admin@enel.com.br",
-      company_name: "Enel Distribuição São Paulo",
-      action: "UPDATE_DEBT",
-      resource: "debts",
-      resource_id: "debt-12345",
-      details: "Dívida atualizada - valor alterado de R$ 1.500,00 para R$ 1.200,00",
-      ip_address: "10.0.0.45",
-      user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      severity: "low",
-      status: "success",
-    },
-    {
-      id: "3",
-      timestamp: "2024-03-15T12:20:00Z",
-      user_id: "4",
-      user_name: "Carlos Oliveira",
-      user_email: "admin@sabesp.com.br",
-      company_name: "Sabesp - Companhia de Saneamento",
-      action: "DELETE_USER",
-      resource: "users",
-      resource_id: "user-789",
-      details: "Usuário João Silva removido do sistema",
-      ip_address: "172.16.0.23",
-      user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-      severity: "high",
-      status: "success",
-    },
-    {
-      id: "4",
-      timestamp: "2024-03-15T11:15:00Z",
-      user_id: "6",
-      user_name: "Roberto Lima",
-      user_email: "admin@cpfl.com.br",
-      company_name: "CPFL Energia",
-      action: "LOGIN_FAILED",
-      resource: "auth",
-      details: "Tentativa de login falhada - senha incorreta",
-      ip_address: "203.0.113.45",
-      user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-      severity: "medium",
-      status: "failed",
-    },
-    {
-      id: "5",
-      timestamp: "2024-03-15T10:30:00Z",
-      user_id: "1",
-      user_name: "Super Administrador",
-      user_email: "super@alteapay.com",
-      action: "EXPORT_DATA",
-      resource: "reports",
-      details: "Relatório global exportado - dados de todas as empresas",
-      ip_address: "192.168.1.100",
-      user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      severity: "medium",
-      status: "success",
-    },
-  ]
+const mockSecurityEvents: SecurityEvent[] = [
+  {
+    id: "1",
+    timestamp: "2024-03-15T15:45:00Z",
+    event_type: "SUSPICIOUS_LOGIN",
+    description: "Múltiplas tentativas de login de IP suspeito",
+    user_id: "unknown",
+    ip_address: "198.51.100.42",
+    severity: "high",
+    status: "investigating",
+  },
+  {
+    id: "2",
+    timestamp: "2024-03-15T14:20:00Z",
+    event_type: "RATE_LIMIT_EXCEEDED",
+    description: "API rate limit excedido - possível ataque DDoS",
+    ip_address: "203.0.113.89",
+    severity: "medium",
+    status: "resolved",
+  },
+  {
+    id: "3",
+    timestamp: "2024-03-15T13:10:00Z",
+    event_type: "PRIVILEGE_ESCALATION",
+    description: "Tentativa de acesso a recursos não autorizados",
+    user_id: "5",
+    user_name: "Ana Costa",
+    ip_address: "10.0.0.67",
+    severity: "critical",
+    status: "resolved",
+  },
+]
 
-  // Mock security events data
-  const securityEvents: SecurityEvent[] = [
-    {
-      id: "1",
-      timestamp: "2024-03-15T15:45:00Z",
-      event_type: "SUSPICIOUS_LOGIN",
-      description: "Múltiplas tentativas de login de IP suspeito",
-      user_id: "unknown",
-      ip_address: "198.51.100.42",
-      severity: "high",
-      status: "investigating",
-    },
-    {
-      id: "2",
-      timestamp: "2024-03-15T14:20:00Z",
-      event_type: "RATE_LIMIT_EXCEEDED",
-      description: "API rate limit excedido - possível ataque DDoS",
-      ip_address: "203.0.113.89",
-      severity: "medium",
-      status: "resolved",
-    },
-    {
-      id: "3",
-      timestamp: "2024-03-15T13:10:00Z",
-      event_type: "PRIVILEGE_ESCALATION",
-      description: "Tentativa de acesso a recursos não autorizados",
-      user_id: "5",
-      user_name: "Ana Costa",
-      ip_address: "10.0.0.67",
-      severity: "critical",
-      status: "resolved",
-    },
-  ]
+export default function AuditPage() {
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(mockAuditLogs)
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>(mockSecurityEvents)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [actionFilter, setActionFilter] = useState("all-actions")
+  const [severityFilter, setSeverityFilter] = useState("all-severity")
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const filteredLogs = auditLogs.filter((log) => {
+    const matchesSearch =
+      log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.action.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesAction = actionFilter === "all-actions" || log.action.toLowerCase().includes(actionFilter)
+
+    const matchesSeverity = severityFilter === "all-severity" || log.severity === severityFilter
+
+    return matchesSearch && matchesAction && matchesSeverity
+  })
+
+  const handleExport = async (type: string) => {
+    setIsExporting(true)
+    console.log("[v0] Exportando dados de auditoria:", type)
+
+    // Simula processamento de exportação
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+
+    let data: any[] = []
+    let filename = ""
+
+    switch (type) {
+      case "audit-logs":
+        data = filteredLogs
+        filename = "audit-logs"
+        break
+      case "security-events":
+        data = securityEvents
+        filename = "security-events"
+        break
+      case "lgpd-report":
+        data = [
+          { item: "Consentimento de Dados", status: "Conforme", lastCheck: new Date().toISOString() },
+          { item: "Criptografia de Dados", status: "Conforme", lastCheck: new Date().toISOString() },
+          { item: "Logs de Auditoria", status: "Conforme", lastCheck: new Date().toISOString() },
+          { item: "Retenção de Dados", status: "Em Revisão", lastCheck: new Date().toISOString() },
+        ]
+        filename = "lgpd-compliance-report"
+        break
+      case "security-audit":
+        data = [
+          { policy: "Autenticação 2FA", status: "Ativo", coverage: "100%" },
+          { policy: "Controle de Acesso", status: "Implementado", coverage: "100%" },
+          { policy: "Backup Automático", status: "Ativo", coverage: "100%" },
+          { policy: "Monitoramento 24/7", status: "Operacional", coverage: "100%" },
+        ]
+        filename = "security-audit-report"
+        break
+      case "backup-report":
+        data = [
+          { date: new Date().toISOString(), type: "Full Backup", status: "Success", size: "2.3GB" },
+          {
+            date: new Date(Date.now() - 86400000).toISOString(),
+            type: "Incremental",
+            status: "Success",
+            size: "156MB",
+          },
+          {
+            date: new Date(Date.now() - 172800000).toISOString(),
+            type: "Incremental",
+            status: "Success",
+            size: "203MB",
+          },
+        ]
+        filename = "backup-report"
+        break
+      case "access-log":
+        data = auditLogs.filter((log) => log.action.includes("LOGIN"))
+        filename = "access-log"
+        break
+      default:
+        data = filteredLogs
+        filename = "audit-export"
+    }
+
+    // Cria e baixa o arquivo CSV
+    const csvContent = convertToCSV(data)
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `${filename}-${new Date().toISOString().split("T")[0]}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    setIsExporting(false)
+    toast({
+      title: "Exportação concluída",
+      description: `Arquivo ${filename}.csv foi baixado com sucesso.`,
+    })
+  }
+
+  const convertToCSV = (data: any[]) => {
+    if (data.length === 0) return ""
+
+    const headers = Object.keys(data[0]).join(",")
+    const rows = data
+      .map((row) =>
+        Object.values(row)
+          .map((value) => (typeof value === "string" ? `"${value.replace(/"/g, '""')}"` : value))
+          .join(","),
+      )
+      .join("\n")
+
+    return `${headers}\n${rows}`
+  }
+
+  const handleInvestigate = (event: SecurityEvent) => {
+    console.log("[v0] Iniciando investigação do evento:", event.id)
+    setSelectedEvent(event)
+  }
+
+  const handleResolveEvent = (eventId: string) => {
+    console.log("[v0] Resolvendo evento de segurança:", eventId)
+    setSecurityEvents((prev) =>
+      prev.map((event) => (event.id === eventId ? { ...event, status: "resolved" as const } : event)),
+    )
+    toast({
+      title: "Evento resolvido",
+      description: "O evento de segurança foi marcado como resolvido.",
+    })
+  }
+
+  const handleViewDetails = (log: AuditLog) => {
+    console.log("[v0] Visualizando detalhes do log:", log.id)
+    setSelectedLog(log)
+  }
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -211,9 +359,9 @@ export default async function AuditPage() {
   }
 
   const stats = {
-    totalLogs: auditLogs.length,
+    totalLogs: filteredLogs.length,
     criticalEvents: securityEvents.filter((e) => e.severity === "critical").length,
-    failedActions: auditLogs.filter((l) => l.status === "failed").length,
+    failedActions: filteredLogs.filter((l) => l.status === "failed").length,
     activeInvestigations: securityEvents.filter((e) => e.status === "investigating").length,
   }
 
@@ -228,13 +376,21 @@ export default async function AuditPage() {
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearchTerm("")
+              setActionFilter("all-actions")
+              setSeverityFilter("all-severity")
+              toast({ title: "Filtros limpos", description: "Todos os filtros foram removidos." })
+            }}
+          >
             <Filter className="mr-2 h-4 w-4" />
-            Filtros
+            Limpar Filtros
           </Button>
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
+          <Button variant="outline" onClick={() => handleExport("audit-logs")} disabled={isExporting}>
+            <Download className={`mr-2 h-4 w-4 ${isExporting ? "animate-spin" : ""}`} />
+            {isExporting ? "Exportando..." : "Exportar"}
           </Button>
         </div>
       </div>
@@ -248,7 +404,7 @@ export default async function AuditPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalLogs.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Últimas 24 horas</p>
+            <p className="text-xs text-muted-foreground">Filtros aplicados</p>
           </CardContent>
         </Card>
 
@@ -302,10 +458,15 @@ export default async function AuditPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input placeholder="Buscar logs..." className="pl-10" />
+                  <Input
+                    placeholder="Buscar logs..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
                 <div className="flex space-x-2">
-                  <Select defaultValue="all-actions">
+                  <Select value={actionFilter} onValueChange={setActionFilter}>
                     <SelectTrigger className="w-40">
                       <SelectValue />
                     </SelectTrigger>
@@ -317,7 +478,7 @@ export default async function AuditPage() {
                       <SelectItem value="login">Login</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select defaultValue="all-severity">
+                  <Select value={severityFilter} onValueChange={setSeverityFilter}>
                     <SelectTrigger className="w-40">
                       <SelectValue />
                     </SelectTrigger>
@@ -338,11 +499,13 @@ export default async function AuditPage() {
           <Card>
             <CardHeader>
               <CardTitle>Logs de Auditoria</CardTitle>
-              <CardDescription>Histórico detalhado de todas as ações do sistema</CardDescription>
+              <CardDescription>
+                Mostrando {filteredLogs.length} de {auditLogs.length} logs
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {auditLogs.map((log) => (
+                {filteredLogs.map((log) => (
                   <div
                     key={log.id}
                     className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -393,10 +556,71 @@ export default async function AuditPage() {
                     </div>
 
                     <div className="mt-4 lg:mt-0 lg:ml-6">
-                      <Button size="sm" variant="outline">
-                        <Eye className="h-4 w-4 mr-1" />
-                        Detalhes
-                      </Button>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" onClick={() => handleViewDetails(log)}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Detalhes
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle>Detalhes do Log de Auditoria</DialogTitle>
+                            <DialogDescription>Informações completas sobre a ação realizada</DialogDescription>
+                          </DialogHeader>
+                          {selectedLog && (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="font-medium mb-1">Ação</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {selectedLog.action.replace(/_/g, " ")}
+                                  </p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Status</h4>
+                                  <Badge className={getStatusColor(selectedLog.status)}>
+                                    {selectedLog.status.toUpperCase()}
+                                  </Badge>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Usuário</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedLog.user_name}</p>
+                                  <p className="text-xs text-gray-500">{selectedLog.user_email}</p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Timestamp</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {new Date(selectedLog.timestamp).toLocaleString("pt-BR")}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-1">Detalhes</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{selectedLog.details}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="font-medium mb-1">Endereço IP</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedLog.ip_address}</p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Severidade</h4>
+                                  <Badge className={getSeverityColor(selectedLog.severity)}>
+                                    {selectedLog.severity.toUpperCase()}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-1">User Agent</h4>
+                                <p className="text-xs text-gray-600 dark:text-gray-400 break-all">
+                                  {selectedLog.user_agent}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                 ))}
@@ -466,11 +690,79 @@ export default async function AuditPage() {
                     </div>
 
                     <div className="mt-4 lg:mt-0 lg:ml-6 flex space-x-2">
-                      <Button size="sm" variant="outline">
-                        <Eye className="h-4 w-4 mr-1" />
-                        Investigar
-                      </Button>
-                      {event.status === "open" && <Button size="sm">Resolver</Button>}
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" onClick={() => handleInvestigate(event)}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Investigar
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle>Investigação de Evento de Segurança</DialogTitle>
+                            <DialogDescription>Análise detalhada do evento de segurança</DialogDescription>
+                          </DialogHeader>
+                          {selectedEvent && (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="font-medium mb-1">Tipo de Evento</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {selectedEvent.event_type.replace(/_/g, " ")}
+                                  </p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Severidade</h4>
+                                  <Badge className={getSeverityColor(selectedEvent.severity)}>
+                                    {selectedEvent.severity.toUpperCase()}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-1">Descrição</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{selectedEvent.description}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="font-medium mb-1">Endereço IP</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedEvent.ip_address}</p>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium mb-1">Status</h4>
+                                  <Badge className={getStatusColor(selectedEvent.status)}>
+                                    {selectedEvent.status.toUpperCase()}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-1">Ações Recomendadas</h4>
+                                <div className="space-y-2">
+                                  {selectedEvent.severity === "critical" && (
+                                    <p className="text-sm text-red-600 dark:text-red-400">
+                                      • Bloqueio imediato do IP suspeito
+                                    </p>
+                                  )}
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    • Monitoramento contínuo da atividade
+                                  </p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    • Análise de logs relacionados
+                                  </p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    • Notificação da equipe de segurança
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
+                      {event.status === "open" && (
+                        <Button size="sm" onClick={() => handleResolveEvent(event.id)}>
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Resolver
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -599,19 +891,39 @@ export default async function AuditPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Button variant="outline" className="h-20 flex-col space-y-2 bg-transparent">
+                <Button
+                  variant="outline"
+                  className="h-20 flex-col space-y-2 bg-transparent"
+                  onClick={() => handleExport("lgpd-report")}
+                  disabled={isExporting}
+                >
                   <FileText className="h-6 w-6" />
                   <span className="text-sm">Relatório LGPD</span>
                 </Button>
-                <Button variant="outline" className="h-20 flex-col space-y-2 bg-transparent">
+                <Button
+                  variant="outline"
+                  className="h-20 flex-col space-y-2 bg-transparent"
+                  onClick={() => handleExport("security-audit")}
+                  disabled={isExporting}
+                >
                   <Shield className="h-6 w-6" />
                   <span className="text-sm">Auditoria de Segurança</span>
                 </Button>
-                <Button variant="outline" className="h-20 flex-col space-y-2 bg-transparent">
+                <Button
+                  variant="outline"
+                  className="h-20 flex-col space-y-2 bg-transparent"
+                  onClick={() => handleExport("backup-report")}
+                  disabled={isExporting}
+                >
                   <Database className="h-6 w-6" />
                   <span className="text-sm">Backup Report</span>
                 </Button>
-                <Button variant="outline" className="h-20 flex-col space-y-2 bg-transparent">
+                <Button
+                  variant="outline"
+                  className="h-20 flex-col space-y-2 bg-transparent"
+                  onClick={() => handleExport("access-log")}
+                  disabled={isExporting}
+                >
                   <Eye className="h-6 w-6" />
                   <span className="text-sm">Log de Acesso</span>
                 </Button>
