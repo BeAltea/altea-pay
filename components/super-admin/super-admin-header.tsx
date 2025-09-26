@@ -86,8 +86,7 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
         description: "Você foi desconectado com sucesso.",
       })
 
-      // Force redirect to login page
-      window.location.href = "/auth/login"
+      router.push("/")
     } catch (error) {
       console.error("[v0] SuperAdminHeader - Sign out exception:", error)
       toast({
