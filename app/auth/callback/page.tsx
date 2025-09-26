@@ -27,7 +27,7 @@ export default function AuthCallback() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, company_id")
           .eq("id", userId)
           .single()
 
@@ -40,6 +40,7 @@ export default function AuthCallback() {
             email: data.session.user.email,
             role: "user",
             full_name: data.session.user.user_metadata?.full_name || null,
+            company_id: null, // Will be assigned later by super admin
           })
 
           if (insertError) {
@@ -51,7 +52,10 @@ export default function AuthCallback() {
           return
         }
 
-        if (profile.role === "admin") {
+        if (profile.role === "super_admin") {
+          console.log("[v0] Redirecionando super admin para painel Altea")
+          router.push("/super-admin")
+        } else if (profile.role === "admin") {
           console.log("[v0] Redirecionando admin para dashboard administrativo")
           router.push("/dashboard")
         } else {

@@ -1,0 +1,389 @@
+import { createClient } from "@/lib/supabase/server"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import Link from "next/link"
+import {
+  Building2,
+  Users,
+  TrendingUp,
+  DollarSign,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  ArrowUpRight,
+  Eye,
+  BarChart3,
+} from "lucide-react"
+
+interface CompanyStats {
+  id: string
+  name: string
+  totalCustomers: number
+  totalDebts: number
+  totalAmount: number
+  recoveredAmount: number
+  recoveryRate: number
+  overdueDebts: number
+  admins: number
+}
+
+export default async function SuperAdminDashboardPage() {
+  const supabase = await createClient()
+
+  // Get user data
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // Get companies with stats (mock data for now)
+  const companiesStats: CompanyStats[] = [
+    {
+      id: "11111111-1111-1111-1111-111111111111",
+      name: "Enel Distribuição São Paulo",
+      totalCustomers: 1247,
+      totalDebts: 3456,
+      totalAmount: 2847392.5,
+      recoveredAmount: 1234567.89,
+      recoveryRate: 43.4,
+      overdueDebts: 234,
+      admins: 3,
+    },
+    {
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Sabesp - Companhia de Saneamento",
+      totalCustomers: 892,
+      totalDebts: 2134,
+      totalAmount: 1654321.75,
+      recoveredAmount: 876543.21,
+      recoveryRate: 53.0,
+      overdueDebts: 156,
+      admins: 2,
+    },
+    {
+      id: "33333333-3333-3333-3333-333333333333",
+      name: "CPFL Energia",
+      totalCustomers: 654,
+      totalDebts: 1789,
+      totalAmount: 1234567.89,
+      recoveredAmount: 654321.98,
+      recoveryRate: 53.0,
+      overdueDebts: 98,
+      admins: 2,
+    },
+    {
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "Cemig Distribuição",
+      totalCustomers: 543,
+      totalDebts: 1456,
+      totalAmount: 987654.32,
+      recoveredAmount: 543210.87,
+      recoveryRate: 55.0,
+      overdueDebts: 87,
+      admins: 2,
+    },
+  ]
+
+  // Calculate totals
+  const totalStats = {
+    totalCompanies: companiesStats.length,
+    totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
+    totalDebts: companiesStats.reduce((sum, company) => sum + company.totalDebts, 0),
+    totalAmount: companiesStats.reduce((sum, company) => sum + company.totalAmount, 0),
+    totalRecovered: companiesStats.reduce((sum, company) => sum + company.recoveredAmount, 0),
+    totalOverdue: companiesStats.reduce((sum, company) => sum + company.overdueDebts, 0),
+    totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
+  }
+
+  const overallRecoveryRate = (totalStats.totalRecovered / totalStats.totalAmount) * 100
+
+  const recentActivity = [
+    {
+      id: 1,
+      type: "company_added",
+      description: "Nova empresa CPFL Energia adicionada ao sistema",
+      company: "CPFL Energia",
+      time: "2 horas atrás",
+      status: "success",
+    },
+    {
+      id: 2,
+      type: "payment",
+      description: "Pagamento de R$ 15.250,00 recebido na Enel",
+      company: "Enel Distribuição",
+      amount: 15250.0,
+      time: "4 horas atrás",
+      status: "success",
+    },
+    {
+      id: 3,
+      type: "admin_added",
+      description: "Novo administrador adicionado na Sabesp",
+      company: "Sabesp",
+      time: "1 dia atrás",
+      status: "info",
+    },
+    {
+      id: 4,
+      type: "alert",
+      description: "Alto número de inadimplentes na Cemig (87 casos)",
+      company: "Cemig Distribuição",
+      time: "2 dias atrás",
+      status: "warning",
+    },
+  ]
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Painel Altea Pay - Super Admin
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
+            Visão geral de todas as empresas clientes e suas operações de cobrança.
+          </p>
+        </div>
+        <div className="flex space-x-3 flex-shrink-0">
+          <Button asChild className="w-full sm:w-auto">
+            <Link href="/super-admin/companies/new">
+              <Building2 className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Nova Empresa</span>
+              <span className="sm:hidden">Nova</span>
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      {/* Global Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Empresas</CardTitle>
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalStats.totalCompanies}</div>
+            <p className="text-xs text-muted-foreground">
+              <span className="text-green-600 flex items-center">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                +1 nova este mês
+              </span>
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalStats.totalCustomers.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{totalStats.totalAdmins} administradores ativos</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Valor Total em Cobrança</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">R$ {(totalStats.totalAmount / 1000000).toFixed(1)}M</div>
+            <p className="text-xs text-muted-foreground">
+              R$ {totalStats.totalRecovered.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Taxa de Recuperação Geral</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{overallRecoveryRate.toFixed(1)}%</div>
+            <Progress value={overallRecoveryRate} className="mt-2" />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Companies Overview */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-lg sm:text-xl">Empresas Clientes</CardTitle>
+              <CardDescription className="text-sm">Performance e estatísticas por empresa</CardDescription>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/super-admin/companies">
+                Ver Todas
+                <ArrowUpRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {companiesStats.map((company) => (
+              <div
+                key={company.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-3 mb-2 sm:mb-0">
+                    <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-lg">
+                      <Building2 className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900 dark:text-white truncate">{company.name}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {company.totalCustomers.toLocaleString()} clientes • {company.totalDebts.toLocaleString()}{" "}
+                        dívidas
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 mt-3 sm:mt-0">
+                  <div className="text-center sm:text-right">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      R$ {(company.totalAmount / 1000).toFixed(0)}k
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
+                  </div>
+
+                  <div className="text-center sm:text-right">
+                    <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                      {company.recoveryRate.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
+                  </div>
+
+                  {company.overdueDebts > 0 && (
+                    <Badge variant="destructive" className="text-xs">
+                      {company.overdueDebts} em atraso
+                    </Badge>
+                  )}
+
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/super-admin/companies/${company.id}`}>
+                      <Eye className="h-4 w-4 mr-1" />
+                      Ver
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Recent Activity */}
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg sm:text-xl">Atividade Recente</CardTitle>
+            <CardDescription className="text-sm">Últimas ações e eventos do sistema</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentActivity.map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3 sm:space-x-4">
+                  <div className="flex-shrink-0">
+                    {activity.status === "success" && (
+                      <div className="bg-green-100 dark:bg-green-900/20 p-2 rounded-full">
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      </div>
+                    )}
+                    {activity.status === "info" && (
+                      <div className="bg-blue-100 dark:bg-blue-900/20 p-2 rounded-full">
+                        <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                    )}
+                    {activity.status === "warning" && (
+                      <div className="bg-orange-100 dark:bg-orange-900/20 p-2 rounded-full">
+                        <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{activity.description}</p>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{activity.company}</p>
+                      <span className="text-xs text-gray-400">•</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{activity.time}</p>
+                    </div>
+                  </div>
+                  {activity.amount && (
+                    <div className="text-sm font-medium text-green-600 dark:text-green-400 hidden sm:block">
+                      +R$ {activity.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System Overview */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg sm:text-xl">Visão do Sistema</CardTitle>
+            <CardDescription className="text-sm">Status geral da plataforma</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-green-900 dark:text-green-100 text-sm sm:text-base">
+                    Sistema Operacional
+                  </p>
+                  <p className="text-xs sm:text-sm text-green-700 dark:text-green-300">Todas as empresas conectadas</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-blue-900 dark:text-blue-100 text-sm sm:text-base">
+                    {totalStats.totalOverdue} Casos Críticos
+                  </p>
+                  <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">Requerem atenção</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-orange-900 dark:text-orange-100 text-sm sm:text-base">
+                    Monitoramento Ativo
+                  </p>
+                  <p className="text-xs sm:text-sm text-orange-700 dark:text-orange-300">IA analisando padrões</p>
+                </div>
+              </div>
+            </div>
+
+            <Button asChild className="w-full bg-transparent" variant="outline">
+              <Link href="/super-admin/reports">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Ver Relatórios Detalhados
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

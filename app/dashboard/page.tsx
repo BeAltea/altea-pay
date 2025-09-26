@@ -26,14 +26,58 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Get dashboard stats (mock data for now)
-  const stats = {
-    totalCustomers: 1247,
-    totalDebts: 3456,
-    totalAmount: 2847392.5,
-    recoveredAmount: 1234567.89,
-    recoveryRate: 43.4,
-    pendingActions: 89,
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select(`
+      role,
+      company_id,
+      full_name,
+      companies (
+        id,
+        name,
+        subscription_plan
+      )
+    `)
+    .eq("id", user.id)
+    .single()
+
+  if (!profile) return null
+
+  const companyId = profile.company_id
+
+  // Get dashboard stats filtered by company
+  let stats = {
+    totalCustomers: 0,
+    totalDebts: 0,
+    totalAmount: 0,
+    recoveredAmount: 0,
+    recoveryRate: 0,
+    pendingActions: 0,
+  }
+
+  if (companyId) {
+    // Get real stats from database filtered by company
+    const { data: customers } = await supabase.from("customers").select("id").eq("company_id", companyId)
+
+    const { data: debts } = await supabase.from("debts").select("amount, status").eq("company_id", companyId)
+
+    stats.totalCustomers = customers?.length || 0
+    stats.totalDebts = debts?.length || 0
+    stats.totalAmount = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
+    stats.recoveredAmount =
+      debts?.filter((d) => d.status === "paid").reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
+    stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
+    stats.pendingActions = debts?.filter((d) => d.status === "overdue").length || 0
+  } else {
+    // Mock data for users without company assignment
+    stats = {
+      totalCustomers: 1247,
+      totalDebts: 3456,
+      totalAmount: 2847392.5,
+      recoveredAmount: 1234567.89,
+      recoveryRate: 43.4,
+      pendingActions: 89,
+    }
   }
 
   const recentActivity = [
@@ -68,16 +112,19 @@ export default async function DashboardPage() {
     },
   ]
 
+  const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
+  const companyName = profile.companies?.name
+
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-            Olá, {user.user_metadata?.full_name || "Usuário"}!
-          </h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Olá, {displayName}!</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
-            Aqui está um resumo da sua operação de cobrança hoje.
+            {companyName
+              ? `Resumo da operação de cobrança da ${companyName} hoje.`
+              : "Aqui está um resumo da sua operação de cobrança hoje."}
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
@@ -131,7 +178,12 @@ export default async function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {(stats.totalAmount / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold">
+              R${" "}
+              {stats.totalAmount > 1000000
+                ? (stats.totalAmount / 1000000).toFixed(1) + "M"
+                : (stats.totalAmount / 1000).toFixed(0) + "K"}
+            </div>
             <p className="text-xs text-muted-foreground">
               R$ {stats.recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
             </p>
@@ -144,7 +196,7 @@ export default async function DashboardPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.recoveryRate}%</div>
+            <div className="text-2xl font-bold">{stats.recoveryRate.toFixed(1)}%</div>
             <Progress value={stats.recoveryRate} className="mt-2" />
           </CardContent>
         </Card>

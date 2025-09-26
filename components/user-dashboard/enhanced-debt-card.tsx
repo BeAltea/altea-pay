@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils"
 import { PaymentProcessingModal } from "./payment-processing-modal"
 import { CreateNegotiationDialog } from "./create-negotiation-dialog"
+import { MicrocreditOffer } from "./microcredit-offer"
 
 interface EnhancedDebtCardProps {
   debt: {
@@ -62,6 +63,15 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
   const isPaid = debt.status === "paid"
   const paymentScore = Number(debt.propensity_payment_score) || 0
   const loanScore = Number(debt.propensity_loan_score) || 0
+
+  const debtForMicrocredit = {
+    id: debt.id,
+    description: debt.description,
+    amount: Number(debt.amount),
+    propensity_payment_score: paymentScore,
+    propensity_loan_score: loanScore,
+    status: debt.status,
+  }
 
   const getStatusBadge = () => {
     if (isPaid) {
@@ -128,128 +138,132 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
 
   return (
     <>
-      <Card
-        className={cn(
-          "transition-all duration-200 hover:shadow-md",
-          debt.status === "overdue" && "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20",
-          isPaid && "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20",
-          debt.status === "in_collection" &&
-            "border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/20",
-        )}
-      >
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-3">
-              {getStatusIcon()}
-              <div>
-                <CardTitle className="text-lg">{debt.description}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Criada em {new Date(debt.created_at).toLocaleDateString("pt-BR")}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {getStatusBadge()}
-              {getClassificationBadge()}
-            </div>
-          </div>
-        </CardHeader>
+      <div className="space-y-4">
+        {!isPaid && <MicrocreditOffer debt={debtForMicrocredit} />}
 
-        <CardContent className="space-y-4">
-          {/* Amount and Due Date */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">Valor</p>
-                <p className="text-lg font-bold">
-                  R$ {Number(debt.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm text-muted-foreground">Vencimento</p>
-                <p
-                  className={cn(
-                    "text-lg font-medium",
-                    debt.status === "overdue" && "text-red-600",
-                    isPaid && "text-green-600",
-                  )}
-                >
-                  {new Date(debt.due_date).toLocaleDateString("pt-BR")}
-                </p>
-                {isOverdue && !isPaid && <p className="text-sm text-red-600">{debt.days_overdue} dias em atraso</p>}
-              </div>
-            </div>
-          </div>
-
-          {/* Propensity Scores */}
-          {!isPaid && (
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Análise de Propensão</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card
+          className={cn(
+            "transition-all duration-200 hover:shadow-md",
+            debt.status === "overdue" && "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20",
+            isPaid && "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20",
+            debt.status === "in_collection" &&
+              "border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/20",
+          )}
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                {getStatusIcon()}
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Propensão ao Pagamento</span>
-                    <span className="font-medium">{paymentScore.toFixed(1)}%</span>
-                  </div>
-                  <Progress value={paymentScore} className="h-2" />
+                  <CardTitle className="text-lg">{debt.description}</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Criada em {new Date(debt.created_at).toLocaleDateString("pt-BR")}
+                  </p>
                 </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {getStatusBadge()}
+                {getClassificationBadge()}
+              </div>
+            </div>
+          </CardHeader>
 
+          <CardContent className="space-y-4">
+            {/* Amount and Due Date */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Propensão a Empréstimo</span>
-                    <span className="font-medium">{loanScore.toFixed(1)}%</span>
-                  </div>
-                  <Progress value={loanScore} className="h-2" />
+                  <p className="text-sm text-muted-foreground">Valor</p>
+                  <p className="text-lg font-bold">
+                    R$ {Number(debt.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Vencimento</p>
+                  <p
+                    className={cn(
+                      "text-lg font-medium",
+                      debt.status === "overdue" && "text-red-600",
+                      isPaid && "text-green-600",
+                    )}
+                  >
+                    {new Date(debt.due_date).toLocaleDateString("pt-BR")}
+                  </p>
+                  {isOverdue && !isPaid && <p className="text-sm text-red-600">{debt.days_overdue} dias em atraso</p>}
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Actions */}
-          {!isPaid && (
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <Button onClick={handlePaymentClick} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                <DollarSign className="h-4 w-4 mr-2" />
-                Pagar Agora
-              </Button>
+            {/* Propensity Scores */}
+            {!isPaid && (
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Análise de Propensão</span>
+                </div>
 
-              <CreateNegotiationDialog
-                openDebts={[debt]}
-                triggerButton={
-                  <Button variant="outline" className="flex-1 bg-transparent">
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Negociar
-                  </Button>
-                }
-              />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Propensão ao Pagamento</span>
+                      <span className="font-medium">{paymentScore.toFixed(1)}%</span>
+                    </div>
+                    <Progress value={paymentScore} className="h-2" />
+                  </div>
 
-              <Button variant="ghost" size="sm" onClick={handleDetailsClick}>
-                <Eye className="h-4 w-4 mr-2" />
-                Detalhes
-              </Button>
-            </div>
-          )}
-
-          {/* Payment Success Message */}
-          {isPaid && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <p className="text-sm font-medium text-green-800">Dívida quitada com sucesso!</p>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Propensão a Empréstimo</span>
+                      <span className="font-medium">{loanScore.toFixed(1)}%</span>
+                    </div>
+                    <Progress value={loanScore} className="h-2" />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+
+            {/* Actions */}
+            {!isPaid && (
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <Button onClick={handlePaymentClick} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Pagar Agora
+                </Button>
+
+                <CreateNegotiationDialog
+                  openDebts={[debt]}
+                  triggerButton={
+                    <Button variant="outline" className="flex-1 bg-transparent">
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Negociar
+                    </Button>
+                  }
+                />
+
+                <Button variant="ghost" size="sm" onClick={handleDetailsClick}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  Detalhes
+                </Button>
+              </div>
+            )}
+
+            {/* Payment Success Message */}
+            {isPaid && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <p className="text-sm font-medium text-green-800">Dívida quitada com sucesso!</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Payment Processing Modal */}
       {console.log("[v0] EnhancedDebtCard - Rendering PaymentProcessingModal, isOpen:", isPaymentModalOpen)}

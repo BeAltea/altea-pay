@@ -44,7 +44,7 @@ export function LoginForm() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, company_id")
           .eq("id", data.user.id)
           .single()
 
@@ -57,6 +57,7 @@ export function LoginForm() {
             email: data.user.email,
             role: "user",
             full_name: data.user.user_metadata?.full_name || null,
+            company_id: null, // Will be assigned later by super admin
           })
 
           if (insertError) {
@@ -70,7 +71,10 @@ export function LoginForm() {
           return
         }
 
-        if (profile.role === "admin") {
+        if (profile.role === "super_admin") {
+          console.log("[v0] Redirecionando super admin para painel Altea")
+          router.push("/super-admin")
+        } else if (profile.role === "admin") {
           console.log("[v0] Redirecionando admin para dashboard administrativo")
           router.push("/dashboard")
         } else {

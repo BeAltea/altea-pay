@@ -48,38 +48,44 @@ export function ThemeToggle() {
         <Button
           variant="ghost"
           size="sm"
-          className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="hover:bg-accent hover:text-accent-foreground transition-colors duration-200 dark:hover:bg-accent/30"
           title={`Tema atual: ${theme === "light" ? "Claro" : theme === "dark" ? "Escuro" : "Sistema"}`}
         >
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all duration-300 dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all duration-300 dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Alternar tema</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuItem
           onClick={() => handleThemeChange("light")}
-          className={`cursor-pointer ${theme === "light" ? "bg-accent" : ""}`}
+          className={`cursor-pointer transition-colors duration-150 ${
+            theme === "light" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+          }`}
         >
           <Sun className="mr-2 h-4 w-4" />
           <span>Claro</span>
-          {theme === "light" && <span className="ml-auto text-xs">✓</span>}
+          {theme === "light" && <span className="ml-auto text-xs text-primary">✓</span>}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => handleThemeChange("dark")}
-          className={`cursor-pointer ${theme === "dark" ? "bg-accent" : ""}`}
+          className={`cursor-pointer transition-colors duration-150 ${
+            theme === "dark" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+          }`}
         >
           <Moon className="mr-2 h-4 w-4" />
           <span>Escuro</span>
-          {theme === "dark" && <span className="ml-auto text-xs">✓</span>}
+          {theme === "dark" && <span className="ml-auto text-xs text-primary">✓</span>}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => handleThemeChange("system")}
-          className={`cursor-pointer ${theme === "system" ? "bg-accent" : ""}`}
+          className={`cursor-pointer transition-colors duration-150 ${
+            theme === "system" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+          }`}
         >
           <Monitor className="mr-2 h-4 w-4" />
           <span>Sistema</span>
-          {theme === "system" && <span className="ml-auto text-xs">✓</span>}
+          {theme === "system" && <span className="ml-auto text-xs text-primary">✓</span>}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

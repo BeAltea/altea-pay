@@ -4,46 +4,48 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Bell, Search, Sun, Moon, User, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react"
+import {
+  Bell,
+  Search,
+  Sun,
+  Moon,
+  User,
+  Settings,
+  LogOut,
+  ChevronDown,
+  Menu,
+  X,
+  Shield,
+  LayoutDashboard,
+} from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
-import { useMobileSidebar } from "./sidebar"
+import { useMobileSuperAdminSidebar } from "./super-admin-sidebar"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, CreditCard, Upload, Target, BarChart3 } from "lucide-react"
+import { Building2, Users, BarChart3, FileText, TrendingUp, Database } from "lucide-react"
 
-interface HeaderProps {
+interface SuperAdminHeaderProps {
   user?: {
     id: string
     email?: string
     user_metadata?: {
       full_name?: string
-      company_name?: string
-    }
-    profile?: {
-      role: string
-      company_id: string | null
-      full_name: string | null
-      company: {
-        id: string
-        name: string
-        subscription_plan: string
-      } | null
     }
   }
 }
 
-export function Header({ user }: HeaderProps) {
+export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileSidebar()
+  const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileSuperAdminSidebar()
 
   useEffect(() => {
     setMounted(true)
@@ -63,13 +65,13 @@ export function Header({ user }: HeaderProps) {
   }, [])
 
   const handleSignOut = async () => {
-    console.log("[v0] Header - Sign out initiated")
+    console.log("[v0] SuperAdminHeader - Sign out initiated")
     try {
       const supabase = createClient()
       const { error } = await supabase.auth.signOut()
 
       if (error) {
-        console.error("[v0] Header - Sign out error:", error)
+        console.error("[v0] SuperAdminHeader - Sign out error:", error)
         toast({
           title: "Erro",
           description: "Erro ao fazer logout. Tente novamente.",
@@ -78,7 +80,7 @@ export function Header({ user }: HeaderProps) {
         return
       }
 
-      console.log("[v0] Header - Sign out successful, redirecting...")
+      console.log("[v0] SuperAdminHeader - Sign out successful, redirecting...")
       toast({
         title: "Logout realizado",
         description: "Você foi desconectado com sucesso.",
@@ -87,7 +89,7 @@ export function Header({ user }: HeaderProps) {
       // Force redirect to login page
       window.location.href = "/auth/login"
     } catch (error) {
-      console.error("[v0] Header - Sign out exception:", error)
+      console.error("[v0] SuperAdminHeader - Sign out exception:", error)
       toast({
         title: "Erro",
         description: "Erro inesperado ao fazer logout.",
@@ -97,7 +99,7 @@ export function Header({ user }: HeaderProps) {
   }
 
   const handleThemeToggle = () => {
-    console.log("[v0] Header - Theme toggle clicked, current theme:", theme)
+    console.log("[v0] SuperAdminHeader - Theme toggle clicked, current theme:", theme)
     setTheme(theme === "dark" ? "light" : "dark")
     toast({
       title: "Tema alterado",
@@ -106,7 +108,7 @@ export function Header({ user }: HeaderProps) {
   }
 
   const handleNotificationClick = (notification: string) => {
-    console.log("[v0] Header - Notification clicked:", notification)
+    console.log("[v0] SuperAdminHeader - Notification clicked:", notification)
     toast({
       title: "Notificação",
       description: notification,
@@ -115,21 +117,13 @@ export function Header({ user }: HeaderProps) {
   }
 
   const userInitials =
-    user?.profile?.full_name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase() ||
     user?.user_metadata?.full_name
       ?.split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase() ||
     user?.email?.[0].toUpperCase() ||
-    "U"
-
-  const displayName = user?.profile?.full_name || user?.user_metadata?.full_name || "Usuário"
-  const companyName = user?.profile?.company?.name || user?.user_metadata?.company_name || user?.email
+    "SA"
 
   if (!mounted) {
     return (
@@ -141,7 +135,7 @@ export function Header({ user }: HeaderProps) {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Buscar clientes, dívidas..."
+                  placeholder="Buscar empresas, usuários..."
                   className="pl-10 bg-gray-50 dark:bg-gray-800 border-0"
                 />
               </div>
@@ -175,7 +169,7 @@ export function Header({ user }: HeaderProps) {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Buscar clientes, dívidas..."
+                placeholder="Buscar empresas, usuários..."
                 className="pl-10 bg-gray-50 dark:bg-gray-800 border-0 text-sm sm:text-base h-9"
               />
             </div>
@@ -204,7 +198,7 @@ export function Header({ user }: HeaderProps) {
             >
               <Bell className="h-4 w-4" />
               <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs bg-altea-gold text-altea-navy hover:bg-altea-gold">
-                3
+                5
               </Badge>
               <span className="sr-only">Notificações</span>
             </Button>
@@ -212,35 +206,35 @@ export function Header({ user }: HeaderProps) {
             {showNotifications && (
               <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 max-h-96 overflow-y-auto">
                 <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="font-medium text-sm">Notificações</h3>
+                  <h3 className="font-medium text-sm">Notificações do Sistema</h3>
                 </div>
                 <div className="py-1">
                   <button
-                    onClick={() => handleNotificationClick("Nova importação concluída")}
+                    onClick={() => handleNotificationClick("Nova empresa CPFL adicionada")}
                     className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm border-b border-gray-100 dark:border-gray-700"
                   >
-                    <p className="font-medium">Nova importação concluída</p>
-                    <p className="text-xs text-gray-500 mt-1">152 registros processados com sucesso</p>
+                    <p className="font-medium">Nova empresa adicionada</p>
+                    <p className="text-xs text-gray-500 mt-1">CPFL Energia foi integrada ao sistema</p>
                   </button>
                   <button
-                    onClick={() => handleNotificationClick("Régua de cobrança executada")}
+                    onClick={() => handleNotificationClick("Alto volume de inadimplência detectado")}
                     className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm border-b border-gray-100 dark:border-gray-700"
                   >
-                    <p className="font-medium">Régua de cobrança executada</p>
-                    <p className="text-xs text-gray-500 mt-1">45 emails enviados automaticamente</p>
+                    <p className="font-medium">Alerta de inadimplência</p>
+                    <p className="text-xs text-gray-500 mt-1">Cemig com 87 casos críticos</p>
                   </button>
                   <button
-                    onClick={() => handleNotificationClick("Pagamento recebido")}
+                    onClick={() => handleNotificationClick("Relatório mensal disponível")}
                     className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                   >
-                    <p className="font-medium">Pagamento recebido</p>
-                    <p className="text-xs text-gray-500 mt-1">R$ 1.250,00 - Cliente João Silva</p>
+                    <p className="font-medium">Relatório mensal pronto</p>
+                    <p className="text-xs text-gray-500 mt-1">Análise consolidada de todas as empresas</p>
                   </button>
                 </div>
                 <div className="border-t border-gray-200 dark:border-gray-700 p-2">
                   <button
                     onClick={() => handleNotificationClick("Ver todas as notificações")}
-                    className="w-full px-2 py-2 text-sm text-blue-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
+                    className="w-full px-2 py-2 text-sm text-altea-navy dark:text-altea-gold hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
                   >
                     Ver todas as notificações
                   </button>
@@ -266,8 +260,13 @@ export function Header({ user }: HeaderProps) {
                   <AvatarFallback className="bg-altea-navy text-altea-gold text-sm">{userInitials}</AvatarFallback>
                 </Avatar>
                 <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-32">{displayName}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-32">{companyName}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-32">
+                    {user.user_metadata?.full_name || "Super Admin"}
+                  </p>
+                  <div className="flex items-center space-x-1">
+                    <Shield className="h-3 w-3 text-altea-gold" />
+                    <p className="text-xs text-altea-gold truncate max-w-24">Altea Pay</p>
+                  </div>
                 </div>
                 <ChevronDown className="h-4 w-4 text-gray-400 hidden sm:block" />
               </Button>
@@ -275,15 +274,20 @@ export function Header({ user }: HeaderProps) {
               {showUserMenu && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50">
                   <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="font-medium text-sm">Minha conta</h3>
+                    <h3 className="font-medium text-sm">Super Administrador</h3>
                     <div className="md:hidden mt-2">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{companyName}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {user.user_metadata?.full_name || "Super Admin"}
+                      </p>
+                      <div className="flex items-center space-x-1">
+                        <Shield className="h-3 w-3 text-altea-gold" />
+                        <p className="text-xs text-altea-gold">Altea Pay</p>
+                      </div>
                     </div>
                   </div>
                   <div className="py-1">
                     <Link
-                      href="/dashboard/profile"
+                      href="/super-admin/profile"
                       className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                       onClick={() => setShowUserMenu(false)}
                     >
@@ -291,7 +295,7 @@ export function Header({ user }: HeaderProps) {
                       Ver perfil
                     </Link>
                     <Link
-                      href="/dashboard/settings"
+                      href="/super-admin/settings"
                       className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                       onClick={() => setShowUserMenu(false)}
                     >
@@ -334,7 +338,13 @@ export function Header({ user }: HeaderProps) {
                       <span className="text-altea-gold font-bold text-xs">A</span>
                     </div>
                   </div>
-                  <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">Altea Pay</span>
+                  <div className="min-w-0">
+                    <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">Altea Pay</span>
+                    <div className="flex items-center space-x-1">
+                      <Shield className="h-3 w-3 text-altea-gold" />
+                      <span className="text-xs text-altea-gold font-medium">Super Admin</span>
+                    </div>
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
@@ -352,16 +362,18 @@ export function Header({ user }: HeaderProps) {
             <div className="flex-1 px-3 py-4 overflow-y-auto">
               <nav className="space-y-1">
                 {[
-                  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-                  { name: "Clientes", href: "/dashboard/customers", icon: Users },
-                  { name: "Dívidas", href: "/dashboard/debts", icon: CreditCard },
-                  { name: "Importar Dados", href: "/dashboard/import", icon: Upload },
-                  { name: "Réguas de Cobrança", href: "/dashboard/collection-rules", icon: Target },
-                  { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
-                  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+                  { name: "Dashboard", href: "/super-admin", icon: LayoutDashboard },
+                  { name: "Empresas", href: "/super-admin/companies", icon: Building2 },
+                  { name: "Usuários", href: "/super-admin/users", icon: Users },
+                  { name: "Relatórios", href: "/super-admin/reports", icon: BarChart3 },
+                  { name: "Analytics", href: "/super-admin/analytics", icon: TrendingUp },
+                  { name: "Auditoria", href: "/super-admin/audit", icon: FileText },
+                  { name: "Sistema", href: "/super-admin/system", icon: Database },
+                  { name: "Configurações", href: "/super-admin/settings", icon: Settings },
                 ].map((item) => {
                   const pathname = window.location.pathname
-                  const isActive = pathname === item.href
+                  const isActive =
+                    pathname === item.href || (item.href !== "/super-admin" && pathname.startsWith(item.href))
                   return (
                     <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)} className="block">
                       <Button
@@ -384,13 +396,14 @@ export function Header({ user }: HeaderProps) {
             {user && (
               <div className="border-t border-gray-200 dark:border-gray-700 p-4">
                 <div className="flex items-center space-x-3 w-full min-w-0">
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarImage src="/placeholder.svg" />
-                    <AvatarFallback className="bg-altea-navy text-altea-gold text-sm">{userInitials}</AvatarFallback>
-                  </Avatar>
+                  <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-full flex-shrink-0">
+                    <Shield className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
+                  </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{displayName}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{companyName}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {user.user_metadata?.full_name || "Super Admin"}
+                    </p>
+                    <p className="text-xs text-altea-gold truncate">Altea Pay</p>
                   </div>
                 </div>
               </div>

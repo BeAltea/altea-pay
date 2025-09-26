@@ -96,11 +96,17 @@ const NavigationItem = memo(
       <Button
         variant={isActive ? "secondary" : "ghost"}
         className={cn(
-          "w-full justify-start text-left h-10 px-3 transition-colors duration-150",
-          isActive && "bg-altea-gold/10 text-altea-navy dark:bg-altea-gold/20 dark:text-altea-gold",
+          "w-full justify-start text-left h-10 px-3 transition-all duration-200 group",
+          isActive && "bg-altea-gold/10 text-altea-navy dark:bg-altea-gold/20 dark:text-altea-gold shadow-sm",
+          !isActive && "hover:bg-accent/50 hover:text-accent-foreground dark:hover:bg-accent/30",
         )}
       >
-        <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
+        <item.icon
+          className={cn(
+            "mr-3 h-4 w-4 flex-shrink-0 transition-colors duration-200",
+            isActive ? "text-altea-navy dark:text-altea-gold" : "text-muted-foreground group-hover:text-foreground",
+          )}
+        />
         <span className="truncate">{item.name}</span>
       </Button>
     </Link>
@@ -165,17 +171,22 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
     () => (
       <>
         {/* Logo/Header */}
-        <div className="flex h-16 items-center px-4 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex h-16 items-center px-4 sm:px-6 border-b border-border">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center space-x-3">
-              <div className="bg-altea-gold p-2 rounded-lg flex-shrink-0">
+              <div className="bg-altea-gold p-2 rounded-lg flex-shrink-0 shadow-sm">
                 <div className="h-5 w-5 bg-altea-navy rounded-sm flex items-center justify-center">
                   <span className="text-altea-gold font-bold text-xs">A</span>
                 </div>
               </div>
-              <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">Altea Pay</span>
+              <span className="text-lg font-semibold text-foreground truncate">Altea Pay</span>
             </div>
-            <Button variant="ghost" size="sm" className="lg:hidden h-8 w-8 p-0 flex-shrink-0" onClick={handleClose}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="lg:hidden h-8 w-8 p-0 flex-shrink-0 hover:bg-accent/50"
+              onClick={handleClose}
+            >
               <X className="h-4 w-4" />
               <span className="sr-only">Fechar menu</span>
             </Button>
@@ -192,24 +203,27 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
         </ScrollArea>
 
         {/* User Menu */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+        <div className="border-t border-border p-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full justify-start p-2 h-auto">
+              <Button
+                variant="ghost"
+                className="w-full justify-start p-2 h-auto hover:bg-accent/50 transition-colors duration-200"
+              >
                 <div className="flex items-center space-x-3 w-full min-w-0">
                   <Avatar className="h-8 w-8 flex-shrink-0">
                     <AvatarImage src="/placeholder.svg" />
                     <AvatarFallback className="bg-altea-navy text-altea-gold text-sm">{userInitials}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    <p className="text-sm font-medium text-foreground truncate">
                       {user.user_metadata?.full_name || "Usuário"}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {user.user_metadata?.company_name || user.email}
                     </p>
                   </div>
-                  <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                 </div>
               </Button>
             </DropdownMenuTrigger>
@@ -229,7 +243,7 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="text-red-600 dark:text-red-400 cursor-pointer">
+              <DropdownMenuItem onClick={handleSignOut} className="text-destructive cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
               </DropdownMenuItem>
@@ -244,19 +258,19 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
   return (
     <>
       {/* Desktop Sidebar */}
-      <div className="hidden lg:flex h-full w-64 flex-col bg-white dark:bg-altea-navy border-r border-gray-200 dark:border-gray-700">
+      <div className="hidden lg:flex h-full w-64 flex-col bg-card border-r border-border shadow-sm">
         {SidebarContent}
       </div>
 
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden transition-opacity duration-300"
             onClick={handleClose}
             aria-hidden="true"
           />
 
-          <div className="fixed left-0 top-0 bottom-0 z-50 w-80 max-w-[85vw] bg-white dark:bg-altea-navy border-r border-gray-200 dark:border-gray-700 flex flex-col lg:hidden shadow-xl">
+          <div className="fixed left-0 top-0 bottom-0 z-50 w-80 max-w-[85vw] bg-card border-r border-border flex flex-col lg:hidden shadow-2xl transform transition-transform duration-300 ease-out">
             {SidebarContent}
           </div>
         </>

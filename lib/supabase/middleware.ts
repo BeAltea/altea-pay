@@ -60,34 +60,65 @@ export async function updateSession(request: NextRequest) {
       try {
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, company_id")
           .eq("id", user.id)
           .single()
 
         console.log("[v0] Usuário autenticado:", user.email)
-        console.log("[v0] Perfil:", { hasProfile: !!profile, role: profile?.role, hasError: !!profileError })
+        console.log("[v0] Perfil:", {
+          hasProfile: !!profile,
+          role: profile?.role,
+          companyId: profile?.company_id,
+          hasError: !!profileError,
+        })
 
         const userRole = profile?.role || "user"
         console.log("[v0] Role determinado:", userRole)
 
-        // Agora todos podem ver a página inicial, independente de estarem logados
+        // Proteção de rotas super admin
+        if (currentPath.startsWith("/super-admin")) {
+          if (userRole !== "super_admin") {
+            console.log("[v0] Usuário sem permissão para área super admin")
+            const url = request.nextUrl.clone()
+            if (userRole === "admin") {
+              url.pathname = "/dashboard"
+            } else if (userRole === "user") {
+              url.pathname = "/user-dashboard"
+            } else {
+              url.pathname = "/auth/login"
+            }
+            return NextResponse.redirect(url)
+          }
+        }
 
-        // Proteção de rotas administrativas
+        // Proteção de rotas administrativas (company admin)
         if (currentPath.startsWith("/dashboard") && !currentPath.startsWith("/user-dashboard")) {
           if (userRole !== "admin") {
             console.log("[v0] Usuário sem permissão para área admin")
             const url = request.nextUrl.clone()
-            url.pathname = "/user-dashboard"
+            if (userRole === "super_admin") {
+              url.pathname = "/super-admin"
+            } else if (userRole === "user") {
+              url.pathname = "/user-dashboard"
+            } else {
+              url.pathname = "/auth/login"
+            }
             return NextResponse.redirect(url)
           }
         }
 
         // Proteção de rotas de usuário comum
         if (currentPath.startsWith("/user-dashboard")) {
-          if (userRole === "admin") {
-            console.log("[v0] Admin redirecionado para área administrativa")
+          if (userRole !== "user") {
+            console.log("[v0] Usuário redirecionado da área de usuário")
             const url = request.nextUrl.clone()
-            url.pathname = "/dashboard"
+            if (userRole === "super_admin") {
+              url.pathname = "/super-admin"
+            } else if (userRole === "admin") {
+              url.pathname = "/dashboard"
+            } else {
+              url.pathname = "/auth/login"
+            }
             return NextResponse.redirect(url)
           }
         }
@@ -99,6 +130,7 @@ export async function updateSession(request: NextRequest) {
             email: user.email,
             role: "user",
             full_name: user.user_metadata?.full_name || null,
+            company_id: null, // Will be assigned later by super admin
           })
           console.log("[v0] Perfil básico criado para usuário")
         } catch (insertError) {
