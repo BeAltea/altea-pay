@@ -2,15 +2,47 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
 export async function createSupabaseServerClient() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
 
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+        } catch {
+          // The "setAll" method was called from a Server Component.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
+        }
       },
     },
   })
+}
+
+export async function createSupabaseServiceClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Service role bypassa RLS
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {
+            // Ignorar erros de cookie em Server Components
+          }
+        },
+      },
+    },
+  )
 }
 
 export async function getCurrentUser() {
@@ -22,14 +54,62 @@ export async function getCurrentUser() {
 }
 
 export async function getCurrentUserProfile() {
-  const supabase = await createSupabaseServerClient()
+  console.log("[v0] Getting current user profile")
   const user = await getCurrentUser()
 
-  if (!user) return null
+  if (!user) {
+    console.log("[v0] No user found")
+    return null
+  }
 
-  const { data: profile } = await supabase.from("profiles").select("*, companies(name)").eq("id", user.id).single()
+  console.log("[v0] User found, fetching profile for ID:", user.id)
 
-  return profile
+  try {
+    const supabase = await createSupabaseServiceClient()
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("*, companies(name)")
+      .eq("id", user.id)
+      .single()
+
+    if (error) {
+      console.log("[v0] Profile fetch error:", error)
+
+      if (error.code === "PGRST116") {
+        // No rows found
+        console.log("[v0] Creating profile for user:", user.email)
+
+        const { data: newProfile, error: insertError } = await supabase
+          .from("profiles")
+          .insert({
+            id: user.id,
+            email: user.email,
+            role: "user", // Default role
+            full_name: user.user_metadata?.full_name || null,
+            company_id: null,
+          })
+          .select("*, companies(name)")
+          .single()
+
+        if (insertError) {
+          console.log("[v0] Error creating profile:", insertError)
+          return null
+        }
+
+        console.log("[v0] Profile created successfully:", newProfile)
+        return newProfile
+      }
+
+      return null
+    }
+
+    console.log("[v0] Profile found:", profile)
+    return profile
+  } catch (error) {
+    console.log("[v0] Profile fetch exception:", error)
+    return null
+  }
 }
 
 export async function isAdmin() {
