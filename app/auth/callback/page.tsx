@@ -12,25 +12,18 @@ export default function AuthCallback() {
       const supabase = createClient()
 
       try {
-        // Handle the auth callback from Supabase
         const { data, error } = await supabase.auth.getSession()
 
-        if (error) {
-          console.error("[v0] Callback - Session error:", error)
-          router.push("/auth/login?error=callback_error")
-          return
-        }
-
-        if (!data.session?.user) {
+        if (error || !data.session?.user) {
           router.push("/auth/login")
           return
         }
 
-        // Just redirect to root and let middleware determine the correct dashboard
+        // Redireciona para a raiz e deixa o middleware determinar o dashboard correto
         router.push("/")
       } catch (error) {
-        console.error("[v0] Callback - Error:", error)
-        router.push("/auth/login?error=callback_error")
+        console.error("Callback error:", error)
+        router.push("/auth/login")
       }
     }
 

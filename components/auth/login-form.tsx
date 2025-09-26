@@ -33,13 +33,10 @@ export function LoginForm() {
       if (error) throw error
 
       if (data.user) {
-        console.log("[v0] Login - User authenticated:", data.user.id)
-
-        console.log("[v0] Login - Redirecting to callback for role determination")
         router.push("/auth/callback")
       }
     } catch (error: unknown) {
-      console.error("[v0] Login error:", error)
+      console.error("Login error:", error)
       setError(error instanceof Error ? error.message : "Erro ao fazer login")
     } finally {
       setIsLoading(false)

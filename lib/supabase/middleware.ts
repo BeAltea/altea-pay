@@ -55,47 +55,47 @@ export async function updateSession(request: NextRequest) {
         return supabaseResponse
       }
 
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+      try {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
-      if (!profile) {
-        // If no profile found, redirect to callback to handle it
+        if (!profile) {
+          // Se não encontrar perfil, redireciona para callback
+          const url = request.nextUrl.clone()
+          url.pathname = "/auth/callback"
+          return NextResponse.redirect(url)
+        }
+
+        const userRole = profile.role || "user"
+
+        if (userRole === "admin") {
+          if (currentPath.startsWith("/user-dashboard")) {
+            const url = request.nextUrl.clone()
+            url.pathname = "/dashboard"
+            return NextResponse.redirect(url)
+          }
+          if (currentPath.startsWith("/auth/") && !currentPath.includes("/callback")) {
+            const url = request.nextUrl.clone()
+            url.pathname = "/dashboard"
+            return NextResponse.redirect(url)
+          }
+        } else {
+          if (currentPath.startsWith("/dashboard")) {
+            const url = request.nextUrl.clone()
+            url.pathname = "/user-dashboard"
+            return NextResponse.redirect(url)
+          }
+          if (currentPath.startsWith("/auth/") && !currentPath.includes("/callback")) {
+            const url = request.nextUrl.clone()
+            url.pathname = "/user-dashboard"
+            return NextResponse.redirect(url)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile in middleware:", error)
+        // Em caso de erro, redireciona para callback
         const url = request.nextUrl.clone()
         url.pathname = "/auth/callback"
         return NextResponse.redirect(url)
-      }
-
-      const userRole = profile.role || "user"
-
-      if (userRole === "admin") {
-        if (currentPath.startsWith("/user-dashboard")) {
-          const url = request.nextUrl.clone()
-          url.pathname = "/dashboard"
-          return NextResponse.redirect(url)
-        }
-        if (
-          currentPath.startsWith("/auth/") &&
-          !currentPath.includes("/verify-email") &&
-          !currentPath.includes("/callback")
-        ) {
-          const url = request.nextUrl.clone()
-          url.pathname = "/dashboard"
-          return NextResponse.redirect(url)
-        }
-      } else {
-        if (currentPath.startsWith("/dashboard")) {
-          const url = request.nextUrl.clone()
-          url.pathname = "/user-dashboard"
-          return NextResponse.redirect(url)
-        }
-        if (
-          currentPath.startsWith("/auth/") &&
-          !currentPath.includes("/verify-email") &&
-          !currentPath.includes("/callback")
-        ) {
-          const url = request.nextUrl.clone()
-          url.pathname = "/user-dashboard"
-          return NextResponse.redirect(url)
-        }
       }
     } else {
       const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]

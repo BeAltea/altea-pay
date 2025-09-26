@@ -38,15 +38,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-      if (session?.user) {
-        setUser(session.user)
-        await fetchProfile(session.user.id)
+        if (session?.user) {
+          setUser(session.user)
+          await fetchProfile(session.user.id)
+        }
+      } catch (error) {
+        console.error("Error getting initial session:", error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     getInitialSession()
@@ -55,14 +60,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setUser(session.user)
-        await fetchProfile(session.user.id)
-      } else {
-        setUser(null)
-        setProfile(null)
+      try {
+        if (session?.user) {
+          setUser(session.user)
+          await fetchProfile(session.user.id)
+        } else {
+          setUser(null)
+          setProfile(null)
+        }
+      } catch (error) {
+        console.error("Error in auth state change:", error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
 
     return () => {
@@ -75,20 +85,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
       if (error) {
-        console.error("[v0] AuthProvider: Error fetching profile", error)
+        // Se o perfil não existe, não é necessariamente um erro crítico
+        if (error.code === "PGRST116") {
+          console.warn("Profile not found for user:", userId)
+          return
+        }
+        console.error("Error fetching profile:", error)
         return
       }
 
       setProfile(data)
     } catch (error) {
-      console.error("[v0] AuthProvider: Exception fetching profile", error)
+      console.error("Exception fetching profile:", error)
     }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setProfile(null)
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      setProfile(null)
+    } catch (error) {
+      console.error("Error signing out:", error)
+    }
   }
 
   return <AuthContext.Provider value={{ user, profile, loading, signOut }}>{children}</AuthContext.Provider>
