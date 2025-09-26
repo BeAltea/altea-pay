@@ -45,8 +45,7 @@ export async function updateSession(request: NextRequest) {
 
     if (userError) {
       console.log("[v0] Middleware - Auth error:", userError.message)
-      // If there's an auth error, treat as unauthenticated
-      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email"]
+      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]
       const isPublicPath = publicPaths.some((path) => currentPath.startsWith(path))
 
       if (!isPublicPath) {
@@ -60,6 +59,11 @@ export async function updateSession(request: NextRequest) {
 
     if (user) {
       console.log("[v0] Middleware - User authenticated:", user.email)
+
+      if (currentPath.startsWith("/auth/callback")) {
+        console.log("[v0] Middleware - Allowing callback page access")
+        return supabaseResponse
+      }
 
       const serviceSupabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,21 +80,19 @@ export async function updateSession(request: NextRequest) {
         },
       )
 
-      console.log("[v0] Middleware - Getting profile for:", user.email)
-      // Get user profile by email since that's what we have in the database
+      console.log("[v0] Middleware - Getting profile for user ID:", user.id)
       const { data: profile, error: profileError } = await serviceSupabase
         .from("profiles")
         .select("role, email, id")
-        .eq("email", user.email)
+        .eq("id", user.id)
         .single()
 
       console.log("[v0] Middleware - Profile data:", profile, "Error:", profileError)
 
       if (profileError || !profile) {
-        console.log("[v0] Middleware - Profile not found for user:", user.email)
-        // If profile doesn't exist, redirect to login
+        console.log("[v0] Middleware - Profile not found for user:", user.id)
         const url = request.nextUrl.clone()
-        url.pathname = "/auth/login"
+        url.pathname = "/auth/callback"
         return NextResponse.redirect(url)
       }
 
@@ -105,8 +107,11 @@ export async function updateSession(request: NextRequest) {
           url.pathname = "/dashboard"
           return NextResponse.redirect(url)
         }
-        // If admin is on auth pages, redirect to dashboard
-        if (currentPath.startsWith("/auth/") && !currentPath.includes("/verify-email")) {
+        if (
+          currentPath.startsWith("/auth/") &&
+          !currentPath.includes("/verify-email") &&
+          !currentPath.includes("/callback")
+        ) {
           console.log("[v0] Middleware - Redirecting admin to dashboard")
           const url = request.nextUrl.clone()
           url.pathname = "/dashboard"
@@ -120,8 +125,11 @@ export async function updateSession(request: NextRequest) {
           url.pathname = "/user-dashboard"
           return NextResponse.redirect(url)
         }
-        // If user is on auth pages, redirect to user-dashboard
-        if (currentPath.startsWith("/auth/") && !currentPath.includes("/verify-email")) {
+        if (
+          currentPath.startsWith("/auth/") &&
+          !currentPath.includes("/verify-email") &&
+          !currentPath.includes("/callback")
+        ) {
           console.log("[v0] Middleware - Redirecting user to user-dashboard")
           const url = request.nextUrl.clone()
           url.pathname = "/user-dashboard"
@@ -130,8 +138,7 @@ export async function updateSession(request: NextRequest) {
       }
     } else {
       console.log("[v0] Middleware - User not authenticated")
-      // User is not authenticated
-      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email"]
+      const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback"]
       const isPublicPath = publicPaths.some((path) => currentPath.startsWith(path))
 
       if (!isPublicPath) {

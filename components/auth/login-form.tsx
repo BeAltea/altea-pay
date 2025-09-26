@@ -35,25 +35,8 @@ export function LoginForm() {
       if (data.user) {
         console.log("[v0] Login - User authenticated:", data.user.id)
 
-        // Get user profile to determine redirect
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", data.user.id)
-          .single()
-
-        console.log("[v0] Login - Profile data:", profile, "Error:", profileError)
-
-        const userRole = profile?.role || "user"
-        console.log("[v0] Login - User role:", userRole)
-
-        if (userRole === "admin") {
-          console.log("[v0] Login - Redirecting admin to dashboard")
-          router.push("/dashboard")
-        } else {
-          console.log("[v0] Login - Redirecting user to user-dashboard")
-          router.push("/user-dashboard")
-        }
+        console.log("[v0] Login - Redirecting to callback for role determination")
+        router.push("/auth/callback")
       }
     } catch (error: unknown) {
       console.error("[v0] Login error:", error)
