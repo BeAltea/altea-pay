@@ -40,7 +40,7 @@ export function LoginForm() {
       if (data.user) {
         console.log("[v0] Login bem-sucedido para usuário:", data.user.email)
 
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+        await new Promise((resolve) => setTimeout(resolve, 2000))
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
@@ -67,19 +67,19 @@ export function LoginForm() {
           }
 
           console.log("[v0] Perfil criado, redirecionando para dashboard de usuário")
-          router.push("/user-dashboard")
+          window.location.href = "/user-dashboard"
           return
         }
 
         if (profile.role === "super_admin") {
           console.log("[v0] Redirecionando super admin para painel Altea")
-          router.push("/super-admin")
+          window.location.href = "/super-admin"
         } else if (profile.role === "admin") {
           console.log("[v0] Redirecionando admin para dashboard administrativo")
-          router.push("/dashboard")
+          window.location.href = "/dashboard"
         } else {
           console.log("[v0] Redirecionando usuário para dashboard de usuário")
-          router.push("/user-dashboard")
+          window.location.href = "/user-dashboard"
         }
       }
     } catch (error: unknown) {
