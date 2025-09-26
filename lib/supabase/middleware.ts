@@ -33,23 +33,36 @@ export async function updateSession(request: NextRequest) {
       currentPath.startsWith("/_next") ||
       currentPath.startsWith("/api") ||
       currentPath.startsWith("/_vercel") ||
-      currentPath.includes(".")
+      currentPath.includes(".") ||
+      currentPath === "/favicon.ico"
     ) {
       console.log("[v0] Pulando middleware para:", currentPath)
       return supabaseResponse
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    let user = null
+    let userError = null
 
-    console.log("[v0] Status do usuário:", { hasUser: !!user, hasError: !!userError })
+    try {
+      const { data, error } = await supabase.auth.getUser()
+      user = data.user
+      userError = error
+
+      console.log("[v0] Status do usuário:", {
+        hasUser: !!user,
+        hasError: !!userError,
+        userId: user?.id,
+        email: user?.email,
+      })
+    } catch (error) {
+      console.error("[v0] Erro ao obter usuário:", error)
+      userError = error
+    }
 
     const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
     const isPublicPath = publicPaths.includes(currentPath)
 
-    if ((userError || !user) && !isPublicPath) {
+    if ((!user || userError) && !isPublicPath) {
       console.log("[v0] Redirecionando usuário não autenticado para login")
       const url = request.nextUrl.clone()
       url.pathname = "/auth/login"
@@ -116,52 +129,29 @@ export async function updateSession(request: NextRequest) {
 
         console.log("[v0] Role determinado:", userRole)
 
-        // Proteção de rotas super admin
-        if (currentPath.startsWith("/super-admin")) {
-          if (userRole !== "super_admin") {
-            console.log("[v0] Usuário sem permissão para área super admin")
-            const url = request.nextUrl.clone()
-            if (userRole === "admin") {
-              url.pathname = "/dashboard"
-            } else if (userRole === "user") {
-              url.pathname = "/user-dashboard"
-            } else {
-              url.pathname = "/auth/login"
-            }
-            return NextResponse.redirect(url)
-          }
+        if (currentPath.startsWith("/super-admin") && userRole !== "super_admin") {
+          console.log("[v0] Acesso negado para super-admin")
+          const url = request.nextUrl.clone()
+          url.pathname = userRole === "admin" ? "/dashboard" : "/user-dashboard"
+          return NextResponse.redirect(url)
         }
 
-        // Proteção de rotas administrativas (company admin)
-        if (currentPath.startsWith("/dashboard") && !currentPath.startsWith("/user-dashboard")) {
-          if (userRole !== "admin") {
-            console.log("[v0] Usuário sem permissão para área admin")
-            const url = request.nextUrl.clone()
-            if (userRole === "super_admin") {
-              url.pathname = "/super-admin"
-            } else if (userRole === "user") {
-              url.pathname = "/user-dashboard"
-            } else {
-              url.pathname = "/auth/login"
-            }
-            return NextResponse.redirect(url)
-          }
+        if (
+          currentPath.startsWith("/dashboard") &&
+          !currentPath.startsWith("/user-dashboard") &&
+          userRole !== "admin"
+        ) {
+          console.log("[v0] Acesso negado para dashboard admin")
+          const url = request.nextUrl.clone()
+          url.pathname = userRole === "super_admin" ? "/super-admin" : "/user-dashboard"
+          return NextResponse.redirect(url)
         }
 
-        // Proteção de rotas de usuário comum
-        if (currentPath.startsWith("/user-dashboard")) {
-          if (userRole !== "user") {
-            console.log("[v0] Usuário redirecionado da área de usuário")
-            const url = request.nextUrl.clone()
-            if (userRole === "super_admin") {
-              url.pathname = "/super-admin"
-            } else if (userRole === "admin") {
-              url.pathname = "/dashboard"
-            } else {
-              url.pathname = "/auth/login"
-            }
-            return NextResponse.redirect(url)
-          }
+        if (currentPath.startsWith("/user-dashboard") && userRole !== "user") {
+          console.log("[v0] Redirecionando da área de usuário")
+          const url = request.nextUrl.clone()
+          url.pathname = userRole === "super_admin" ? "/super-admin" : "/dashboard"
+          return NextResponse.redirect(url)
         }
       } catch (error) {
         console.error("[v0] Erro ao verificar perfil:", error)
