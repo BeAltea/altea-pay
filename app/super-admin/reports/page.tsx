@@ -447,14 +447,14 @@ export default function ReportsPage() {
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{company.name}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {company.customers.toLocaleString("pt-BR")} clientes
+                        {company.totalCustomers.toLocaleString("pt-BR")} clientes
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-green-600">{company.recoveryRate.toFixed(1)}%</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      R$ {company.recovered.toLocaleString("pt-BR")}
+                      R$ {company.recoveredAmount.toLocaleString("pt-BR")}
                     </p>
                   </div>
                 </div>
@@ -482,14 +482,14 @@ export default function ReportsPage() {
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{company.name}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {company.customers.toLocaleString("pt-BR")} clientes
+                        {company.totalCustomers.toLocaleString("pt-BR")} clientes
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-red-600">{company.recoveryRate.toFixed(1)}%</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      R$ {company.recovered.toLocaleString("pt-BR")}
+                      R$ {company.recoveredAmount.toLocaleString("pt-BR")}
                     </p>
                   </div>
                 </div>
