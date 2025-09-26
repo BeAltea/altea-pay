@@ -202,6 +202,33 @@ export default function ReportsPage() {
   const mockChannelPerformance = useMemo(() => generateChannelPerformanceByPeriod(selectedPeriod), [selectedPeriod])
   const mockAgingReport = useMemo(() => generateAgingReportByPeriod(selectedPeriod), [selectedPeriod])
 
+  const handleExportReport = () => {
+    console.log("[v0] Exportando relatório para o período:", selectedPeriod)
+    // Simulate export process
+    const reportData = {
+      period: selectedPeriod,
+      kpis: mockKPIs,
+      recoveryTrend: mockRecoveryTrend,
+      classification: mockClassificationData,
+      channelPerformance: mockChannelPerformance,
+      agingReport: mockAgingReport,
+      exportedAt: new Date().toISOString(),
+    }
+
+    // Create and download CSV
+    const csvContent = `data:text/csv;charset=utf-8,Relatório de Cobrança - ${selectedPeriod}\n\nKPIs:\nTotal em Cobrança,${mockKPIs.totalDebt}\nValor Recuperado,${mockKPIs.recoveredAmount}\nTaxa de Recuperação,${mockKPIs.recoveryRate}%\nTempo Médio,${mockKPIs.averageRecoveryTime} dias\n\nExportado em: ${new Date().toLocaleString("pt-BR")}`
+
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", `relatorio-cobranca-${selectedPeriod}-${new Date().toISOString().split("T")[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    alert(`Relatório exportado com sucesso para o período de ${selectedPeriod}!`)
+  }
+
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-6">
       <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
@@ -223,7 +250,7 @@ export default function ReportsPage() {
               <SelectItem value="1y">1 ano</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="w-full md:w-auto bg-transparent">
+          <Button variant="outline" className="w-full md:w-auto bg-transparent" onClick={handleExportReport}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -598,15 +625,15 @@ export default function ReportsPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                     <span className="font-medium">Total de Ações</span>
-                    <span className="text-2xl font-bold">{mockKPIs.totalActions}</span>
+                    <span className="text-2xl font-bold text-blue-600">{mockKPIs.totalActions}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
-                    <span className="font-medium text-green-800 dark:text-green-400">Ações Bem-sucedidas</span>
+                    <span className="font-medium">Ações Bem-sucedidas</span>
                     <span className="text-2xl font-bold text-green-600">{mockKPIs.successfulActions}</span>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
-                    <span className="font-medium text-blue-800 dark:text-blue-400">Taxa de Sucesso</span>
-                    <span className="text-2xl font-bold text-blue-600">
+                  <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg">
+                    <span className="font-medium">Taxa de Sucesso</span>
+                    <span className="text-2xl font-bold text-purple-600">
                       {((mockKPIs.successfulActions / mockKPIs.totalActions) * 100).toFixed(1)}%
                     </span>
                   </div>
@@ -617,38 +644,47 @@ export default function ReportsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg md:text-xl">Distribuição de Ações</CardTitle>
-                <CardDescription className="text-sm">Ações por tipo de canal</CardDescription>
+                <CardDescription className="text-sm">Tipos de ações mais utilizadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: "Email", value: 3245, color: "#3b82f6" },
-                        { name: "SMS", value: 2156, color: "#10b981" },
-                        { name: "WhatsApp", value: 1834, color: "#22c55e" },
-                        { name: "Ligação", value: 567, color: "#f59e0b" },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {[
-                        { name: "Email", value: 3245, color: "#3b82f6" },
-                        { name: "SMS", value: 2156, color: "#10b981" },
-                        { name: "WhatsApp", value: 1834, color: "#22c55e" },
-                        { name: "Ligação", value: 567, color: "#f59e0b" },
-                      ].map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm">E-mails</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div className="bg-blue-600 h-2 rounded-full" style={{ width: "45%" }}></div>
+                      </div>
+                      <span className="text-sm font-medium">45%</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <MessageSquare className="h-4 w-4 text-green-600" />
+                      <span className="text-sm">SMS</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div className="bg-green-600 h-2 rounded-full" style={{ width: "30%" }}></div>
+                      </div>
+                      <span className="text-sm font-medium">30%</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-4 w-4 text-orange-600" />
+                      <span className="text-sm">Ligações</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div className="bg-orange-600 h-2 rounded-full" style={{ width: "25%" }}></div>
+                      </div>
+                      <span className="text-sm font-medium">25%</span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

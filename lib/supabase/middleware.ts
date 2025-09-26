@@ -40,6 +40,9 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse
     }
 
+    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
+    const isPublicPath = publicPaths.includes(currentPath)
+
     let user = null
     let userError = null
 
@@ -48,25 +51,29 @@ export async function updateSession(request: NextRequest) {
       user = data.user
       userError = error
 
-      console.log("[v0] Status do usuário:", {
-        hasUser: !!user,
-        hasError: !!userError,
-        userId: user?.id,
-        email: user?.email,
-      })
+      if (!isPublicPath || user) {
+        console.log("[v0] Status do usuário:", {
+          hasUser: !!user,
+          hasError: !!userError,
+          userId: user?.id,
+          email: user?.email,
+        })
+      }
     } catch (error) {
       console.error("[v0] Erro ao obter usuário:", error)
       userError = error
     }
-
-    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
-    const isPublicPath = publicPaths.includes(currentPath)
 
     if ((!user || userError) && !isPublicPath) {
       console.log("[v0] Redirecionando usuário não autenticado para login")
       const url = request.nextUrl.clone()
       url.pathname = "/auth/login"
       return NextResponse.redirect(url)
+    }
+
+    if (isPublicPath && (!user || userError)) {
+      console.log("[v0] Middleware finalizando - permitindo acesso à página pública")
+      return supabaseResponse
     }
 
     if (user && !userError) {
@@ -128,6 +135,14 @@ export async function updateSession(request: NextRequest) {
         }
 
         console.log("[v0] Role determinado:", userRole)
+
+        if (currentPath === "/" && user) {
+          console.log("[v0] Redirecionando usuário autenticado da página inicial")
+          const url = request.nextUrl.clone()
+          url.pathname =
+            userRole === "super_admin" ? "/super-admin" : userRole === "admin" ? "/dashboard" : "/user-dashboard"
+          return NextResponse.redirect(url)
+        }
 
         if (currentPath.startsWith("/super-admin") && userRole !== "super_admin") {
           console.log("[v0] Acesso negado para super-admin")
