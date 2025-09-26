@@ -32,7 +32,7 @@ export default function HomePage() {
             </a>
           </nav>
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <Link href="https://alteapayments.vercel.app/auth/login">
+            <Link href="/auth/login">
               <Button
                 variant="ghost"
                 className="text-white hover:text-altea-gold hover:bg-transparent text-sm sm:text-base px-2 sm:px-4"
@@ -40,7 +40,7 @@ export default function HomePage() {
                 Entrar
               </Button>
             </Link>
-            <Link href="https://alteapayments.vercel.app/auth/register">
+            <Link href="/auth/register">
               <Button className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90 text-sm sm:text-base px-2 sm:px-4">
                 Já sou cliente
               </Button>
@@ -220,10 +220,7 @@ export default function HomePage() {
                 </div>
                 <CardTitle className="text-altea-navy">Acesso ao Sistema</CardTitle>
                 <CardDescription>
-                  <Link
-                    href="https://alteapayments.vercel.app/auth/login"
-                    className="text-altea-gold hover:underline cursor-pointer"
-                  >
+                  <Link href="/auth/login" className="text-altea-gold hover:underline cursor-pointer">
                     Faça login para acessar o sistema de cobrança automática
                   </Link>
                 </CardDescription>

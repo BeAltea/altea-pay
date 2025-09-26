@@ -46,7 +46,7 @@ export async function updateSession(request: NextRequest) {
 
     console.log("[v0] Status do usuário:", { hasUser: !!user, hasError: !!userError })
 
-    const publicPaths = ["/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
+    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
     const isPublicPath = publicPaths.includes(currentPath)
 
     if ((userError || !user) && !isPublicPath) {
@@ -58,23 +58,21 @@ export async function updateSession(request: NextRequest) {
 
     if (user && !userError) {
       try {
-        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single()
+
+        console.log("[v0] Usuário autenticado:", user.email)
+        console.log("[v0] Perfil:", { hasProfile: !!profile, role: profile?.role, hasError: !!profileError })
+
         const userRole = profile?.role || "user"
+        console.log("[v0] Role determinado:", userRole)
 
-        console.log("[v0] Usuário autenticado:", { email: user.email, role: userRole, path: currentPath })
+        // Agora todos podem ver a página inicial, independente de estarem logados
 
-        if (currentPath === "/") {
-          const url = request.nextUrl.clone()
-          if (userRole === "admin") {
-            console.log("[v0] Redirecionando admin da home para dashboard")
-            url.pathname = "/dashboard"
-          } else {
-            console.log("[v0] Redirecionando usuário da home para user-dashboard")
-            url.pathname = "/user-dashboard"
-          }
-          return NextResponse.redirect(url)
-        }
-
+        // Proteção de rotas administrativas
         if (currentPath.startsWith("/dashboard") && !currentPath.startsWith("/user-dashboard")) {
           if (userRole !== "admin") {
             console.log("[v0] Usuário sem permissão para área admin")
@@ -84,6 +82,7 @@ export async function updateSession(request: NextRequest) {
           }
         }
 
+        // Proteção de rotas de usuário comum
         if (currentPath.startsWith("/user-dashboard")) {
           if (userRole === "admin") {
             console.log("[v0] Admin redirecionado para área administrativa")
@@ -108,12 +107,7 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    if (!user && currentPath === "/") {
-      console.log("[v0] Permitindo acesso a rota pública:", currentPath)
-      return supabaseResponse
-    }
-
-    console.log("[v0] Middleware permitindo acesso")
+    console.log("[v0] Middleware finalizando - permitindo acesso")
     return supabaseResponse
   } catch (error) {
     console.error("[v0] Erro no middleware:", error)
