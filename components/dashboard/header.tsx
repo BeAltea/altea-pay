@@ -84,8 +84,7 @@ export function Header({ user }: HeaderProps) {
         description: "Você foi desconectado com sucesso.",
       })
 
-      // Force redirect to login page
-      window.location.href = "/auth/login"
+      router.push("/")
     } catch (error) {
       console.error("[v0] Header - Sign out exception:", error)
       toast({
@@ -302,7 +301,7 @@ export function Header({ user }: HeaderProps) {
                   <div className="border-t border-gray-200 dark:border-gray-700 py-1">
                     <button
                       onClick={handleSignOut}
-                      className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm text-red-600 dark:text-red-400"
+                      className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm text-red-600 dark:text-red-400 cursor-pointer"
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Sair da conta

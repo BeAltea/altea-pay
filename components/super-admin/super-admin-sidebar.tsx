@@ -18,6 +18,7 @@ import {
   LogOut,
   ChevronDown,
   User,
+  UserCheck,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -72,6 +73,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/companies"),
     },
     {
+      name: "Gestão de Clientes",
+      href: "/super-admin/customers",
+      icon: UserCheck,
+      current: pathname.startsWith("/super-admin/customers"),
+    },
+    {
       name: "Usuários",
       href: "/super-admin/users",
       icon: Users,
@@ -110,9 +117,21 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
   ]
 
   const handleSignOut = useCallback(async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/")
+    console.log("[v0] Super Admin Sidebar - Sign out initiated")
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error("[v0] Super Admin Sidebar - Sign out error:", error)
+        return
+      }
+
+      console.log("[v0] Super Admin Sidebar - Sign out successful, redirecting...")
+      router.push("/")
+    } catch (error) {
+      console.error("[v0] Super Admin Sidebar - Sign out exception:", error)
+    }
   }, [router])
 
   const userInitials = useMemo(

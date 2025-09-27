@@ -150,9 +150,21 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
   }, [isOpen, setIsOpen])
 
   const handleSignOut = useCallback(async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/")
+    console.log("[v0] Dashboard Sidebar - Sign out initiated")
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error("[v0] Dashboard Sidebar - Sign out error:", error)
+        return
+      }
+
+      console.log("[v0] Dashboard Sidebar - Sign out successful, redirecting...")
+      router.push("/")
+    } catch (error) {
+      console.error("[v0] Dashboard Sidebar - Sign out exception:", error)
+    }
   }, [router])
 
   const userInitials = useMemo(
