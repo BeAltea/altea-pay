@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, createContext, useContext, useCallback, useMemo } from "react"
+import { useState, createContext, useContext } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Building2,
@@ -15,21 +15,7 @@ import {
   FileText,
   TrendingUp,
   Database,
-  LogOut,
-  ChevronDown,
-  User,
-  UserCheck,
 } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { createClient } from "@/lib/supabase/client"
 
 interface SuperAdminSidebarProps {
   user?: {
@@ -56,7 +42,6 @@ export function useMobileSuperAdminSidebar() {
 
 export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const navigation = [
@@ -71,12 +56,6 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin/companies",
       icon: Building2,
       current: pathname.startsWith("/super-admin/companies"),
-    },
-    {
-      name: "Gestão de Clientes",
-      href: "/super-admin/customers",
-      icon: UserCheck,
-      current: pathname.startsWith("/super-admin/customers"),
     },
     {
       name: "Usuários",
@@ -115,36 +94,6 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/settings"),
     },
   ]
-
-  const handleSignOut = useCallback(async () => {
-    console.log("[v0] Super Admin Sidebar - Sign out initiated")
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error("[v0] Super Admin Sidebar - Sign out error:", error)
-        return
-      }
-
-      console.log("[v0] Super Admin Sidebar - Sign out successful, redirecting...")
-      router.push("/")
-    } catch (error) {
-      console.error("[v0] Super Admin Sidebar - Sign out exception:", error)
-    }
-  }, [router])
-
-  const userInitials = useMemo(
-    () =>
-      user?.user_metadata?.full_name
-        ?.split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase() ||
-      user?.email?.[0].toUpperCase() ||
-      "SA",
-    [user?.user_metadata?.full_name, user?.email],
-  )
 
   return (
     <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
@@ -185,51 +134,20 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           ))}
         </nav>
 
+        {/* User Info */}
         {user && (
           <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start p-2 h-auto hover:bg-accent/50 transition-colors duration-200"
-                >
-                  <div className="flex items-center space-x-3 w-full min-w-0">
-                    <Avatar className="h-8 w-8 flex-shrink-0">
-                      <AvatarImage src="/placeholder.svg" />
-                      <AvatarFallback className="bg-altea-navy text-altea-gold text-sm">{userInitials}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 text-left min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {user.user_metadata?.full_name || "Super Admin"}
-                      </p>
-                      <p className="text-xs text-altea-gold truncate">Altea Pay</p>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Super Administrador</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/super-admin/profile" className="cursor-pointer">
-                    <User className="mr-2 h-4 w-4" />
-                    Perfil
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/super-admin/settings" className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Configurações
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} className="text-destructive cursor-pointer">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center space-x-3 w-full min-w-0">
+              <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-full flex-shrink-0">
+                <Shield className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {user.user_metadata?.full_name || "Super Admin"}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Altea Pay</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
