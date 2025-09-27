@@ -334,6 +334,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                 </Link>
               </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href={`/super-admin/companies/${company.id}/customers`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Gerenciar Clientes
+                </Link>
+              </Button>
+              <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/reports`}>
                   <BarChart3 className="mr-2 h-4 w-4" />
                   Ver Relatórios
