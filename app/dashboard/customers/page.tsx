@@ -1,38 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Search,
-  MoreHorizontal,
-  Users,
-  UserCheck,
-  UserX,
-  AlertTriangle,
-  Eye,
-  Mail,
-  Phone,
-  MessageSquare,
-  Plus,
-  Filter,
-} from "lucide-react"
+import { MoreHorizontal, Eye, Mail, Phone, MessageSquare, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
@@ -184,24 +165,38 @@ export default function CustomersPage() {
   const getStatusBadge = (status: Customer["status"]) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Ativo</Badge>
+        return (
+          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs">Ativo</Badge>
+        )
       case "inactive":
-        return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">Inativo</Badge>
+        return (
+          <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400 text-xs">Inativo</Badge>
+        )
       case "overdue":
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Em Atraso</Badge>
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 text-xs">Em Atraso</Badge>
     }
   }
 
   const getRiskBadge = (risk: Customer["riskLevel"]) => {
     switch (risk) {
       case "low":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Baixo</Badge>
+        return (
+          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs">Baixo</Badge>
+        )
       case "medium":
-        return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">Médio</Badge>
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400 text-xs">
+            Médio
+          </Badge>
+        )
       case "high":
-        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">Alto</Badge>
+        return (
+          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400 text-xs">
+            Alto
+          </Badge>
+        )
       case "critical":
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Crítico</Badge>
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 text-xs">Crítico</Badge>
     }
   }
 
@@ -363,714 +358,282 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="p-3 md:p-6 space-y-4 md:space-y-6">
-      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 lg:space-y-6">
+      <div className="flex flex-col space-y-3 sm:space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Gestão de Clientes</h1>
-          <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
+            Gestão de Clientes
+          </h1>
+          <p className="text-xs sm:text-sm lg:text-base text-gray-600 dark:text-gray-400 mt-1">
             Visualize e gerencie todos os seus clientes e seus perfis de risco
           </p>
         </div>
         <Dialog open={isNewCustomerOpen} onOpenChange={setIsNewCustomerOpen}>
           <DialogTrigger asChild>
-            <Button className="cursor-pointer w-full md:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
+            <Button className="w-full sm:w-auto text-xs sm:text-sm">
+              <Plus className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
               Novo Cliente
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="w-[95vw] max-w-md mx-auto">
             <DialogHeader>
-              <DialogTitle>Novo Cliente</DialogTitle>
-              <DialogDescription>Adicione um novo cliente ao sistema</DialogDescription>
+              <DialogTitle className="text-base sm:text-lg">Novo Cliente</DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm">Adicione um novo cliente ao sistema</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
+            <div className="grid gap-3 sm:gap-4 py-4">
+              <div className="grid grid-cols-1 gap-2">
+                <Label htmlFor="name" className="text-xs sm:text-sm font-medium">
                   Nome *
                 </Label>
                 <Input
                   id="name"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                  className="col-span-3"
+                  className="text-xs sm:text-sm h-8 sm:h-9"
                 />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">
-                  E-mail *
+              <div className="grid grid-cols-1 gap-2">
+                <Label htmlFor="email" className="text-xs sm:text-sm font-medium">
+                  Email *
                 </Label>
                 <Input
                   id="email"
                   type="email"
                   value={newCustomer.email}
                   onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                  className="col-span-3"
+                  className="text-xs sm:text-sm h-8 sm:h-9"
                 />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="document" className="text-right">
+              <div className="grid grid-cols-1 gap-2">
+                <Label htmlFor="document" className="text-xs sm:text-sm font-medium">
                   CPF/CNPJ *
                 </Label>
                 <Input
                   id="document"
                   value={newCustomer.document}
                   onChange={(e) => setNewCustomer({ ...newCustomer, document: e.target.value })}
-                  className="col-span-3"
+                  className="text-xs sm:text-sm h-8 sm:h-9"
                 />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="phone" className="text-right">
+              <div className="grid grid-cols-1 gap-2">
+                <Label htmlFor="phone" className="text-xs sm:text-sm font-medium">
                   Telefone
                 </Label>
                 <Input
                   id="phone"
                   value={newCustomer.phone}
                   onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">
-                  Status
-                </Label>
-                <Select
-                  value={newCustomer.status}
-                  onValueChange={(value: Customer["status"]) => setNewCustomer({ ...newCustomer, status: value })}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Ativo</SelectItem>
-                    <SelectItem value="inactive">Inativo</SelectItem>
-                    <SelectItem value="overdue">Em Atraso</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="riskLevel" className="text-right">
-                  Nível de Risco
-                </Label>
-                <Select
-                  value={newCustomer.riskLevel}
-                  onValueChange={(value: Customer["riskLevel"]) => setNewCustomer({ ...newCustomer, riskLevel: value })}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Baixo</SelectItem>
-                    <SelectItem value="medium">Médio</SelectItem>
-                    <SelectItem value="high">Alto</SelectItem>
-                    <SelectItem value="critical">Crítico</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="lastContact" className="text-right">
-                  Último Contato
-                </Label>
-                <Input
-                  id="lastContact"
-                  type="date"
-                  value={newCustomer.lastContact}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, lastContact: e.target.value })}
-                  className="col-span-3"
+                  className="text-xs sm:text-sm h-8 sm:h-9"
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsNewCustomerOpen(false)} className="cursor-pointer">
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateCustomer} className="cursor-pointer">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <Button onClick={handleCreateCustomer} className="flex-1 text-xs sm:text-sm h-8 sm:h-9">
                 Criar Cliente
               </Button>
-            </DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsNewCustomerOpen(false)}
+                className="flex-1 text-xs sm:text-sm h-8 sm:h-9"
+              >
+                Cancelar
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-blue-100 dark:bg-blue-900/20 p-2 rounded-lg">
-                <Users className="h-3 w-3 md:h-4 md:w-4 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Total</p>
-                <p className="text-lg md:text-2xl font-bold">{stats.total}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-green-100 dark:bg-green-900/20 p-2 rounded-lg">
-                <UserCheck className="h-3 w-3 md:h-4 md:w-4 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Ativos</p>
-                <p className="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">{stats.active}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-red-100 dark:bg-red-900/20 p-2 rounded-lg">
-                <UserX className="h-3 w-3 md:h-4 md:w-4 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Em Atraso</p>
-                <p className="text-lg md:text-2xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-orange-100 dark:bg-orange-900/20 p-2 rounded-lg">
-                <AlertTriangle className="h-3 w-3 md:h-4 md:w-4 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Críticos</p>
-                <p className="text-lg md:text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.critical}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-2 md:col-span-1">
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-purple-100 dark:bg-purple-900/20 p-2 rounded-lg">
-                <span className="text-purple-600 dark:text-purple-400 font-bold text-xs md:text-sm">R$</span>
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Total Dívidas</p>
-                <p className="text-sm md:text-lg font-bold">
-                  R$ {stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Total</div>
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ativos</div>
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">{stats.active}</div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700 col-span-2 sm:col-span-1">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Em Atraso</div>
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">{stats.overdue}</div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Críticos</div>
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-800">{stats.critical}</div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Valor Total</div>
+          <div className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 dark:text-white">
+            R$ {stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </div>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 md:space-y-6">
-        <div className="space-y-4">
-          <div className="overflow-x-auto">
-            <TabsList className="grid w-full grid-cols-4 min-w-max">
-              <TabsTrigger value="all" className="cursor-pointer text-xs md:text-sm whitespace-nowrap">
-                Todos ({stats.total})
-              </TabsTrigger>
-              <TabsTrigger value="active" className="cursor-pointer text-xs md:text-sm whitespace-nowrap">
-                Ativos ({stats.active})
-              </TabsTrigger>
-              <TabsTrigger value="overdue" className="cursor-pointer text-xs md:text-sm whitespace-nowrap">
-                Em Atraso ({stats.overdue})
-              </TabsTrigger>
-              <TabsTrigger value="critical" className="cursor-pointer text-xs md:text-sm whitespace-nowrap">
-                Críticos ({stats.critical})
-              </TabsTrigger>
-            </TabsList>
-          </div>
+      <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 lg:p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col space-y-3 sm:space-y-4">
+          <Input
+            placeholder="Buscar por nome, email, documento ou telefone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="text-xs sm:text-sm h-8 sm:h-9"
+          />
 
-          <div className="flex flex-col space-y-3 md:flex-row md:items-center md:justify-between md:space-y-0 md:space-x-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Buscar clientes..."
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="flex space-x-2 md:space-x-3">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-32 cursor-pointer">
-                  <Filter className="h-4 w-4 md:hidden" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="cursor-pointer">
-                    Todos
-                  </SelectItem>
-                  <SelectItem value="active" className="cursor-pointer">
-                    Ativo
-                  </SelectItem>
-                  <SelectItem value="overdue" className="cursor-pointer">
-                    Em Atraso
-                  </SelectItem>
-                  <SelectItem value="inactive" className="cursor-pointer">
-                    Inativo
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={riskFilter} onValueChange={setRiskFilter}>
-                <SelectTrigger className="w-full md:w-32 cursor-pointer">
-                  <Filter className="h-4 w-4 md:hidden" />
-                  <SelectValue placeholder="Risco" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="cursor-pointer">
-                    Todos
-                  </SelectItem>
-                  <SelectItem value="low" className="cursor-pointer">
-                    Baixo
-                  </SelectItem>
-                  <SelectItem value="medium" className="cursor-pointer">
-                    Médio
-                  </SelectItem>
-                  <SelectItem value="high" className="cursor-pointer">
-                    Alto
-                  </SelectItem>
-                  <SelectItem value="critical" className="cursor-pointer">
-                    Crítico
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex flex-wrap gap-1 sm:gap-2">
+            {[
+              { key: "all", label: "Todos" },
+              { key: "active", label: "Ativos" },
+              { key: "overdue", label: "Em Atraso" },
+              { key: "critical", label: "Críticos" },
+            ].map((tab) => (
+              <Button
+                key={tab.key}
+                variant={activeTab === tab.key ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTab(tab.key)}
+                className="text-xs h-7 sm:h-8 px-2 sm:px-3"
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="block sm:hidden">
+          <div className="p-3 space-y-3">
+            {filteredCustomers.map((customer) => (
+              <div key={customer.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-sm text-gray-900 dark:text-white truncate">{customer.name}</h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{customer.email}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{customer.document}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {getStatusBadge(customer.status)}
+                    <ActionButtons customer={customer} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center space-x-2">
+                    {getRiskBadge(customer.riskLevel)}
+                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                      {customer.totalDebts} débito{customer.totalDebts !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="text-xs font-medium text-gray-900 dark:text-white">
+                    R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        <TabsContent value="all">
-          <Card>
-            <CardHeader>
-              <CardTitle>Todos os Clientes</CardTitle>
-              <CardDescription>Lista completa de clientes cadastrados no sistema</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="md:hidden space-y-4">
-                {filteredCustomers.map((customer) => (
-                  <Card key={customer.id} className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-base">{customer.name}</h3>
-                        <p className="text-sm text-gray-500">{customer.email}</p>
-                        <p className="text-xs text-gray-400 font-mono">{customer.document}</p>
+        <div className="hidden sm:block overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-900/50">
+              <tr>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Cliente
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Contato
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Risco
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Débitos
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Valor Total
+                </th>
+                <th className="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Ações
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredCustomers.map((customer) => (
+                <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <div>
+                      <div className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                        {customer.name}
                       </div>
-                      <ActionButtons customer={customer} />
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{customer.document}</div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="text-gray-500">Telefone</p>
-                        <p className="font-medium">{customer.phone || "-"}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Dívidas</p>
-                        <p className="font-medium">{customer.totalDebts}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Valor Total</p>
-                        <p className="font-medium">
-                          R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Último Contato</p>
-                        <p className="font-medium">
-                          {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                        </p>
-                      </div>
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <div>
+                      <div className="text-xs sm:text-sm text-gray-900 dark:text-white">{customer.email}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{customer.phone || "N/A"}</div>
                     </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                      {getStatusBadge(customer.status)}
-                      {getRiskBadge(customer.riskLevel)}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Documento</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Dívidas</TableHead>
-                      <TableHead>Valor Total</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Risco</TableHead>
-                      <TableHead>Último Contato</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCustomers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{customer.name}</p>
-                            <p className="text-sm text-gray-500">{customer.email}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{customer.document}</TableCell>
-                        <TableCell className="text-sm">{customer.phone || "-"}</TableCell>
-                        <TableCell>
-                          <span className="font-medium">{customer.totalDebts}</span>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(customer.status)}</TableCell>
-                        <TableCell>{getRiskBadge(customer.riskLevel)}</TableCell>
-                        <TableCell>
-                          {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <ActionButtons customer={customer} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="active">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clientes Ativos</CardTitle>
-              <CardDescription>Clientes sem dívidas em atraso</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredCustomers.length > 0 ? (
-                <>
-                  {/* Mobile view */}
-                  <div className="md:hidden space-y-4">
-                    {filteredCustomers.map((customer) => (
-                      <Card key={customer.id} className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-base">{customer.name}</h3>
-                            <p className="text-sm text-gray-500">{customer.email}</p>
-                            <p className="text-xs text-gray-400 font-mono">{customer.document}</p>
-                          </div>
-                          <ActionButtons customer={customer} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-gray-500">Telefone</p>
-                            <p className="font-medium">{customer.phone || "-"}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Valor Total</p>
-                            <p className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Último Contato</p>
-                            <p className="font-medium">
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Risco</p>
-                            <div>{getRiskBadge(customer.riskLevel)}</div>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  {/* Desktop table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Documento</TableHead>
-                          <TableHead>Telefone</TableHead>
-                          <TableHead>Valor Total</TableHead>
-                          <TableHead>Risco</TableHead>
-                          <TableHead>Último Contato</TableHead>
-                          <TableHead>Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCustomers.map((customer) => (
-                          <TableRow key={customer.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{customer.name}</p>
-                                <p className="text-sm text-gray-500">{customer.email}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{customer.document}</TableCell>
-                            <TableCell className="text-sm">{customer.phone || "-"}</TableCell>
-                            <TableCell className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell>{getRiskBadge(customer.riskLevel)}</TableCell>
-                            <TableCell>
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </TableCell>
-                            <TableCell>
-                              <ActionButtons customer={customer} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <UserCheck className="mx-auto h-12 w-12 text-green-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">Nenhum cliente ativo encontrado</p>
-                  <p className="text-gray-600 dark:text-gray-400">Ajuste os filtros para ver mais resultados</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="overdue">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clientes em Atraso</CardTitle>
-              <CardDescription>Clientes com dívidas vencidas</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredCustomers.length > 0 ? (
-                <>
-                  {/* Mobile view */}
-                  <div className="md:hidden space-y-4">
-                    {filteredCustomers.map((customer) => (
-                      <Card key={customer.id} className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-base">{customer.name}</h3>
-                            <p className="text-sm text-gray-500">{customer.email}</p>
-                            <p className="text-xs text-gray-400 font-mono">{customer.document}</p>
-                          </div>
-                          <ActionButtons customer={customer} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-gray-500">Telefone</p>
-                            <p className="font-medium">{customer.phone || "-"}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Valor Total</p>
-                            <p className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Último Contato</p>
-                            <p className="font-medium">
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Risco</p>
-                            <div>{getRiskBadge(customer.riskLevel)}</div>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  {/* Desktop table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Documento</TableHead>
-                          <TableHead>Telefone</TableHead>
-                          <TableHead>Valor Total</TableHead>
-                          <TableHead>Risco</TableHead>
-                          <TableHead>Último Contato</TableHead>
-                          <TableHead>Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCustomers.map((customer) => (
-                          <TableRow key={customer.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{customer.name}</p>
-                                <p className="text-sm text-gray-500">{customer.email}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{customer.document}</TableCell>
-                            <TableCell className="text-sm">{customer.phone || "-"}</TableCell>
-                            <TableCell className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell>{getRiskBadge(customer.riskLevel)}</TableCell>
-                            <TableCell>
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </TableCell>
-                            <TableCell>
-                              <ActionButtons customer={customer} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <UserX className="mx-auto h-12 w-12 text-red-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">
-                    Nenhum cliente em atraso encontrado
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-400">Ajuste os filtros para ver mais resultados</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="critical">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clientes Críticos</CardTitle>
-              <CardDescription>Clientes com alto risco de inadimplência</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredCustomers.length > 0 ? (
-                <>
-                  {/* Mobile view */}
-                  <div className="md:hidden space-y-4">
-                    {filteredCustomers.map((customer) => (
-                      <Card key={customer.id} className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-base">{customer.name}</h3>
-                            <p className="text-sm text-gray-500">{customer.email}</p>
-                            <p className="text-xs text-gray-400 font-mono">{customer.document}</p>
-                          </div>
-                          <ActionButtons customer={customer} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-gray-500">Telefone</p>
-                            <p className="font-medium">{customer.phone || "-"}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Valor Total</p>
-                            <p className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Status</p>
-                            <div>{getStatusBadge(customer.status)}</div>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Último Contato</p>
-                            <p className="font-medium">
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </p>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  {/* Desktop table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Documento</TableHead>
-                          <TableHead>Telefone</TableHead>
-                          <TableHead>Valor Total</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Último Contato</TableHead>
-                          <TableHead>Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCustomers.map((customer) => (
-                          <TableRow key={customer.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{customer.name}</p>
-                                <p className="text-sm text-gray-500">{customer.email}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{customer.document}</TableCell>
-                            <TableCell className="text-sm">{customer.phone || "-"}</TableCell>
-                            <TableCell className="font-medium">
-                              R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell>{getStatusBadge(customer.status)}</TableCell>
-                            <TableCell>
-                              {customer.lastContact ? new Date(customer.lastContact).toLocaleDateString("pt-BR") : "-"}
-                            </TableCell>
-                            <TableCell>
-                              <ActionButtons customer={customer} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <AlertTriangle className="mx-auto h-12 w-12 text-orange-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">Nenhum cliente crítico encontrado</p>
-                  <p className="text-gray-600 dark:text-gray-400">Ajuste os filtros para ver mais resultados</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    {getStatusBadge(customer.status)}
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    {getRiskBadge(customer.riskLevel)}
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white">
+                    {customer.totalDebts}
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                    R$ {customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
+                    <ActionButtons customer={customer} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md mx-auto">
           <DialogHeader>
-            <DialogTitle>
-              {contactType === "email" && "Enviar E-mail"}
+            <DialogTitle className="text-base sm:text-lg">
+              {contactType === "email" && "Enviar Email"}
               {contactType === "phone" && "Registrar Ligação"}
               {contactType === "whatsapp" && "Enviar WhatsApp"}
             </DialogTitle>
-            <DialogDescription>{selectedCustomer && `Contato com ${selectedCustomer.name}`}</DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
+              {selectedCustomer && `Para: ${selectedCustomer.name}`}
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="message" className="text-right">
+          <div className="grid gap-3 sm:gap-4 py-4">
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="message" className="text-xs sm:text-sm font-medium">
                 Mensagem
               </Label>
-              <Textarea
+              <textarea
                 id="message"
                 value={contactMessage}
                 onChange={(e) => setContactMessage(e.target.value)}
-                className="col-span-3"
+                className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs sm:text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 placeholder="Digite sua mensagem..."
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsContactDialogOpen(false)} className="cursor-pointer">
-              Cancelar
-            </Button>
-            <Button onClick={handleSendContact} className="cursor-pointer">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button onClick={handleSendContact} className="flex-1 text-xs sm:text-sm h-8 sm:h-9">
               Enviar
             </Button>
-          </DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsContactDialogOpen(false)}
+              className="flex-1 text-xs sm:text-sm h-8 sm:h-9"
+            >
+              Cancelar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -90,35 +90,39 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-altea-navy flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+    <div className="min-h-screen bg-altea-navy flex items-center justify-center p-3 sm:p-4 lg:p-6">
+      <div className="w-full max-w-sm sm:max-w-md">
+        <div className="text-center mb-6 sm:mb-8">
           <Link
             href="/"
-            className="inline-flex items-center text-white hover:text-altea-gold transition-colors mb-6 cursor-pointer"
+            className="inline-flex items-center text-white hover:text-altea-gold transition-colors mb-4 sm:mb-6 cursor-pointer text-sm sm:text-base"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
             Voltar para o site
           </Link>
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-altea-gold p-3 rounded-xl">
-              <div className="h-8 w-8 bg-altea-navy rounded-sm flex items-center justify-center">
-                <span className="text-altea-gold font-bold text-lg">A</span>
+          <div className="flex items-center justify-center mb-3 sm:mb-4">
+            <div className="bg-altea-gold p-2 sm:p-3 rounded-xl">
+              <div className="h-6 w-6 sm:h-8 sm:w-8 bg-altea-navy rounded-sm flex items-center justify-center">
+                <span className="text-altea-gold font-bold text-sm sm:text-lg">A</span>
               </div>
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">Altea Pay</h1>
-          <p className="text-blue-100 mt-2">Sistema de cobrança inteligente</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Altea Pay</h1>
+          <p className="text-blue-100 mt-1 sm:mt-2 text-sm sm:text-base">Sistema de cobrança inteligente</p>
         </div>
 
         <Card className="shadow-xl border-0 bg-white">
-          <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-semibold text-center text-altea-navy">Criar sua conta</CardTitle>
-            <CardDescription className="text-center">Preencha os dados para começar a usar o sistema</CardDescription>
+          <CardHeader className="space-y-1 pb-4 sm:pb-6 px-4 sm:px-6">
+            <CardTitle className="text-xl sm:text-2xl font-semibold text-center text-altea-navy">
+              Criar sua conta
+            </CardTitle>
+            <CardDescription className="text-center text-sm sm:text-base">
+              Preencha os dados para começar a usar o sistema
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
+          <CardContent className="px-4 sm:px-6">
+            <form onSubmit={handleRegister} className="space-y-3 sm:space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="fullName" className="text-sm font-medium">
                     Nome completo
@@ -129,7 +133,7 @@ export default function RegisterPage() {
                       id="fullName"
                       type="text"
                       placeholder="Seu nome completo"
-                      className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy"
+                      className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -146,7 +150,7 @@ export default function RegisterPage() {
                       id="companyName"
                       type="text"
                       placeholder="Nome da sua empresa"
-                      className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy"
+                      className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                     />
@@ -163,7 +167,7 @@ export default function RegisterPage() {
                     id="email"
                     type="email"
                     placeholder="seu@email.com"
-                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy"
+                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -180,7 +184,7 @@ export default function RegisterPage() {
                     id="password"
                     type="password"
                     placeholder="••••••••"
-                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy"
+                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -197,7 +201,7 @@ export default function RegisterPage() {
                     id="confirmPassword"
                     type="password"
                     placeholder="••••••••"
-                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy"
+                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -211,13 +215,13 @@ export default function RegisterPage() {
               )}
               <Button
                 type="submit"
-                className="w-full bg-altea-navy hover:bg-altea-navy/90 text-white cursor-pointer"
+                className="w-full bg-altea-navy hover:bg-altea-navy/90 text-white cursor-pointer h-10 sm:h-11 text-sm sm:text-base"
                 disabled={isLoading}
               >
                 {isLoading ? "Criando conta..." : "Criar conta"}
               </Button>
             </form>
-            <div className="mt-6 text-center text-sm">
+            <div className="mt-4 sm:mt-6 text-center text-sm">
               Já tem uma conta?{" "}
               <Link
                 href="/auth/login"

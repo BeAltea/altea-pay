@@ -184,33 +184,33 @@ export default async function UserDashboardPage() {
 
     return (
       <Suspense fallback={<DashboardSkeleton />}>
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-3 sm:space-y-4 p-3 sm:p-4 lg:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
                 Olá, {profile?.full_name || "Usuário"}! 👋
               </h1>
-              <p className="text-muted-foreground text-sm sm:text-base">
+              <p className="text-muted-foreground text-xs sm:text-sm lg:text-base">
                 Acompanhe suas dívidas, histórico de pagamentos e negocie acordos.
               </p>
             </div>
             {overdueDebts.length > 0 && (
               <div className="flex-shrink-0">
-                <Badge variant="destructive" className="text-xs sm:text-sm">
+                <Badge variant="destructive" className="text-xs">
                   {overdueDebts.length} dívida{overdueDebts.length > 1 ? "s" : ""} em atraso
                 </Badge>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
             <Card className="hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-medium">Dívidas em Aberto</CardTitle>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium">Dívidas em Aberto</CardTitle>
+                <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">{openDebts.length}</div>
+              <CardContent className="px-3 sm:px-4 pb-3">
+                <div className="text-lg sm:text-2xl font-bold">{openDebts.length}</div>
                 <p className="text-xs text-muted-foreground">
                   R$ {totalOpenAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </p>
@@ -223,12 +223,12 @@ export default async function UserDashboardPage() {
             </Card>
 
             <Card className="hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-medium">Dívidas Pagas</CardTitle>
-                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium">Dívidas Pagas</CardTitle>
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">{paidDebts.length}</div>
+              <CardContent className="px-3 sm:px-4 pb-3">
+                <div className="text-lg sm:text-2xl font-bold">{paidDebts.length}</div>
                 <p className="text-xs text-muted-foreground">
                   R$ {totalPaidAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </p>
@@ -237,62 +237,64 @@ export default async function UserDashboardPage() {
             </Card>
 
             <Card className="hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-medium">Propensão ao Pagamento</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium">Propensão ao Pagamento</CardTitle>
+                <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">{avgPaymentScore.toFixed(1)}%</div>
+              <CardContent className="px-3 sm:px-4 pb-3">
+                <div className="text-lg sm:text-2xl font-bold">{avgPaymentScore.toFixed(1)}%</div>
                 <p className="text-xs text-muted-foreground">Média geral</p>
                 <Progress value={avgPaymentScore} className="mt-1" />
               </CardContent>
             </Card>
 
             <Card className="hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                <CardTitle className="text-sm font-medium">Propensão a Empréstimo</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                <CardTitle className="text-xs sm:text-sm font-medium">Propensão a Empréstimo</CardTitle>
+                <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">{avgLoanScore.toFixed(1)}%</div>
+              <CardContent className="px-3 sm:px-4 pb-3">
+                <div className="text-lg sm:text-2xl font-bold">{avgLoanScore.toFixed(1)}%</div>
                 <p className="text-xs text-muted-foreground">Média geral</p>
                 <Progress value={avgLoanScore} className="mt-1" />
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
             {/* Recent Debts - Ocupa 2 colunas */}
             <Card className="xl:col-span-2">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <CardTitle className="text-lg">Dívidas Recentes</CardTitle>
-                    <CardDescription className="text-sm">Suas dívidas que precisam de atenção</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">Dívidas Recentes</CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
+                      Suas dívidas que precisam de atenção
+                    </CardDescription>
                   </div>
                   <EnhancedExportButton data={openDebts} filename="dividas-recentes" />
                 </div>
               </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-3">
+              <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
+                <div className="space-y-2 sm:space-y-3">
                   {openDebts.slice(0, 4).map((debt) => (
                     <EnhancedDebtCard key={debt.id} debt={debt} />
                   ))}
                   {openDebts.length === 0 && (
-                    <div className="text-center py-6">
-                      <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
-                      <p className="text-muted-foreground text-sm">Parabéns! Nenhuma dívida em aberto</p>
+                    <div className="text-center py-4 sm:py-6">
+                      <CheckCircle className="h-8 w-8 sm:h-10 sm:w-10 text-green-500 mx-auto mb-2" />
+                      <p className="text-muted-foreground text-xs sm:text-sm">Parabéns! Nenhuma dívida em aberto</p>
                     </div>
                   )}
                 </div>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   <Link href="/user-dashboard/debts">
                     <Button
                       variant="outline"
-                      className="w-full bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                      className="w-full bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors text-xs sm:text-sm"
                     >
                       Ver Todas as Dívidas
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                      <ArrowUpRight className="ml-2 h-3 w-3 sm:h-4 sm:w-4" />
                     </Button>
                   </Link>
                 </div>
@@ -301,29 +303,31 @@ export default async function UserDashboardPage() {
 
             {/* Recent Activity - Ocupa 1 coluna */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Atividade Recente</CardTitle>
-                <CardDescription className="text-sm">Últimas ações e eventos</CardDescription>
+              <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-base sm:text-lg">Atividade Recente</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Últimas ações e eventos</CardDescription>
               </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-3">
+              <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
+                <div className="space-y-2 sm:space-y-3">
                   {limitedActivity.length > 0 ? (
                     limitedActivity.map((activity) => (
                       <div
                         key={activity.id}
-                        className="flex items-start space-x-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                        className="flex items-start space-x-2 sm:space-x-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex-shrink-0">
                           {activity.icon && (
-                            <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-1.5 rounded-full">
-                              <activity.icon className={`h-3.5 w-3.5 ${activity.color}`} />
+                            <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-1 sm:p-1.5 rounded-full">
+                              <activity.icon className={`h-3 w-3 sm:h-3.5 sm:w-3.5 ${activity.color}`} />
                             </div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground leading-tight">{activity.message}</p>
+                          <p className="text-xs sm:text-sm font-medium text-foreground leading-tight">
+                            {activity.message}
+                          </p>
                           {activity.amount && (
-                            <p className="text-sm text-green-600 font-medium">
+                            <p className="text-xs sm:text-sm text-green-600 font-medium">
                               R$ {activity.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                             </p>
                           )}
@@ -332,7 +336,9 @@ export default async function UserDashboardPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-center text-muted-foreground py-4 text-sm">Nenhuma atividade recente</p>
+                    <p className="text-center text-muted-foreground py-3 sm:py-4 text-xs sm:text-sm">
+                      Nenhuma atividade recente
+                    </p>
                   )}
                 </div>
               </CardContent>
@@ -340,50 +346,52 @@ export default async function UserDashboardPage() {
           </div>
 
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Ações Rápidas</CardTitle>
-              <CardDescription className="text-sm">Acesso rápido às principais funcionalidades</CardDescription>
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-base sm:text-lg">Ações Rápidas</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Acesso rápido às principais funcionalidades
+              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                 <Link href="/user-dashboard/debts">
-                  <Button className="w-full h-14 flex flex-col space-y-1 bg-altea-navy hover:bg-altea-navy/90 text-altea-gold transition-colors">
-                    <CreditCard className="h-4 w-4" />
-                    <span className="text-sm">Ver Dívidas</span>
+                  <Button className="w-full h-12 sm:h-14 flex flex-col space-y-1 bg-altea-navy hover:bg-altea-navy/90 text-altea-gold transition-colors">
+                    <CreditCard className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm">Ver Dívidas</span>
                   </Button>
                 </Link>
                 <Link href="/user-dashboard/history">
                   <Button
                     variant="outline"
-                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                    className="w-full h-12 sm:h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
                   >
-                    <Calendar className="h-4 w-4" />
-                    <span className="text-sm">Histórico</span>
+                    <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm">Histórico</span>
                   </Button>
                 </Link>
                 <Link href="/user-dashboard/negotiation">
                   <Button
                     variant="outline"
-                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                    className="w-full h-12 sm:h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
                   >
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="text-sm">Negociar</span>
+                    <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm">Negociar</span>
                   </Button>
                 </Link>
                 <Link href="/user-dashboard/propensity">
                   <Button
                     variant="outline"
-                    className="w-full h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
+                    className="w-full h-12 sm:h-14 flex flex-col space-y-1 bg-transparent hover:bg-altea-gold/10 border-altea-gold/30 text-altea-navy dark:text-altea-gold transition-colors"
                   >
-                    <BarChart3 className="h-4 w-4" />
-                    <span className="text-sm">Análise</span>
+                    <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm">Análise</span>
                   </Button>
                 </Link>
               </div>
             </CardContent>
           </Card>
 
-          <div className="text-center pt-2">
+          <div className="text-center pt-1 sm:pt-2">
             <p className="text-xs text-muted-foreground">
               💡 Dados fictícios para demonstração. Plataforma preparada para integração com dados reais e IA.
             </p>

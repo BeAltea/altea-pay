@@ -108,163 +108,181 @@ export default function ManageUsersPage({ params }: { params: { id: string } }) 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ativo":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Ativo</Badge>
+        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Ativo</Badge>
       case "inativo":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Inativo</Badge>
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">Inativo</Badge>
       case "suspenso":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Suspenso</Badge>
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Suspenso</Badge>
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return (
+          <Badge variant="secondary" className="text-xs">
+            {status}
+          </Badge>
+        )
     }
   }
 
   const getAccessBadge = (level: string) => {
     switch (level) {
       case "critico":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Crítico</Badge>
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">Crítico</Badge>
       case "alto":
-        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Alto</Badge>
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">Alto</Badge>
       case "medio":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Médio</Badge>
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Médio</Badge>
       case "baixo":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Baixo</Badge>
+        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Baixo</Badge>
       default:
-        return <Badge variant="secondary">{level}</Badge>
+        return (
+          <Badge variant="secondary" className="text-xs">
+            {level}
+          </Badge>
+        )
     }
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="sm" asChild>
+    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+      <div className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
+        <Button variant="ghost" size="sm" asChild className="text-xs sm:text-sm">
           <Link href={`/super-admin/companies/${params.id}`}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             Voltar
           </Link>
         </Button>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{companyName}</h1>
-        <p className="text-gray-600 dark:text-gray-400">Gestão de usuários do sistema • CNPJ: {companyCNPJ}</p>
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+          {companyName}
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm lg:text-base">
+          Gestão de usuários do sistema • CNPJ: {companyCNPJ}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total de Usuários</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
-                <p className="text-sm text-gray-500 mt-1">Usuários cadastrados</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Total de Usuários
+                </p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
+                <p className="text-xs text-gray-500 mt-1">Usuários cadastrados</p>
               </div>
-              <Users className="h-8 w-8 text-blue-500" />
+              <Users className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Usuários Ativos</p>
-                <p className="text-3xl font-bold text-green-600">{activeUsers}</p>
-                <p className="text-sm text-gray-500 mt-1">Com acesso ativo</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Usuários Ativos</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{activeUsers}</p>
+                <p className="text-xs text-gray-500 mt-1">Com acesso ativo</p>
               </div>
-              <UserCheck className="h-8 w-8 text-green-500" />
+              <UserCheck className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-green-500" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Usuários Inativos</p>
-                <p className="text-3xl font-bold text-red-600">{inactiveUsers}</p>
-                <p className="text-sm text-gray-500 mt-1">Sem acesso ao sistema</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Usuários Inativos
+                </p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600">{inactiveUsers}</p>
+                <p className="text-xs text-gray-500 mt-1">Sem acesso ao sistema</p>
               </div>
-              <UserX className="h-8 w-8 text-red-500" />
+              <UserX className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-red-500" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Suspensos</p>
-                <p className="text-3xl font-bold text-yellow-600">{suspendedUsers}</p>
-                <p className="text-sm text-gray-500 mt-1">Acesso temporariamente bloqueado</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Suspensos</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-yellow-600">{suspendedUsers}</p>
+                <p className="text-xs text-gray-500 mt-1">Acesso temporariamente bloqueado</p>
               </div>
-              <AlertTriangle className="h-8 w-8 text-yellow-500" />
+              <AlertTriangle className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500" />
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Users className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total</p>
-            <p className="text-2xl font-bold">{totalUsers}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 text-center">
-            <UserCheck className="h-6 w-6 text-green-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Ativos</p>
-            <p className="text-2xl font-bold text-green-600">{activeUsers}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Clock className="h-6 w-6 text-red-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Inativos</p>
-            <p className="text-2xl font-bold text-red-600">{inactiveUsers}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 text-center">
-            <AlertTriangle className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Críticos</p>
-            <p className="text-2xl font-bold text-yellow-600">{criticalAccess}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Users className="h-6 w-6 text-purple-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Acessos</p>
-            <p className="text-2xl font-bold text-purple-600">{totalUsers}</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="mb-6">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4 mb-6 sm:mb-8">
+        <Card>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <Users className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-blue-500 mx-auto mb-1 sm:mb-2" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold">{totalUsers}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-green-500 mx-auto mb-1 sm:mb-2" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Ativos</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">{activeUsers}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <Clock className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-red-500 mx-auto mb-1 sm:mb-2" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Inativos</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">{inactiveUsers}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-yellow-500 mx-auto mb-1 sm:mb-2" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Críticos</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-yellow-600">{criticalAccess}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-2 sm:col-span-1">
+          <CardContent className="p-3 sm:p-4 text-center">
+            <Users className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-purple-500 mx-auto mb-1 sm:mb-2" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Acessos</p>
+            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">{totalUsers}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-4 sm:mb-6">
+        <div className="relative max-w-full sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-3 w-3 sm:h-4 sm:w-4" />
           <Input
-            placeholder="Buscar empresas, usuários"
+            placeholder="Buscar usuários..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="pl-8 sm:pl-10 text-xs sm:text-sm"
           />
         </div>
       </div>
 
       <Card>
         <CardContent className="p-0">
-          <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold">Usuários do Sistema - {companyName}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Lista completa de usuários com acesso ao sistema</p>
+          <div className="p-3 sm:p-4 lg:p-6 border-b">
+            <h3 className="text-base sm:text-lg font-semibold">Usuários do Sistema - {companyName}</h3>
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              Lista completa de usuários com acesso ao sistema
+            </p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
@@ -330,6 +348,53 @@ export default function ManageUsersPage({ params }: { params: { id: string } }) 
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="lg:hidden p-3 sm:p-4 space-y-3 sm:space-y-4">
+            {filteredUsers.map((user) => (
+              <Card key={user.id} className="border border-gray-200 dark:border-gray-700">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-medium text-gray-900 dark:text-white text-sm sm:text-base truncate">
+                          {user.name}
+                        </h4>
+                        {getStatusBadge(user.status)}
+                      </div>
+                      <p className="text-xs sm:text-sm text-gray-500 mb-1">{user.email}</p>
+                      <p className="text-xs sm:text-sm text-gray-500 mb-1">CPF: {user.document}</p>
+                      <p className="text-xs sm:text-sm text-gray-500 mb-2">
+                        {user.phone !== "-" ? user.phone : "Telefone não informado"}
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <Badge variant="outline" className="text-xs">
+                          {user.role}
+                        </Badge>
+                        {getAccessBadge(user.accessLevel)}
+                      </div>
+
+                      <p className="text-xs text-gray-500">
+                        Último login: {user.lastLogin !== "-" ? user.lastLogin : "Nunca"}
+                      </p>
+                    </div>
+
+                    <div className="flex sm:flex-col gap-1 sm:gap-2 flex-shrink-0">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                        <Mail className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                        <Phone className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </CardContent>
       </Card>
