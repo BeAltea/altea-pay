@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { ArrowLeft, Users, UserCheck, UserX, Clock, AlertTriangle, Eye, Mail, Phone, Search } from "lucide-react"
 
@@ -23,6 +24,7 @@ interface CompanyUser {
 
 export default function ManageUsersPage({ params }: { params: { id: string } }) {
   const [searchTerm, setSearchTerm] = useState("")
+  const { toast } = useToast()
 
   const companyName = "Enel Distribuição São Paulo"
   const companyCNPJ = "33.479.023/0001-80"
@@ -95,6 +97,41 @@ export default function ManageUsersPage({ params }: { params: { id: string } }) 
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  const handleViewUser = (user: CompanyUser) => {
+    console.log("[v0] ManageUsers - View user clicked:", user.name)
+    toast({
+      title: "Visualizar Usuário",
+      description: `Abrindo perfil de ${user.name}`,
+    })
+    // Em uma aplicação real, redirecionaria para a página de detalhes do usuário
+  }
+
+  const handleSendEmail = (user: CompanyUser) => {
+    console.log("[v0] ManageUsers - Send email clicked:", user.email)
+    toast({
+      title: "Email Enviado",
+      description: `Email enviado para ${user.name} (${user.email})`,
+    })
+    // Em uma aplicação real, abriria um modal de composição de email ou enviaria um email
+  }
+
+  const handleCallUser = (user: CompanyUser) => {
+    console.log("[v0] ManageUsers - Call user clicked:", user.phone)
+    if (user.phone === "-") {
+      toast({
+        title: "Telefone não disponível",
+        description: `${user.name} não possui telefone cadastrado`,
+        variant: "destructive",
+      })
+      return
+    }
+    toast({
+      title: "Ligação Registrada",
+      description: `Ligação para ${user.name} registrada no sistema`,
+    })
+    // Em uma aplicação real, registraria a ligação no sistema
+  }
 
   const totalUsers = users.length
   const activeUsers = users.filter((u) => u.status === "ativo").length
@@ -333,13 +370,23 @@ export default function ManageUsersPage({ params }: { params: { id: string } }) 
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <Button size="sm" variant="ghost">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleViewUser(user)}
+                          title="Visualizar usuário"
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost">
+                        <Button size="sm" variant="ghost" onClick={() => handleSendEmail(user)} title="Enviar email">
                           <Mail className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCallUser(user)}
+                          title="Registrar ligação"
+                        >
                           <Phone className="h-4 w-4" />
                         </Button>
                       </div>
@@ -381,13 +428,31 @@ export default function ManageUsersPage({ params }: { params: { id: string } }) 
                     </div>
 
                     <div className="flex sm:flex-col gap-1 sm:gap-2 flex-shrink-0">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleViewUser(user)}
+                        title="Visualizar usuário"
+                      >
                         <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleSendEmail(user)}
+                        title="Enviar email"
+                      >
                         <Mail className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleCallUser(user)}
+                        title="Registrar ligação"
+                      >
                         <Phone className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                     </div>

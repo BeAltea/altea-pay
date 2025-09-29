@@ -102,11 +102,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
+      console.log("[v0] useAuth - Starting signOut process")
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error("[v0] useAuth - SignOut error:", error)
+        throw error
+      }
+
       setUser(null)
       setProfile(null)
+      console.log("[v0] useAuth - SignOut successful, redirecting...")
+
+      // Force redirect to login page
+      window.location.href = "/auth/login"
     } catch (error) {
-      console.error("Error signing out:", error)
+      console.error("[v0] useAuth - SignOut exception:", error)
+      throw error
     }
   }
 
