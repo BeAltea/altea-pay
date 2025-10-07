@@ -20,6 +20,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Plug,
 } from "lucide-react"
 
 interface CompanyDetailsProps {
@@ -337,6 +338,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                 <Link href={`/super-admin/companies/${company.id}/customers`}>
                   <Users className="mr-2 h-4 w-4" />
                   Gerenciar Clientes
+                </Link>
+              </Button>
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href={`/super-admin/companies/${company.id}/erp-integration`}>
+                  <Plug className="mr-2 h-4 w-4" />
+                  Integração ERP
                 </Link>
               </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">

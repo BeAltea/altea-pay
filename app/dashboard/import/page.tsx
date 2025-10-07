@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +11,11 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Upload, FileText, AlertTriangle, X, Download, Eye, RefreshCw } from "lucide-react"
+import { Upload, FileText, AlertTriangle, X, Download, Eye, RefreshCw, CheckCircle2 } from "lucide-react"
+import { importCustomers, importDebts, type ImportResult } from "@/app/actions/import-data"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface ImportRecord {
   id: string
@@ -32,81 +35,123 @@ export default function ImportPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [previewData, setPreviewData] = useState<any[]>([])
   const [showPreview, setShowPreview] = useState(false)
+  const [importType, setImportType] = useState<"customers" | "debts">("customers")
+  const [companyId, setCompanyId] = useState<string>("")
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [showResult, setShowResult] = useState(false)
 
-  // Mock data for import history
-  const importHistory: ImportRecord[] = [
-    {
-      id: "1",
-      filename: "clientes_janeiro_2025.csv",
-      fileType: "CSV",
-      totalRecords: 1250,
-      successfulRecords: 1247,
-      failedRecords: 3,
-      status: "completed",
-      createdAt: "2025-01-15T10:30:00Z",
-    },
-    {
-      id: "2",
-      filename: "dividas_dezembro_2024.xlsx",
-      fileType: "XLSX",
-      totalRecords: 890,
-      successfulRecords: 890,
-      failedRecords: 0,
-      status: "completed",
-      createdAt: "2025-01-10T14:20:00Z",
-    },
-    {
-      id: "3",
-      filename: "dados_sistema_antigo.json",
-      fileType: "JSON",
-      totalRecords: 2340,
-      successfulRecords: 0,
-      failedRecords: 2340,
-      status: "failed",
-      createdAt: "2025-01-08T09:15:00Z",
-      errorLog: [
-        { line: 1, error: "Campo 'email' obrigatório não encontrado" },
-        { line: 5, error: "Formato de data inválido" },
-        { line: 12, error: "CPF/CNPJ inválido" },
-      ],
-    },
-  ]
+  useEffect(() => {
+    async function fetchUserCompany() {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+        if (profile?.company_id) {
+          setCompanyId(profile.company_id)
+        }
+      }
+    }
+
+    fetchUserCompany()
+  }, [])
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setSelectedFile(file)
-      // Simulate file preview
-      if (file.type === "text/csv" || file.name.endsWith(".csv")) {
-        setPreviewData([
-          { nome: "João Silva", email: "joao@email.com", cpf: "123.456.789-00", valor: "R$ 1.250,00" },
-          { nome: "Maria Santos", email: "maria@email.com", cpf: "987.654.321-00", valor: "R$ 890,50" },
-          { nome: "Pedro Costa", email: "pedro@email.com", cpf: "456.789.123-00", valor: "R$ 2.100,00" },
-        ])
-        setShowPreview(true)
+      setShowResult(false)
+      setImportResult(null)
+
+      try {
+        if (file.type === "text/csv" || file.name.endsWith(".csv")) {
+          const text = await file.text()
+          const Papa = (await import("papaparse")).default
+          Papa.parse(text, {
+            header: true,
+            preview: 3,
+            complete: (results) => {
+              setPreviewData(results.data)
+              setShowPreview(true)
+            },
+          })
+        } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+          const XLSX = await import("xlsx")
+          const buffer = await file.arrayBuffer()
+          const workbook = XLSX.read(buffer, { type: "array" })
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+          const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+
+          const headers = data[0] as string[]
+          const rows = data.slice(1, 4).map((row: any) => {
+            const obj: any = {}
+            headers.forEach((header, index) => {
+              obj[header] = row[index]
+            })
+            return obj
+          })
+
+          setPreviewData(rows)
+          setShowPreview(true)
+        } else if (file.name.endsWith(".json")) {
+          const text = await file.text()
+          const data = JSON.parse(text)
+          const preview = Array.isArray(data) ? data.slice(0, 3) : [data]
+          setPreviewData(preview)
+          setShowPreview(true)
+        }
+      } catch (error) {
+        console.error("[v0] Erro ao fazer preview:", error)
+        toast.error("Erro ao fazer preview do arquivo")
       }
     }
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) return
+    if (!selectedFile || !companyId) {
+      toast.error("Selecione um arquivo e certifique-se de estar logado")
+      return
+    }
 
     setIsUploading(true)
     setUploadProgress(0)
 
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsUploading(false)
-          setSelectedFile(null)
-          setShowPreview(false)
-          return 100
-        }
-        return prev + 10
-      })
-    }, 200)
+    try {
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => Math.min(prev + 10, 90))
+      }, 200)
+
+      let result: ImportResult
+
+      if (importType === "customers") {
+        result = await importCustomers(selectedFile, companyId)
+      } else {
+        result = await importDebts(selectedFile, companyId)
+      }
+
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+
+      setImportResult(result)
+      setShowResult(true)
+
+      if (result.success) {
+        toast.success(result.message)
+        setSelectedFile(null)
+        setShowPreview(false)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error: any) {
+      console.error("[v0] Erro na importação:", error)
+      toast.error(`Erro ao importar: ${error.message}`)
+    } finally {
+      setIsUploading(false)
+      setTimeout(() => setUploadProgress(0), 1000)
+    }
   }
 
   const getStatusBadge = (status: ImportRecord["status"]) => {
@@ -139,7 +184,24 @@ export default function ImportPage() {
         </TabsList>
 
         <TabsContent value="upload" className="space-y-6">
-          {/* Upload Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Tipo de Importação</CardTitle>
+              <CardDescription>Selecione o que deseja importar</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select value={importType} onValueChange={(value: "customers" | "debts") => setImportType(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customers">Clientes</SelectItem>
+                  <SelectItem value="debts">Dívidas</SelectItem>
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Selecionar Arquivo</CardTitle>
@@ -182,6 +244,7 @@ export default function ImportPage() {
                           onClick={() => {
                             setSelectedFile(null)
                             setShowPreview(false)
+                            setShowResult(false)
                           }}
                         >
                           <X className="h-4 w-4" />
@@ -200,11 +263,40 @@ export default function ImportPage() {
                     <Progress value={uploadProgress} />
                   </div>
                 )}
+
+                {showResult && importResult && (
+                  <Alert className={importResult.success ? "border-green-500" : "border-red-500"}>
+                    {importResult.success ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                    )}
+                    <AlertDescription>
+                      <div className="space-y-2">
+                        <p className="font-medium">{importResult.message}</p>
+                        <div className="text-sm space-y-1">
+                          <p>✅ Importados: {importResult.imported}</p>
+                          <p>⚠️ Duplicados: {importResult.duplicates}</p>
+                          <p>❌ Erros: {importResult.errors.length}</p>
+                        </div>
+                        {importResult.errors.length > 0 && (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-sm font-medium">Ver erros</summary>
+                            <ul className="mt-2 text-sm space-y-1 text-red-600 dark:text-red-400">
+                              {importResult.errors.map((error, index) => (
+                                <li key={index}>• {error}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Preview Section */}
           {showPreview && previewData.length > 0 && (
             <Card>
               <CardHeader>
@@ -229,7 +321,7 @@ export default function ImportPage() {
                       {previewData.map((row, index) => (
                         <TableRow key={index}>
                           {Object.values(row).map((value, cellIndex) => (
-                            <TableCell key={cellIndex}>{value as string}</TableCell>
+                            <TableCell key={cellIndex}>{String(value)}</TableCell>
                           ))}
                         </TableRow>
                       ))}
@@ -237,10 +329,16 @@ export default function ImportPage() {
                   </Table>
                 </div>
                 <div className="flex justify-end space-x-3 mt-4">
-                  <Button variant="outline" onClick={() => setShowPreview(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowPreview(false)
+                      setSelectedFile(null)
+                    }}
+                  >
                     Cancelar
                   </Button>
-                  <Button onClick={handleUpload} disabled={isUploading}>
+                  <Button onClick={handleUpload} disabled={isUploading || !companyId}>
                     {isUploading ? (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -249,7 +347,7 @@ export default function ImportPage() {
                     ) : (
                       <>
                         <Upload className="mr-2 h-4 w-4" />
-                        Importar Dados
+                        Importar {importType === "customers" ? "Clientes" : "Dívidas"}
                       </>
                     )}
                   </Button>
@@ -281,7 +379,43 @@ export default function ImportPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {importHistory.map((record) => (
+                    {[
+                      {
+                        id: "1",
+                        filename: "clientes_janeiro_2025.csv",
+                        fileType: "CSV",
+                        totalRecords: 1250,
+                        successfulRecords: 1247,
+                        failedRecords: 3,
+                        status: "completed",
+                        createdAt: "2025-01-15T10:30:00Z",
+                      },
+                      {
+                        id: "2",
+                        filename: "dividas_dezembro_2024.xlsx",
+                        fileType: "XLSX",
+                        totalRecords: 890,
+                        successfulRecords: 890,
+                        failedRecords: 0,
+                        status: "completed",
+                        createdAt: "2025-01-10T14:20:00Z",
+                      },
+                      {
+                        id: "3",
+                        filename: "dados_sistema_antigo.json",
+                        fileType: "JSON",
+                        totalRecords: 2340,
+                        successfulRecords: 0,
+                        failedRecords: 2340,
+                        status: "failed",
+                        createdAt: "2025-01-08T09:15:00Z",
+                        errorLog: [
+                          { line: 1, error: "Campo 'email' obrigatório não encontrado" },
+                          { line: 5, error: "Formato de data inválido" },
+                          { line: 12, error: "CPF/CNPJ inválido" },
+                        ],
+                      },
+                    ].map((record) => (
                       <TableRow key={record.id}>
                         <TableCell className="font-medium">{record.filename}</TableCell>
                         <TableCell>

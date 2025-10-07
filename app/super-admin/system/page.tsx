@@ -1,3 +1,5 @@
+"use client"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,9 +20,44 @@ import {
   Upload,
   Clock,
   Shield,
+  Sparkles,
 } from "lucide-react"
 
+import { useToast } from "@/hooks/use-toast"
+import { useState } from "react"
+
 export default function SystemPage() {
+  const { toast } = useToast()
+  const [isSeeding, setIsSeeding] = useState(false)
+
+  const handleSeedDemo = async () => {
+    setIsSeeding(true)
+    try {
+      const response = await fetch("/api/seed-demo", {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error("Erro ao executar seed")
+      }
+
+      const data = await response.json()
+
+      toast({
+        title: "Seed executado com sucesso!",
+        description: `Criadas ${data.companies} empresas, ${data.customers} clientes e ${data.debts} dívidas.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Erro ao executar seed",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSeeding(false)
+    }
+  }
+
   return (
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -424,6 +461,15 @@ export default function SystemPage() {
                 <CardTitle>Ações de Manutenção</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start bg-transparent"
+                  onClick={handleSeedDemo}
+                  disabled={isSeeding}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {isSeeding ? "Populando banco..." : "Popular Banco (Demo)"}
+                </Button>
                 <Button variant="outline" className="w-full justify-start bg-transparent">
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Reiniciar Serviços

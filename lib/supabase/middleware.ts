@@ -2,6 +2,19 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
+  const currentPath = request.nextUrl.pathname
+
+  if (
+    currentPath.startsWith("/_next") ||
+    currentPath.startsWith("/api/") ||
+    currentPath.startsWith("/_vercel") ||
+    currentPath.includes(".") ||
+    currentPath === "/favicon.ico"
+  ) {
+    console.log("[v0] Pulando middleware para:", currentPath)
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -26,19 +39,7 @@ export async function updateSession(request: NextRequest) {
       },
     )
 
-    const currentPath = request.nextUrl.pathname
     console.log("[v0] Processando caminho:", currentPath)
-
-    if (
-      currentPath.startsWith("/_next") ||
-      currentPath.startsWith("/api") ||
-      currentPath.startsWith("/_vercel") ||
-      currentPath.includes(".") ||
-      currentPath === "/favicon.ico"
-    ) {
-      console.log("[v0] Pulando middleware para:", currentPath)
-      return supabaseResponse
-    }
 
     const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
     const isPublicPath = publicPaths.includes(currentPath)
