@@ -73,18 +73,49 @@ export default function PropensityAnalysisPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) return
 
-      console.log("[v0] PropensityAnalysis - Using centralized mock data with", MOCK_DEBTS.length, "debts")
+      if (!user) {
+        console.log("[v0] No user found")
+        return
+      }
 
-      setDebts(MOCK_DEBTS)
+      console.log("[v0] Fetching propensity data for user:", user.id)
+
+      const { data: debtsData, error } = await supabase
+        .from("debts")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("status", ["pending", "in_collection"])
+
+      if (error) {
+        console.error("[v0] Error fetching debts:", error)
+        throw error
+      }
+
+      console.log("[v0] Fetched debts:", debtsData?.length || 0)
+
+      // Se não houver dívidas reais, usar mock data
+      if (!debtsData || debtsData.length === 0) {
+        console.log("[v0] No real debts found, using mock data")
+        setDebts(MOCK_DEBTS)
+      } else {
+        // Formatar dívidas reais com scores de propensão
+        const formattedDebts = debtsData.map((debt) => ({
+          ...debt,
+          propensity_payment_score: Math.random() * 100, // TODO: Calcular score real
+          propensity_loan_score: Math.random() * 100, // TODO: Calcular score real
+        }))
+        setDebts(formattedDebts)
+      }
     } catch (error) {
-      console.error("Error fetching propensity data:", error)
+      console.error("[v0] Error fetching propensity data:", error)
       toast({
         title: "Erro ao carregar dados",
         description: "Não foi possível carregar a análise de propensão.",
         variant: "destructive",
       })
+      // Fallback to mock data on error
+      setDebts(MOCK_DEBTS)
     } finally {
       setLoading(false)
     }

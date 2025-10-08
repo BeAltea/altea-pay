@@ -26,6 +26,20 @@ export async function createDebt(params: CreateDebtParams) {
   try {
     const supabase = await createClient()
 
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("id", params.customerId)
+      .eq("company_id", params.companyId)
+      .single()
+
+    if (customerError || !customer) {
+      return {
+        success: false,
+        message: "Cliente não encontrado ou não pertence a esta empresa",
+      }
+    }
+
     const { data, error } = await supabase
       .from("debts")
       .insert({
@@ -41,8 +55,12 @@ export async function createDebt(params: CreateDebtParams) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("[v0] Create debt error:", error)
+      throw error
+    }
 
+    console.log("[v0] Debt created successfully:", data.id)
     revalidatePath("/dashboard/debts")
 
     return {

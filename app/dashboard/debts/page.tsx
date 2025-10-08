@@ -47,6 +47,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { sendCollectionNotification } from "@/app/actions/send-notification"
+import { createDebt } from "@/app/actions/create-debt"
 
 interface Debt {
   id: string
@@ -331,31 +332,49 @@ export default function DebtsPage() {
     }
   }
 
-  const handleAddDebt = (formData: FormData) => {
-    const newDebt: Debt = {
-      id: Date.now().toString(),
-      customerName: formData.get("customerName") as string,
-      customerEmail: formData.get("customerEmail") as string,
-      customerDocument: formData.get("customerDocument") as string,
-      originalAmount: Number.parseFloat(formData.get("originalAmount") as string),
-      currentAmount: Number.parseFloat(formData.get("currentAmount") as string),
-      dueDate: formData.get("dueDate") as string,
-      daysOverdue: Math.floor(
-        (Date.now() - new Date(formData.get("dueDate") as string).getTime()) / (1000 * 60 * 60 * 24),
-      ),
-      contractNumber: formData.get("contractNumber") as string,
-      description: formData.get("description") as string,
-      status: formData.get("status") as Debt["status"],
-      classification: formData.get("classification") as Debt["classification"],
-      nextAction: "Email de cobrança",
+  const handleAddDebt = async (formData: FormData) => {
+    if (!companyId) {
+      toast({
+        title: "Erro",
+        description: "Empresa não identificada",
+        variant: "destructive",
+      })
+      return
     }
 
-    setDebts((prev) => [...prev, newDebt])
-    setIsAddDebtOpen(false)
-    toast({
-      title: "Dívida adicionada",
-      description: `Dívida de ${newDebt.customerName} foi adicionada com sucesso.`,
-    })
+    try {
+      const result = await createDebt({
+        customerId: formData.get("customerId") as string,
+        amount: Number.parseFloat(formData.get("currentAmount") as string),
+        dueDate: formData.get("dueDate") as string,
+        description: formData.get("description") as string,
+        status: formData.get("status") as any,
+        classification: formData.get("classification") as any,
+        companyId,
+      })
+
+      if (result.success) {
+        toast({
+          title: "Dívida adicionada",
+          description: result.message,
+        })
+        setIsAddDebtOpen(false)
+        fetchDebts() // Refresh list
+      } else {
+        toast({
+          title: "Erro ao adicionar dívida",
+          description: result.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error adding debt:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao adicionar dívida",
+        variant: "destructive",
+      })
+    }
   }
 
   const stats = {

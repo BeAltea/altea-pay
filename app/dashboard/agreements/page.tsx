@@ -87,6 +87,13 @@ export default function AgreementsPage() {
   }
 
   async function fetchAgreements() {
+    if (!companyId) {
+      console.log("[v0] No company_id, skipping fetch")
+      return
+    }
+
+    console.log("[v0] Fetching agreements for company:", companyId)
+
     const { data, error } = await supabase
       .from("agreements")
       .select(`
@@ -97,11 +104,23 @@ export default function AgreementsPage() {
       .eq("company_id", companyId)
       .order("created_at", { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error("[v0] Error fetching agreements:", error)
+      throw error
+    }
+
+    console.log("[v0] Fetched agreements:", data?.length || 0)
     setAgreements(data || [])
   }
 
   async function fetchPayments() {
+    if (!companyId) {
+      console.log("[v0] No company_id, skipping fetch")
+      return
+    }
+
+    console.log("[v0] Fetching payments for company:", companyId)
+
     const { data, error } = await supabase
       .from("payments")
       .select(`
@@ -112,7 +131,12 @@ export default function AgreementsPage() {
       .eq("company_id", companyId)
       .order("payment_date", { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error("[v0] Error fetching payments:", error)
+      throw error
+    }
+
+    console.log("[v0] Fetched payments:", data?.length || 0)
     setPayments(data || [])
   }
 

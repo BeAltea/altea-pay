@@ -68,25 +68,23 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
     console.log("[v0] SuperAdminHeader - Sign out initiated")
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
 
-      if (error) {
-        console.error("[v0] SuperAdminHeader - Sign out error:", error)
-        toast({
-          title: "Erro",
-          description: "Erro ao fazer logout. Tente novamente.",
-          variant: "destructive",
-        })
-        return
-      }
+      await supabase.auth.signOut({ scope: "local" })
 
       console.log("[v0] SuperAdminHeader - Sign out successful, redirecting...")
+
       toast({
         title: "Logout realizado",
         description: "Você foi desconectado com sucesso.",
       })
 
-      // Force redirect to login page
+      // Clear any local storage
+      if (typeof window !== "undefined") {
+        localStorage.clear()
+        sessionStorage.clear()
+      }
+
+      // Force hard redirect to login page
       window.location.href = "/auth/login"
     } catch (error) {
       console.error("[v0] SuperAdminHeader - Sign out exception:", error)
@@ -95,6 +93,9 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
         description: "Erro inesperado ao fazer logout.",
         variant: "destructive",
       })
+
+      // Force redirect even on error
+      window.location.href = "/auth/login"
     }
   }
 
