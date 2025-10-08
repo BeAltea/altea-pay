@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -54,6 +56,7 @@ interface Debt {
   customerName: string
   customerEmail: string
   customerDocument: string
+  customerId: string
   originalAmount: number
   currentAmount: number
   dueDate: string
@@ -66,8 +69,16 @@ interface Debt {
   nextAction?: string
 }
 
+interface Customer {
+  id: string
+  name: string
+  email: string
+  document: string
+}
+
 export default function DebtsPage() {
   const [debts, setDebts] = useState<Debt[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [filteredDebts, setFilteredDebts] = useState<Debt[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -76,22 +87,50 @@ export default function DebtsPage() {
   const [activeTab, setActiveTab] = useState("all")
   const [isAddDebtOpen, setIsAddDebtOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [newDebt, setNewDebt] = useState({
+    customerId: "",
+    amount: "",
+    dueDate: "",
+    description: "",
+    status: "pending" as const,
+    classification: "low" as const,
+  })
   const { toast } = useToast()
 
-  const { user, companyId } = useAuth()
+  const { profile, loading: authLoading } = useAuth()
   const supabase = createClient()
 
   useEffect(() => {
+    const fetchCustomers = async () => {
+      if (!profile?.company_id) return
+
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id, name, email, document")
+        .eq("company_id", profile.company_id)
+        .order("name")
+
+      if (!error && data) {
+        setCustomers(data)
+      }
+    }
+
+    fetchCustomers()
+  }, [profile?.company_id])
+
+  useEffect(() => {
     fetchDebts()
-  }, [companyId])
+  }, [profile?.company_id])
 
   const fetchDebts = async () => {
-    if (!companyId) {
+    if (!profile?.company_id) {
       setLoading(false)
       return
     }
 
     try {
+      console.log("[v0] Fetching debts for company:", profile.company_id)
+
       const { data: debtsData, error } = await supabase
         .from("debts")
         .select(`
@@ -103,15 +142,21 @@ export default function DebtsPage() {
           description,
           customer_id,
           customers (
+            id,
             name,
             email,
             document
           )
         `)
-        .eq("company_id", companyId)
+        .eq("company_id", profile.company_id)
         .order("due_date", { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error("[v0] Error fetching debts:", error)
+        throw error
+      }
+
+      console.log("[v0] Fetched debts:", debtsData?.length || 0)
 
       const formattedDebts: Debt[] =
         debtsData?.map((debt) => {
@@ -121,6 +166,7 @@ export default function DebtsPage() {
 
           return {
             id: debt.id,
+            customerId: debt.customer_id,
             customerName: debt.customers?.name || "Cliente",
             customerEmail: debt.customers?.email || "",
             customerDocument: debt.customers?.document || "",
@@ -137,7 +183,7 @@ export default function DebtsPage() {
       setDebts(formattedDebts)
       setFilteredDebts(formattedDebts)
     } catch (error) {
-      console.error("Error fetching debts:", error)
+      console.error("[v0] Error fetching debts:", error)
       toast({
         title: "Erro ao carregar dívidas",
         description: "Não foi possível carregar as dívidas.",
@@ -216,27 +262,28 @@ export default function DebtsPage() {
   }
 
   const handleDeleteDebt = async (debtId: string) => {
-    if (!companyId) return
+    if (!profile?.company_id) return
 
     if (!confirm("Tem certeza que deseja excluir esta dívida?")) return
 
     try {
-      const { error } = await supabase.from("debts").delete().eq("id", debtId).eq("company_id", companyId)
+      console.log("[v0] Deleting debt:", debtId)
+
+      const { error } = await supabase.from("debts").delete().eq("id", debtId).eq("company_id", profile.company_id)
 
       if (error) throw error
 
       toast({
-        title: "Dívida excluída",
-        description: "A dívida foi excluída com sucesso.",
+        title: "Sucesso",
+        description: "Dívida excluída com sucesso",
       })
 
-      // Refresh debts list
-      fetchDebts()
+      await fetchDebts()
     } catch (error) {
       console.error("[v0] Error deleting debt:", error)
       toast({
-        title: "Erro ao excluir dívida",
-        description: "Não foi possível excluir a dívida.",
+        title: "Erro",
+        description: "Não foi possível excluir a dívida",
         variant: "destructive",
       })
     }
@@ -332,8 +379,10 @@ export default function DebtsPage() {
     }
   }
 
-  const handleAddDebt = async (formData: FormData) => {
-    if (!companyId) {
+  const handleAddDebt = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!profile?.company_id) {
       toast({
         title: "Erro",
         description: "Empresa não identificada",
@@ -342,36 +391,46 @@ export default function DebtsPage() {
       return
     }
 
-    try {
-      const result = await createDebt({
-        customerId: formData.get("customerId") as string,
-        amount: Number.parseFloat(formData.get("currentAmount") as string),
-        dueDate: formData.get("dueDate") as string,
-        description: formData.get("description") as string,
-        status: formData.get("status") as any,
-        classification: formData.get("classification") as any,
-        companyId,
-      })
-
-      if (result.success) {
-        toast({
-          title: "Dívida adicionada",
-          description: result.message,
-        })
-        setIsAddDebtOpen(false)
-        fetchDebts() // Refresh list
-      } else {
-        toast({
-          title: "Erro ao adicionar dívida",
-          description: result.message,
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("[v0] Error adding debt:", error)
+    if (!newDebt.customerId || !newDebt.amount || !newDebt.dueDate) {
       toast({
         title: "Erro",
-        description: "Erro ao adicionar dívida",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      })
+      return
+    }
+
+    console.log("[v0] Creating debt:", newDebt)
+
+    const result = await createDebt({
+      customerId: newDebt.customerId,
+      amount: Number.parseFloat(newDebt.amount),
+      dueDate: newDebt.dueDate,
+      description: newDebt.description,
+      status: newDebt.status,
+      classification: newDebt.classification,
+      companyId: profile.company_id,
+    })
+
+    if (result.success) {
+      toast({
+        title: "Sucesso",
+        description: result.message,
+      })
+      setIsAddDebtOpen(false)
+      setNewDebt({
+        customerId: "",
+        amount: "",
+        dueDate: "",
+        description: "",
+        status: "pending",
+        classification: "low",
+      })
+      await fetchDebts()
+    } else {
+      toast({
+        title: "Erro",
+        description: result.message,
         variant: "destructive",
       })
     }
@@ -472,10 +531,11 @@ export default function DebtsPage() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-8 w-8 p-0">
+          <span className="sr-only">Abrir menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Ações</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => handleAction("view", debt.id)}>
@@ -486,7 +546,7 @@ export default function DebtsPage() {
           <Edit className="mr-2 h-4 w-4" />
           Editar dívida
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction("delete", debt.id)} className="text-red-600">
+        <DropdownMenuItem onClick={() => handleDeleteDebt(debt.id)} className="text-red-600">
           <Trash2 className="mr-2 h-4 w-4" />
           Excluir dívida
         </DropdownMenuItem>
@@ -503,11 +563,6 @@ export default function DebtsPage() {
         <DropdownMenuItem onClick={() => handleAction("whatsapp", debt.id)}>
           <MessageSquare className="mr-2 h-4 w-4" />
           Enviar por WhatsApp
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => handleAction("call", debt.id)}>
-          <Phone className="mr-2 h-4 w-4" />
-          Registrar ligação
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -542,39 +597,56 @@ export default function DebtsPage() {
                   <DialogTitle>Adicionar Nova Dívida</DialogTitle>
                   <DialogDescription>Preencha os dados da nova dívida para adicionar ao sistema.</DialogDescription>
                 </DialogHeader>
-                <form action={handleAddDebt}>
+                <form onSubmit={handleAddDebt}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="customerName">Nome do Cliente</Label>
-                      <Input id="customerName" name="customerName" required />
+                    <div className="col-span-1 md:col-span-2 space-y-2">
+                      <Label htmlFor="customerId">Cliente *</Label>
+                      <Select
+                        value={newDebt.customerId}
+                        onValueChange={(value) => setNewDebt({ ...newDebt, customerId: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um cliente" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customers.map((customer) => (
+                            <SelectItem key={customer.id} value={customer.id}>
+                              {customer.name} - {customer.document}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="customerEmail">Email</Label>
-                      <Input id="customerEmail" name="customerEmail" type="email" required />
+                      <Label htmlFor="amount">Valor *</Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="0.01"
+                        value={newDebt.amount}
+                        onChange={(e) => setNewDebt({ ...newDebt, amount: e.target.value })}
+                        required
+                      />
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="customerDocument">CPF/CNPJ</Label>
-                      <Input id="customerDocument" name="customerDocument" required />
+                      <Label htmlFor="dueDate">Data de Vencimento *</Label>
+                      <Input
+                        id="dueDate"
+                        type="date"
+                        value={newDebt.dueDate}
+                        onChange={(e) => setNewDebt({ ...newDebt, dueDate: e.target.value })}
+                        required
+                      />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="contractNumber">Número do Contrato</Label>
-                      <Input id="contractNumber" name="contractNumber" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="originalAmount">Valor Original</Label>
-                      <Input id="originalAmount" name="originalAmount" type="number" step="0.01" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="currentAmount">Valor Atual</Label>
-                      <Input id="currentAmount" name="currentAmount" type="number" step="0.01" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="dueDate">Data de Vencimento</Label>
-                      <Input id="dueDate" name="dueDate" type="date" required />
-                    </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="status">Status</Label>
-                      <Select name="status" defaultValue="pending">
+                      <Select
+                        value={newDebt.status}
+                        onValueChange={(value: any) => setNewDebt({ ...newDebt, status: value })}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -587,9 +659,13 @@ export default function DebtsPage() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="classification">Classificação</Label>
-                      <Select name="classification" defaultValue="low">
+                      <Select
+                        value={newDebt.classification}
+                        onValueChange={(value: any) => setNewDebt({ ...newDebt, classification: value })}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -601,9 +677,14 @@ export default function DebtsPage() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="col-span-1 md:col-span-2 space-y-2">
                       <Label htmlFor="description">Descrição</Label>
-                      <Textarea id="description" name="description" />
+                      <Textarea
+                        id="description"
+                        value={newDebt.description}
+                        onChange={(e) => setNewDebt({ ...newDebt, description: e.target.value })}
+                      />
                     </div>
                   </div>
                   <DialogFooter className="flex-col space-y-2 md:flex-row md:space-y-0">
