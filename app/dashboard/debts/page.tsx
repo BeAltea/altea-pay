@@ -42,8 +42,11 @@ import {
   Phone,
   MessageSquare,
   Plus,
+  Edit,
+  Trash2,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { sendCollectionNotification } from "@/app/actions/send-notification"
 
 interface Debt {
   id: string
@@ -211,27 +214,108 @@ export default function DebtsPage() {
     }, 3000)
   }
 
-  const handleAction = (action: string, debtId: string) => {
+  const handleDeleteDebt = async (debtId: string) => {
+    if (!companyId) return
+
+    if (!confirm("Tem certeza que deseja excluir esta dívida?")) return
+
+    try {
+      const { error } = await supabase.from("debts").delete().eq("id", debtId).eq("company_id", companyId)
+
+      if (error) throw error
+
+      toast({
+        title: "Dívida excluída",
+        description: "A dívida foi excluída com sucesso.",
+      })
+
+      // Refresh debts list
+      fetchDebts()
+    } catch (error) {
+      console.error("[v0] Error deleting debt:", error)
+      toast({
+        title: "Erro ao excluir dívida",
+        description: "Não foi possível excluir a dívida.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditDebt = (debtId: string) => {
     const debt = debts.find((d) => d.id === debtId)
     if (!debt) return
 
+    toast({
+      title: "Editar dívida",
+      description: `Abrindo formulário de edição para ${debt.customerName}`,
+    })
+    // TODO: Implementar modal de edição
+  }
+
+  const handleAction = async (action: string, debtId: string) => {
+    const debt = debts.find((d) => d.id === debtId)
+    if (!debt) return
+
+    if (action === "edit") {
+      handleEditDebt(debtId)
+      return
+    }
+
+    if (action === "delete") {
+      handleDeleteDebt(debtId)
+      return
+    }
+
+    if (action === "email" || action === "sms" || action === "whatsapp") {
+      try {
+        const result = await sendCollectionNotification({
+          debtId,
+          type: action as "email" | "sms" | "whatsapp",
+        })
+
+        if (result.success) {
+          toast({
+            title: "Cobrança enviada",
+            description: result.message,
+          })
+
+          // Update local state to reflect the action
+          setDebts((prev) =>
+            prev.map((d) =>
+              d.id === debtId
+                ? {
+                    ...d,
+                    lastAction: `Cobrança enviada via ${action}`,
+                    nextAction: "Aguardar resposta do cliente",
+                  }
+                : d,
+            ),
+          )
+        } else {
+          toast({
+            title: "Erro ao enviar cobrança",
+            description: result.message,
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("[v0] Error sending notification:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao enviar cobrança. Tente novamente.",
+          variant: "destructive",
+        })
+      }
+      return
+    }
+
+    // Handle other actions
     switch (action) {
       case "view":
         toast({
           title: "Visualizar dívida",
           description: `Abrindo detalhes da dívida de ${debt.customerName}`,
         })
-        break
-      case "email":
-        toast({
-          title: "Cobrança enviada por email",
-          description: `Email de cobrança enviado para ${debt.customerEmail}`,
-        })
-        setDebts((prev) =>
-          prev.map((d) =>
-            d.id === debtId ? { ...d, lastAction: "Email de cobrança enviado", nextAction: "Aguardar resposta" } : d,
-          ),
-        )
         break
       case "call":
         toast({
@@ -241,28 +325,6 @@ export default function DebtsPage() {
         setDebts((prev) =>
           prev.map((d) =>
             d.id === debtId ? { ...d, lastAction: "Ligação realizada", nextAction: "Email de follow-up" } : d,
-          ),
-        )
-        break
-      case "whatsapp":
-        toast({
-          title: "Cobrança enviada por WhatsApp",
-          description: `Mensagem de cobrança enviada para ${debt.customerName}`,
-        })
-        setDebts((prev) =>
-          prev.map((d) =>
-            d.id === debtId ? { ...d, lastAction: "WhatsApp de cobrança enviado", nextAction: "Aguardar resposta" } : d,
-          ),
-        )
-        break
-      case "sms":
-        toast({
-          title: "Cobrança enviada por SMS",
-          description: `SMS de cobrança enviado para ${debt.customerName}`,
-        })
-        setDebts((prev) =>
-          prev.map((d) =>
-            d.id === debtId ? { ...d, lastAction: "SMS de cobrança enviado", nextAction: "Aguardar resposta" } : d,
           ),
         )
         break
@@ -400,6 +462,14 @@ export default function DebtsPage() {
         <DropdownMenuItem onClick={() => handleAction("view", debt.id)}>
           <Eye className="mr-2 h-4 w-4" />
           Ver detalhes
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleAction("edit", debt.id)}>
+          <Edit className="mr-2 h-4 w-4" />
+          Editar dívida
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleAction("delete", debt.id)} className="text-red-600">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Excluir dívida
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar Cobrança Manual</DropdownMenuLabel>

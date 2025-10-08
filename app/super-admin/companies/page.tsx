@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
 import { Building2, Users, DollarSign, TrendingUp, Plus, Eye, Edit } from "lucide-react"
 import { CompanyFilters } from "@/components/super-admin/company-filters"
+import { DeleteCompanyButton } from "@/components/super-admin/delete-company-button"
 
 interface Company {
   id: string
@@ -26,69 +27,54 @@ interface Company {
 export default async function CompaniesPage() {
   const supabase = await createClient()
 
-  // Mock data for companies
-  const companies: Company[] = [
-    {
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "Enel Distribuição São Paulo",
-      cnpj: "33.479.023/0001-80",
-      email: "admin@enel.com.br",
-      phone: "(11) 3003-0303",
-      status: "active",
-      created_at: "2024-01-15T10:00:00Z",
-      totalCustomers: 1247,
-      totalDebts: 3456,
-      totalAmount: 2847392.5,
-      recoveredAmount: 1234567.89,
-      recoveryRate: 43.4,
-      admins: 3,
-    },
-    {
-      id: "22222222-2222-2222-2222-222222222222",
-      name: "Sabesp - Companhia de Saneamento",
-      cnpj: "43.776.517/0001-80",
-      email: "admin@sabesp.com.br",
-      phone: "(11) 3388-8000",
-      status: "active",
-      created_at: "2024-02-20T14:30:00Z",
-      totalCustomers: 892,
-      totalDebts: 2134,
-      totalAmount: 1654321.75,
-      recoveredAmount: 876543.21,
-      recoveryRate: 53.0,
-      admins: 2,
-    },
-    {
-      id: "33333333-3333-3333-3333-333333333333",
-      name: "CPFL Energia",
-      cnpj: "02.998.611/0001-04",
-      email: "admin@cpfl.com.br",
-      phone: "(19) 3756-8000",
-      status: "active",
-      created_at: "2024-03-10T09:15:00Z",
-      totalCustomers: 654,
-      totalDebts: 1789,
-      totalAmount: 1234567.89,
-      recoveredAmount: 654321.98,
-      recoveryRate: 53.0,
-      admins: 2,
-    },
-    {
-      id: "44444444-4444-4444-4444-444444444444",
-      name: "Cemig Distribuição",
-      cnpj: "17.155.730/0001-64",
-      email: "admin@cemig.com.br",
-      phone: "(31) 3506-5024",
-      status: "suspended",
-      created_at: "2024-01-05T16:45:00Z",
-      totalCustomers: 543,
-      totalDebts: 1456,
-      totalAmount: 987654.32,
-      recoveredAmount: 543210.87,
-      recoveryRate: 55.0,
-      admins: 2,
-    },
-  ]
+  const { data: companiesData, error: companiesError } = await supabase
+    .from("companies")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  if (companiesError) {
+    console.error("[v0] Error fetching companies:", companiesError)
+  }
+
+  // Fetch customers count per company
+  const { data: customersData } = await supabase.from("customers").select("company_id")
+
+  // Fetch debts data per company
+  const { data: debtsData } = await supabase.from("debts").select("company_id, amount, status")
+
+  // Fetch payments data per company
+  const { data: paymentsData } = await supabase.from("payments").select("company_id, amount")
+
+  // Fetch admins count per company
+  const { data: adminsData } = await supabase.from("profiles").select("company_id, role").eq("role", "admin")
+
+  // Calculate stats for each company
+  const companies: Company[] = (companiesData || []).map((company) => {
+    const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
+    const companyDebts = debtsData?.filter((d) => d.company_id === company.id) || []
+    const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
+    const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
+
+    const totalAmount = companyDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+    const recoveredAmount = companyPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+    const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+
+    return {
+      id: company.id,
+      name: company.name,
+      cnpj: company.cnpj || "N/A",
+      email: company.email || "N/A",
+      phone: company.phone || "N/A",
+      status: company.status || "active",
+      created_at: company.created_at,
+      totalCustomers: companyCustomers.length,
+      totalDebts: companyDebts.length,
+      totalAmount,
+      recoveredAmount,
+      recoveryRate,
+      admins: companyAdmins.length,
+    }
+  })
 
   const totalStats = {
     totalCompanies: companies.length,
@@ -159,7 +145,12 @@ export default async function CompaniesPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">51.1%</div>
+            <div className="text-2xl font-bold">
+              {companies.length > 0
+                ? (companies.reduce((sum, c) => sum + c.recoveryRate, 0) / companies.length).toFixed(1)
+                : "0.0"}
+              %
+            </div>
             <p className="text-xs text-muted-foreground">Recuperação</p>
           </CardContent>
         </Card>
@@ -175,102 +166,117 @@ export default async function CompaniesPage() {
           <CardDescription>Lista completa de todas as empresas clientes</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {companies.map((company) => (
-              <div
-                key={company.id}
-                className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-4 mb-3 lg:mb-0">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={`/.jpg?height=48&width=48&query=${company.name}`} />
-                      <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
-                        {company.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h3 className="font-medium text-gray-900 dark:text-white truncate">{company.name}</h3>
-                        <Badge
-                          variant={
-                            company.status === "active"
-                              ? "default"
+          {companies.length === 0 ? (
+            <div className="text-center py-8">
+              <Building2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium text-gray-900 dark:text-white">Nenhuma empresa cadastrada</p>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">Comece adicionando sua primeira empresa</p>
+              <Button asChild>
+                <Link href="/super-admin/companies/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Empresa
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {companies.map((company) => (
+                <div
+                  key={company.id}
+                  className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-4 mb-3 lg:mb-0">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={`/.jpg?height=48&width=48&query=${company.name}`} />
+                        <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
+                          {company.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{company.name}</h3>
+                          <Badge
+                            variant={
+                              company.status === "active"
+                                ? "default"
+                                : company.status === "suspended"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                            className="text-xs"
+                          >
+                            {company.status === "active"
+                              ? "Ativa"
                               : company.status === "suspended"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {company.status === "active"
-                            ? "Ativa"
-                            : company.status === "suspended"
-                              ? "Suspensa"
-                              : "Inativa"}
-                        </Badge>
+                                ? "Suspensa"
+                                : "Inativa"}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span>CNPJ: {company.cnpj}</span>
+                          <span className="hidden sm:inline">•</span>
+                          <span>{company.email}</span>
+                          <span className="hidden sm:inline">•</span>
+                          <span>{company.phone}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                        <span>CNPJ: {company.cnpj}</span>
-                        <span className="hidden sm:inline">•</span>
-                        <span>{company.email}</span>
-                        <span className="hidden sm:inline">•</span>
-                        <span>{company.phone}</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 mt-4 lg:mt-0">
+                      <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
+                        <div className="text-center sm:text-right">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {company.totalCustomers.toLocaleString()}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Clientes</p>
+                        </div>
+
+                        <div className="text-center sm:text-right">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            R$ {(company.totalAmount / 1000).toFixed(0)}k
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Volume</p>
+                        </div>
+
+                        <div className="text-center sm:text-right">
+                          <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                            {company.recoveryRate.toFixed(1)}%
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
+                        </div>
+
+                        <div className="text-center sm:text-right">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{company.admins}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Admins</p>
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/super-admin/companies/${company.id}`}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Ver
+                          </Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/super-admin/companies/${company.id}/edit`}>
+                            <Edit className="h-4 w-4 mr-1" />
+                            Editar
+                          </Link>
+                        </Button>
+                        <DeleteCompanyButton companyId={company.id} companyName={company.name} />
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 mt-4 lg:mt-0">
-                  <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {company.totalCustomers.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Clientes</p>
-                    </div>
-
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        R$ {(company.totalAmount / 1000).toFixed(0)}k
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Volume</p>
-                    </div>
-
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                        {company.recoveryRate.toFixed(1)}%
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
-                    </div>
-
-                    <div className="text-center sm:text-right">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{company.admins}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Admins</p>
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/super-admin/companies/${company.id}`}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/super-admin/companies/${company.id}/edit`}>
-                        <Edit className="h-4 w-4 mr-1" />
-                        Editar
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -17,6 +17,7 @@ import { MoreHorizontal, Eye, Mail, Phone, MessageSquare, Plus } from "lucide-re
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
+import { createCustomer, deleteCustomer } from "@/app/actions/customer-actions"
 
 interface Customer {
   id: string
@@ -279,36 +280,85 @@ export default function CustomersPage() {
       return
     }
 
-    const customer: Customer = {
-      id: Date.now().toString(),
+    if (!profile?.company_id) {
+      toast({
+        title: "Erro",
+        description: "Empresa não identificada",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const result = await createCustomer({
       name: newCustomer.name,
       email: newCustomer.email,
       document: newCustomer.document,
       phone: newCustomer.phone || undefined,
-      totalDebts: 0,
-      totalAmount: 0,
-      status: newCustomer.status,
-      riskLevel: newCustomer.riskLevel,
-      lastContact: newCustomer.lastContact || undefined,
-      registrationDate: new Date().toISOString().split("T")[0],
+      companyId: profile.company_id,
+    })
+
+    if (result.success) {
+      console.log("[v0] Customer created successfully:", result.data)
+
+      // Refresh the customer list
+      const { data: realCustomers } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: false })
+
+      if (realCustomers) {
+        const { data: debts } = await supabase
+          .from("debts")
+          .select("customer_id, amount, status")
+          .eq("company_id", profile.company_id)
+
+        const customersWithDebts: Customer[] = realCustomers.map((customer) => {
+          const customerDebts = debts?.filter((d) => d.customer_id === customer.id) || []
+          const totalAmount = customerDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+          const hasOverdue = customerDebts.some((d) => d.status === "pending")
+
+          return {
+            id: customer.id,
+            name: customer.name,
+            email: customer.email,
+            document: customer.document,
+            phone: customer.phone,
+            totalDebts: customerDebts.length,
+            totalAmount,
+            status: hasOverdue ? "overdue" : "active",
+            riskLevel:
+              totalAmount > 5000 ? "critical" : totalAmount > 2000 ? "high" : totalAmount > 500 ? "medium" : "low",
+            lastContact: customer.updated_at?.split("T")[0],
+            registrationDate: customer.created_at?.split("T")[0],
+          }
+        })
+
+        setCustomers(customersWithDebts)
+      }
+
+      setNewCustomer({
+        name: "",
+        email: "",
+        document: "",
+        phone: "",
+        status: "active",
+        riskLevel: "low",
+        lastContact: "",
+      })
+      setIsNewCustomerOpen(false)
+
+      toast({
+        title: "Sucesso",
+        description: result.message,
+      })
+    } else {
+      toast({
+        title: "Erro",
+        description: result.message,
+        variant: "destructive",
+      })
     }
-
-    setCustomers([...customers, customer])
-    setNewCustomer({
-      name: "",
-      email: "",
-      document: "",
-      phone: "",
-      status: "active",
-      riskLevel: "low",
-      lastContact: "",
-    })
-    setIsNewCustomerOpen(false)
-
-    toast({
-      title: "Sucesso",
-      description: "Cliente criado com sucesso!",
-    })
   }
 
   const handleContact = async (customer: Customer, type: "email" | "phone" | "whatsapp") => {
@@ -360,12 +410,36 @@ export default function CustomersPage() {
     setOpenActionMenus({})
   }
 
-  const toggleActionMenu = (customerId: string) => {
-    console.log("[v0] Action menu toggled for customer:", customerId)
-    setOpenActionMenus((prev) => ({
-      ...prev,
-      [customerId]: !prev[customerId],
-    }))
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!profile?.company_id) {
+      toast({
+        title: "Erro",
+        description: "Empresa não identificada",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const result = await deleteCustomer({
+      id: customerId,
+      companyId: profile.company_id,
+    })
+
+    if (result.success) {
+      setCustomers(customers.filter((c) => c.id !== customerId))
+      toast({
+        title: "Sucesso",
+        description: result.message,
+      })
+    } else {
+      toast({
+        title: "Erro",
+        description: result.message,
+        variant: "destructive",
+      })
+    }
+
+    setOpenActionMenus({})
   }
 
   const ActionButtons = ({ customer }: { customer: Customer }) => {
@@ -411,11 +485,40 @@ export default function CustomersPage() {
                 <MessageSquare className="mr-2 h-4 w-4 cursor-pointer" />
                 Enviar WhatsApp
               </button>
+              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+              <button
+                onClick={() => handleDeleteCustomer(customer.id)}
+                className="flex items-center w-full px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-sm cursor-pointer text-red-600 dark:text-red-400"
+              >
+                <svg
+                  className="mr-2 h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                Excluir cliente
+              </button>
             </div>
           </div>
         )}
       </div>
     )
+  }
+
+  const toggleActionMenu = (customerId: string) => {
+    console.log("[v0] Action menu toggled for customer:", customerId)
+    setOpenActionMenus((prev) => ({
+      ...prev,
+      [customerId]: !prev[customerId],
+    }))
   }
 
   return (
