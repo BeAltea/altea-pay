@@ -8,7 +8,7 @@ export interface CreateDebtFormData {
   amount: number
   dueDate: string
   description: string
-  status: "pending" | "paid" | "cancelled" | "in_negotiation"
+  status: "pending" | "in_collection" | "paid" | "written_off" | "in_agreement"
   classification: "low" | "medium" | "high" | "critical"
   companyId: string
 }
@@ -64,7 +64,7 @@ export async function createDebt(params: CreateDebtFormData) {
       data,
     }
   } catch (error) {
-    console.error("[v0] Create debt error:", error)
+    console.error("[v0] Create debt exception:", error)
     return {
       success: false,
       message: "Erro ao criar dívida. Verifique os dados e tente novamente.",

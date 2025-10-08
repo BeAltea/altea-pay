@@ -65,75 +65,14 @@ export default function CustomersPage() {
       if (authLoading) return
 
       if (!profile?.company_id) {
-        console.log("[v0] Customers - No company_id, using mock data")
-        const mockCustomers: Customer[] = [
-          {
-            id: "1",
-            name: "João Silva",
-            email: "joao@email.com",
-            document: "123.456.789-00",
-            phone: "(11) 99999-9999",
-            totalDebts: 2,
-            totalAmount: 2625.5,
-            status: "overdue",
-            riskLevel: "critical",
-            lastContact: "2024-01-15",
-            registrationDate: "2023-06-15",
-          },
-          {
-            id: "2",
-            name: "Maria Santos",
-            email: "maria@email.com",
-            document: "987.654.321-00",
-            phone: "(11) 88888-8888",
-            totalDebts: 1,
-            totalAmount: 945.8,
-            status: "overdue",
-            riskLevel: "high",
-            lastContact: "2024-01-10",
-            registrationDate: "2023-08-20",
-          },
-          {
-            id: "3",
-            name: "Pedro Costa",
-            email: "pedro@email.com",
-            document: "456.789.123-00",
-            phone: "(11) 77777-7777",
-            totalDebts: 1,
-            totalAmount: 2205.0,
-            status: "overdue",
-            riskLevel: "medium",
-            lastContact: "2024-01-12",
-            registrationDate: "2023-09-10",
-          },
-          {
-            id: "4",
-            name: "Ana Oliveira",
-            email: "ana@email.com",
-            document: "789.123.456-00",
-            phone: "(11) 66666-6666",
-            totalDebts: 1,
-            totalAmount: 467.25,
-            status: "active",
-            riskLevel: "low",
-            lastContact: "2024-01-18",
-            registrationDate: "2023-11-05",
-          },
-          {
-            id: "5",
-            name: "Carlos Ferreira",
-            email: "carlos@email.com",
-            document: "321.654.987-00",
-            phone: "(11) 55555-5555",
-            totalDebts: 0,
-            totalAmount: 0,
-            status: "active",
-            riskLevel: "low",
-            registrationDate: "2024-01-02",
-          },
-        ]
-        setCustomers(mockCustomers)
-        setFilteredCustomers(mockCustomers)
+        console.log("[v0] Customers - No company_id found in profile:", profile)
+        toast({
+          title: "Aviso",
+          description: "Empresa não identificada. Entre em contato com o suporte.",
+          variant: "destructive",
+        })
+        setCustomers([])
+        setFilteredCustomers([])
         return
       }
 
@@ -165,7 +104,7 @@ export default function CustomersPage() {
       const customersWithDebts: Customer[] = (realCustomers || []).map((customer) => {
         const customerDebts = debts?.filter((d) => d.customer_id === customer.id) || []
         const totalAmount = customerDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-        const hasOverdue = customerDebts.some((d) => d.status === "pending")
+        const hasOverdue = customerDebts.some((d) => d.status === "pending" || d.status === "in_collection")
 
         return {
           id: customer.id,
@@ -188,7 +127,7 @@ export default function CustomersPage() {
     }
 
     fetchCustomers()
-  }, [authLoading, profile?.company_id])
+  }, [authLoading, profile]) // Updated dependency array
 
   useEffect(() => {
     let filtered = customers
@@ -316,7 +255,7 @@ export default function CustomersPage() {
         const customersWithDebts: Customer[] = realCustomers.map((customer) => {
           const customerDebts = debts?.filter((d) => d.customer_id === customer.id) || []
           const totalAmount = customerDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-          const hasOverdue = customerDebts.some((d) => d.status === "pending")
+          const hasOverdue = customerDebts.some((d) => d.status === "pending" || d.status === "in_collection")
 
           return {
             id: customer.id,
@@ -624,7 +563,7 @@ export default function CustomersPage() {
           <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Críticos</div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-800">{stats.critical}</div>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 lg:p-6 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Valor Total</div>
           <div className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 dark:text-white">
             R$ {stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}

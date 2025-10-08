@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Users,
   CreditCard,
@@ -48,67 +49,57 @@ export default async function DashboardPage() {
     return null
   }
 
-  let companyData = null
-  if (profile.company_id) {
-    const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id, name, subscription_plan")
-      .eq("id", profile.company_id)
-      .single()
-
-    console.log("[v0] Dashboard: Empresa obtida", { company, error: companyError })
-    companyData = company
+  if (!profile.company_id) {
+    console.log("[v0] Dashboard: No company_id found, showing warning")
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Sua conta não está vinculada a nenhuma empresa. Entre em contato com o administrador.
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
   }
+
+  let companyData = null
+  const { data: company, error: companyError } = await supabase
+    .from("companies")
+    .select("id, name, subscription_plan")
+    .eq("id", profile.company_id)
+    .single()
+
+  console.log("[v0] Dashboard: Empresa obtida", { company, error: companyError })
+  companyData = company
 
   const companyId = profile.company_id
 
-  // Get dashboard stats filtered by company
-  let stats = {
-    totalCustomers: 0,
-    totalDebts: 0,
-    totalAmount: 0,
-    recoveredAmount: 0,
+  const { data: customers, error: customersError } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("company_id", companyId)
+
+  console.log("[v0] Dashboard: Clientes obtidos", { count: customers?.length, error: customersError })
+
+  const { data: debts, error: debtsError } = await supabase
+    .from("debts")
+    .select("amount, status")
+    .eq("company_id", companyId)
+
+  console.log("[v0] Dashboard: Dívidas obtidas", { count: debts?.length, error: debtsError })
+
+  const stats = {
+    totalCustomers: customers?.length || 0,
+    totalDebts: debts?.length || 0,
+    totalAmount: debts?.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0) || 0,
+    recoveredAmount:
+      debts?.filter((d) => d.status === "paid").reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0) || 0,
     recoveryRate: 0,
-    pendingActions: 0,
+    pendingActions: debts?.filter((d) => d.status === "pending" || d.status === "in_collection").length || 0,
   }
 
-  console.log("[v0] Dashboard: Buscando estatísticas para company_id:", companyId)
-
-  if (companyId) {
-    // Get real stats from database filtered by company
-    const { data: customers, error: customersError } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("company_id", companyId)
-
-    console.log("[v0] Dashboard: Clientes obtidos", { count: customers?.length, error: customersError })
-
-    const { data: debts, error: debtsError } = await supabase
-      .from("debts")
-      .select("amount, status")
-      .eq("company_id", companyId)
-
-    console.log("[v0] Dashboard: Dívidas obtidas", { count: debts?.length, error: debtsError })
-
-    stats.totalCustomers = customers?.length || 0
-    stats.totalDebts = debts?.length || 0
-    stats.totalAmount = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
-    stats.recoveredAmount =
-      debts?.filter((d) => d.status === "paid").reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
-    stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
-    stats.pendingActions = debts?.filter((d) => d.status === "overdue").length || 0
-  } else {
-    console.log("[v0] Dashboard: Usando dados mock (sem company_id)")
-    // Mock data for users without company assignment
-    stats = {
-      totalCustomers: 1247,
-      totalDebts: 3456,
-      totalAmount: 2847392.5,
-      recoveredAmount: 1234567.89,
-      recoveryRate: 43.4,
-      pendingActions: 89,
-    }
-  }
+  stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
 
   console.log("[v0] Dashboard: Estatísticas finais", stats)
 

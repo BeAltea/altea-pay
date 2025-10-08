@@ -57,15 +57,25 @@ export default function AgreementsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [activeTab, setActiveTab] = useState<"agreements" | "payments">("agreements")
-  const { user, companyId } = useAuth()
+  const { profile, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
 
   useEffect(() => {
-    if (companyId) {
+    if (authLoading) return
+
+    if (profile?.company_id) {
       fetchData()
+    } else {
+      console.log("[v0] Agreements - No company_id, skipping fetch")
+      setLoading(false)
+      toast({
+        title: "Aviso",
+        description: "Empresa não identificada. Entre em contato com o suporte.",
+        variant: "destructive",
+      })
     }
-  }, [companyId, activeTab])
+  }, [profile?.company_id, activeTab, authLoading])
 
   async function fetchData() {
     setLoading(true)
@@ -76,6 +86,7 @@ export default function AgreementsPage() {
         await fetchPayments()
       }
     } catch (error: any) {
+      console.error("[v0] Agreements - Error fetching data:", error)
       toast({
         title: "Erro ao carregar dados",
         description: error.message,
@@ -87,12 +98,12 @@ export default function AgreementsPage() {
   }
 
   async function fetchAgreements() {
-    if (!companyId) {
+    if (!profile?.company_id) {
       console.log("[v0] No company_id, skipping fetch")
       return
     }
 
-    console.log("[v0] Fetching agreements for company:", companyId)
+    console.log("[v0] Fetching agreements for company:", profile.company_id)
 
     const { data, error } = await supabase
       .from("agreements")
@@ -101,7 +112,7 @@ export default function AgreementsPage() {
         customer:customers(name, document),
         debt:debts(description, due_date)
       `)
-      .eq("company_id", companyId)
+      .eq("company_id", profile.company_id)
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -114,12 +125,12 @@ export default function AgreementsPage() {
   }
 
   async function fetchPayments() {
-    if (!companyId) {
+    if (!profile?.company_id) {
       console.log("[v0] No company_id, skipping fetch")
       return
     }
 
-    console.log("[v0] Fetching payments for company:", companyId)
+    console.log("[v0] Fetching payments for company:", profile.company_id)
 
     const { data, error } = await supabase
       .from("payments")
@@ -128,7 +139,7 @@ export default function AgreementsPage() {
         customer:customers(name, document),
         debt:debts(description)
       `)
-      .eq("company_id", companyId)
+      .eq("company_id", profile.company_id)
       .order("payment_date", { ascending: false })
 
     if (error) {

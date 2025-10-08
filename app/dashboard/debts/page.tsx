@@ -102,7 +102,14 @@ export default function DebtsPage() {
 
   useEffect(() => {
     const fetchCustomers = async () => {
-      if (!profile?.company_id) return
+      if (authLoading) return
+
+      if (!profile?.company_id) {
+        console.log("[v0] Debts - No company_id, skipping customer fetch")
+        return
+      }
+
+      console.log("[v0] Debts - Fetching customers for company:", profile.company_id)
 
       const { data, error } = await supabase
         .from("customers")
@@ -111,19 +118,25 @@ export default function DebtsPage() {
         .order("name")
 
       if (!error && data) {
+        console.log("[v0] Debts - Customers loaded:", data.length)
         setCustomers(data)
+      } else {
+        console.error("[v0] Debts - Error loading customers:", error)
       }
     }
 
     fetchCustomers()
-  }, [profile?.company_id])
+  }, [profile?.company_id, authLoading])
 
   useEffect(() => {
-    fetchDebts()
-  }, [profile?.company_id])
+    if (!authLoading) {
+      fetchDebts()
+    }
+  }, [profile?.company_id, authLoading])
 
   const fetchDebts = async () => {
     if (!profile?.company_id) {
+      console.log("[v0] Debts - No company_id, skipping fetch")
       setLoading(false)
       return
     }
