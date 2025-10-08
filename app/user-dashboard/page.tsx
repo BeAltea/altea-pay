@@ -87,7 +87,6 @@ export default async function UserDashboardPage() {
 
       if (profileError) {
         console.error("[v0] UserDashboard - Error fetching profile:", profileError)
-        // Fallback to user email if profile not found
         profile = {
           full_name: user.email?.split("@")[0] || "Usuário",
           email: user.email,
@@ -104,17 +103,41 @@ export default async function UserDashboardPage() {
       }
     }
 
-    console.log("[v0] UserDashboard - Using centralized mock data")
+    console.log("[v0] UserDashboard - Fetching real debts for user:", user.id)
 
-    const debts = MOCK_DEBTS
-    const payments = MOCK_PAYMENTS
-    const agreements = MOCK_AGREEMENTS
+    const { data: realDebts, error: debtsError } = await supabase
+      .from("debts")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("due_date", { ascending: false })
 
-    console.log("[v0] UserDashboard - Data loaded successfully")
-    console.log("[v0] UserDashboard - Profile:", profile)
-    console.log("[v0] UserDashboard - Debts count:", debts?.length || 0)
-    console.log("[v0] UserDashboard - Payments count:", payments?.length || 0)
-    console.log("[v0] UserDashboard - Agreements count:", agreements?.length || 0)
+    console.log("[v0] UserDashboard - Real debts fetched:", realDebts?.length || 0, "Error:", debtsError)
+
+    const { data: realPayments, error: paymentsError } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+
+    console.log("[v0] UserDashboard - Real payments fetched:", realPayments?.length || 0, "Error:", paymentsError)
+
+    const { data: realAgreements, error: agreementsError } = await supabase
+      .from("agreements")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+
+    console.log("[v0] UserDashboard - Real agreements fetched:", realAgreements?.length || 0, "Error:", agreementsError)
+
+    const debts = realDebts && realDebts.length > 0 ? realDebts : MOCK_DEBTS
+    const payments = realPayments && realPayments.length > 0 ? realPayments : MOCK_PAYMENTS
+    const agreements = realAgreements && realAgreements.length > 0 ? realAgreements : MOCK_AGREEMENTS
+
+    console.log("[v0] UserDashboard - Using data:", {
+      debtsSource: realDebts && realDebts.length > 0 ? "REAL" : "MOCK",
+      paymentsSource: realPayments && realPayments.length > 0 ? "REAL" : "MOCK",
+      agreementsSource: realAgreements && realAgreements.length > 0 ? "REAL" : "MOCK",
+    })
 
     const totalDebts = debts.length
     const openDebts = getOpenDebts(debts)

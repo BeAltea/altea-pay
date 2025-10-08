@@ -38,55 +38,54 @@ export default async function SuperAdminDashboardPage() {
   } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Get companies with stats (mock data for now)
-  const companiesStats: CompanyStats[] = [
-    {
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "Enel Distribuição São Paulo",
-      totalCustomers: 1247,
-      totalDebts: 3456,
-      totalAmount: 2847392.5,
-      recoveredAmount: 1234567.89,
-      recoveryRate: 43.4,
-      overdueDebts: 234,
-      admins: 3,
-    },
-    {
-      id: "22222222-2222-2222-2222-222222222222",
-      name: "Sabesp - Companhia de Saneamento",
-      totalCustomers: 892,
-      totalDebts: 2134,
-      totalAmount: 1654321.75,
-      recoveredAmount: 876543.21,
-      recoveryRate: 53.0,
-      overdueDebts: 156,
-      admins: 2,
-    },
-    {
-      id: "33333333-3333-3333-3333-333333333333",
-      name: "CPFL Energia",
-      totalCustomers: 654,
-      totalDebts: 1789,
-      totalAmount: 1234567.89,
-      recoveredAmount: 654321.98,
-      recoveryRate: 53.0,
-      overdueDebts: 98,
-      admins: 2,
-    },
-    {
-      id: "44444444-4444-4444-4444-444444444444",
-      name: "Cemig Distribuição",
-      totalCustomers: 543,
-      totalDebts: 1456,
-      totalAmount: 987654.32,
-      recoveredAmount: 543210.87,
-      recoveryRate: 55.0,
-      overdueDebts: 87,
-      admins: 2,
-    },
-  ]
+  const { data: companies } = await supabase.from("companies").select("id, name").order("name")
 
-  // Calculate totals
+  // Buscar estatísticas reais para cada empresa
+  const companiesStats: CompanyStats[] = []
+
+  if (companies) {
+    for (const company of companies) {
+      // Buscar clientes da empresa
+      const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
+
+      // Buscar dívidas da empresa
+      const { data: debts } = await supabase
+        .from("debts")
+        .select("amount, status, due_date")
+        .eq("company_id", company.id)
+
+      // Buscar admins da empresa
+      const { data: admins } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("company_id", company.id)
+        .eq("role", "admin")
+
+      const totalAmount = debts?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
+      const recoveredAmount =
+        debts?.filter((d) => d.status === "paid").reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
+      const overdueDebts =
+        debts?.filter((d) => {
+          if (d.status === "paid") return false
+          const dueDate = new Date(d.due_date)
+          return dueDate < new Date()
+        }).length || 0
+
+      companiesStats.push({
+        id: company.id,
+        name: company.name,
+        totalCustomers: customers?.length || 0,
+        totalDebts: debts?.length || 0,
+        totalAmount,
+        recoveredAmount,
+        recoveryRate: totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0,
+        overdueDebts,
+        admins: admins?.length || 0,
+      })
+    }
+  }
+
+  // Calcular totais globais
   const totalStats = {
     totalCompanies: companiesStats.length,
     totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
@@ -97,43 +96,26 @@ export default async function SuperAdminDashboardPage() {
     totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
   }
 
-  const overallRecoveryRate = (totalStats.totalRecovered / totalStats.totalAmount) * 100
+  const overallRecoveryRate =
+    totalStats.totalAmount > 0 ? (totalStats.totalRecovered / totalStats.totalAmount) * 100 : 0
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: "company_added",
-      description: "Nova empresa CPFL Energia adicionada ao sistema",
-      company: "CPFL Energia",
-      time: "2 horas atrás",
-      status: "success",
-    },
-    {
-      id: 2,
+  // Atividade recente real (últimas ações do sistema)
+  const { data: recentPayments } = await supabase
+    .from("payments")
+    .select("id, amount, created_at, debt_id, debts(company_id, companies(name))")
+    .order("created_at", { ascending: false })
+    .limit(4)
+
+  const recentActivity =
+    recentPayments?.map((payment, index) => ({
+      id: payment.id,
       type: "payment",
-      description: "Pagamento de R$ 15.250,00 recebido na Enel",
-      company: "Enel Distribuição",
-      amount: 15250.0,
-      time: "4 horas atrás",
+      description: `Pagamento de R$ ${Number(payment.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recebido`,
+      company: payment.debts?.companies?.name || "Empresa",
+      amount: Number(payment.amount),
+      time: new Date(payment.created_at).toLocaleDateString("pt-BR"),
       status: "success",
-    },
-    {
-      id: 3,
-      type: "admin_added",
-      description: "Novo administrador adicionado na Sabesp",
-      company: "Sabesp",
-      time: "1 dia atrás",
-      status: "info",
-    },
-    {
-      id: 4,
-      type: "alert",
-      description: "Alto número de inadimplentes na Cemig (87 casos)",
-      company: "Cemig Distribuição",
-      time: "2 dias atrás",
-      status: "warning",
-    },
-  ]
+    })) || []
 
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
@@ -170,7 +152,7 @@ export default async function SuperAdminDashboardPage() {
             <p className="text-xs text-muted-foreground">
               <span className="text-green-600 flex items-center">
                 <TrendingUp className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                +1 nova este mês
+                Clientes ativos
               </span>
             </p>
           </CardContent>

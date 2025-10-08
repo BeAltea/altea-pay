@@ -28,6 +28,7 @@ import {
   LogOut,
   User,
   ChevronDown,
+  FileCheck,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -46,6 +47,11 @@ const navigation = [
     name: "Dívidas",
     href: "/dashboard/debts",
     icon: CreditCard,
+  },
+  {
+    name: "Acordos",
+    href: "/dashboard/agreements",
+    icon: FileCheck,
   },
   {
     name: "Importar Dados",

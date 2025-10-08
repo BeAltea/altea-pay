@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -69,77 +71,78 @@ export default function DebtsPage() {
   const [isClassifying, setIsClassifying] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
   const [isAddDebtOpen, setIsAddDebtOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
+  const { user, companyId } = useAuth()
+  const supabase = createClient()
+
   useEffect(() => {
-    const mockDebts: Debt[] = [
-      {
-        id: "1",
-        customerName: "João Silva",
-        customerEmail: "joao@email.com",
-        customerDocument: "123.456.789-00",
-        originalAmount: 1250.0,
-        currentAmount: 1375.5,
-        dueDate: "2024-10-15",
-        daysOverdue: 95,
-        contractNumber: "CT-2024-001",
-        description: "Financiamento veículo",
-        status: "in_collection",
-        classification: "critical",
-        lastAction: "Email enviado",
-        nextAction: "Ligação telefônica",
-      },
-      {
-        id: "2",
-        customerName: "Maria Santos",
-        customerEmail: "maria@email.com",
-        customerDocument: "987.654.321-00",
-        originalAmount: 890.5,
-        currentAmount: 945.8,
-        dueDate: "2024-11-20",
-        daysOverdue: 60,
-        contractNumber: "CT-2024-002",
-        description: "Cartão de crédito",
-        status: "pending",
-        classification: "high",
-        lastAction: "SMS enviado",
-        nextAction: "Email de cobrança",
-      },
-      {
-        id: "3",
-        customerName: "Pedro Costa",
-        customerEmail: "pedro@email.com",
-        customerDocument: "456.789.123-00",
-        originalAmount: 2100.0,
-        currentAmount: 2205.0,
-        dueDate: "2024-12-01",
-        daysOverdue: 45,
-        contractNumber: "CT-2024-003",
-        description: "Empréstimo pessoal",
-        status: "in_collection",
-        classification: "medium",
-        lastAction: "WhatsApp enviado",
-        nextAction: "Email de cobrança",
-      },
-      {
-        id: "4",
-        customerName: "Ana Oliveira",
-        customerEmail: "ana@email.com",
-        customerDocument: "789.123.456-00",
-        originalAmount: 450.0,
-        currentAmount: 467.25,
-        dueDate: "2024-12-20",
-        daysOverdue: 25,
-        contractNumber: "CT-2024-004",
-        description: "Financiamento móveis",
-        status: "pending",
-        classification: "low",
-        nextAction: "Email de lembrete",
-      },
-    ]
-    setDebts(mockDebts)
-    setFilteredDebts(mockDebts)
-  }, [])
+    fetchDebts()
+  }, [companyId])
+
+  const fetchDebts = async () => {
+    if (!companyId) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      const { data: debtsData, error } = await supabase
+        .from("debts")
+        .select(`
+          id,
+          amount,
+          due_date,
+          status,
+          classification,
+          description,
+          customer_id,
+          customers (
+            name,
+            email,
+            document
+          )
+        `)
+        .eq("company_id", companyId)
+        .order("due_date", { ascending: false })
+
+      if (error) throw error
+
+      const formattedDebts: Debt[] =
+        debtsData?.map((debt) => {
+          const dueDate = new Date(debt.due_date)
+          const today = new Date()
+          const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          return {
+            id: debt.id,
+            customerName: debt.customers?.name || "Cliente",
+            customerEmail: debt.customers?.email || "",
+            customerDocument: debt.customers?.document || "",
+            originalAmount: Number(debt.amount),
+            currentAmount: Number(debt.amount),
+            dueDate: debt.due_date,
+            daysOverdue: daysOverdue > 0 ? daysOverdue : 0,
+            description: debt.description || "",
+            status: debt.status as Debt["status"],
+            classification: debt.classification as Debt["classification"],
+          }
+        }) || []
+
+      setDebts(formattedDebts)
+      setFilteredDebts(formattedDebts)
+    } catch (error) {
+      console.error("Error fetching debts:", error)
+      toast({
+        title: "Erro ao carregar dívidas",
+        description: "Não foi possível carregar as dívidas.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     let filtered = debts
@@ -221,12 +224,12 @@ export default function DebtsPage() {
         break
       case "email":
         toast({
-          title: "Email enviado",
+          title: "Cobrança enviada por email",
           description: `Email de cobrança enviado para ${debt.customerEmail}`,
         })
         setDebts((prev) =>
           prev.map((d) =>
-            d.id === debtId ? { ...d, lastAction: "Email enviado", nextAction: "Aguardar resposta" } : d,
+            d.id === debtId ? { ...d, lastAction: "Email de cobrança enviado", nextAction: "Aguardar resposta" } : d,
           ),
         )
         break
@@ -243,12 +246,23 @@ export default function DebtsPage() {
         break
       case "whatsapp":
         toast({
-          title: "WhatsApp enviado",
-          description: `Mensagem WhatsApp enviada para ${debt.customerName}`,
+          title: "Cobrança enviada por WhatsApp",
+          description: `Mensagem de cobrança enviada para ${debt.customerName}`,
         })
         setDebts((prev) =>
           prev.map((d) =>
-            d.id === debtId ? { ...d, lastAction: "WhatsApp enviado", nextAction: "Aguardar resposta" } : d,
+            d.id === debtId ? { ...d, lastAction: "WhatsApp de cobrança enviado", nextAction: "Aguardar resposta" } : d,
+          ),
+        )
+        break
+      case "sms":
+        toast({
+          title: "Cobrança enviada por SMS",
+          description: `SMS de cobrança enviado para ${debt.customerName}`,
+        })
+        setDebts((prev) =>
+          prev.map((d) =>
+            d.id === debtId ? { ...d, lastAction: "SMS de cobrança enviado", nextAction: "Aguardar resposta" } : d,
           ),
         )
         break
@@ -387,17 +401,24 @@ export default function DebtsPage() {
           <Eye className="mr-2 h-4 w-4" />
           Ver detalhes
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar Cobrança Manual</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => handleAction("email", debt.id)}>
           <Mail className="mr-2 h-4 w-4" />
-          Enviar email
+          Enviar por Email
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction("call", debt.id)}>
+        <DropdownMenuItem onClick={() => handleAction("sms", debt.id)}>
           <Phone className="mr-2 h-4 w-4" />
-          Registrar ligação
+          Enviar por SMS
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleAction("whatsapp", debt.id)}>
           <MessageSquare className="mr-2 h-4 w-4" />
-          Enviar WhatsApp
+          Enviar por WhatsApp
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => handleAction("call", debt.id)}>
+          <Phone className="mr-2 h-4 w-4" />
+          Registrar ligação
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -405,199 +426,209 @@ export default function DebtsPage() {
 
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-full overflow-hidden">
-      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Gestão de Dívidas</h1>
-          <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
-            Visualize, classifique e gerencie todas as dívidas em aberto
-          </p>
+      {loading && (
+        <div className="flex items-center justify-center">
+          <p className="text-lg font-medium text-gray-900 dark:text-white">Carregando dívidas...</p>
         </div>
-        <div className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3">
-          <Dialog open={isAddDebtOpen} onOpenChange={setIsAddDebtOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full md:w-auto">
-                <Plus className="mr-2 h-4 w-4" />
-                Adicionar Dívida
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Adicionar Nova Dívida</DialogTitle>
-                <DialogDescription>Preencha os dados da nova dívida para adicionar ao sistema.</DialogDescription>
-              </DialogHeader>
-              <form action={handleAddDebt}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="customerName">Nome do Cliente</Label>
-                    <Input id="customerName" name="customerName" required />
+      )}
+
+      {!loading && (
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Gestão de Dívidas</h1>
+            <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
+              Visualize, classifique e gerencie todas as dívidas em aberto
+            </p>
+          </div>
+          <div className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3">
+            <Dialog open={isAddDebtOpen} onOpenChange={setIsAddDebtOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full md:w-auto">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar Dívida
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Adicionar Nova Dívida</DialogTitle>
+                  <DialogDescription>Preencha os dados da nova dívida para adicionar ao sistema.</DialogDescription>
+                </DialogHeader>
+                <form action={handleAddDebt}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="customerName">Nome do Cliente</Label>
+                      <Input id="customerName" name="customerName" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="customerEmail">Email</Label>
+                      <Input id="customerEmail" name="customerEmail" type="email" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="customerDocument">CPF/CNPJ</Label>
+                      <Input id="customerDocument" name="customerDocument" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contractNumber">Número do Contrato</Label>
+                      <Input id="contractNumber" name="contractNumber" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="originalAmount">Valor Original</Label>
+                      <Input id="originalAmount" name="originalAmount" type="number" step="0.01" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="currentAmount">Valor Atual</Label>
+                      <Input id="currentAmount" name="currentAmount" type="number" step="0.01" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dueDate">Data de Vencimento</Label>
+                      <Input id="dueDate" name="dueDate" type="date" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Status</Label>
+                      <Select name="status" defaultValue="pending">
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pendente</SelectItem>
+                          <SelectItem value="in_collection">Em Cobrança</SelectItem>
+                          <SelectItem value="paid">Pago</SelectItem>
+                          <SelectItem value="written_off">Baixado</SelectItem>
+                          <SelectItem value="in_agreement">Acordo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="classification">Classificação</Label>
+                      <Select name="classification" defaultValue="low">
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Baixo</SelectItem>
+                          <SelectItem value="medium">Médio</SelectItem>
+                          <SelectItem value="high">Alto</SelectItem>
+                          <SelectItem value="critical">Crítico</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1 md:col-span-2 space-y-2">
+                      <Label htmlFor="description">Descrição</Label>
+                      <Textarea id="description" name="description" />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="customerEmail">Email</Label>
-                    <Input id="customerEmail" name="customerEmail" type="email" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="customerDocument">CPF/CNPJ</Label>
-                    <Input id="customerDocument" name="customerDocument" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contractNumber">Número do Contrato</Label>
-                    <Input id="contractNumber" name="contractNumber" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="originalAmount">Valor Original</Label>
-                    <Input id="originalAmount" name="originalAmount" type="number" step="0.01" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="currentAmount">Valor Atual</Label>
-                    <Input id="currentAmount" name="currentAmount" type="number" step="0.01" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dueDate">Data de Vencimento</Label>
-                    <Input id="dueDate" name="dueDate" type="date" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select name="status" defaultValue="pending">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pendente</SelectItem>
-                        <SelectItem value="in_collection">Em Cobrança</SelectItem>
-                        <SelectItem value="paid">Pago</SelectItem>
-                        <SelectItem value="written_off">Baixado</SelectItem>
-                        <SelectItem value="in_agreement">Acordo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="classification">Classificação</Label>
-                    <Select name="classification" defaultValue="low">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Baixo</SelectItem>
-                        <SelectItem value="medium">Médio</SelectItem>
-                        <SelectItem value="high">Alto</SelectItem>
-                        <SelectItem value="critical">Crítico</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-1 md:col-span-2 space-y-2">
-                    <Label htmlFor="description">Descrição</Label>
-                    <Textarea id="description" name="description" />
-                  </div>
+                  <DialogFooter className="flex-col space-y-2 md:flex-row md:space-y-0">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAddDebtOpen(false)}
+                      className="w-full md:w-auto"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" className="w-full md:w-auto">
+                      Adicionar Dívida
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Button
+              onClick={handleClassifyAll}
+              disabled={isClassifying}
+              variant="outline"
+              className="w-full md:w-auto bg-transparent"
+            >
+              {isClassifying ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Classificando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reclassificar Todas
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+          <Card>
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center space-x-2">
+                <div className="bg-blue-100 dark:bg-blue-900/20 p-2 rounded-lg">
+                  <Clock className="h-3 w-3 md:h-4 md:w-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <DialogFooter className="flex-col space-y-2 md:flex-row md:space-y-0">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddDebtOpen(false)}
-                    className="w-full md:w-auto"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" className="w-full md:w-auto">
-                    Adicionar Dívida
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                <div>
+                  <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Total</p>
+                  <p className="text-lg md:text-2xl font-bold">{stats.total}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <Button
-            onClick={handleClassifyAll}
-            disabled={isClassifying}
-            variant="outline"
-            className="w-full md:w-auto bg-transparent"
-          >
-            {isClassifying ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                Classificando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Reclassificar Todas
-              </>
-            )}
-          </Button>
+          <Card>
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center space-x-2">
+                <div className="bg-red-100 dark:bg-red-900/20 p-2 rounded-lg">
+                  <AlertTriangle className="h-3 w-3 md:h-4 md:w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Críticas</p>
+                  <p className="text-lg md:text-2xl font-bold text-red-600 dark:text-red-400">{stats.critical}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center space-x-2">
+                <div className="bg-orange-100 dark:bg-orange-900/20 p-2 rounded-lg">
+                  <AlertTriangle className="h-3 w-3 md:h-4 md:w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Altas</p>
+                  <p className="text-lg md:text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.high}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center space-x-2">
+                <div className="bg-yellow-100 dark:bg-yellow-900/20 p-2 rounded-lg">
+                  <Clock className="h-3 w-3 md:h-4 md:w-4 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                  <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Médias</p>
+                  <p className="text-lg md:text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.medium}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="col-span-2 md:col-span-1">
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center space-x-2">
+                <div className="bg-green-100 dark:bg-green-900/20 p-2 rounded-lg">
+                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Baixas</p>
+                  <p className="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">{stats.low}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-blue-100 dark:bg-blue-900/20 p-2 rounded-lg">
-                <Clock className="h-3 w-3 md:h-4 md:w-4 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Total</p>
-                <p className="text-lg md:text-2xl font-bold">{stats.total}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-red-100 dark:bg-red-900/20 p-2 rounded-lg">
-                <AlertTriangle className="h-3 w-3 md:h-4 md:w-4 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Críticas</p>
-                <p className="text-lg md:text-2xl font-bold text-red-600 dark:text-red-400">{stats.critical}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-orange-100 dark:bg-orange-900/20 p-2 rounded-lg">
-                <AlertTriangle className="h-3 w-3 md:h-4 md:w-4 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Altas</p>
-                <p className="text-lg md:text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.high}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-yellow-100 dark:bg-yellow-900/20 p-2 rounded-lg">
-                <Clock className="h-3 w-3 md:h-4 md:w-4 text-yellow-600 dark:text-yellow-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Médias</p>
-                <p className="text-lg md:text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.medium}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-2 md:col-span-1">
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center space-x-2">
-              <div className="bg-green-100 dark:bg-green-900/20 p-2 rounded-lg">
-                <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Baixas</p>
-                <p className="text-lg md:text-2xl font-bold text-green-600 dark:text-green-400">{stats.low}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
 
       {isClassifying && (
         <Alert>
@@ -608,74 +639,76 @@ export default function DebtsPage() {
         </Alert>
       )}
 
-      <ResponsiveTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
-        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
-          <div className="flex flex-col space-y-3 md:flex-row md:items-center md:space-y-0 md:space-x-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Buscar dívidas..."
-                className="pl-10 w-full md:w-64"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      {!loading && (
+        <ResponsiveTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
+          <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+            <div className="flex flex-col space-y-3 md:flex-row md:items-center md:space-y-0 md:space-x-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar dívidas..."
+                  className="pl-10 w-full md:w-64"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="in_collection">Em Cobrança</SelectItem>
+                  <SelectItem value="paid">Pago</SelectItem>
+                  <SelectItem value="written_off">Baixado</SelectItem>
+                  <SelectItem value="in_agreement">Acordo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="pending">Pendente</SelectItem>
-                <SelectItem value="in_collection">Em Cobrança</SelectItem>
-                <SelectItem value="paid">Pago</SelectItem>
-                <SelectItem value="written_off">Baixado</SelectItem>
-                <SelectItem value="in_agreement">Acordo</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-        </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg md:text-xl">
-              {activeTab === "all"
-                ? "Todas as Dívidas"
-                : activeTab === "critical"
-                  ? "Dívidas Críticas"
-                  : activeTab === "high"
-                    ? "Dívidas de Alto Risco"
-                    : activeTab === "medium"
-                      ? "Dívidas de Médio Risco"
-                      : "Dívidas de Baixo Risco"}
-            </CardTitle>
-            <CardDescription>
-              {activeTab === "all" &&
-                `Valor total em aberto: R$ ${stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-              {activeTab === "critical" && "Dívidas com mais de 90 dias de atraso que requerem ação imediata"}
-              {activeTab === "high" && "Dívidas entre 60-90 dias de atraso"}
-              {activeTab === "medium" && "Dívidas entre 30-60 dias de atraso"}
-              {activeTab === "low" && "Dívidas com menos de 30 dias de atraso"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 md:p-6 md:pt-0">
-            <ResponsiveTable
-              data={filteredDebts}
-              columns={tableColumns}
-              actions={renderActions}
-              emptyState={
-                <div className="text-center py-8">
-                  <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium text-gray-900 dark:text-white">Nenhuma dívida encontrada</p>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Não há dívidas que correspondam aos filtros selecionados
-                  </p>
-                </div>
-              }
-            />
-          </CardContent>
-        </Card>
-      </ResponsiveTabs>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg md:text-xl">
+                {activeTab === "all"
+                  ? "Todas as Dívidas"
+                  : activeTab === "critical"
+                    ? "Dívidas Críticas"
+                    : activeTab === "high"
+                      ? "Dívidas de Alto Risco"
+                      : activeTab === "medium"
+                        ? "Dívidas de Médio Risco"
+                        : "Dívidas de Baixo Risco"}
+              </CardTitle>
+              <CardDescription>
+                {activeTab === "all" &&
+                  `Valor total em aberto: R$ ${stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                {activeTab === "critical" && "Dívidas com mais de 90 dias de atraso que requerem ação imediata"}
+                {activeTab === "high" && "Dívidas entre 60-90 dias de atraso"}
+                {activeTab === "medium" && "Dívidas entre 30-60 dias de atraso"}
+                {activeTab === "low" && "Dívidas com menos de 30 dias de atraso"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 md:p-6 md:pt-0">
+              <ResponsiveTable
+                data={filteredDebts}
+                columns={tableColumns}
+                actions={renderActions}
+                emptyState={
+                  <div className="text-center py-8">
+                    <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium text-gray-900 dark:text-white">Nenhuma dívida encontrada</p>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Não há dívidas que correspondam aos filtros selecionados
+                    </p>
+                  </div>
+                }
+              />
+            </CardContent>
+          </Card>
+        </ResponsiveTabs>
+      )}
     </div>
   )
 }

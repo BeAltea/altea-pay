@@ -77,10 +77,29 @@ export default function UserDebtsPage() {
       } = await supabase.auth.getUser()
       if (!user) return
 
-      console.log("[v0] UserDebts - Using centralized mock data with", MOCK_DEBTS.length, "debts")
+      // Buscar dívidas reais do usuário
+      const { data: realDebts, error } = await supabase
+        .from("debts")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("due_date", { ascending: false })
 
-      setDebts(MOCK_DEBTS)
-      setFilteredDebts(MOCK_DEBTS)
+      if (error) {
+        console.error("Error fetching debts:", error)
+        // Fallback para mock se houver erro
+        setDebts(MOCK_DEBTS)
+        setFilteredDebts(MOCK_DEBTS)
+      } else if (realDebts && realDebts.length > 0) {
+        // Usar dados reais se existirem
+        console.log("[v0] UserDebts - Using REAL data:", realDebts.length, "debts")
+        setDebts(realDebts)
+        setFilteredDebts(realDebts)
+      } else {
+        // Usar mock apenas se não houver dados reais
+        console.log("[v0] UserDebts - No real data, using mock")
+        setDebts(MOCK_DEBTS)
+        setFilteredDebts(MOCK_DEBTS)
+      }
     } catch (error) {
       console.error("Error fetching debts:", error)
       toast({
@@ -88,6 +107,9 @@ export default function UserDebtsPage() {
         description: "Não foi possível carregar suas dívidas.",
         variant: "destructive",
       })
+      // Fallback para mock em caso de erro
+      setDebts(MOCK_DEBTS)
+      setFilteredDebts(MOCK_DEBTS)
     } finally {
       setLoading(false)
     }

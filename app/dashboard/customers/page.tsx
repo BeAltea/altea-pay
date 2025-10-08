@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { MoreHorizontal, Eye, Mail, Phone, MessageSquare, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/use-auth"
 
 interface Customer {
   id: string
@@ -56,81 +57,141 @@ export default function CustomersPage() {
 
   const supabase = createClient()
   const { toast } = useToast()
+  const { profile, loading: authLoading } = useAuth()
 
   useEffect(() => {
-    const mockCustomers: Customer[] = [
-      {
-        id: "1",
-        name: "João Silva",
-        email: "joao@email.com",
-        document: "123.456.789-00",
-        phone: "(11) 99999-9999",
-        totalDebts: 2,
-        totalAmount: 2625.5,
-        status: "overdue",
-        riskLevel: "critical",
-        lastContact: "2024-01-15",
-        registrationDate: "2023-06-15",
-      },
-      {
-        id: "2",
-        name: "Maria Santos",
-        email: "maria@email.com",
-        document: "987.654.321-00",
-        phone: "(11) 88888-8888",
-        totalDebts: 1,
-        totalAmount: 945.8,
-        status: "overdue",
-        riskLevel: "high",
-        lastContact: "2024-01-10",
-        registrationDate: "2023-08-20",
-      },
-      {
-        id: "3",
-        name: "Pedro Costa",
-        email: "pedro@email.com",
-        document: "456.789.123-00",
-        phone: "(11) 77777-7777",
-        totalDebts: 1,
-        totalAmount: 2205.0,
-        status: "overdue",
-        riskLevel: "medium",
-        lastContact: "2024-01-12",
-        registrationDate: "2023-09-10",
-      },
-      {
-        id: "4",
-        name: "Ana Oliveira",
-        email: "ana@email.com",
-        document: "789.123.456-00",
-        phone: "(11) 66666-6666",
-        totalDebts: 1,
-        totalAmount: 467.25,
-        status: "active",
-        riskLevel: "low",
-        lastContact: "2024-01-18",
-        registrationDate: "2023-11-05",
-      },
-      {
-        id: "5",
-        name: "Carlos Ferreira",
-        email: "carlos@email.com",
-        document: "321.654.987-00",
-        totalDebts: 0,
-        totalAmount: 0,
-        status: "active",
-        riskLevel: "low",
-        registrationDate: "2024-01-02",
-      },
-    ]
-    setCustomers(mockCustomers)
-    setFilteredCustomers(mockCustomers)
-  }, [])
+    const fetchCustomers = async () => {
+      if (authLoading) return
+
+      if (!profile?.company_id) {
+        console.log("[v0] Customers - No company_id, using mock data")
+        const mockCustomers: Customer[] = [
+          {
+            id: "1",
+            name: "João Silva",
+            email: "joao@email.com",
+            document: "123.456.789-00",
+            phone: "(11) 99999-9999",
+            totalDebts: 2,
+            totalAmount: 2625.5,
+            status: "overdue",
+            riskLevel: "critical",
+            lastContact: "2024-01-15",
+            registrationDate: "2023-06-15",
+          },
+          {
+            id: "2",
+            name: "Maria Santos",
+            email: "maria@email.com",
+            document: "987.654.321-00",
+            phone: "(11) 88888-8888",
+            totalDebts: 1,
+            totalAmount: 945.8,
+            status: "overdue",
+            riskLevel: "high",
+            lastContact: "2024-01-10",
+            registrationDate: "2023-08-20",
+          },
+          {
+            id: "3",
+            name: "Pedro Costa",
+            email: "pedro@email.com",
+            document: "456.789.123-00",
+            phone: "(11) 77777-7777",
+            totalDebts: 1,
+            totalAmount: 2205.0,
+            status: "overdue",
+            riskLevel: "medium",
+            lastContact: "2024-01-12",
+            registrationDate: "2023-09-10",
+          },
+          {
+            id: "4",
+            name: "Ana Oliveira",
+            email: "ana@email.com",
+            document: "789.123.456-00",
+            phone: "(11) 66666-6666",
+            totalDebts: 1,
+            totalAmount: 467.25,
+            status: "active",
+            riskLevel: "low",
+            lastContact: "2024-01-18",
+            registrationDate: "2023-11-05",
+          },
+          {
+            id: "5",
+            name: "Carlos Ferreira",
+            email: "carlos@email.com",
+            document: "321.654.987-00",
+            phone: "(11) 55555-5555",
+            totalDebts: 0,
+            totalAmount: 0,
+            status: "active",
+            riskLevel: "low",
+            registrationDate: "2024-01-02",
+          },
+        ]
+        setCustomers(mockCustomers)
+        setFilteredCustomers(mockCustomers)
+        return
+      }
+
+      console.log("[v0] Customers - Fetching real customers for company:", profile.company_id)
+
+      const { data: realCustomers, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("[v0] Customers - Error fetching customers:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar clientes",
+          variant: "destructive",
+        })
+        return
+      }
+
+      console.log("[v0] Customers - Real customers fetched:", realCustomers?.length || 0)
+
+      const { data: debts } = await supabase
+        .from("debts")
+        .select("customer_id, amount, status")
+        .eq("company_id", profile.company_id)
+
+      const customersWithDebts: Customer[] = (realCustomers || []).map((customer) => {
+        const customerDebts = debts?.filter((d) => d.customer_id === customer.id) || []
+        const totalAmount = customerDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+        const hasOverdue = customerDebts.some((d) => d.status === "pending")
+
+        return {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          document: customer.document,
+          phone: customer.phone,
+          totalDebts: customerDebts.length,
+          totalAmount,
+          status: hasOverdue ? "overdue" : "active",
+          riskLevel:
+            totalAmount > 5000 ? "critical" : totalAmount > 2000 ? "high" : totalAmount > 500 ? "medium" : "low",
+          lastContact: customer.updated_at?.split("T")[0],
+          registrationDate: customer.created_at?.split("T")[0],
+        }
+      })
+
+      setCustomers(customersWithDebts)
+      setFilteredCustomers(customersWithDebts)
+    }
+
+    fetchCustomers()
+  }, [authLoading, profile?.company_id])
 
   useEffect(() => {
     let filtered = customers
 
-    // Apply tab filter first
     if (activeTab !== "all") {
       if (activeTab === "active") {
         filtered = filtered.filter((customer) => customer.status === "active")
@@ -226,9 +287,9 @@ export default function CustomersPage() {
       phone: newCustomer.phone || undefined,
       totalDebts: 0,
       totalAmount: 0,
-      status: newCustomer.status, // Use selected status
-      riskLevel: newCustomer.riskLevel, // Use selected risk level
-      lastContact: newCustomer.lastContact || undefined, // Use last contact if provided
+      status: newCustomer.status,
+      riskLevel: newCustomer.riskLevel,
+      lastContact: newCustomer.lastContact || undefined,
       registrationDate: new Date().toISOString().split("T")[0],
     }
 
@@ -241,7 +302,7 @@ export default function CustomersPage() {
       status: "active",
       riskLevel: "low",
       lastContact: "",
-    }) // Reset all fields including new ones
+    })
     setIsNewCustomerOpen(false)
 
     toast({
@@ -254,7 +315,7 @@ export default function CustomersPage() {
     setSelectedCustomer(customer)
     setContactType(type)
     setIsContactDialogOpen(true)
-    setOpenActionMenus({}) // Close any open action menus
+    setOpenActionMenus({})
   }
 
   const handleSendContact = async () => {
@@ -296,7 +357,7 @@ export default function CustomersPage() {
       description: `Visualizando perfil de ${customer.name}`,
     })
     // Here you would navigate to customer profile page
-    setOpenActionMenus({}) // Close any open action menus
+    setOpenActionMenus({})
   }
 
   const toggleActionMenu = (customerId: string) => {

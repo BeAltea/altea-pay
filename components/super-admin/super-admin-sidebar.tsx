@@ -15,6 +15,7 @@ import {
   FileText,
   TrendingUp,
   Database,
+  Target,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -62,6 +63,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin/users",
       icon: Users,
       current: pathname.startsWith("/super-admin/users"),
+    },
+    {
+      name: "Réguas de Cobrança",
+      href: "/super-admin/collection-rules",
+      icon: Target,
+      current: pathname.startsWith("/super-admin/collection-rules"),
     },
     {
       name: "Relatórios Globais",

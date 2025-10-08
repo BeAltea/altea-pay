@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,93 +68,75 @@ export default function CollectionRulesPage() {
   const [selectedRule, setSelectedRule] = useState<CollectionRule | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  // Mock data
+  const { user, companyId, role } = useAuth()
+  const supabase = createClient()
+
+  const isReadOnly = role === "admin"
+
   useEffect(() => {
-    const mockRules: CollectionRule[] = [
-      {
-        id: "1",
-        name: "Régua Padrão",
-        description: "Fluxo padrão de cobrança para dívidas em geral",
-        isActive: true,
-        createdAt: "2025-01-10T10:00:00Z",
-        updatedAt: "2025-01-15T14:30:00Z",
-        steps: [
-          {
-            id: "1-1",
-            stepOrder: 1,
-            daysAfterDue: 3,
-            actionType: "email",
-            templateSubject: "Lembrete de Vencimento",
-            templateContent:
-              "Olá {nome}, sua fatura no valor de R$ {valor} venceu em {data_vencimento}. Por favor, regularize sua situação.",
-            isActive: true,
-          },
-          {
-            id: "1-2",
-            stepOrder: 2,
-            daysAfterDue: 7,
-            actionType: "sms",
-            templateContent: "Sua fatura de R$ {valor} está em atraso. Acesse nosso site para quitar.",
-            isActive: true,
-          },
-          {
-            id: "1-3",
-            stepOrder: 3,
-            daysAfterDue: 15,
-            actionType: "whatsapp",
-            templateContent:
-              "Olá {nome}! Notamos que sua fatura de R$ {valor} ainda não foi paga. Podemos ajudar com um acordo?",
-            isActive: true,
-          },
-          {
-            id: "1-4",
-            stepOrder: 4,
-            daysAfterDue: 30,
-            actionType: "call",
-            templateContent: "Script: Verificar situação do cliente e oferecer opções de pagamento",
-            isActive: true,
-          },
-        ],
-      },
-      {
-        id: "2",
-        name: "Régua Agressiva",
-        description: "Para dívidas de alto valor ou clientes com histórico ruim",
-        isActive: false,
-        createdAt: "2025-01-05T09:00:00Z",
-        updatedAt: "2025-01-12T16:45:00Z",
-        steps: [
-          {
-            id: "2-1",
-            stepOrder: 1,
-            daysAfterDue: 1,
-            actionType: "email",
-            templateSubject: "Fatura Vencida - Ação Imediata Necessária",
-            templateContent: "Sua fatura venceu ontem. Regularize imediatamente para evitar negativação.",
-            isActive: true,
-          },
-          {
-            id: "2-2",
-            stepOrder: 2,
-            daysAfterDue: 3,
-            actionType: "call",
-            templateContent: "Ligação imediata para cobrança",
-            isActive: true,
-          },
-          {
-            id: "2-3",
-            stepOrder: 3,
-            daysAfterDue: 7,
-            actionType: "letter",
-            templateContent: "Notificação formal de cobrança",
-            isActive: true,
-          },
-        ],
-      },
-    ]
-    setRules(mockRules)
-  }, [])
+    fetchRules()
+  }, [companyId])
+
+  const fetchRules = async () => {
+    if (!companyId) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      const { data: rulesData, error } = await supabase
+        .from("collection_rules")
+        .select(`
+          id,
+          name,
+          description,
+          is_active,
+          created_at,
+          updated_at,
+          collection_rule_steps (
+            id,
+            step_order,
+            days_after_due,
+            action_type,
+            template_subject,
+            template_content,
+            is_active
+          )
+        `)
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+
+      if (error) throw error
+
+      const formattedRules: CollectionRule[] =
+        rulesData?.map((rule) => ({
+          id: rule.id,
+          name: rule.name,
+          description: rule.description || "",
+          isActive: rule.is_active,
+          createdAt: rule.created_at,
+          updatedAt: rule.updated_at,
+          steps:
+            rule.collection_rule_steps?.map((step) => ({
+              id: step.id,
+              stepOrder: step.step_order,
+              daysAfterDue: step.days_after_due,
+              actionType: step.action_type as CollectionRuleStep["actionType"],
+              templateSubject: step.template_subject,
+              templateContent: step.template_content,
+              isActive: step.is_active,
+            })) || [],
+        })) || []
+
+      setRules(formattedRules)
+    } catch (error) {
+      console.error("Error fetching rules:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getActionIcon = (actionType: CollectionRuleStep["actionType"]) => {
     switch (actionType) {
@@ -210,24 +194,30 @@ export default function CollectionRulesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Réguas de Cobrança</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Configure fluxos automáticos de cobrança para diferentes cenários
+            {isReadOnly
+              ? "Visualize os fluxos automáticos de cobrança configurados para sua empresa"
+              : "Configure fluxos automáticos de cobrança para diferentes cenários"}
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Régua
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Criar Nova Régua de Cobrança</DialogTitle>
-              <DialogDescription>Configure um novo fluxo automático de cobrança com múltiplas etapas</DialogDescription>
-            </DialogHeader>
-            <CreateRuleForm onClose={() => setIsCreateDialogOpen(false)} />
-          </DialogContent>
-        </Dialog>
+        {!isReadOnly && (
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Nova Régua
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Criar Nova Régua de Cobrança</DialogTitle>
+                <DialogDescription>
+                  Configure um novo fluxo automático de cobrança com múltiplas etapas
+                </DialogDescription>
+              </DialogHeader>
+              <CreateRuleForm onClose={() => setIsCreateDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -338,27 +328,33 @@ export default function CollectionRulesPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedRule(rule)
-                                setIsEditDialogOpen(true)
-                              }}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDuplicateRule(rule)}>
-                              <Copy className="mr-2 h-4 w-4" />
-                              Duplicar
-                            </DropdownMenuItem>
+                            {!isReadOnly && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedRule(rule)
+                                  setIsEditDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            )}
+                            {!isReadOnly && (
+                              <DropdownMenuItem onClick={() => handleDuplicateRule(rule)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                Duplicar
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteRule(rule.id)}
-                              className="text-red-600 dark:text-red-400"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
+                            {!isReadOnly && (
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteRule(rule.id)}
+                                className="text-red-600 dark:text-red-400"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

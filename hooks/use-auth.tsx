@@ -13,6 +13,7 @@ interface Profile {
   phone: string | null
   company_name: string | null
   role: string | null
+  company_id: string | null
 }
 
 interface AuthContextType {
@@ -20,6 +21,9 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   signOut: () => Promise<void>
+  isSuperAdmin: boolean
+  isAdmin: boolean
+  isUser: boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,6 +31,9 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signOut: async () => {},
+  isSuperAdmin: false,
+  isAdmin: false,
+  isUser: false,
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -82,10 +89,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, phone, company_name, role, company_id")
+        .eq("id", userId)
+        .single()
 
       if (error) {
-        // Se o perfil não existe, não é necessariamente um erro crítico
         if (error.code === "PGRST116") {
           console.warn("Profile not found for user:", userId)
           return
@@ -122,7 +132,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ user, profile, loading, signOut }}>{children}</AuthContext.Provider>
+  const isSuperAdmin = profile?.role === "super_admin"
+  const isAdmin = profile?.role === "admin"
+  const isUser = profile?.role === "user"
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        signOut,
+        isSuperAdmin,
+        isAdmin,
+        isUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export const useAuth = () => {
