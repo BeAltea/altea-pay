@@ -545,7 +545,14 @@ export default function DebtsPage() {
   const renderActions = (debt: Debt) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0">
+        <Button
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          onClick={(e) => {
+            console.log("[v0] Dropdown trigger clicked for debt:", debt.id)
+            e.stopPropagation()
+          }}
+        >
           <span className="sr-only">Abrir menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
@@ -555,6 +562,7 @@ export default function DebtsPage() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] View details clicked")
             e.preventDefault()
             e.stopPropagation()
             handleAction("view", debt.id)
@@ -565,6 +573,7 @@ export default function DebtsPage() {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] Edit clicked")
             e.preventDefault()
             e.stopPropagation()
             handleAction("edit", debt.id)
@@ -575,6 +584,7 @@ export default function DebtsPage() {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] Delete clicked")
             e.preventDefault()
             e.stopPropagation()
             handleDeleteDebt(debt.id)
@@ -588,6 +598,7 @@ export default function DebtsPage() {
         <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar Cobrança Manual</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] Email clicked")
             e.preventDefault()
             e.stopPropagation()
             handleAction("email", debt.id)
@@ -598,6 +609,7 @@ export default function DebtsPage() {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] SMS clicked")
             e.preventDefault()
             e.stopPropagation()
             handleAction("sms", debt.id)
@@ -608,6 +620,7 @@ export default function DebtsPage() {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {
+            console.log("[v0] WhatsApp clicked")
             e.preventDefault()
             e.stopPropagation()
             handleAction("whatsapp", debt.id)
