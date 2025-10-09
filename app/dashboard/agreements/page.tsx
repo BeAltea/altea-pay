@@ -153,16 +153,18 @@ export default function AgreementsPage() {
 
   const filteredAgreements = agreements.filter((agreement) => {
     const matchesSearch =
-      agreement.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agreement.customer.document.includes(searchTerm)
+      agreement.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      agreement.customer?.document?.includes(searchTerm) ||
+      false
     const matchesStatus = statusFilter === "all" || agreement.status === statusFilter
     return matchesSearch && matchesStatus
   })
 
   const filteredPayments = payments.filter((payment) => {
     const matchesSearch =
-      payment.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.customer.document.includes(searchTerm)
+      payment.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      payment.customer?.document?.includes(searchTerm) ||
+      false
     const matchesStatus = statusFilter === "all" || payment.status === statusFilter
     return matchesSearch && matchesStatus
   })
@@ -298,7 +300,7 @@ export default function AgreementsPage() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{agreement.customer.name}</h3>
+                    <h3 className="font-semibold">{agreement.customer?.name || "Cliente não identificado"}</h3>
                     <Badge
                       variant={
                         agreement.status === "active"
@@ -316,7 +318,7 @@ export default function AgreementsPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    {agreement.customer.document} • {agreement.debt.description}
+                    {agreement.customer?.document || "N/A"} • {agreement.debt?.description || "Sem descrição"}
                   </p>
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
@@ -373,7 +375,7 @@ export default function AgreementsPage() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{payment.customer.name}</h3>
+                    <h3 className="font-semibold">{payment.customer?.name || "Cliente não identificado"}</h3>
                     <Badge
                       variant={
                         payment.status === "completed"
@@ -391,7 +393,7 @@ export default function AgreementsPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    {payment.customer.document} • {payment.debt.description}
+                    {payment.customer?.document || "N/A"} • {payment.debt?.description || "Sem descrição"}
                   </p>
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>

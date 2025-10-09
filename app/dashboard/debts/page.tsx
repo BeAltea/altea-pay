@@ -559,21 +559,42 @@ export default function DebtsPage() {
           <Edit className="mr-2 h-4 w-4" />
           Editar dívida
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleDeleteDebt(debt.id)} className="text-red-600">
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            handleDeleteDebt(debt.id)
+          }}
+          className="text-red-600"
+        >
           <Trash2 className="mr-2 h-4 w-4" />
           Excluir dívida
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar Cobrança Manual</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => handleAction("email", debt.id)}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            handleAction("email", debt.id)
+          }}
+        >
           <Mail className="mr-2 h-4 w-4" />
           Enviar por Email
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction("sms", debt.id)}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            handleAction("sms", debt.id)
+          }}
+        >
           <Phone className="mr-2 h-4 w-4" />
           Enviar por SMS
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction("whatsapp", debt.id)}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            handleAction("whatsapp", debt.id)
+          }}
+        >
           <MessageSquare className="mr-2 h-4 w-4" />
           Enviar por WhatsApp
         </DropdownMenuItem>
