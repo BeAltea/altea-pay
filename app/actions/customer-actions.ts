@@ -36,7 +36,7 @@ export async function createCustomer(params: CreateCustomerParams) {
       }
     }
 
-    const documentType = params.document.replace(/\D/g, "").length === 11 ? "cpf" : "cnpj"
+    const documentType = params.document.replace(/\D/g, "").length === 11 ? "CPF" : "CNPJ"
     console.log("[v0] createCustomer - Document type determined:", documentType)
 
     const customerData = {

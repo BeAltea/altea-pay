@@ -228,6 +228,7 @@ export default function CustomersPage() {
     // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newCustomer.email)) {
+      console.log("[v0] handleCreateCustomer - Invalid email format")
       toast({
         title: "Erro",
         description: "Email inválido",
@@ -236,16 +237,22 @@ export default function CustomersPage() {
       return
     }
 
-    // Validar CPF/CNPJ (apenas números)
     const documentNumbers = newCustomer.document.replace(/\D/g, "")
+    console.log("[v0] handleCreateCustomer - Document original:", newCustomer.document)
+    console.log("[v0] handleCreateCustomer - Document numbers only:", documentNumbers)
+    console.log("[v0] handleCreateCustomer - Document length:", documentNumbers.length)
+
     if (documentNumbers.length !== 11 && documentNumbers.length !== 14) {
+      console.log("[v0] handleCreateCustomer - Invalid document length")
       toast({
         title: "Erro",
-        description: "CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos",
+        description: `Documento inválido: ${documentNumbers.length} dígitos encontrados. CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos.`,
         variant: "destructive",
       })
       return
     }
+
+    console.log("[v0] handleCreateCustomer - Document validation passed")
 
     if (!profile?.company_id) {
       console.log("[v0] handleCreateCustomer - No company_id found")
