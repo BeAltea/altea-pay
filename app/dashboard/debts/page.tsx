@@ -86,6 +86,8 @@ export default function DebtsPage() {
   const [isClassifying, setIsClassifying] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
   const [isAddDebtOpen, setIsAddDebtOpen] = useState(false)
+  const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [newDebt, setNewDebt] = useState({
     customerId: "",
@@ -317,6 +319,12 @@ export default function DebtsPage() {
     const debt = debts.find((d) => d.id === debtId)
     if (!debt) return
 
+    if (action === "view") {
+      setSelectedDebt(debt)
+      setIsDetailsOpen(true)
+      return
+    }
+
     if (action === "edit") {
       handleEditDebt(debtId)
       return
@@ -372,12 +380,6 @@ export default function DebtsPage() {
 
     // Handle other actions
     switch (action) {
-      case "view":
-        toast({
-          title: "Visualizar dívida",
-          description: `Abrindo detalhes da dívida de ${debt.customerName}`,
-        })
-        break
       case "call":
         toast({
           title: "Ligação registrada",
@@ -929,6 +931,113 @@ export default function DebtsPage() {
           </Card>
         </ResponsiveTabs>
       )}
+
+      {/* Debt Details Dialog */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Dívida</DialogTitle>
+            <DialogDescription>Informações completas sobre a dívida selecionada</DialogDescription>
+          </DialogHeader>
+          {selectedDebt && (
+            <div className="space-y-6">
+              {/* Customer Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações do Cliente</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nome</p>
+                    <p className="font-medium">{selectedDebt.customerName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Documento</p>
+                    <p className="font-medium font-mono">{selectedDebt.customerDocument}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Email</p>
+                    <p className="font-medium">{selectedDebt.customerEmail}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Debt Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações da Dívida</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Original</p>
+                    <p className="font-medium text-lg">
+                      R$ {selectedDebt.originalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Atual</p>
+                    <p className="font-medium text-lg text-red-600">
+                      R$ {selectedDebt.currentAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Data de Vencimento</p>
+                    <p className="font-medium">{new Date(selectedDebt.dueDate).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Dias em Atraso</p>
+                    <p className="font-medium text-red-600">{selectedDebt.daysOverdue} dias</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <div className="mt-1">{getStatusBadge(selectedDebt.status)}</div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Classificação</p>
+                    <div className="mt-1">{getClassificationBadge(selectedDebt.classification)}</div>
+                  </div>
+                  {selectedDebt.description && (
+                    <div className="col-span-2">
+                      <p className="text-sm text-muted-foreground">Descrição</p>
+                      <p className="font-medium">{selectedDebt.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions History */}
+              {(selectedDebt.lastAction || selectedDebt.nextAction) && (
+                <div>
+                  <h3 className="font-semibold mb-3 text-lg">Histórico de Ações</h3>
+                  <div className="space-y-2">
+                    {selectedDebt.lastAction && (
+                      <div className="p-3 bg-muted rounded-lg">
+                        <p className="text-sm text-muted-foreground">Última Ação</p>
+                        <p className="font-medium">{selectedDebt.lastAction}</p>
+                      </div>
+                    )}
+                    {selectedDebt.nextAction && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <p className="text-sm text-muted-foreground">Próxima Ação</p>
+                        <p className="font-medium">{selectedDebt.nextAction}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+              Fechar
+            </Button>
+            <Button
+              onClick={() => {
+                setIsDetailsOpen(false)
+                if (selectedDebt) handleEditDebt(selectedDebt.id)
+              }}
+            >
+              Editar Dívida
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

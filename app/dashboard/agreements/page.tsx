@@ -10,6 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, Search, Download, Calendar, DollarSign } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 
 interface Agreement {
   id: string
@@ -57,6 +65,10 @@ export default function AgreementsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [activeTab, setActiveTab] = useState<"agreements" | "payments">("agreements")
+  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null)
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [isAgreementDetailsOpen, setIsAgreementDetailsOpen] = useState(false)
+  const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(false)
   const { profile, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
@@ -296,6 +308,208 @@ export default function AgreementsPage() {
         </Button>
       </div>
 
+      {/* Agreement Details Dialog */}
+      <Dialog open={isAgreementDetailsOpen} onOpenChange={setIsAgreementDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Acordo</DialogTitle>
+            <DialogDescription>Informações completas sobre o acordo de negociação</DialogDescription>
+          </DialogHeader>
+          {selectedAgreement && (
+            <div className="space-y-6">
+              {/* Customer Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações do Cliente</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nome</p>
+                    <p className="font-medium">{selectedAgreement.customer?.name || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Documento</p>
+                    <p className="font-medium font-mono">{selectedAgreement.customer?.document || "N/A"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Agreement Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações do Acordo</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Original</p>
+                    <p className="font-medium text-lg">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(Number(selectedAgreement.original_amount) || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Acordado</p>
+                    <p className="font-medium text-lg text-green-600">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(Number(selectedAgreement.agreed_amount) || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Desconto</p>
+                    <p className="font-medium text-green-600">
+                      {Number(selectedAgreement.discount_percentage || 0).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Economia</p>
+                    <p className="font-medium text-green-600">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(
+                        (Number(selectedAgreement.original_amount) || 0) -
+                          (Number(selectedAgreement.agreed_amount) || 0),
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Número de Parcelas</p>
+                    <p className="font-medium">{Number(selectedAgreement.installments) || 0}x</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor da Parcela</p>
+                    <p className="font-medium">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(Number(selectedAgreement.installment_amount) || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge
+                      variant={
+                        selectedAgreement.status === "active"
+                          ? "default"
+                          : selectedAgreement.status === "completed"
+                            ? "secondary"
+                            : "destructive"
+                      }
+                    >
+                      {selectedAgreement.status === "active"
+                        ? "Ativo"
+                        : selectedAgreement.status === "completed"
+                          ? "Concluído"
+                          : "Cancelado"}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Data de Criação</p>
+                    <p className="font-medium">{new Date(selectedAgreement.created_at).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  {selectedAgreement.debt?.description && (
+                    <div className="col-span-2">
+                      <p className="text-sm text-muted-foreground">Descrição da Dívida</p>
+                      <p className="font-medium">{selectedAgreement.debt.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAgreementDetailsOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Details Dialog */}
+      <Dialog open={isPaymentDetailsOpen} onOpenChange={setIsPaymentDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Pagamento</DialogTitle>
+            <DialogDescription>Informações completas sobre o pagamento recebido</DialogDescription>
+          </DialogHeader>
+          {selectedPayment && (
+            <div className="space-y-6">
+              {/* Customer Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações do Cliente</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nome</p>
+                    <p className="font-medium">{selectedPayment.customer?.name || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Documento</p>
+                    <p className="font-medium font-mono">{selectedPayment.customer?.document || "N/A"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-lg">Informações do Pagamento</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Pago</p>
+                    <p className="font-medium text-lg text-green-600">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(Number(selectedPayment.amount) || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Data do Pagamento</p>
+                    <p className="font-medium">{new Date(selectedPayment.payment_date).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Método de Pagamento</p>
+                    <p className="font-medium capitalize">{selectedPayment.payment_method}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge
+                      variant={
+                        selectedPayment.status === "completed"
+                          ? "default"
+                          : selectedPayment.status === "pending"
+                            ? "secondary"
+                            : "destructive"
+                      }
+                    >
+                      {selectedPayment.status === "completed"
+                        ? "Confirmado"
+                        : selectedPayment.status === "pending"
+                          ? "Pendente"
+                          : "Cancelado"}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Data de Registro</p>
+                    <p className="font-medium">{new Date(selectedPayment.created_at).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                  {selectedPayment.debt?.description && (
+                    <div className="col-span-2">
+                      <p className="text-sm text-muted-foreground">Descrição da Dívida</p>
+                      <p className="font-medium">{selectedPayment.debt.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDetailsOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Content */}
       {activeTab === "agreements" ? (
         <div className="space-y-4">
@@ -359,7 +573,14 @@ export default function AgreementsPage() {
                     </div>
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedAgreement(agreement)
+                    setIsAgreementDetailsOpen(true)
+                  }}
+                >
                   Ver Detalhes
                 </Button>
               </div>
@@ -410,16 +631,23 @@ export default function AgreementsPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Data do Pagamento</p>
+                      <p className="text-sm text-muted-foreground">Data do Pagamento</p>
                       <p className="font-medium">{new Date(payment.payment_date).toLocaleDateString("pt-BR")}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Método</p>
+                      <p className="text-sm text-muted-foreground">Método</p>
                       <p className="font-medium capitalize">{payment.payment_method}</p>
                     </div>
                   </div>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedPayment(payment)
+                    setIsPaymentDetailsOpen(true)
+                  }}
+                >
                   Ver Comprovante
                 </Button>
               </div>
