@@ -23,13 +23,13 @@ export interface SendEmailResult {
  * @returns Result object with success status and message ID or error
  *
  * @example
- * ```typescript
+ * \`\`\`typescript
  * const result = await sendEmail({
  *   to: 'customer@example.com',
  *   subject: 'Cobrança Pendente',
  *   html: '<p>Você tem uma dívida pendente...</p>'
  * })
- * ```
+ * \`\`\`
  */
 export async function sendEmail({
   to,
@@ -38,10 +38,18 @@ export async function sendEmail({
   from = "Altea Pay <noreply@alteapay.com>",
 }: SendEmailParams): Promise<SendEmailResult> {
   try {
+    console.log("[Resend] Preparing to send email")
+    console.log("[Resend] To:", to)
+    console.log("[Resend] Subject:", subject)
+    console.log("[Resend] From:", from)
+
     // Validate environment variable
     if (!process.env.RESEND_API_KEY) {
+      console.error("[Resend] RESEND_API_KEY not configured")
       throw new Error("RESEND_API_KEY not configured")
     }
+
+    console.log("[Resend] API Key configured, calling Resend API...")
 
     // Send email via Resend
     const { data, error } = await resend.emails.send({
@@ -51,21 +59,26 @@ export async function sendEmail({
       html,
     })
 
+    console.log("[Resend] API call completed")
+    console.log("[Resend] Response data:", data)
+    console.log("[Resend] Response error:", error)
+
     if (error) {
-      console.error("[v0] Resend error:", error)
+      console.error("[Resend] Error sending email:", error)
       return {
         success: false,
         error: error.message || "Failed to send email",
       }
     }
 
-    console.log("[v0] Email sent successfully:", data?.id)
+    console.log("[Resend] Email sent successfully, message ID:", data?.id)
     return {
       success: true,
       messageId: data?.id,
     }
   } catch (error) {
-    console.error("[v0] Email sending error:", error)
+    console.error("[Resend] Exception caught:", error)
+    console.error("[Resend] Error details:", error instanceof Error ? error.message : "Unknown error")
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

@@ -21,29 +21,39 @@ export interface SendSMSResult {
  * @returns Result object with success status and message ID or error
  *
  * @example
- * ```typescript
+ * \`\`\`typescript
  * const result = await sendSMS({
  *   to: '+5511999999999',
  *   body: 'Você tem uma dívida pendente de R$ 150,00. Acesse: https://alteapay.com'
  * })
- * ```
+ * \`\`\`
  */
 export async function sendSMS({ to, body }: SendSMSParams): Promise<SendSMSResult> {
   try {
+    console.log("[Twilio] Preparing to send SMS")
+    console.log("[Twilio] To:", to)
+    console.log("[Twilio] Body:", body)
+
     // Validate environment variables
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      console.error("[Twilio] Credentials not configured")
       throw new Error("Twilio credentials not configured")
     }
 
     if (!process.env.TWILIO_MESSAGING_SERVICE_SID && !process.env.TWILIO_PHONE_NUMBER) {
+      console.error("[Twilio] Messaging service or phone number not configured")
       throw new Error("Twilio messaging service or phone number not configured")
     }
 
     // Normalize phone number (remove spaces, dashes, parentheses)
-    const normalizedPhone = to.replace(/[\s\-$$$$]/g, "")
+    const normalizedPhone = to.replace(/[\s\-()]/g, "")
+    console.log("[Twilio] Normalized phone:", normalizedPhone)
 
     // Ensure phone number starts with +
-    const formattedPhone = normalizedPhone.startsWith("+") ? normalizedPhone : `+55${normalizedPhone}` // Default to Brazil country code
+    const formattedPhone = normalizedPhone.startsWith("+") ? normalizedPhone : `+55${normalizedPhone}`
+    console.log("[Twilio] Formatted phone:", formattedPhone)
+
+    console.log("[Twilio] Credentials configured, calling Twilio API...")
 
     // Send SMS via Twilio
     const message = await twilioClient.messages.create({
@@ -55,13 +65,18 @@ export async function sendSMS({ to, body }: SendSMSParams): Promise<SendSMSResul
         : { from: process.env.TWILIO_PHONE_NUMBER }),
     })
 
-    console.log("[v0] SMS sent successfully:", message.sid)
+    console.log("[Twilio] API call completed")
+    console.log("[Twilio] Message SID:", message.sid)
+    console.log("[Twilio] Message status:", message.status)
+    console.log("[Twilio] SMS sent successfully")
+
     return {
       success: true,
       messageId: message.sid,
     }
   } catch (error) {
-    console.error("[v0] SMS sending error:", error)
+    console.error("[Twilio] Exception caught:", error)
+    console.error("[Twilio] Error details:", error instanceof Error ? error.message : "Unknown error")
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

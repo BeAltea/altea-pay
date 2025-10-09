@@ -202,16 +202,34 @@ export async function deleteCustomer(params: DeleteCustomerParams) {
 }
 
 export async function sendCustomerNotification(params: SendCustomerNotificationParams) {
-  console.log("[v0] sendCustomerNotification - Starting", {
-    customerId: params.customerId,
-    channel: params.channel,
-    companyId: params.companyId,
-  })
+  console.log("=".repeat(80))
+  console.log("[v0] sendCustomerNotification - FUNCTION CALLED")
+  console.log("[v0] sendCustomerNotification - Params:", JSON.stringify(params, null, 2))
+  console.log("=".repeat(80))
 
   try {
+    if (!params.customerId) {
+      console.error("[v0] sendCustomerNotification - Missing customerId")
+      return { success: false, message: "Customer ID é obrigatório" }
+    }
+
+    if (!params.companyId) {
+      console.error("[v0] sendCustomerNotification - Missing companyId")
+      return { success: false, message: "Company ID é obrigatório" }
+    }
+
+    if (!params.channel) {
+      console.error("[v0] sendCustomerNotification - Missing channel")
+      return { success: false, message: "Canal de notificação é obrigatório" }
+    }
+
+    console.log("[v0] sendCustomerNotification - Parameters validated successfully")
+
     const supabase = await createServerClient()
+    console.log("[v0] sendCustomerNotification - Supabase client created")
 
     // Fetch customer data
+    console.log("[v0] sendCustomerNotification - Fetching customer data...")
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .select("*")
@@ -227,9 +245,14 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
       }
     }
 
-    console.log("[v0] sendCustomerNotification - Customer found:", customer.name)
+    console.log("[v0] sendCustomerNotification - Customer found:", {
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+    })
 
     // Fetch company data
+    console.log("[v0] sendCustomerNotification - Fetching company data...")
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .select("*")
@@ -247,6 +270,7 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
     console.log("[v0] sendCustomerNotification - Company found:", company.name)
 
     // Fetch customer debts
+    console.log("[v0] sendCustomerNotification - Fetching customer debts...")
     const { data: debts } = await supabase
       .from("debts")
       .select("*")
@@ -255,14 +279,22 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
       .eq("status", "pending")
 
     const totalDebt = debts?.reduce((sum, debt) => sum + Number(debt.amount), 0) || 0
-
-    console.log("[v0] sendCustomerNotification - Total debt:", totalDebt)
+    console.log("[v0] sendCustomerNotification - Total debt calculated:", totalDebt)
 
     let result: { success: boolean; messageId?: string; error?: string }
 
     // Send notification based on channel
     if (params.channel === "email") {
-      console.log("[v0] sendCustomerNotification - Sending email to:", customer.email)
+      if (!customer.email) {
+        console.error("[v0] sendCustomerNotification - Customer has no email")
+        return {
+          success: false,
+          message: "Cliente não possui email cadastrado",
+        }
+      }
+
+      console.log("[v0] sendCustomerNotification - Preparing email notification")
+      console.log("[v0] sendCustomerNotification - Email recipient:", customer.email)
 
       const emailHtml = generateDebtCollectionEmail({
         customerName: customer.name,
@@ -271,20 +303,26 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
         companyName: company.name,
       })
 
+      console.log("[v0] sendCustomerNotification - Email HTML generated, calling sendEmail...")
+
       result = await sendEmail({
         to: customer.email,
         subject: `Notificação de Cobrança - ${company.name}`,
         html: emailHtml,
       })
-    } else if (params.channel === "sms" || params.channel === "whatsapp") {
-      console.log("[v0] sendCustomerNotification - Sending SMS to:", customer.phone)
 
+      console.log("[v0] sendCustomerNotification - sendEmail returned:", result)
+    } else if (params.channel === "sms" || params.channel === "whatsapp") {
       if (!customer.phone) {
+        console.error("[v0] sendCustomerNotification - Customer has no phone")
         return {
           success: false,
           message: "Cliente não possui telefone cadastrado",
         }
       }
+
+      console.log("[v0] sendCustomerNotification - Preparing SMS notification")
+      console.log("[v0] sendCustomerNotification - SMS recipient:", customer.phone)
 
       const smsBody = generateDebtCollectionSMS({
         customerName: customer.name,
@@ -292,11 +330,16 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
         companyName: company.name,
       })
 
+      console.log("[v0] sendCustomerNotification - SMS body generated, calling sendSMS...")
+
       result = await sendSMS({
         to: customer.phone,
         body: smsBody,
       })
+
+      console.log("[v0] sendCustomerNotification - sendSMS returned:", result)
     } else {
+      console.error("[v0] sendCustomerNotification - Invalid channel:", params.channel)
       return {
         success: false,
         message: "Canal de notificação inválido",
@@ -307,6 +350,7 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
 
     // Register action in collection_actions table
     if (result.success) {
+      console.log("[v0] sendCustomerNotification - Registering action in collection_actions...")
       const { error: actionError } = await supabase.from("collection_actions").insert({
         customer_id: params.customerId,
         company_id: params.companyId,
@@ -318,26 +362,40 @@ export async function sendCustomerNotification(params: SendCustomerNotificationP
 
       if (actionError) {
         console.error("[v0] sendCustomerNotification - Error registering action:", actionError)
+      } else {
+        console.log("[v0] sendCustomerNotification - Action registered successfully")
       }
     }
 
     if (result.success) {
+      console.log("[v0] sendCustomerNotification - SUCCESS - Returning success response")
       return {
         success: true,
         message: `Notificação enviada com sucesso via ${params.channel === "email" ? "e-mail" : "SMS"}`,
       }
     } else {
+      console.error("[v0] sendCustomerNotification - FAILURE - Returning error response")
       return {
         success: false,
         message: `Erro ao enviar notificação: ${result.error}`,
       }
     }
   } catch (error) {
-    console.error("[v0] sendCustomerNotification - Exception:", error)
+    console.error("=".repeat(80))
+    console.error("[v0] sendCustomerNotification - EXCEPTION CAUGHT")
+    console.error("[v0] sendCustomerNotification - Error:", error)
+    console.error(
+      "[v0] sendCustomerNotification - Error message:",
+      error instanceof Error ? error.message : "Unknown error",
+    )
+    console.error(
+      "[v0] sendCustomerNotification - Error stack:",
+      error instanceof Error ? error.stack : "No stack trace",
+    )
+    console.error("=".repeat(80))
     return {
       success: false,
-      message: "Erro ao enviar notificação",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: error instanceof Error ? error.message : "Erro desconhecido ao enviar notificação",
     }
   }
 }
