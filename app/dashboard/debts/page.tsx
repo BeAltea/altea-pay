@@ -95,8 +95,6 @@ export default function DebtsPage() {
   const { profile, loading: authLoading } = useAuth()
   const supabase = createClient()
 
-  const [openPopover, setOpenPopover] = useState<string | null>(null)
-
   useEffect(() => {
     const fetchCustomers = async () => {
       if (authLoading) return
@@ -539,17 +537,14 @@ export default function DebtsPage() {
 
   const renderActions = (debt: Debt) => {
     return (
-      <Popover
-        open={openPopover === debt.id}
-        onOpenChange={(open) => (open ? setOpenPopover(debt.id) : setOpenPopover(null))}
-      >
+      <Popover>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
             className="h-8 w-8 p-0"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               console.log("[v0] Popover trigger clicked for debt:", debt.id)
-              setOpenPopover(debt.id)
             }}
           >
             <span className="sr-only">Abrir menu</span>
@@ -565,10 +560,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] View details clicked")
                 handleAction("view", debt.id)
-                setOpenPopover(null)
               }}
             >
               <Eye className="mr-2 h-4 w-4" />
@@ -578,10 +573,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] Edit clicked")
                 handleAction("edit", debt.id)
-                setOpenPopover(null)
               }}
             >
               <Edit className="mr-2 h-4 w-4" />
@@ -591,10 +586,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] Delete clicked")
                 handleDeleteDebt(debt.id)
-                setOpenPopover(null)
               }}
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -608,10 +603,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] Email clicked")
                 handleAction("email", debt.id)
-                setOpenPopover(null)
               }}
             >
               <Mail className="mr-2 h-4 w-4" />
@@ -621,10 +616,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] SMS clicked")
                 handleAction("sms", debt.id)
-                setOpenPopover(null)
               }}
             >
               <Phone className="mr-2 h-4 w-4" />
@@ -634,10 +629,10 @@ export default function DebtsPage() {
             <Button
               variant="ghost"
               className="justify-start px-3 py-2 h-auto font-normal rounded-none"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 console.log("[v0] WhatsApp clicked")
                 handleAction("whatsapp", debt.id)
-                setOpenPopover(null)
               }}
             >
               <MessageSquare className="mr-2 h-4 w-4" />

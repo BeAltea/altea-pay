@@ -1,6 +1,13 @@
 import { createBrowserClient } from "@supabase/ssr"
 
+let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
+
 export function createClient() {
+  // Se já existe uma instância, retorna ela
+  if (supabaseClient) {
+    return supabaseClient
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -12,7 +19,8 @@ export function createClient() {
     throw new Error("Missing Supabase environment variables. Please check your configuration.")
   }
 
-  console.log("[v0] Creating Supabase browser client")
+  // Cria e armazena a instância única
+  supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey)
+  return supabaseClient
 }
