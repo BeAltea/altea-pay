@@ -68,10 +68,6 @@ export async function createCustomer(params: CreateCustomerParams) {
 
     if (error) {
       console.error("[v0] createCustomer - Database error:", JSON.stringify(error, null, 2))
-      console.error("[v0] createCustomer - Error code:", error.code)
-      console.error("[v0] createCustomer - Error message:", error.message)
-      console.error("[v0] createCustomer - Error details:", error.details)
-      console.error("[v0] createCustomer - Error hint:", error.hint)
       return {
         success: false,
         message: `Erro ao criar cliente: ${error.message}`,
@@ -90,14 +86,6 @@ export async function createCustomer(params: CreateCustomerParams) {
     }
   } catch (error) {
     console.error("[v0] createCustomer - Unexpected error:", error)
-    console.error("[v0] createCustomer - Error type:", typeof error)
-    console.error("[v0] createCustomer - Error constructor:", error?.constructor?.name)
-
-    if (error instanceof Error) {
-      console.error("[v0] createCustomer - Error message:", error.message)
-      console.error("[v0] createCustomer - Error stack:", error.stack)
-    }
-
     return {
       success: false,
       message: "Erro inesperado ao criar cliente",
@@ -166,10 +154,6 @@ export async function deleteCustomer(params: DeleteCustomerParams) {
   }
 }
 
-/**
- * Send notification to customer from Admin Dashboard
- * Called from Customers page action menu
- */
 export async function sendCustomerNotification({
   customerId,
   channel,
