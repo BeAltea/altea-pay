@@ -342,8 +342,14 @@ export default function CustomersPage() {
 
   const handleContact = async (customer: Customer, type: "email" | "phone" | "whatsapp") => {
     console.log("[v0] handleContact - Starting", { customer: customer.name, type })
+    console.log("[v0] handleContact - Customer ID:", customer.id)
+    console.log("[v0] handleContact - Profile:", profile)
+    console.log("[v0] handleContact - Company ID:", profile?.company_id)
+
+    setOpenActionMenus({})
 
     if (!profile?.company_id) {
+      console.log("[v0] handleContact - No company_id found, aborting")
       toast({
         title: "Erro",
         description: "Empresa não identificada",
@@ -354,6 +360,7 @@ export default function CustomersPage() {
 
     // Map contact type to notification channel
     const channel = type === "email" ? "email" : type === "whatsapp" ? "whatsapp" : "sms"
+    console.log("[v0] handleContact - Channel:", channel)
 
     // Show loading toast
     toast({
@@ -361,50 +368,61 @@ export default function CustomersPage() {
       description: `Enviando ${type === "email" ? "e-mail" : type === "whatsapp" ? "WhatsApp" : "SMS"} para ${customer.name}`,
     })
 
-    // Send notification
-    const result = await sendCustomerNotification({
-      customerId: customer.id,
-      channel,
-      companyId: profile.company_id,
-    })
+    console.log("[v0] handleContact - Calling sendCustomerNotification")
 
-    console.log("[v0] handleContact - Result:", result)
-
-    // Show result toast
-    if (result.success) {
-      toast({
-        title: "Sucesso",
-        description: result.message,
+    try {
+      // Send notification
+      const result = await sendCustomerNotification({
+        customerId: customer.id,
+        channel,
+        companyId: profile.company_id,
       })
 
-      // Update last contact date
-      setCustomers(
-        customers.map((c) =>
-          c.id === customer.id ? { ...c, lastContact: new Date().toISOString().split("T")[0] } : c,
-        ),
-      )
-    } else {
+      console.log("[v0] handleContact - Result:", result)
+
+      // Show result toast
+      if (result.success) {
+        toast({
+          title: "Sucesso",
+          description: result.message,
+        })
+
+        // Update last contact date
+        setCustomers(
+          customers.map((c) =>
+            c.id === customer.id ? { ...c, lastContact: new Date().toISOString().split("T")[0] } : c,
+          ),
+        )
+      } else {
+        toast({
+          title: "Erro",
+          description: result.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] handleContact - Error:", error)
       toast({
         title: "Erro",
-        description: result.message,
+        description: "Erro ao enviar notificação",
         variant: "destructive",
       })
     }
-
-    setOpenActionMenus({})
   }
 
   const handleViewProfile = (customer: Customer) => {
     console.log("[v0] View profile clicked for:", customer.name)
+    setOpenActionMenus({})
     toast({
       title: "Perfil do Cliente",
       description: `Visualizando perfil de ${customer.name}`,
     })
     // Here you would navigate to customer profile page
-    setOpenActionMenus({})
   }
 
   const handleDeleteCustomer = async (customerId: string) => {
+    setOpenActionMenus({})
+
     if (!profile?.company_id) {
       toast({
         title: "Erro",
@@ -432,8 +450,6 @@ export default function CustomersPage() {
         variant: "destructive",
       })
     }
-
-    setOpenActionMenus({})
   }
 
   const ActionButtons = ({ customer }: { customer: Customer }) => {
@@ -452,28 +468,44 @@ export default function CustomersPage() {
             </div>
             <div className="py-1">
               <button
-                onClick={() => handleViewProfile(customer)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  console.log("[v0] View profile button clicked for:", customer.name)
+                  handleViewProfile(customer)
+                }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm cursor-pointer"
               >
                 <Eye className="mr-2 h-4 w-4 cursor-pointer" />
                 Ver perfil
               </button>
               <button
-                onClick={() => handleContact(customer, "email")}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  console.log("[v0] Send email button clicked for:", customer.name)
+                  handleContact(customer, "email")
+                }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm cursor-pointer"
               >
                 <Mail className="mr-2 h-4 w-4 cursor-pointer" />
                 Enviar email
               </button>
               <button
-                onClick={() => handleContact(customer, "phone")}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  console.log("[v0] Register call button clicked for:", customer.name)
+                  handleContact(customer, "phone")
+                }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm cursor-pointer"
               >
                 <Phone className="mr-2 h-4 w-4 cursor-pointer" />
                 Registrar ligação
               </button>
               <button
-                onClick={() => handleContact(customer, "whatsapp")}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  console.log("[v0] Send WhatsApp button clicked for:", customer.name)
+                  handleContact(customer, "whatsapp")
+                }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm cursor-pointer"
               >
                 <MessageSquare className="mr-2 h-4 w-4 cursor-pointer" />
@@ -481,7 +513,11 @@ export default function CustomersPage() {
               </button>
               <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
               <button
-                onClick={() => handleDeleteCustomer(customer.id)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  console.log("[v0] Delete customer button clicked for:", customer.name)
+                  handleDeleteCustomer(customer.id)
+                }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-sm cursor-pointer text-red-600 dark:text-red-400"
               >
                 <svg
