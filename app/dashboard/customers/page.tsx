@@ -17,7 +17,7 @@ import { MoreHorizontal, Eye, Mail, Phone, MessageSquare, Plus } from "lucide-re
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
-import { createCustomer, deleteCustomer } from "@/app/actions/customer-actions"
+import { createCustomer, deleteCustomer, sendCustomerNotification } from "@/app/actions/customer-actions"
 
 interface Customer {
   id: string
@@ -341,42 +341,57 @@ export default function CustomersPage() {
   }
 
   const handleContact = async (customer: Customer, type: "email" | "phone" | "whatsapp") => {
-    setSelectedCustomer(customer)
-    setContactType(type)
-    setIsContactDialogOpen(true)
-    setOpenActionMenus({})
-  }
+    console.log("[v0] handleContact - Starting", { customer: customer.name, type })
 
-  const handleSendContact = async () => {
-    if (!selectedCustomer || !contactMessage.trim()) {
+    if (!profile?.company_id) {
       toast({
         title: "Erro",
-        description: "Preencha a mensagem",
+        description: "Empresa não identificada",
         variant: "destructive",
       })
       return
     }
 
-    const contactTypeText = {
-      email: "E-mail",
-      phone: "Ligação",
-      whatsapp: "WhatsApp",
-    }[contactType]
+    // Map contact type to notification channel
+    const channel = type === "email" ? "email" : type === "whatsapp" ? "whatsapp" : "sms"
 
+    // Show loading toast
     toast({
-      title: "Contato enviado",
-      description: `${contactTypeText} enviado para ${selectedCustomer.name}`,
+      title: "Enviando notificação...",
+      description: `Enviando ${type === "email" ? "e-mail" : type === "whatsapp" ? "WhatsApp" : "SMS"} para ${customer.name}`,
     })
 
-    setCustomers(
-      customers.map((c) =>
-        c.id === selectedCustomer.id ? { ...c, lastContact: new Date().toISOString().split("T")[0] } : c,
-      ),
-    )
+    // Send notification
+    const result = await sendCustomerNotification({
+      customerId: customer.id,
+      channel,
+      companyId: profile.company_id,
+    })
 
-    setContactMessage("")
-    setIsContactDialogOpen(false)
-    setSelectedCustomer(null)
+    console.log("[v0] handleContact - Result:", result)
+
+    // Show result toast
+    if (result.success) {
+      toast({
+        title: "Sucesso",
+        description: result.message,
+      })
+
+      // Update last contact date
+      setCustomers(
+        customers.map((c) =>
+          c.id === customer.id ? { ...c, lastContact: new Date().toISOString().split("T")[0] } : c,
+        ),
+      )
+    } else {
+      toast({
+        title: "Erro",
+        description: result.message,
+        variant: "destructive",
+      })
+    }
+
+    setOpenActionMenus({})
   }
 
   const handleViewProfile = (customer: Customer) => {
@@ -754,46 +769,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-md mx-auto">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
-              {contactType === "email" && "Enviar Email"}
-              {contactType === "phone" && "Registrar Ligação"}
-              {contactType === "whatsapp" && "Enviar WhatsApp"}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {selectedCustomer && `Para: ${selectedCustomer.name}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 sm:gap-4 py-4">
-            <div className="grid grid-cols-1 gap-2">
-              <Label htmlFor="message" className="text-xs sm:text-sm font-medium">
-                Mensagem
-              </Label>
-              <textarea
-                id="message"
-                value={contactMessage}
-                onChange={(e) => setContactMessage(e.target.value)}
-                className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs sm:text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Digite sua mensagem..."
-              />
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <Button onClick={handleSendContact} className="flex-1 text-xs sm:text-sm h-8 sm:h-9">
-              Enviar
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setIsContactDialogOpen(false)}
-              className="flex-1 text-xs sm:text-sm h-8 sm:h-9"
-            >
-              Cancelar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Removed unused dialog for contact */}
     </div>
   )
 }
