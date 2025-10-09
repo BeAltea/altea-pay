@@ -56,6 +56,20 @@ export default function CustomersPage() {
     lastContact: "", // Added last contact field
   })
 
+  const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
+  const [pendingNotification, setPendingNotification] = useState<{
+    customer: Customer
+    channel: "email" | "sms"
+  } | null>(null)
+  const [customMessage, setCustomMessage] = useState("")
+  // </CHANGE>
+
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+55")
+  const [phoneAreaCode, setPhoneAreaCode] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [phoneError, setPhoneError] = useState("")
+  // </CHANGE>
+
   const supabase = createClient()
   const { toast } = useToast()
   const { profile, loading: authLoading } = useAuth()
@@ -209,6 +223,44 @@ export default function CustomersPage() {
     totalAmount: customers.reduce((sum, customer) => sum + customer.totalAmount, 0),
   }
 
+  const normalizePhone = (countryCode: string, areaCode: string, number: string): string => {
+    // Remove todos os caracteres não numéricos
+    const cleanCountryCode = countryCode.replace(/\D/g, "")
+    const cleanAreaCode = areaCode.replace(/\D/g, "")
+    const cleanNumber = number.replace(/\D/g, "")
+
+    // Garante que comece com +
+    const normalized = `+${cleanCountryCode}${cleanAreaCode}${cleanNumber}`
+
+    console.log("[v0] normalizePhone - Input:", { countryCode, areaCode, number })
+    console.log("[v0] normalizePhone - Output:", normalized)
+
+    return normalized
+  }
+
+  // Função para validar o telefone
+  const validatePhone = (countryCode: string, areaCode: string, number: string): boolean => {
+    if (!countryCode || !areaCode || !number) {
+      setPhoneError("Todos os campos de telefone são obrigatórios")
+      return false
+    }
+
+    const cleanCountryCode = countryCode.replace(/\D/g, "")
+    const cleanAreaCode = areaCode.replace(/\D/g, "")
+    const cleanNumber = number.replace(/\D/g, "")
+
+    // Validar comprimento mínimo (Brasil: +55 + 2 dígitos DDD + 8-9 dígitos número = 12-13 dígitos total)
+    const totalDigits = cleanCountryCode.length + cleanAreaCode.length + cleanNumber.length
+    if (totalDigits < 12) {
+      setPhoneError(`Telefone inválido: ${totalDigits} dígitos (mínimo 12 dígitos)`)
+      return false
+    }
+
+    setPhoneError("")
+    return true
+  }
+  // </CHANGE>
+
   const handleCreateCustomer = async () => {
     console.log("[v0] handleCreateCustomer - Starting")
     console.log("[v0] handleCreateCustomer - newCustomer:", newCustomer)
@@ -265,12 +317,27 @@ export default function CustomersPage() {
       return
     }
 
+    let normalizedPhone: string | undefined = undefined
+    if (phoneCountryCode || phoneAreaCode || phoneNumber) {
+      if (!validatePhone(phoneCountryCode, phoneAreaCode, phoneNumber)) {
+        toast({
+          title: "Erro",
+          description: phoneError,
+          variant: "destructive",
+        })
+        return
+      }
+      normalizedPhone = normalizePhone(phoneCountryCode, phoneAreaCode, phoneNumber)
+      console.log("[v0] handleCreateCustomer - Normalized phone:", normalizedPhone)
+    }
+    // </CHANGE>
+
     console.log("[v0] handleCreateCustomer - Calling createCustomer action")
     const result = await createCustomer({
       name: newCustomer.name,
       email: newCustomer.email,
       document: documentNumbers, // Enviar apenas números
-      phone: newCustomer.phone || undefined,
+      phone: normalizedPhone, // Usar telefone normalizado
       companyId: profile.company_id,
     })
 
@@ -316,6 +383,12 @@ export default function CustomersPage() {
         setCustomers(customersWithDebts)
       }
 
+      setPhoneCountryCode("+55")
+      setPhoneAreaCode("")
+      setPhoneNumber("")
+      setPhoneError("")
+      // </CHANGE>
+
       setNewCustomer({
         name: "",
         email: "",
@@ -342,14 +415,9 @@ export default function CustomersPage() {
 
   const handleContact = async (customer: Customer, type: "email" | "phone" | "sms") => {
     console.log("[v0] handleContact - Starting", { customer: customer.name, type })
-    console.log("[v0] handleContact - Customer ID:", customer.id)
-    console.log("[v0] handleContact - Profile:", profile)
-    console.log("[v0] handleContact - Company ID:", profile?.company_id)
-
     setOpenActionMenus({})
 
     if (!profile?.company_id) {
-      console.log("[v0] handleContact - No company_id found, aborting")
       toast({
         title: "Erro",
         description: "Empresa não identificada",
@@ -359,7 +427,6 @@ export default function CustomersPage() {
     }
 
     const channel = type === "email" ? "email" : "sms"
-    console.log("[v0] handleContact - Channel:", channel)
 
     if (channel === "email" && !customer.email) {
       toast({
@@ -379,52 +446,112 @@ export default function CustomersPage() {
       return
     }
 
-    const message =
+    // Gerar mensagem padrão
+    const defaultMessage =
       channel === "email"
-        ? `Olá ${customer.name}, você possui débitos pendentes no valor de R$ ${customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Entre em contato para regularizar sua situação.`
+        ? `Olá ${customer.name},\n\nVocê possui débitos pendentes no valor de R$ ${customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.\n\nEntre em contato conosco para regularizar sua situação.\n\nAtenciosamente,\nEquipe Altea Pay`
         : `Olá ${customer.name}, você possui débitos de R$ ${customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Entre em contato para regularizar.`
 
-    // Show loading toast
+    // Abrir modal de confirmação
+    setPendingNotification({ customer, channel })
+    setCustomMessage(defaultMessage)
+    setIsMessageDialogOpen(true)
+  }
+
+  const handleSendNotification = async () => {
+    if (!pendingNotification || !customMessage.trim()) {
+      toast({
+        title: "Erro",
+        description: "Mensagem não pode estar vazia",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const { customer, channel } = pendingNotification
+
+    if (channel === "sms" && customer.phone) {
+      // Verificar se o telefone já está no formato internacional
+      if (!customer.phone.startsWith("+")) {
+        toast({
+          title: "Erro",
+          description: "Telefone do cliente não está no formato internacional. Por favor, atualize o cadastro.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Validar comprimento mínimo
+      const phoneDigits = customer.phone.replace(/\D/g, "")
+      if (phoneDigits.length < 12) {
+        toast({
+          title: "Erro",
+          description: `Telefone inválido: ${phoneDigits.length} dígitos (mínimo 12 dígitos)`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      console.log("[v0] handleSendNotification - Phone validation passed:", customer.phone)
+      console.log("[v0] handleSendNotification - Phone digits:", phoneDigits.length)
+    }
+    // </CHANGE>
+
     toast({
       title: "Enviando notificação...",
-      description: `Enviando ${type === "email" ? "e-mail" : "SMS"} para ${customer.name}`,
+      description: `Enviando ${channel === "email" ? "e-mail" : "SMS"} para ${customer.name}`,
     })
 
-    console.log("[v0] handleContact - Calling sendCustomerNotification with params:", {
+    console.log("[v0] handleSendNotification - Calling sendCustomerNotification with params:", {
       customer_id: customer.id,
-      company_id: profile.company_id,
+      company_id: profile?.company_id,
       channel,
       email: customer.email,
       phone: customer.phone,
-      message,
+      message: customMessage,
     })
 
     try {
       const result = await sendCustomerNotification({
         customer_id: customer.id,
-        company_id: profile.company_id,
+        company_id: profile!.company_id,
         channel,
         email: customer.email,
         phone: customer.phone,
-        message,
+        message: customMessage,
       })
 
-      console.log("[v0] handleContact - Result:", result)
+      console.log("[v0] handleSendNotification - Result:", result)
 
-      // Show result toast
       if (result.success) {
+        const successMessage =
+          channel === "sms"
+            ? `SMS enviado com sucesso para ${customer.phone}`
+            : `E-mail enviado com sucesso para ${customer.email}`
+
         toast({
           title: "Sucesso",
-          description:
-            result.message || `Notificação enviada com sucesso via ${channel === "email" ? "e-mail" : "SMS"}`,
+          description: successMessage,
         })
 
-        // Update last contact date
+        console.log("[v0] handleSendNotification - Success details:", {
+          channel,
+          recipient: channel === "sms" ? customer.phone : customer.email,
+          message: result.message,
+        })
+        // </CHANGE>
+
+        // Atualizar data do último contato
         setCustomers(
           customers.map((c) =>
             c.id === customer.id ? { ...c, lastContact: new Date().toISOString().split("T")[0] } : c,
           ),
         )
+
+        // Fechar modal
+        setIsMessageDialogOpen(false)
+        setPendingNotification(null)
+        setCustomMessage("")
       } else {
         toast({
           title: "Erro",
@@ -433,7 +560,7 @@ export default function CustomersPage() {
         })
       }
     } catch (error) {
-      console.error("[v0] handleContact - Error:", error)
+      console.error("[v0] handleSendNotification - Error:", error)
       toast({
         title: "Erro",
         description: "Erro ao enviar notificação",
@@ -441,6 +568,7 @@ export default function CustomersPage() {
       })
     }
   }
+  // </CHANGE>
 
   const handleViewProfile = (customer: Customer) => {
     console.log("[v0] View profile clicked for:", customer.name)
@@ -651,22 +779,57 @@ export default function CustomersPage() {
                 <p className="text-[10px] sm:text-xs text-gray-500">CPF: 11 dígitos | CNPJ: 14 dígitos</p>
               </div>
               <div className="grid grid-cols-1 gap-2">
-                <Label htmlFor="phone" className="text-xs sm:text-sm font-medium">
-                  Telefone
-                </Label>
-                <Input
-                  id="phone"
-                  placeholder="Ex: (11) 99999-9999"
-                  value={newCustomer.phone}
-                  onChange={(e) => {
-                    // Permitir apenas números e caracteres de formatação
-                    const value = e.target.value.replace(/[^\d() -]/g, "")
-                    setNewCustomer({ ...newCustomer, phone: value })
-                  }}
-                  className="text-xs sm:text-sm h-8 sm:h-9"
-                  maxLength={15}
-                />
+                <Label className="text-xs sm:text-sm font-medium">Telefone (Formato Internacional)</Label>
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-3">
+                    <Input
+                      placeholder="+55"
+                      value={phoneCountryCode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^\d+]/g, "")
+                        setPhoneCountryCode(value)
+                        setPhoneError("")
+                      }}
+                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      maxLength={4}
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">País</p>
+                  </div>
+                  <div className="col-span-3">
+                    <Input
+                      placeholder="11"
+                      value={phoneAreaCode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "")
+                        setPhoneAreaCode(value)
+                        setPhoneError("")
+                      }}
+                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      maxLength={2}
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">DDD</p>
+                  </div>
+                  <div className="col-span-6">
+                    <Input
+                      placeholder="91234-5678"
+                      value={phoneNumber}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^\d-]/g, "")
+                        setPhoneNumber(value)
+                        setPhoneError("")
+                      }}
+                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      maxLength={10}
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">Número</p>
+                  </div>
+                </div>
+                {phoneError && <p className="text-[10px] sm:text-xs text-red-500">{phoneError}</p>}
+                <p className="text-[10px] sm:text-xs text-gray-500">
+                  Exemplo: +55 (país), 11 (DDD), 91234-5678 (número) = +5511912345678
+                </p>
               </div>
+              {/* </CHANGE> */}
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button onClick={handleCreateCustomer} className="flex-1 text-xs sm:text-sm h-8 sm:h-9">
@@ -837,7 +1000,54 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Removed unused dialog for contact */}
+      <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-lg mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              Enviar {pendingNotification?.channel === "email" ? "E-mail" : "SMS"}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Digite a mensagem que deseja enviar para {pendingNotification?.customer.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="message" className="text-xs sm:text-sm font-medium">
+                Mensagem
+              </Label>
+              <textarea
+                id="message"
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                className="w-full min-h-[200px] p-3 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
+                placeholder="Digite sua mensagem aqui..."
+              />
+              <p className="text-[10px] sm:text-xs text-gray-500">
+                {pendingNotification?.channel === "email"
+                  ? "Esta mensagem será enviada por e-mail"
+                  : "Esta mensagem será enviada por SMS"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button onClick={handleSendNotification} className="flex-1 text-xs sm:text-sm h-8 sm:h-9">
+              Enviar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsMessageDialogOpen(false)
+                setPendingNotification(null)
+                setCustomMessage("")
+              }}
+              className="flex-1 text-xs sm:text-sm h-8 sm:h-9"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* </CHANGE> */}
     </div>
   )
 }

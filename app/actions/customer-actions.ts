@@ -220,33 +220,91 @@ export async function sendCustomerNotification({
   message: string
 }) {
   try {
-    console.log("[sendCustomerNotification] Input:", { customer_id, company_id, channel, email, phone })
+    console.log("=".repeat(50))
+    console.log("[sendCustomerNotification] Starting")
+    console.log("[sendCustomerNotification] Parameters received:")
+    console.log("  - customer_id:", customer_id)
+    console.log("  - company_id:", company_id)
+    console.log("  - channel:", channel)
+    console.log("  - email:", email)
+    console.log("  - phone:", phone)
+    console.log("  - message preview:", message.substring(0, 100))
+    console.log("=".repeat(50))
 
-    // Validate required parameters
-    if (!customer_id || !company_id) {
-      throw new Error("Missing customer_id or company_id")
+    // Validação completa de parâmetros
+    if (!customer_id) {
+      console.error("[sendCustomerNotification] ERROR: Missing customer_id")
+      return { success: false, message: "ID do cliente é obrigatório" }
     }
+
+    if (!company_id) {
+      console.error("[sendCustomerNotification] ERROR: Missing company_id")
+      return { success: false, message: "ID da empresa é obrigatória" }
+    }
+
+    if (!channel) {
+      console.error("[sendCustomerNotification] ERROR: Missing channel")
+      return { success: false, message: "Canal de comunicação é obrigatório" }
+    }
+
+    if (!message) {
+      console.error("[sendCustomerNotification] ERROR: Missing message")
+      return { success: false, message: "Mensagem é obrigatória" }
+    }
+
     if (channel === "email" && !email) {
-      throw new Error("Missing email for email channel")
-    }
-    if (channel === "sms" && !phone) {
-      throw new Error("Missing phone for SMS channel")
+      console.error("[sendCustomerNotification] ERROR: Missing email for email channel")
+      return { success: false, message: "Email é obrigatório para envio por email" }
     }
 
-    console.log("[sendCustomerNotification] Validation passed")
+    if (channel === "sms") {
+      if (!phone) {
+        console.error("[sendCustomerNotification] ERROR: Missing phone for SMS channel")
+        return { success: false, message: "Telefone é obrigatório para envio por SMS" }
+      }
 
-    // Call the appropriate helper
-    const result =
-      channel === "email"
-        ? await sendEmail({ to: email!, subject: "Cobrança Altea Pay", body: message })
-        : await sendSMS({ to: phone!, body: message })
+      if (!phone.startsWith("+")) {
+        console.error("[sendCustomerNotification] ERROR: Phone must start with +")
+        return { success: false, message: "Telefone deve estar no formato internacional (+55...)" }
+      }
 
-    console.log("[sendCustomerNotification] Helper result:", result)
+      const phoneDigits = phone.replace(/\D/g, "")
+      if (phoneDigits.length < 12) {
+        console.error("[sendCustomerNotification] ERROR: Phone too short:", phoneDigits.length)
+        return {
+          success: false,
+          message: `Telefone inválido: ${phoneDigits.length} dígitos (mínimo 12 dígitos)`,
+        }
+      }
 
-    // Register action in collection_actions table if successful
+      console.log("[sendCustomerNotification] Phone validation passed")
+      console.log("  - Phone:", phone)
+      console.log("  - Digits:", phoneDigits.length)
+    }
+
+    console.log("[sendCustomerNotification] All validations passed")
+    console.log("[sendCustomerNotification] Calling helper function...")
+
+    // Chamar o helper apropriado
+    let result
+    if (channel === "email") {
+      console.log("[sendCustomerNotification] Calling sendEmail...")
+      result = await sendEmail({ to: email!, subject: "Cobrança Altea Pay", body: message })
+    } else {
+      console.log("[sendCustomerNotification] Calling sendSMS...")
+      console.log("[sendCustomerNotification] SMS details:")
+      console.log("  - To:", phone)
+      console.log("  - Body preview:", message.substring(0, 50))
+      result = await sendSMS({ to: phone!, body: message })
+    }
+
+    console.log("[sendCustomerNotification] Helper result:", JSON.stringify(result, null, 2))
+
+    // Registrar ação na tabela collection_actions se bem-sucedido
     if (result.success) {
+      console.log("[sendCustomerNotification] Registering action in collection_actions...")
       const supabase = await createServerClient()
-      await supabase.from("collection_actions").insert({
+      const { error: insertError } = await supabase.from("collection_actions").insert({
         customer_id,
         company_id,
         action_type: "notification",
@@ -254,11 +312,39 @@ export async function sendCustomerNotification({
         status: "completed",
         created_at: new Date().toISOString(),
       })
+
+      if (insertError) {
+        console.error("[sendCustomerNotification] ERROR registering action:", insertError)
+      } else {
+        console.log("[sendCustomerNotification] Action registered successfully")
+      }
+
+      // Retornar informações detalhadas
+      const successMessage =
+        channel === "sms"
+          ? `SMS enviado com sucesso para ${phone}${result.messageId ? ` (SID: ${result.messageId})` : ""}`
+          : `E-mail enviado com sucesso para ${email}${result.messageId ? ` (ID: ${result.messageId})` : ""}`
+
+      console.log("=".repeat(50))
+      console.log("[sendCustomerNotification] Finished successfully")
+      console.log("[sendCustomerNotification] Success message:", successMessage)
+      console.log("=".repeat(50))
+
+      return { success: true, message: successMessage }
     }
 
-    return { success: result.success, message: result.message || null }
+    console.log("=".repeat(50))
+    console.log("[sendCustomerNotification] Finished with error")
+    console.log("=".repeat(50))
+
+    return { success: false, message: result.error || "Erro ao enviar notificação" }
   } catch (error: any) {
-    console.error("[sendCustomerNotification] ERROR:", error)
-    return { success: false, message: error.message || "Unexpected error" }
+    console.error("=".repeat(50))
+    console.error("[sendCustomerNotification] EXCEPTION occurred")
+    console.error("[sendCustomerNotification] Error message:", error.message)
+    console.error("[sendCustomerNotification] Error stack:", error.stack)
+    console.error("[sendCustomerNotification] Full error:", JSON.stringify(error, null, 2))
+    console.error("=".repeat(50))
+    return { success: false, message: error.message || "Erro inesperado ao enviar notificação" }
   }
 }
