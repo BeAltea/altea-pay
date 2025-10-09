@@ -22,14 +22,17 @@ export interface DeleteCustomerParams {
 
 export async function createCustomer(params: CreateCustomerParams) {
   try {
+    console.log("[v0] createCustomer - Starting with params:", params)
     const supabase = await createClient()
 
+    console.log("[v0] createCustomer - Inserting customer into database")
     const { data, error } = await supabase
       .from("customers")
       .insert({
         name: params.name,
         email: params.email,
         document: params.document,
+        document_type: params.document.length === 11 ? "cpf" : "cnpj", // Added document_type based on document length
         phone: params.phone || null,
         company_id: params.companyId,
         source: "manual",
@@ -37,7 +40,12 @@ export async function createCustomer(params: CreateCustomerParams) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.log("[v0] createCustomer - Database error:", error)
+      throw error
+    }
+
+    console.log("[v0] createCustomer - Customer created successfully:", data)
 
     revalidatePath("/dashboard/customers")
 

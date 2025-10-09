@@ -24,14 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Search,
   MoreHorizontal,
@@ -101,6 +94,8 @@ export default function DebtsPage() {
 
   const { profile, loading: authLoading } = useAuth()
   const supabase = createClient()
+
+  const [openPopover, setOpenPopover] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -542,96 +537,117 @@ export default function DebtsPage() {
     },
   ]
 
-  const renderActions = (debt: Debt) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className="h-8 w-8 p-0"
-          onClick={(e) => {
-            console.log("[v0] Dropdown trigger clicked for debt:", debt.id)
-            e.stopPropagation()
-          }}
-        >
-          <span className="sr-only">Abrir menu</span>
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] View details clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleAction("view", debt.id)
-          }}
-        >
-          <Eye className="mr-2 h-4 w-4" />
-          Ver detalhes
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] Edit clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleAction("edit", debt.id)
-          }}
-        >
-          <Edit className="mr-2 h-4 w-4" />
-          Editar dívida
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] Delete clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleDeleteDebt(debt.id)
-          }}
-          className="text-red-600"
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Excluir dívida
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Enviar Cobrança Manual</DropdownMenuLabel>
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] Email clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleAction("email", debt.id)
-          }}
-        >
-          <Mail className="mr-2 h-4 w-4" />
-          Enviar por Email
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] SMS clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleAction("sms", debt.id)
-          }}
-        >
-          <Phone className="mr-2 h-4 w-4" />
-          Enviar por SMS
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            console.log("[v0] WhatsApp clicked")
-            e.preventDefault()
-            e.stopPropagation()
-            handleAction("whatsapp", debt.id)
-          }}
-        >
-          <MessageSquare className="mr-2 h-4 w-4" />
-          Enviar por WhatsApp
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
+  const renderActions = (debt: Debt) => {
+    return (
+      <Popover
+        open={openPopover === debt.id}
+        onOpenChange={(open) => (open ? setOpenPopover(debt.id) : setOpenPopover(null))}
+      >
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            onClick={() => {
+              console.log("[v0] Popover trigger clicked for debt:", debt.id)
+              setOpenPopover(debt.id)
+            }}
+          >
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-0" align="end">
+          <div className="flex flex-col">
+            <div className="px-3 py-2 border-b">
+              <p className="text-sm font-semibold">Ações</p>
+            </div>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              onClick={() => {
+                console.log("[v0] View details clicked")
+                handleAction("view", debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Ver detalhes
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              onClick={() => {
+                console.log("[v0] Edit clicked")
+                handleAction("edit", debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              Editar dívida
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+              onClick={() => {
+                console.log("[v0] Delete clicked")
+                handleDeleteDebt(debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Excluir dívida
+            </Button>
+
+            <div className="px-3 py-2 border-t border-b">
+              <p className="text-xs font-semibold text-muted-foreground">Enviar Cobrança Manual</p>
+            </div>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              onClick={() => {
+                console.log("[v0] Email clicked")
+                handleAction("email", debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Enviar por Email
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              onClick={() => {
+                console.log("[v0] SMS clicked")
+                handleAction("sms", debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <Phone className="mr-2 h-4 w-4" />
+              Enviar por SMS
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              onClick={() => {
+                console.log("[v0] WhatsApp clicked")
+                handleAction("whatsapp", debt.id)
+                setOpenPopover(null)
+              }}
+            >
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Enviar por WhatsApp
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
 
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-full overflow-hidden">

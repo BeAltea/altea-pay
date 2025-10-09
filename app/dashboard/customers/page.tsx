@@ -210,7 +210,13 @@ export default function CustomersPage() {
   }
 
   const handleCreateCustomer = async () => {
+    console.log("[v0] handleCreateCustomer - Starting")
+    console.log("[v0] handleCreateCustomer - newCustomer:", newCustomer)
+    console.log("[v0] handleCreateCustomer - profile:", profile)
+    console.log("[v0] handleCreateCustomer - profile.company_id:", profile?.company_id)
+
     if (!newCustomer.name || !newCustomer.email || !newCustomer.document) {
+      console.log("[v0] handleCreateCustomer - Missing required fields")
       toast({
         title: "Erro",
         description: "Preencha todos os campos obrigatórios",
@@ -220,14 +226,17 @@ export default function CustomersPage() {
     }
 
     if (!profile?.company_id) {
+      console.log("[v0] handleCreateCustomer - No company_id found")
+      console.log("[v0] handleCreateCustomer - Full profile object:", JSON.stringify(profile, null, 2))
       toast({
         title: "Erro",
-        description: "Empresa não identificada",
+        description: "Empresa não identificada. Seu perfil não está vinculado a nenhuma empresa.",
         variant: "destructive",
       })
       return
     }
 
+    console.log("[v0] handleCreateCustomer - Calling createCustomer action")
     const result = await createCustomer({
       name: newCustomer.name,
       email: newCustomer.email,
@@ -235,6 +244,8 @@ export default function CustomersPage() {
       phone: newCustomer.phone || undefined,
       companyId: profile.company_id,
     })
+
+    console.log("[v0] handleCreateCustomer - Result:", result)
 
     if (result.success) {
       console.log("[v0] Customer created successfully:", result.data)
