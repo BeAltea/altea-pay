@@ -358,9 +358,31 @@ export default function CustomersPage() {
       return
     }
 
-    // Map contact type to notification channel
     const channel = type === "email" ? "email" : "sms"
     console.log("[v0] handleContact - Channel:", channel)
+
+    if (channel === "email" && !customer.email) {
+      toast({
+        title: "Erro",
+        description: "Cliente não possui email cadastrado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (channel === "sms" && !customer.phone) {
+      toast({
+        title: "Erro",
+        description: "Cliente não possui telefone cadastrado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const message =
+      channel === "email"
+        ? `Olá ${customer.name}, você possui débitos pendentes no valor de R$ ${customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Entre em contato para regularizar sua situação.`
+        : `Olá ${customer.name}, você possui débitos de R$ ${customer.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Entre em contato para regularizar.`
 
     // Show loading toast
     toast({
@@ -368,14 +390,23 @@ export default function CustomersPage() {
       description: `Enviando ${type === "email" ? "e-mail" : "SMS"} para ${customer.name}`,
     })
 
-    console.log("[v0] handleContact - Calling sendCustomerNotification")
+    console.log("[v0] handleContact - Calling sendCustomerNotification with params:", {
+      customer_id: customer.id,
+      company_id: profile.company_id,
+      channel,
+      email: customer.email,
+      phone: customer.phone,
+      message,
+    })
 
     try {
-      // Send notification
       const result = await sendCustomerNotification({
-        customerId: customer.id,
+        customer_id: customer.id,
+        company_id: profile.company_id,
         channel,
-        companyId: profile.company_id,
+        email: customer.email,
+        phone: customer.phone,
+        message,
       })
 
       console.log("[v0] handleContact - Result:", result)
@@ -384,7 +415,8 @@ export default function CustomersPage() {
       if (result.success) {
         toast({
           title: "Sucesso",
-          description: result.message,
+          description:
+            result.message || `Notificação enviada com sucesso via ${channel === "email" ? "e-mail" : "SMS"}`,
         })
 
         // Update last contact date
@@ -396,7 +428,7 @@ export default function CustomersPage() {
       } else {
         toast({
           title: "Erro",
-          description: result.message,
+          description: result.message || "Erro ao enviar notificação",
           variant: "destructive",
         })
       }
