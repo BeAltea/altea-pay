@@ -71,7 +71,7 @@ export default async function DashboardLayout({
   if (profile.company_id) {
     const { data: companyData } = await supabase
       .from("companies")
-      .select("id, name, subscription_plan")
+      .select("id, name")
       .eq("id", profile.company_id)
       .single()
 

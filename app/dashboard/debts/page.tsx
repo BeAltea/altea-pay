@@ -551,17 +551,30 @@ export default function DebtsPage() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Ações</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => handleAction("view", debt.id)}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleAction("view", debt.id)
+          }}
+        >
           <Eye className="mr-2 h-4 w-4" />
           Ver detalhes
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction("edit", debt.id)}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleAction("edit", debt.id)
+          }}
+        >
           <Edit className="mr-2 h-4 w-4" />
           Editar dívida
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
+            e.stopPropagation()
             handleDeleteDebt(debt.id)
           }}
           className="text-red-600"
@@ -574,6 +587,7 @@ export default function DebtsPage() {
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
+            e.stopPropagation()
             handleAction("email", debt.id)
           }}
         >
@@ -583,6 +597,7 @@ export default function DebtsPage() {
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
+            e.stopPropagation()
             handleAction("sms", debt.id)
           }}
         >
@@ -592,6 +607,7 @@ export default function DebtsPage() {
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
+            e.stopPropagation()
             handleAction("whatsapp", debt.id)
           }}
         >

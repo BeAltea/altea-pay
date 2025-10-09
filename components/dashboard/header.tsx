@@ -30,7 +30,6 @@ interface HeaderProps {
       company: {
         id: string
         name: string
-        subscription_plan: string
       } | null
     }
   }

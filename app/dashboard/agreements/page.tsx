@@ -169,10 +169,10 @@ export default function AgreementsPage() {
     return matchesSearch && matchesStatus
   })
 
-  const totalRecovered = payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amount, 0)
+  const totalRecovered = payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + (p.amount || 0), 0)
 
   const averageInstallments =
-    agreements.length > 0 ? agreements.reduce((sum, a) => sum + a.installments, 0) / agreements.length : 0
+    agreements.length > 0 ? agreements.reduce((sum, a) => sum + (a.installments || 0), 0) / agreements.length : 0
 
   if (loading) {
     return (
@@ -341,16 +341,16 @@ export default function AgreementsPage() {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Desconto</p>
-                      <p className="font-medium">{agreement.discount_percentage.toFixed(1)}%</p>
+                      <p className="font-medium">{(agreement.discount_percentage || 0).toFixed(1)}%</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Parcelas</p>
                       <p className="font-medium">
-                        {agreement.installments}x de{" "}
+                        {agreement.installments || 0}x de{" "}
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(agreement.installment_amount)}
+                        }).format(agreement.installment_amount || 0)}
                       </p>
                     </div>
                   </div>
@@ -402,7 +402,7 @@ export default function AgreementsPage() {
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(payment.amount)}
+                        }).format(payment.amount || 0)}
                       </p>
                     </div>
                     <div>

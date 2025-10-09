@@ -66,7 +66,7 @@ export default async function DashboardPage() {
   let companyData = null
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id, name, subscription_plan")
+    .select("id, name")
     .eq("id", profile.company_id)
     .single()
 
