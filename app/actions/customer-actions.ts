@@ -46,7 +46,6 @@ export async function createCustomer(params: CreateCustomerParams) {
       document_type: documentType,
       phone: params.phone || null,
       company_id: params.companyId,
-      source_system: "manual", // Corrigido: usando source_system ao invés de source
     }
 
     console.log("[v0] createCustomer - Inserting customer with data:", JSON.stringify(customerData, null, 2))

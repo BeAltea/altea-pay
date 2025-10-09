@@ -219,7 +219,29 @@ export default function CustomersPage() {
       console.log("[v0] handleCreateCustomer - Missing required fields")
       toast({
         title: "Erro",
-        description: "Preencha todos os campos obrigatórios",
+        description: "Preencha todos os campos obrigatórios (Nome, Email e CPF/CNPJ)",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newCustomer.email)) {
+      toast({
+        title: "Erro",
+        description: "Email inválido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar CPF/CNPJ (apenas números)
+    const documentNumbers = newCustomer.document.replace(/\D/g, "")
+    if (documentNumbers.length !== 11 && documentNumbers.length !== 14) {
+      toast({
+        title: "Erro",
+        description: "CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos",
         variant: "destructive",
       })
       return
@@ -240,7 +262,7 @@ export default function CustomersPage() {
     const result = await createCustomer({
       name: newCustomer.name,
       email: newCustomer.email,
-      document: newCustomer.document,
+      document: documentNumbers, // Enviar apenas números
       phone: newCustomer.phone || undefined,
       companyId: profile.company_id,
     })
@@ -404,7 +426,7 @@ export default function CustomersPage() {
         {isOpen && (
           <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50">
             <div className="p-1 border-b border-gray-200 dark:border-gray-700">
-              <span className="px-2 py-1 text-xs font-medium text-gray-500">Ações</span>
+              <span className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">Ações</span>
             </div>
             <div className="py-1">
               <button
@@ -501,6 +523,7 @@ export default function CustomersPage() {
                 </Label>
                 <Input
                   id="name"
+                  placeholder="Ex: João Silva"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
                   className="text-xs sm:text-sm h-8 sm:h-9"
@@ -513,6 +536,7 @@ export default function CustomersPage() {
                 <Input
                   id="email"
                   type="email"
+                  placeholder="Ex: joao@email.com"
                   value={newCustomer.email}
                   onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
                   className="text-xs sm:text-sm h-8 sm:h-9"
@@ -524,10 +548,17 @@ export default function CustomersPage() {
                 </Label>
                 <Input
                   id="document"
+                  placeholder="Ex: 123.456.789-00 ou 12.345.678/0001-90"
                   value={newCustomer.document}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, document: e.target.value })}
+                  onChange={(e) => {
+                    // Permitir apenas números e caracteres de formatação
+                    const value = e.target.value.replace(/[^\d./-]/g, "")
+                    setNewCustomer({ ...newCustomer, document: value })
+                  }}
                   className="text-xs sm:text-sm h-8 sm:h-9"
+                  maxLength={18}
                 />
+                <p className="text-[10px] sm:text-xs text-gray-500">CPF: 11 dígitos | CNPJ: 14 dígitos</p>
               </div>
               <div className="grid grid-cols-1 gap-2">
                 <Label htmlFor="phone" className="text-xs sm:text-sm font-medium">
@@ -535,9 +566,15 @@ export default function CustomersPage() {
                 </Label>
                 <Input
                   id="phone"
+                  placeholder="Ex: (11) 99999-9999"
                   value={newCustomer.phone}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                  onChange={(e) => {
+                    // Permitir apenas números e caracteres de formatação
+                    const value = e.target.value.replace(/[^\d() -]/g, "")
+                    setNewCustomer({ ...newCustomer, phone: value })
+                  }}
                   className="text-xs sm:text-sm h-8 sm:h-9"
+                  maxLength={15}
                 />
               </div>
             </div>
@@ -566,7 +603,7 @@ export default function CustomersPage() {
           <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ativos</div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">{stats.active}</div>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700 col-span-2 sm:col-span-1">
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 lg:p-6 rounded-lg border border-gray-200 dark:border-gray-700 col-span-2 sm:col-span-1">
           <div className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Em Atraso</div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">{stats.overdue}</div>
         </div>
