@@ -169,10 +169,14 @@ export default function AgreementsPage() {
     return matchesSearch && matchesStatus
   })
 
-  const totalRecovered = payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + (p.amount || 0), 0)
+  const totalRecovered = payments
+    .filter((p) => p.status === "completed")
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
 
   const averageInstallments =
-    agreements.length > 0 ? agreements.reduce((sum, a) => sum + (a.installments || 0), 0) / agreements.length : 0
+    agreements.length > 0
+      ? agreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / agreements.length
+      : 0
 
   if (loading) {
     return (
@@ -224,7 +228,7 @@ export default function AgreementsPage() {
             <Calendar className="h-8 w-8 text-purple-500" />
             <div>
               <p className="text-sm text-muted-foreground">Média de Parcelas</p>
-              <p className="text-2xl font-bold">{averageInstallments.toFixed(1)}x</p>
+              <p className="text-2xl font-bold">{Number(averageInstallments || 0).toFixed(1)}x</p>
             </div>
           </div>
         </Card>
@@ -327,7 +331,7 @@ export default function AgreementsPage() {
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(agreement.original_amount)}
+                        }).format(Number(agreement.original_amount) || 0)}
                       </p>
                     </div>
                     <div>
@@ -336,21 +340,21 @@ export default function AgreementsPage() {
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(agreement.agreed_amount)}
+                        }).format(Number(agreement.agreed_amount) || 0)}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Desconto</p>
-                      <p className="font-medium">{(agreement.discount_percentage || 0).toFixed(1)}%</p>
+                      <p className="font-medium">{Number(agreement.discount_percentage || 0).toFixed(1)}%</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Parcelas</p>
                       <p className="font-medium">
-                        {agreement.installments || 0}x de{" "}
+                        {Number(agreement.installments) || 0}x de{" "}
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(agreement.installment_amount || 0)}
+                        }).format(Number(agreement.installment_amount) || 0)}
                       </p>
                     </div>
                   </div>
@@ -402,7 +406,7 @@ export default function AgreementsPage() {
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(payment.amount || 0)}
+                        }).format(Number(payment.amount) || 0)}
                       </p>
                     </div>
                     <div>
