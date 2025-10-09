@@ -43,7 +43,7 @@ export default function CustomersPage() {
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false)
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [contactType, setContactType] = useState<"email" | "phone" | "whatsapp">("email")
+  const [contactType, setContactType] = useState<"email" | "phone" | "sms">("email")
   const [contactMessage, setContactMessage] = useState("")
   const [openActionMenus, setOpenActionMenus] = useState<{ [key: string]: boolean }>({})
   const [newCustomer, setNewCustomer] = useState({
@@ -340,7 +340,7 @@ export default function CustomersPage() {
     }
   }
 
-  const handleContact = async (customer: Customer, type: "email" | "phone" | "whatsapp") => {
+  const handleContact = async (customer: Customer, type: "email" | "phone" | "sms") => {
     console.log("[v0] handleContact - Starting", { customer: customer.name, type })
     console.log("[v0] handleContact - Customer ID:", customer.id)
     console.log("[v0] handleContact - Profile:", profile)
@@ -359,13 +359,13 @@ export default function CustomersPage() {
     }
 
     // Map contact type to notification channel
-    const channel = type === "email" ? "email" : type === "whatsapp" ? "whatsapp" : "sms"
+    const channel = type === "email" ? "email" : "sms"
     console.log("[v0] handleContact - Channel:", channel)
 
     // Show loading toast
     toast({
       title: "Enviando notificação...",
-      description: `Enviando ${type === "email" ? "e-mail" : type === "whatsapp" ? "WhatsApp" : "SMS"} para ${customer.name}`,
+      description: `Enviando ${type === "email" ? "e-mail" : "SMS"} para ${customer.name}`,
     })
 
     console.log("[v0] handleContact - Calling sendCustomerNotification")
@@ -503,13 +503,13 @@ export default function CustomersPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  console.log("[v0] Send WhatsApp button clicked for:", customer.name)
-                  handleContact(customer, "whatsapp")
+                  console.log("[v0] Send SMS button clicked for:", customer.name)
+                  handleContact(customer, "sms")
                 }}
                 className="flex items-center w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm cursor-pointer"
               >
                 <MessageSquare className="mr-2 h-4 w-4 cursor-pointer" />
-                Enviar WhatsApp
+                Enviar SMS
               </button>
               <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
               <button
