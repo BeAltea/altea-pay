@@ -24,7 +24,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Search,
   MoreHorizontal,
@@ -537,29 +536,29 @@ export default function DebtsPage() {
 
   const renderActions = (debt: Debt) => {
     return (
-      <Popover>
-        <PopoverTrigger asChild>
+      <Dialog>
+        <DialogTrigger asChild>
           <Button
             variant="ghost"
             className="h-8 w-8 p-0"
             onClick={(e) => {
               e.stopPropagation()
-              console.log("[v0] Popover trigger clicked for debt:", debt.id)
+              console.log("[v0] Dialog trigger clicked for debt:", debt.id)
             }}
           >
             <span className="sr-only">Abrir menu</span>
             <MoreHorizontal className="h-4 w-4" />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-56 p-0" align="end">
-          <div className="flex flex-col">
-            <div className="px-3 py-2 border-b">
-              <p className="text-sm font-semibold">Ações</p>
-            </div>
-
+        </DialogTrigger>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Ações da Dívida</DialogTitle>
+            <DialogDescription>Escolha uma ação para esta dívida</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
             <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              variant="outline"
+              className="justify-start bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 console.log("[v0] View details clicked")
@@ -571,8 +570,8 @@ export default function DebtsPage() {
             </Button>
 
             <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              variant="outline"
+              className="justify-start bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 console.log("[v0] Edit clicked")
@@ -583,26 +582,12 @@ export default function DebtsPage() {
               Editar dívida
             </Button>
 
-            <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-              onClick={(e) => {
-                e.stopPropagation()
-                console.log("[v0] Delete clicked")
-                handleDeleteDebt(debt.id)
-              }}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Excluir dívida
-            </Button>
-
-            <div className="px-3 py-2 border-t border-b">
-              <p className="text-xs font-semibold text-muted-foreground">Enviar Cobrança Manual</p>
-            </div>
+            <div className="border-t my-2" />
+            <p className="text-xs font-semibold text-muted-foreground px-2">Enviar Cobrança Manual</p>
 
             <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              variant="outline"
+              className="justify-start bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 console.log("[v0] Email clicked")
@@ -614,8 +599,8 @@ export default function DebtsPage() {
             </Button>
 
             <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              variant="outline"
+              className="justify-start bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 console.log("[v0] SMS clicked")
@@ -627,8 +612,8 @@ export default function DebtsPage() {
             </Button>
 
             <Button
-              variant="ghost"
-              className="justify-start px-3 py-2 h-auto font-normal rounded-none"
+              variant="outline"
+              className="justify-start bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 console.log("[v0] WhatsApp clicked")
@@ -638,9 +623,24 @@ export default function DebtsPage() {
               <MessageSquare className="mr-2 h-4 w-4" />
               Enviar por WhatsApp
             </Button>
+
+            <div className="border-t my-2" />
+
+            <Button
+              variant="outline"
+              className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 bg-transparent"
+              onClick={(e) => {
+                e.stopPropagation()
+                console.log("[v0] Delete clicked")
+                handleDeleteDebt(debt.id)
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Excluir dívida
+            </Button>
           </div>
-        </PopoverContent>
-      </Popover>
+        </DialogContent>
+      </Dialog>
     )
   }
 

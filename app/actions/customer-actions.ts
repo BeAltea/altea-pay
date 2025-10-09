@@ -22,30 +22,51 @@ export interface DeleteCustomerParams {
 
 export async function createCustomer(params: CreateCustomerParams) {
   try {
-    console.log("[v0] createCustomer - Starting with params:", params)
+    console.log("[v0] createCustomer - Starting with params:", JSON.stringify(params, null, 2))
+
     const supabase = await createClient()
+    console.log("[v0] createCustomer - Supabase client created")
 
-    console.log("[v0] createCustomer - Inserting customer into database")
-    const { data, error } = await supabase
-      .from("customers")
-      .insert({
-        name: params.name,
-        email: params.email,
-        document: params.document,
-        document_type: params.document.length === 11 ? "cpf" : "cnpj", // Added document_type based on document length
-        phone: params.phone || null,
-        company_id: params.companyId,
-        source: "manual",
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.log("[v0] createCustomer - Database error:", error)
-      throw error
+    if (!params.name || !params.email || !params.document || !params.companyId) {
+      console.log("[v0] createCustomer - Missing required fields")
+      return {
+        success: false,
+        message: "Todos os campos obrigatórios devem ser preenchidos",
+        error: "Missing required fields",
+      }
     }
 
-    console.log("[v0] createCustomer - Customer created successfully:", data)
+    const documentType = params.document.replace(/\D/g, "").length === 11 ? "cpf" : "cnpj"
+    console.log("[v0] createCustomer - Document type determined:", documentType)
+
+    const customerData = {
+      name: params.name,
+      email: params.email,
+      document: params.document,
+      document_type: documentType,
+      phone: params.phone || null,
+      company_id: params.companyId,
+      source: "manual",
+    }
+
+    console.log("[v0] createCustomer - Inserting customer with data:", JSON.stringify(customerData, null, 2))
+
+    const { data, error } = await supabase.from("customers").insert(customerData).select().single()
+
+    if (error) {
+      console.error("[v0] createCustomer - Database error:", JSON.stringify(error, null, 2))
+      console.error("[v0] createCustomer - Error code:", error.code)
+      console.error("[v0] createCustomer - Error message:", error.message)
+      console.error("[v0] createCustomer - Error details:", error.details)
+      console.error("[v0] createCustomer - Error hint:", error.hint)
+      return {
+        success: false,
+        message: `Erro ao criar cliente: ${error.message}`,
+        error: error.message,
+      }
+    }
+
+    console.log("[v0] createCustomer - Customer created successfully:", JSON.stringify(data, null, 2))
 
     revalidatePath("/dashboard/customers")
 
@@ -55,11 +76,19 @@ export async function createCustomer(params: CreateCustomerParams) {
       data,
     }
   } catch (error) {
-    console.error("[v0] Create customer error:", error)
+    console.error("[v0] createCustomer - Unexpected error:", error)
+    console.error("[v0] createCustomer - Error type:", typeof error)
+    console.error("[v0] createCustomer - Error constructor:", error?.constructor?.name)
+
+    if (error instanceof Error) {
+      console.error("[v0] createCustomer - Error message:", error.message)
+      console.error("[v0] createCustomer - Error stack:", error.stack)
+    }
+
     return {
       success: false,
-      message: "Erro ao criar cliente",
-      error: error instanceof Error ? error.message : "Unknown error",
+      message: "Erro inesperado ao criar cliente",
+      error: error instanceof Error ? error.message : String(error),
     }
   }
 }
