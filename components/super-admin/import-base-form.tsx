@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +11,64 @@ import { useRouter } from "next/navigation"
 interface ImportBaseFormProps {
   companyId: string
   companyName: string
+}
+
+function detectDelimiter(text: string): string {
+  const firstLine = text.split("\n")[0]
+  const semicolonCount = (firstLine.match(/;/g) || []).length
+  const commaCount = (firstLine.match(/,/g) || []).length
+  const tabCount = (firstLine.match(/\t/g) || []).length
+
+  console.log("[v0] Delimiter detection - Semicolon:", semicolonCount, "Comma:", commaCount, "Tab:", tabCount)
+
+  if (tabCount > 0) return "\t"
+  if (semicolonCount > commaCount) return ";"
+  return ","
+}
+
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim())
+      current = ""
+    } else {
+      current += char
+    }
+  }
+
+  result.push(current.trim())
+  return result
+}
+
+async function parseExcelFile(file: File): Promise<string[][]> {
+  try {
+    // Dynamic import of xlsx library
+    const XLSX = await import("xlsx")
+
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: "array" })
+
+    // Get first sheet
+    const firstSheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[firstSheetName]
+
+    // Convert to array of arrays
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][]
+
+    console.log("[v0] Excel parsed successfully:", data.length, "rows")
+    return data
+  } catch (error) {
+    console.error("[v0] Error parsing Excel:", error)
+    throw new Error("Erro ao processar arquivo Excel. Verifique se o arquivo está corrompido.")
+  }
 }
 
 export function ImportBaseForm({ companyId, companyName }: ImportBaseFormProps) {
@@ -29,30 +86,33 @@ export function ImportBaseForm({ companyId, companyName }: ImportBaseFormProps) 
     setFile(selectedFile)
     setError(null)
     setResult(null)
+    setPreview([])
 
-    const text = await selectedFile.text()
-    const lines = text.split("\n").filter((line) => line.trim())
-    const rows = lines.slice(0, 6).map((line) => {
-      // Simple CSV parsing - handle quoted values
-      const values: string[] = []
-      let current = ""
-      let inQuotes = false
+    try {
+      console.log("[v0] Processing file:", selectedFile.name, selectedFile.type)
 
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i]
-        if (char === '"') {
-          inQuotes = !inQuotes
-        } else if (char === "," && !inQuotes) {
-          values.push(current.trim())
-          current = ""
-        } else {
-          current += char
-        }
+      let rows: string[][] = []
+
+      if (selectedFile.name.endsWith(".xlsx") || selectedFile.name.endsWith(".xls")) {
+        console.log("[v0] Detected Excel file")
+        rows = await parseExcelFile(selectedFile)
+      } else {
+        console.log("[v0] Detected CSV file")
+        const text = await selectedFile.text()
+        const delimiter = detectDelimiter(text)
+        console.log("[v0] Using delimiter:", delimiter === ";" ? "semicolon" : delimiter === "\t" ? "tab" : "comma")
+
+        const lines = text.split("\n").filter((line) => line.trim())
+        rows = lines.map((line) => parseCSVLine(line, delimiter))
       }
-      values.push(current.trim())
-      return values
-    })
-    setPreview(rows)
+
+      // Show first 6 rows (header + 5 data rows)
+      setPreview(rows.slice(0, 6))
+      console.log("[v0] Preview set with", rows.slice(0, 6).length, "rows")
+    } catch (err) {
+      console.error("[v0] Error processing file:", err)
+      setError(err instanceof Error ? err.message : "Erro ao processar arquivo")
+    }
   }
 
   const handleImport = async () => {
