@@ -226,3 +226,7 @@ export async function exportBase(params: ExportBaseParams) {
     }
   }
 }
+
+export async function exportCustomerBase(company_id: string, include_analysis = false) {
+  return exportBase({ company_id, include_analysis })
+}
