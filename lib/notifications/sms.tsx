@@ -64,7 +64,7 @@ export async function sendSMS({ to, body }: SendSMSParams) {
   }
 }
 
-export function generateDebtCollectionSMS({
+export async function generateDebtCollectionSMS({
   customerName,
   debtAmount,
   companyName,
@@ -74,7 +74,6 @@ export function generateDebtCollectionSMS({
   debtAmount: number
   companyName: string
   paymentLink: string
-}): string {
+}): Promise<string> {
   return `Olá ${customerName}, você possui uma cobrança pendente de R$ ${debtAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} com ${companyName}. Acesse ${paymentLink} para pagar. Atenciosamente, ${companyName}`
 }
-// </CHANGE>

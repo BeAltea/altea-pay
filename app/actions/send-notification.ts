@@ -64,7 +64,7 @@ export async function sendCollectionNotification({
     let result: { success: boolean; messageId?: string; error?: string }
 
     if (type === "email") {
-      const html = generateDebtCollectionEmail({
+      const html = await generateDebtCollectionEmail({
         customerName: debt.customer.name,
         debtAmount: debt.amount,
         dueDate: new Date(debt.due_date).toLocaleDateString("pt-BR"),
@@ -78,7 +78,7 @@ export async function sendCollectionNotification({
         html,
       })
     } else if (type === "sms") {
-      const body = generateDebtCollectionSMS({
+      const body = await generateDebtCollectionSMS({
         customerName: debt.customer.name,
         debtAmount: debt.amount,
         companyName: debt.company.name,
