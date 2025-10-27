@@ -1,6 +1,6 @@
-import { createBrowserClient } from "@supabase/ssr"
+import { createBrowserClient as createSupabaseBrowserClient } from "@supabase/ssr"
 
-let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
+let supabaseClient: ReturnType<typeof createSupabaseBrowserClient> | null = null
 
 export function createClient() {
   // Se já existe uma instância, retorna ela
@@ -20,7 +20,11 @@ export function createClient() {
   }
 
   // Cria e armazena a instância única
-  supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey)
+  supabaseClient = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey)
 
   return supabaseClient
+}
+
+export function createBrowserClient() {
+  return createClient()
 }

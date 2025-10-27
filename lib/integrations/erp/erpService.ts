@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import type { ERPConnectionConfig, SyncResult, IntegrationLog } from "./types"
 import { getConnector } from "./connectors"
 import { normalizeCustomerData, normalizeDebtData } from "@/lib/utils/normalizeData"
+import { analyzeCreditFree, analyzeCreditAssertiva } from "@/services/creditAnalysisService"
 
 export class ERPService {
   private supabase
@@ -507,6 +508,120 @@ export class ERPService {
       return result
     } catch (error) {
       console.error("[v0] Error syncing results:", error)
+
+      const result: SyncResult = {
+        success: false,
+        records_processed: 0,
+        records_success: 0,
+        records_failed: 0,
+        errors: [{ record: {}, error: error instanceof Error ? error.message : "Unknown error" }],
+        duration_ms: Date.now() - startTime,
+      }
+
+      return result
+    }
+  }
+
+  async syncCustomersWithCreditAnalysis(
+    integrationId: string,
+    analysisType: "free" | "assertiva" = "free",
+  ): Promise<SyncResult> {
+    const startTime = Date.now()
+    const errors: Array<{ record: any; error: string }> = []
+
+    try {
+      console.log("[v0] Syncing customers with credit analysis from ERP:", integrationId)
+
+      // Primeiro sincroniza os clientes normalmente
+      const syncResult = await this.syncCustomers(integrationId)
+
+      if (!syncResult.success) {
+        return syncResult
+      }
+
+      // Busca a integração para pegar o company_id
+      const { data: integration } = await this.supabase
+        .from("erp_integrations")
+        .select("company_id")
+        .eq("id", integrationId)
+        .single()
+
+      if (!integration) {
+        throw new Error("Integration not found")
+      }
+
+      // Busca clientes recém-sincronizados (últimos 5 minutos)
+      const { data: customers } = await this.supabase
+        .from("customers")
+        .select("id, name, document, email, phone")
+        .eq("company_id", integration.company_id)
+        .gte("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+
+      if (!customers || customers.length === 0) {
+        return syncResult
+      }
+
+      console.log("[v0] Running credit analysis for", customers.length, "new customers")
+
+      let analysisSuccess = 0
+      let analysisFailed = 0
+
+      // Executa análise de crédito para cada cliente novo
+      for (const customer of customers) {
+        try {
+          const analysisResult =
+            analysisType === "free"
+              ? await analyzeCreditFree(customer.document, customer.name)
+              : await analyzeCreditAssertiva(customer.document, customer.name)
+
+          if (analysisResult.success) {
+            // Salva resultado da análise
+            await this.supabase.from("credit_profiles").insert({
+              customer_id: customer.id,
+              company_id: integration.company_id,
+              document: customer.document,
+              score: analysisResult.score,
+              risk_level: analysisResult.risk_level,
+              analysis_type: analysisType,
+              analysis_data: analysisResult.data,
+              analyzed_at: new Date().toISOString(),
+            })
+
+            analysisSuccess++
+          } else {
+            analysisFailed++
+            errors.push({ record: customer, error: analysisResult.error || "Analysis failed" })
+          }
+        } catch (error) {
+          analysisFailed++
+          errors.push({
+            record: customer,
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
+        }
+      }
+
+      console.log("[v0] Credit analysis completed:", analysisSuccess, "success,", analysisFailed, "failed")
+
+      // Cria log da operação de análise
+      await this.createLog({
+        integration_id: integrationId,
+        company_id: integration.company_id,
+        operation_type: "credit_analysis",
+        status: analysisFailed === 0 ? "success" : analysisFailed < customers.length ? "warning" : "error",
+        records_processed: customers.length,
+        records_success: analysisSuccess,
+        records_failed: analysisFailed,
+        error_message: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
+        duration_ms: Date.now() - startTime,
+      })
+
+      return {
+        ...syncResult,
+        duration_ms: Date.now() - startTime,
+      }
+    } catch (error) {
+      console.error("[v0] Error syncing customers with credit analysis:", error)
 
       const result: SyncResult = {
         success: false,

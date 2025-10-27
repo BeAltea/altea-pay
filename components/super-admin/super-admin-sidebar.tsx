@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Database,
   Target,
+  CreditCard,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -57,6 +58,18 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin/companies",
       icon: Building2,
       current: pathname.startsWith("/super-admin/companies"),
+    },
+    {
+      name: "Gestão de Empresas",
+      href: "/super-admin/empresas",
+      icon: Building2,
+      current: pathname.startsWith("/super-admin/empresas"),
+    },
+    {
+      name: "Análises de Crédito",
+      href: "/super-admin/analises",
+      icon: CreditCard,
+      current: pathname.startsWith("/super-admin/analises"),
     },
     {
       name: "Usuários",

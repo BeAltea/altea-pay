@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { SyncButtons } from "@/components/erp/sync-buttons"
 import Link from "next/link"
 import { ArrowLeft, Plus, Plug, CheckCircle, XCircle, Clock, Settings, AlertTriangle, Activity } from "lucide-react"
+import { CreditAnalysisIntegration } from "@/components/erp/credit-analysis-integration"
 
 interface ERPIntegrationPageProps {
   params: {
@@ -199,6 +200,8 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
           )}
         </CardContent>
       </Card>
+
+      <CreditAnalysisIntegration companyId={params.id} />
 
       {/* Logs Recentes */}
       {logs && logs.length > 0 && (
