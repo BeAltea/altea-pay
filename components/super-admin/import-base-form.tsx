@@ -6,7 +6,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2 } from "lucide-react"
-import { createCompanyWithCustomers } from "@/app/actions/company-actions"
+import { importCustomersToCompany } from "@/app/actions/company-actions"
 import { useRouter } from "next/navigation"
 
 interface ImportBaseFormProps {
@@ -67,9 +67,8 @@ export function ImportBaseForm({ companyId, companyName }: ImportBaseFormProps) 
       const formData = new FormData()
       formData.append("file", file)
       formData.append("companyId", companyId)
-      formData.append("companyName", companyName)
 
-      const result = await createCompanyWithCustomers(formData)
+      const result = await importCustomersToCompany(formData)
 
       console.log("[v0] Import result:", result)
 
