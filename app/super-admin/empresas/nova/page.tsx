@@ -10,34 +10,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Building2, Upload, FileSpreadsheet } from "lucide-react"
+import { ArrowLeft, Building2 } from "lucide-react"
 import Link from "next/link"
 import { createCompanyWithCustomers } from "@/app/actions/company-actions"
 import { useToast } from "@/hooks/use-toast"
+import { ImportBaseWizard } from "@/components/super-admin/import-base-wizard"
 
 export default function NovaEmpresaPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
-  const [previewData, setPreviewData] = useState<any[]>([])
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (selectedFile) {
-      setFile(selectedFile)
-
-      // Preview do arquivo
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const text = event.target?.result as string
-        const lines = text.split("\n").filter((line) => line.trim())
-        const preview = lines.slice(0, 6) // Header + 5 linhas
-        setPreviewData(preview.map((line) => line.split(",")))
-      }
-      reader.readAsText(selectedFile)
-    }
-  }
+  const [showImportWizard, setShowImportWizard] = useState(false)
+  const [importedData, setImportedData] = useState<any[] | null>(null)
+  const [companyData, setCompanyData] = useState<any>(null)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -46,10 +31,45 @@ export default function NovaEmpresaPage() {
     try {
       const formData = new FormData(e.currentTarget)
 
-      // Adiciona o arquivo se existir
-      if (file) {
-        formData.set("customersFile", file)
-      }
+      setCompanyData({
+        name: formData.get("name"),
+        document: formData.get("document"),
+        email: formData.get("email"),
+        phone: formData.get("phone"),
+        address: formData.get("address"),
+        status: formData.get("status"),
+      })
+
+      setShowImportWizard(true)
+      setLoading(false)
+    } catch (error) {
+      console.error("[v0] Error creating company:", error)
+      toast({
+        title: "Erro ao criar empresa",
+        description: "Ocorreu um erro inesperado. Tente novamente.",
+        variant: "destructive",
+      })
+      setLoading(false)
+    }
+  }
+
+  const handleImportComplete = async (data: any[]) => {
+    setLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append("name", companyData.name)
+      formData.append("document", companyData.document)
+      formData.append("email", companyData.email || "")
+      formData.append("phone", companyData.phone || "")
+      formData.append("address", companyData.address || "")
+      formData.append("status", companyData.status)
+
+      // Convert imported data to CSV format
+      const csvContent = [Object.keys(data[0]).join(","), ...data.map((row) => Object.values(row).join(","))].join("\n")
+
+      const blob = new Blob([csvContent], { type: "text/csv" })
+      const file = new File([blob], "customers.csv", { type: "text/csv" })
+      formData.append("customersFile", file)
 
       const result = await createCompanyWithCustomers(formData)
 
@@ -76,6 +96,64 @@ export default function NovaEmpresaPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSkipImport = async () => {
+    setLoading(true)
+    try {
+      const formData = new FormData()
+      formData.append("name", companyData.name)
+      formData.append("document", companyData.document)
+      formData.append("email", companyData.email || "")
+      formData.append("phone", companyData.phone || "")
+      formData.append("address", companyData.address || "")
+      formData.append("status", companyData.status)
+
+      const result = await createCompanyWithCustomers(formData)
+
+      if (result.success) {
+        toast({
+          title: "Empresa criada com sucesso!",
+          description: "Você pode importar clientes depois.",
+        })
+        router.push("/super-admin/empresas")
+      } else {
+        toast({
+          title: "Erro ao criar empresa",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error creating company:", error)
+      toast({
+        title: "Erro ao criar empresa",
+        description: "Ocorreu um erro inesperado. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (showImportWizard) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => setShowImportWizard(false)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Importar Base de Clientes</h1>
+            <p className="text-muted-foreground">
+              Empresa: <span className="font-medium">{companyData.name}</span>
+            </p>
+          </div>
+        </div>
+
+        <ImportBaseWizard companyId={null} onComplete={handleImportComplete} onSkip={handleSkipImport} />
+      </div>
+    )
   }
 
   return (
@@ -147,58 +225,6 @@ export default function NovaEmpresaPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Importar Base de Clientes
-            </CardTitle>
-            <CardDescription>
-              Faça upload de um arquivo CSV ou Excel com os dados dos clientes (opcional)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="customersFile">Arquivo CSV/Excel</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="customersFile"
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={handleFileChange}
-                  className="cursor-pointer"
-                />
-                {file && <FileSpreadsheet className="h-5 w-5 text-green-600" />}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                O arquivo deve conter as colunas: nome, email, telefone, documento (CPF/CNPJ)
-              </p>
-            </div>
-
-            {previewData.length > 0 && (
-              <div className="space-y-2">
-                <Label>Preview dos Dados</Label>
-                <div className="border rounded-lg overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {previewData.map((row, i) => (
-                        <tr key={i} className={i === 0 ? "bg-muted font-medium" : ""}>
-                          {row.map((cell: string, j: number) => (
-                            <td key={j} className="px-3 py-2 border-r last:border-r-0">
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground">Mostrando as primeiras 5 linhas do arquivo</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         <div className="flex justify-end gap-2">
           <Link href="/super-admin/empresas">
             <Button type="button" variant="outline">
@@ -206,7 +232,7 @@ export default function NovaEmpresaPage() {
             </Button>
           </Link>
           <Button type="submit" disabled={loading}>
-            {loading ? "Criando..." : "Criar Empresa"}
+            {loading ? "Processando..." : "Continuar para Importação"}
           </Button>
         </div>
       </form>

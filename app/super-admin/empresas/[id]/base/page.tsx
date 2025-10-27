@@ -1,6 +1,5 @@
-"use client"
 import { createClient } from "@/lib/supabase/server"
-import { ImportBaseForm } from "@/components/super-admin/import-base-form"
+import { ImportBaseWizard } from "@/components/super-admin/import-base-wizard"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Download, ArrowLeft } from "lucide-react"
@@ -37,8 +36,10 @@ export default async function EmpresaBasePage({ params }: { params: { id: string
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <ImportBaseForm companyId={params.id} companyName={company.name} />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <ImportBaseWizard companyId={params.id} />
+        </div>
 
         <Card>
           <CardHeader>
