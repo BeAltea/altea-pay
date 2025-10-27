@@ -23,6 +23,37 @@ export interface DeleteCompanyParams {
   id: string
 }
 
+function detectCSVDelimiter(text: string): string {
+  const firstLine = text.split("\n")[0]
+  const semicolonCount = (firstLine.match(/;/g) || []).length
+  const commaCount = (firstLine.match(/,/g) || []).length
+
+  console.log("[v0] Detectando separador - Ponto e vírgula:", semicolonCount, "Vírgulas:", commaCount)
+  return semicolonCount > commaCount ? ";" : ","
+}
+
+const parseCSVLine = (line: string, delimiter: string): string[] => {
+  const result: string[] = []
+  let current = ""
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim())
+      current = ""
+    } else {
+      current += char
+    }
+  }
+
+  result.push(current.trim())
+  return result
+}
+
 export async function createCompany(params: CreateCompanyParams) {
   try {
     const supabase = await createClient()
@@ -156,7 +187,6 @@ export async function createCompanyWithCustomers(formData: FormData) {
 
     console.log("[v0] Dados da empresa:", JSON.stringify(companyData, null, 2))
 
-    // Create company
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .insert(companyData)
@@ -183,34 +213,18 @@ export async function createCompanyWithCustomers(formData: FormData) {
       const text = await customerFile.text()
       console.log("[v0] Conteúdo lido:", text.substring(0, 200) + "...")
 
-      const parseCSVLine = (line: string): string[] => {
-        const result: string[] = []
-        let current = ""
-        let inQuotes = false
-
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i]
-
-          if (char === '"') {
-            inQuotes = !inQuotes
-          } else if (char === "," && !inQuotes) {
-            result.push(current.trim())
-            current = ""
-          } else {
-            current += char
-          }
-        }
-
-        result.push(current.trim())
-        return result
-      }
+      const delimiter = detectCSVDelimiter(text)
+      console.log("[v0] Separador detectado:", delimiter === ";" ? "ponto e vírgula" : "vírgula")
 
       const lines = text.split("\n").filter((line) => line.trim())
-      const headers = parseCSVLine(lines[0]).map((h) =>
+      const headers = parseCSVLine(lines[0], delimiter).map((h) =>
         h
           .trim()
           .toLowerCase()
-          .replace(/[^\w\s]/g, ""),
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+          .replace(/[^\w\s]/g, "")
+          .replace(/\s+/g, ""),
       )
 
       console.log("[v0] Cabeçalhos detectados:", headers)
@@ -222,13 +236,16 @@ export async function createCompanyWithCustomers(formData: FormData) {
         name: "name",
         cliente: "name",
         razaosocial: "name",
-        razao_social: "name",
+        razaosocial: "name",
         titular: "name",
+        nomecompleto: "name",
+        nomerazao: "name",
 
         // Email variations
         email: "email",
         e_mail: "email",
         correio: "email",
+        mail: "email",
 
         // Phone variations
         telefone: "phone",
@@ -237,6 +254,7 @@ export async function createCompanyWithCustomers(formData: FormData) {
         fone: "phone",
         contato: "phone",
         whatsapp: "phone",
+        tel: "phone",
 
         // Document variations
         documento: "document",
@@ -245,28 +263,32 @@ export async function createCompanyWithCustomers(formData: FormData) {
         document: "document",
         cpfcnpj: "document",
         cpf_cnpj: "document",
+        doc: "document",
 
         // Address variations
         endereco: "address",
         address: "address",
         rua: "address",
         logradouro: "address",
+        end: "address",
 
         // City variations
         cidade: "city",
         city: "city",
         municipio: "city",
+        cid: "city",
 
         // State variations
         estado: "state",
         state: "state",
         uf: "state",
+        est: "state",
 
         // Zipcode variations
         cep: "zip_code",
         zipcode: "zip_code",
         zip_code: "zip_code",
-        codigo_postal: "zip_code",
+        codigopostal: "zip_code",
       }
 
       console.log("[v0] Mapeamento de colunas:")
@@ -279,7 +301,7 @@ export async function createCompanyWithCustomers(formData: FormData) {
 
       for (let i = 1; i < lines.length; i++) {
         try {
-          const values = parseCSVLine(lines[i])
+          const values = parseCSVLine(lines[i], delimiter)
           const customer: any = {
             company_id: company.id,
           }
@@ -304,9 +326,9 @@ export async function createCompanyWithCustomers(formData: FormData) {
             console.log(`[v0]   Documento limpo: ${cleanDoc} (${customer.document_type})`)
           }
 
-          if (!customer.name) {
-            console.log(`[v0]   ✗ IGNORADO: Nome não encontrado`)
-            errors.push(`Linha ${i}: Nome não encontrado`)
+          if (!customer.name && !customer.document) {
+            console.log(`[v0]   ✗ IGNORADO: Nome e documento não encontrados`)
+            errors.push(`Linha ${i}: Nome e documento não encontrados`)
             continue
           }
 
@@ -352,7 +374,7 @@ export async function createCompanyWithCustomers(formData: FormData) {
 
     return {
       success: true,
-      message: `Empresa criada com sucesso! ${importedCount > 0 ? `${importedCount} clientes importados.` : ""}${failedCount > 0 ? ` ${failedCount} falharam.` : ""}`,
+      message: `Empresa criada com sucesso! ${importedCount > 0 ? `${importedCount} clientes importados.` : ""}${failedCount > 0 ? ` ${failedCount} falharam.` : ""} A pessoa responsável deve criar uma conta com o email ${companyData.email} para acessar o dashboard.`,
       data: { company, importedCount, failedCount, errors },
     }
   } catch (error) {
@@ -410,34 +432,18 @@ export async function importCustomersToCompany(formData: FormData) {
     const text = await customerFile.text()
     console.log("[v0] Conteúdo lido:", text.substring(0, 200) + "...")
 
-    const parseCSVLine = (line: string): string[] => {
-      const result: string[] = []
-      let current = ""
-      let inQuotes = false
-
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i]
-
-        if (char === '"') {
-          inQuotes = !inQuotes
-        } else if (char === "," && !inQuotes) {
-          result.push(current.trim())
-          current = ""
-        } else {
-          current += char
-        }
-      }
-
-      result.push(current.trim())
-      return result
-    }
+    const delimiter = detectCSVDelimiter(text)
+    console.log("[v0] Separador detectado:", delimiter === ";" ? "ponto e vírgula" : "vírgula")
 
     const lines = text.split("\n").filter((line) => line.trim())
-    const headers = parseCSVLine(lines[0]).map((h) =>
+    const headers = parseCSVLine(lines[0], delimiter).map((h) =>
       h
         .trim()
         .toLowerCase()
-        .replace(/[^\w\s]/g, ""),
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+        .replace(/[^\w\s]/g, "")
+        .replace(/\s+/g, ""),
     )
 
     console.log("[v0] Cabeçalhos detectados:", headers)
@@ -449,13 +455,16 @@ export async function importCustomersToCompany(formData: FormData) {
       name: "name",
       cliente: "name",
       razaosocial: "name",
-      razao_social: "name",
+      razaosocial: "name",
       titular: "name",
+      nomecompleto: "name",
+      nomerazao: "name",
 
       // Email variations
       email: "email",
       e_mail: "email",
       correio: "email",
+      mail: "email",
 
       // Phone variations
       telefone: "phone",
@@ -464,6 +473,7 @@ export async function importCustomersToCompany(formData: FormData) {
       fone: "phone",
       contato: "phone",
       whatsapp: "phone",
+      tel: "phone",
 
       // Document variations
       documento: "document",
@@ -472,28 +482,32 @@ export async function importCustomersToCompany(formData: FormData) {
       document: "document",
       cpfcnpj: "document",
       cpf_cnpj: "document",
+      doc: "document",
 
       // Address variations
       endereco: "address",
       address: "address",
       rua: "address",
       logradouro: "address",
+      end: "address",
 
       // City variations
       cidade: "city",
       city: "city",
       municipio: "city",
+      cid: "city",
 
       // State variations
       estado: "state",
       state: "state",
       uf: "state",
+      est: "state",
 
       // Zipcode variations
       cep: "zip_code",
       zipcode: "zip_code",
       zip_code: "zip_code",
-      codigo_postal: "zip_code",
+      codigopostal: "zip_code",
     }
 
     console.log("[v0] Mapeamento de colunas:")
@@ -507,7 +521,7 @@ export async function importCustomersToCompany(formData: FormData) {
 
     for (let i = 1; i < lines.length; i++) {
       try {
-        const values = parseCSVLine(lines[i])
+        const values = parseCSVLine(lines[i], delimiter)
         const customer: any = {
           company_id: companyId,
         }
@@ -532,9 +546,9 @@ export async function importCustomersToCompany(formData: FormData) {
           console.log(`[v0]   Documento limpo: ${cleanDoc} (${customer.document_type})`)
         }
 
-        if (!customer.name) {
-          console.log(`[v0]   ✗ IGNORADO: Nome não encontrado`)
-          errors.push(`Linha ${i}: Nome não encontrado`)
+        if (!customer.name && !customer.document) {
+          console.log(`[v0]   ✗ IGNORADO: Nome e documento não encontrados`)
+          errors.push(`Linha ${i}: Nome e documento não encontrados`)
           continue
         }
 

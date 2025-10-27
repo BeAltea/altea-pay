@@ -43,6 +43,20 @@ export default function RegisterPage() {
     try {
       console.log("[v0] Starting user registration process")
 
+      console.log("[v0] Verificando se email pertence a uma empresa...")
+      const { data: company, error: companyError } = await supabase
+        .from("companies")
+        .select("id, name, email")
+        .eq("email", email)
+        .single()
+
+      if (companyError && companyError.code !== "PGRST116") {
+        console.error("[v0] Erro ao verificar empresa:", companyError)
+      }
+
+      const isCompanyEmail = !!company
+      console.log("[v0] Email pertence a empresa?", isCompanyEmail, company?.name)
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -52,6 +66,8 @@ export default function RegisterPage() {
           data: {
             full_name: fullName,
             company_name: companyName,
+            company_id: company?.id || null,
+            role: isCompanyEmail ? "admin" : "user",
           },
         },
       })
@@ -65,6 +81,24 @@ export default function RegisterPage() {
 
       if (data.user) {
         console.log("[v0] User created successfully:", data.user.id)
+
+        const { error: profileError } = await supabase.from("profiles").insert({
+          id: data.user.id,
+          email: email,
+          name: fullName,
+          role: isCompanyEmail ? "admin" : "user",
+          company_id: company?.id || null,
+        })
+
+        if (profileError) {
+          console.error("[v0] Erro ao criar profile:", profileError)
+        } else {
+          console.log("[v0] Profile criado com sucesso")
+          if (isCompanyEmail) {
+            console.log("[v0] Usuário associado à empresa:", company.name)
+          }
+        }
+
         router.push("/auth/register-success")
       } else {
         throw new Error("Usuário não foi criado corretamente")
