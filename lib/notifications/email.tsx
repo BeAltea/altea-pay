@@ -64,7 +64,7 @@ export async function sendEmail({ to, subject, html, body }: SendEmailParams) {
   }
 }
 
-export function generateDebtCollectionEmail({
+export async function generateDebtCollectionEmail({
   customerName,
   debtAmount,
   dueDate,
@@ -76,7 +76,7 @@ export function generateDebtCollectionEmail({
   dueDate: string
   companyName: string
   paymentLink: string
-}): string {
+}): Promise<string> {
   return `
     <!DOCTYPE html>
     <html>
