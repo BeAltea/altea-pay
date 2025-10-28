@@ -13,51 +13,22 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
 
   const supabase = await createClient()
 
-  console.log("[v0] Buscando empresa com ID:", params.id)
-
-  // Busca dados da empresa
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select("*")
     .eq("id", params.id)
     .single()
 
-  if (companyError) {
-    console.error("[v0] Erro ao buscar empresa:", companyError)
-  }
-
-  if (!company) {
-    console.log("[v0] Empresa não encontrada")
+  if (companyError || !company) {
     notFound()
   }
 
-  console.log("[v0] Empresa encontrada:", company.name)
+  const { data: customers } = await supabase.from("customers").select("*").eq("company_id", params.id)
 
-  const { data: customers, error: customersError } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("company_id", params.id)
-
-  console.log("[v0] Query customers - company_id:", params.id)
-  console.log("[v0] Customers error:", customersError)
-  console.log("[v0] Customers data:", customers)
-  console.log("[v0] Total de clientes encontrados:", customers?.length || 0)
-
-  const { data: debts, error: debtsError } = await supabase.from("debts").select("*").eq("company_id", params.id)
-
-  console.log("[v0] Query debts - company_id:", params.id)
-  console.log("[v0] Debts error:", debtsError)
-  console.log("[v0] Debts data:", debts)
-  console.log("[v0] Total de dívidas encontradas:", debts?.length || 0)
+  const { data: debts } = await supabase.from("debts").select("*").eq("company_id", params.id)
 
   const totalDebts = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
   const paidDebts = debts?.filter((d) => d.status === "paid").length || 0
-  const pendingDebts = debts?.filter((d) => d.status === "pending").length || 0
-
-  console.log("[v0] Empresa:", company.name)
-  console.log("[v0] Total de clientes:", customers?.length || 0)
-  console.log("[v0] Total de dívidas:", debts?.length || 0)
-  console.log("[v0] Valor total de dívidas:", totalDebts)
 
   return (
     <div className="space-y-6">
