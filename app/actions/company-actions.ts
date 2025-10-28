@@ -168,7 +168,7 @@ export async function deleteCompany(params: DeleteCompanyParams) {
   }
 }
 
-export async function createCompanyWithCustomers(formData: FormData) {
+export async function createCompanyWithCustomers(formData: FormData, customers?: any[]) {
   try {
     console.log("[v0] ===== INICIANDO CRIAÇÃO DE EMPRESA COM CLIENTES =====")
     const supabase = await createClient()
@@ -200,162 +200,65 @@ export async function createCompanyWithCustomers(formData: FormData) {
 
     console.log("[v0] ✓ Empresa criada com ID:", company.id)
 
-    const customerFile = formData.get("customerFile") as File
     let importedCount = 0
     let failedCount = 0
     const errors: string[] = []
 
-    if (customerFile && customerFile.size > 0) {
-      console.log("[v0] ===== PROCESSANDO ARQUIVO DE CLIENTES =====")
-      console.log("[v0] Nome do arquivo:", customerFile.name)
-      console.log("[v0] Tamanho:", customerFile.size, "bytes")
+    if (customers && customers.length > 0) {
+      console.log("[v0] ===== PROCESSANDO CLIENTES =====")
+      console.log("[v0] Total de clientes:", customers.length)
 
-      const text = await customerFile.text()
-      console.log("[v0] Conteúdo lido:", text.substring(0, 200) + "...")
+      const validCustomers = []
 
-      const delimiter = detectCSVDelimiter(text)
-      console.log("[v0] Separador detectado:", delimiter === ";" ? "ponto e vírgula" : "vírgula")
-
-      const lines = text.split("\n").filter((line) => line.trim())
-      const headers = parseCSVLine(lines[0], delimiter).map((h) =>
-        h
-          .trim()
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "") // Remove acentos
-          .replace(/[^\w\s]/g, "")
-          .replace(/\s+/g, ""),
-      )
-
-      console.log("[v0] Cabeçalhos detectados:", headers)
-      console.log("[v0] Total de linhas (incluindo cabeçalho):", lines.length)
-
-      const headerMap: Record<string, string> = {
-        // Nome variations
-        nome: "name",
-        name: "name",
-        cliente: "name",
-        razaosocial: "name",
-        razaosocial: "name",
-        titular: "name",
-        nomecompleto: "name",
-        nomerazao: "name",
-
-        // Email variations
-        email: "email",
-        e_mail: "email",
-        correio: "email",
-        mail: "email",
-
-        // Phone variations
-        telefone: "phone",
-        phone: "phone",
-        celular: "phone",
-        fone: "phone",
-        contato: "phone",
-        whatsapp: "phone",
-        tel: "phone",
-
-        // Document variations
-        documento: "document",
-        cpf: "document",
-        cnpj: "document",
-        document: "document",
-        cpfcnpj: "document",
-        cpf_cnpj: "document",
-        doc: "document",
-
-        // Address variations
-        endereco: "address",
-        address: "address",
-        rua: "address",
-        logradouro: "address",
-        end: "address",
-
-        // City variations
-        cidade: "city",
-        city: "city",
-        municipio: "city",
-        cid: "city",
-
-        // State variations
-        estado: "state",
-        state: "state",
-        uf: "state",
-        est: "state",
-
-        // Zipcode variations
-        cep: "zip_code",
-        zipcode: "zip_code",
-        zip_code: "zip_code",
-        codigopostal: "zip_code",
-      }
-
-      console.log("[v0] Mapeamento de colunas:")
-      headers.forEach((header, index) => {
-        const mapped = headerMap[header]
-        console.log(`[v0]   ${index}: "${header}" → ${mapped || "NÃO MAPEADO"}`)
-      })
-
-      const customers = []
-
-      for (let i = 1; i < lines.length; i++) {
+      for (let i = 0; i < customers.length; i++) {
         try {
-          const values = parseCSVLine(lines[i], delimiter)
-          const customer: any = {
-            company_id: company.id,
-          }
+          const customer = customers[i]
 
-          console.log(`[v0] --- Linha ${i} ---`)
-          console.log(`[v0] Valores:`, values)
-
-          headers.forEach((header, index) => {
-            const dbColumn = headerMap[header]
-            const value = values[index]?.trim()
-
-            if (dbColumn && value) {
-              customer[dbColumn] = value
-              console.log(`[v0]   ${header} (${dbColumn}): "${value}"`)
-            }
-          })
-
-          if (customer.document) {
-            const cleanDoc = customer.document.replace(/\D/g, "")
-            customer.document_type = cleanDoc.length === 11 ? "CPF" : "CNPJ"
-            customer.document = cleanDoc
-            console.log(`[v0]   Documento limpo: ${cleanDoc} (${customer.document_type})`)
-          }
-
-          if (!customer.name && !customer.document) {
-            console.log(`[v0]   ✗ IGNORADO: Nome e documento não encontrados`)
-            errors.push(`Linha ${i}: Nome e documento não encontrados`)
+          if (!customer.name || !customer.document) {
+            errors.push(`Cliente ${i + 1}: Nome ou documento faltando`)
+            failedCount++
             continue
           }
 
-          customers.push(customer)
-          console.log(`[v0]   ✓ Cliente válido adicionado`)
+          const cleanDoc = customer.document.replace(/\D/g, "")
+          const documentType = cleanDoc.length === 11 ? "CPF" : "CNPJ"
+
+          const validCustomer: any = {
+            company_id: company.id,
+            name: customer.name,
+            document: cleanDoc,
+            document_type: documentType,
+          }
+
+          if (customer.email) validCustomer.email = customer.email
+          if (customer.phone) validCustomer.phone = customer.phone
+          if (customer.address) validCustomer.address = customer.address
+          if (customer.city) validCustomer.city = customer.city
+          if (customer.state) validCustomer.state = customer.state
+          if (customer.zipcode || customer.zip_code) validCustomer.zip_code = customer.zipcode || customer.zip_code
+          if (customer.debt_amount) validCustomer.debt_amount = customer.debt_amount
+          if (customer.due_date) validCustomer.due_date = customer.due_date
+
+          validCustomers.push(validCustomer)
+          console.log(`[v0] Cliente ${i + 1} validado:`, validCustomer.name)
         } catch (error) {
-          console.error(`[v0]   ✗ ERRO ao processar linha ${i}:`, error)
-          errors.push(`Linha ${i}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
+          console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
+          errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
           failedCount++
         }
       }
 
-      console.log("[v0] ===== RESUMO DO PARSING =====")
-      console.log("[v0] Total de clientes válidos:", customers.length)
-      console.log("[v0] Total de erros:", errors.length)
-
-      if (customers.length > 0) {
+      if (validCustomers.length > 0) {
         console.log("[v0] Inserindo clientes no banco de dados...")
 
         const { data: insertedCustomers, error: customersError } = await supabase
           .from("customers")
-          .insert(customers)
+          .insert(validCustomers)
           .select()
 
         if (customersError) {
           console.error("[v0] ✗ ERRO ao importar clientes:", customersError)
-          failedCount += customers.length
+          failedCount += validCustomers.length
           errors.push(`Erro no banco: ${customersError.message}`)
         } else {
           importedCount = insertedCustomers?.length || 0
@@ -458,7 +361,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
         if (customer.address) validCustomer.address = customer.address
         if (customer.city) validCustomer.city = customer.city
         if (customer.state) validCustomer.state = customer.state
-        if (customer.zipcode) validCustomer.zip_code = customer.zipcode
+        if (customer.zipcode || customer.zip_code) validCustomer.zip_code = customer.zipcode || customer.zip_code
         if (customer.debt_amount) validCustomer.debt_amount = customer.debt_amount
         if (customer.due_date) validCustomer.due_date = customer.due_date
 

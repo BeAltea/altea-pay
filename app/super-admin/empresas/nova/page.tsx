@@ -58,25 +58,13 @@ export default function NovaEmpresaPage() {
     try {
       const formData = new FormData()
       formData.append("name", companyData.name)
-      formData.append("cnpj", companyData.document) // Corrigido de document para cnpj
+      formData.append("cnpj", companyData.document)
       formData.append("email", companyData.email || "")
       formData.append("phone", companyData.phone || "")
       formData.append("address", companyData.address || "")
       formData.append("status", companyData.status)
 
-      if (data && data.length > 0) {
-        const headers = Object.keys(data[0])
-        const csvContent = [
-          headers.join(";"), // Usa ponto e vírgula como separador
-          ...data.map((row) => headers.map((h) => row[h] || "").join(";")),
-        ].join("\n")
-
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" })
-        const file = new File([blob], "customers.csv", { type: "text/csv" })
-        formData.append("customerFile", file) // Corrigido de customersFile para customerFile
-      }
-
-      const result = await createCompanyWithCustomers(formData)
+      const result = await createCompanyWithCustomers(formData, data)
 
       if (result.success) {
         toast({
@@ -108,13 +96,13 @@ export default function NovaEmpresaPage() {
     try {
       const formData = new FormData()
       formData.append("name", companyData.name)
-      formData.append("cnpj", companyData.document) // Corrigido de document para cnpj
+      formData.append("cnpj", companyData.document)
       formData.append("email", companyData.email || "")
       formData.append("phone", companyData.phone || "")
       formData.append("address", companyData.address || "")
       formData.append("status", companyData.status)
 
-      const result = await createCompanyWithCustomers(formData)
+      const result = await createCompanyWithCustomers(formData, undefined)
 
       if (result.success) {
         toast({
