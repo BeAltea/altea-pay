@@ -283,7 +283,9 @@ export default function ManageCustomersPage({ params }: { params: { id: string }
               >
                 <div className="flex items-center space-x-4">
                   <Avatar>
-                    <AvatarImage src={`/.jpg?height=40&width=40&query=${customer.name}`} />
+                    <AvatarImage
+                      src={`/.jpg?key=se7dl&height=40&width=40&query=${customer.name}`}
+                    />
                     <AvatarFallback>
                       {customer.name
                         .split(" ")

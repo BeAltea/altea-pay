@@ -32,38 +32,71 @@ interface CompanyDetailsProps {
 export default async function CompanyDetailsPage({ params }: CompanyDetailsProps) {
   const supabase = await createClient()
 
-  // Mock data for company details
-  const company = {
-    id: params.id,
-    name: "Enel Distribuição São Paulo",
-    cnpj: "33.479.023/0001-80",
-    email: "admin@enel.com.br",
-    phone: "(11) 3003-0303",
-    status: "active" as const,
-    created_at: "2024-01-15T10:00:00Z",
-    description:
-      "Distribuidora de energia elétrica responsável pelo fornecimento de energia para a região metropolitana de São Paulo.",
-    address: {
-      street: "Rua Ática, 673",
-      neighborhood: "Vila Olímpia",
-      city: "São Paulo",
-      state: "SP",
-      cep: "04634-042",
-    },
-    segment: "Energia Elétrica",
-    totalCustomers: 1247,
-    totalDebts: 3456,
-    totalAmount: 2847392.5,
-    recoveredAmount: 1234567.89,
-    recoveryRate: 43.4,
-    overdueDebts: 234,
-    admins: 3,
-    lastActivity: "2024-03-15T14:30:00Z",
-  }
+  const { data: companyData, error: companyError } = await supabase
+    .from("companies")
+    .select("*")
+    .eq("id", params.id)
+    .single()
 
-  if (!company) {
+  if (companyError || !companyData) {
+    console.error("[v0] Error fetching company:", companyError)
     notFound()
   }
+
+  const { data: customersData } = await supabase.from("customers").select("*").eq("company_id", params.id)
+
+  const { data: debtsData } = await supabase.from("debts").select("*").eq("company_id", params.id)
+
+  const { data: paymentsData } = await supabase.from("payments").select("*").eq("company_id", params.id)
+
+  const { data: adminsData } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("company_id", params.id)
+    .eq("role", "admin")
+
+  const totalCustomers = customersData?.length || 0
+  const totalDebts = debtsData?.length || 0
+  const totalAmount = debtsData?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
+  const recoveredAmount = paymentsData?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
+  const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+  const overdueDebts = debtsData?.filter((d) => d.status === "overdue").length || 0
+  const admins = adminsData?.length || 0
+
+  const company = {
+    id: companyData.id,
+    name: companyData.name,
+    cnpj: companyData.cnpj || "N/A",
+    email: companyData.email || "N/A",
+    phone: companyData.phone || "N/A",
+    status: companyData.status || "active",
+    created_at: companyData.created_at,
+    description: companyData.description || "",
+    address: companyData.address || {
+      street: "N/A",
+      neighborhood: "N/A",
+      city: "N/A",
+      state: "N/A",
+      cep: "N/A",
+    },
+    segment: companyData.segment || "N/A",
+    totalCustomers,
+    totalDebts,
+    totalAmount,
+    recoveredAmount,
+    recoveryRate,
+    overdueDebts,
+    admins,
+    lastActivity: companyData.updated_at || companyData.created_at,
+  }
+
+  console.log("[v0] Company details:", {
+    id: company.id,
+    name: company.name,
+    totalCustomers,
+    totalDebts,
+    totalAmount,
+  })
 
   const recentActivity = [
     {
@@ -112,7 +145,9 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
           </div>
           <div className="flex items-center space-x-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={`/.jpg?height=64&width=64&query=${company.name}`} />
+              <AvatarImage
+                src={`/.jpg?key=oagcu&height=64&width=64&query=${encodeURIComponent(company.name)}`}
+              />
               <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
                 {company.name
                   .split(" ")

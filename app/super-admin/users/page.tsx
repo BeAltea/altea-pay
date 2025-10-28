@@ -177,7 +177,7 @@ export default function UsersPage() {
       case "active":
         return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
       case "inactive":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300"
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
       case "suspended":
         return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
       default:
@@ -310,7 +310,7 @@ export default function UsersPage() {
                     <div className="flex items-center space-x-4 mb-3 lg:mb-0">
                       <Avatar className="h-12 w-12">
                         <AvatarImage
-                          src={`/user-avatar-.jpg?key=60an0&height=48&width=48&query=user-avatar-${user.full_name}`}
+                          src={`/user-avatar-.jpg?key=ual6t&height=48&width=48&query=user-avatar-${user.full_name}`}
                         />
                         <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
                           {user.full_name
