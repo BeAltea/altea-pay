@@ -4,9 +4,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, FileText, TrendingUp, ArrowLeft, Upload, Download } from "lucide-react"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 export default async function EmpresaDetalhesPage({ params }: { params: { id: string } }) {
+  if (params.id === "nova") {
+    redirect("/super-admin/empresas/nova")
+  }
+
   const supabase = await createClient()
 
   // Busca dados da empresa
@@ -16,7 +20,6 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
     notFound()
   }
 
-  // Busca estatísticas
   const { data: customers } = await supabase.from("customers").select("*").eq("company_id", params.id)
 
   const { data: debts } = await supabase.from("debts").select("*").eq("company_id", params.id)
@@ -24,6 +27,11 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
   const totalDebts = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
   const paidDebts = debts?.filter((d) => d.status === "paid").length || 0
   const pendingDebts = debts?.filter((d) => d.status === "pending").length || 0
+
+  console.log("[v0] Empresa:", company.name)
+  console.log("[v0] Total de clientes:", customers?.length || 0)
+  console.log("[v0] Total de dívidas:", debts?.length || 0)
+  console.log("[v0] Valor total de dívidas:", totalDebts)
 
   return (
     <div className="space-y-6">
@@ -35,11 +43,9 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
         </Link>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">{company.name}</h1>
-          <p className="text-muted-foreground">{company.document}</p>
+          <p className="text-muted-foreground">{company.cnpj}</p>
         </div>
-        <Badge variant={company.status === "active" ? "default" : "secondary"}>
-          {company.status === "active" ? "Ativa" : "Inativa"}
-        </Badge>
+        <Badge variant="default">Ativa</Badge>
       </div>
 
       {/* Estatísticas */}
@@ -106,7 +112,7 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">CNPJ</p>
-              <p className="text-base">{company.document}</p>
+              <p className="text-base">{company.cnpj}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Email</p>
