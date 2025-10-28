@@ -54,6 +54,10 @@ export default function NovaEmpresaPage() {
   }
 
   const handleImportComplete = async (data: any[]) => {
+    console.log("[v0] ===== handleImportComplete CHAMADO =====")
+    console.log("[v0] Dados recebidos:", data?.length, "clientes")
+    console.log("[v0] Company data:", companyData)
+
     setLoading(true)
     try {
       const formData = new FormData()
@@ -64,15 +68,20 @@ export default function NovaEmpresaPage() {
       formData.append("address", companyData.address || "")
       formData.append("status", companyData.status)
 
+      console.log("[v0] Chamando createCompanyWithCustomers...")
       const result = await createCompanyWithCustomers(formData, data)
+      console.log("[v0] Resultado:", result)
 
       if (result.success) {
         toast({
           title: "Empresa criada com sucesso!",
           description: result.message,
         })
+        console.log("[v0] Redirecionando para /super-admin/empresas")
         router.push("/super-admin/empresas")
+        router.refresh()
       } else {
+        console.error("[v0] Erro ao criar empresa:", result)
         toast({
           title: "Erro ao criar empresa",
           description: result.error || result.message,
@@ -80,10 +89,10 @@ export default function NovaEmpresaPage() {
         })
       }
     } catch (error) {
-      console.error("[v0] Error creating company:", error)
+      console.error("[v0] ERRO FATAL em handleImportComplete:", error)
       toast({
         title: "Erro ao criar empresa",
-        description: "Ocorreu um erro inesperado. Tente novamente.",
+        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado. Tente novamente.",
         variant: "destructive",
       })
     } finally {
