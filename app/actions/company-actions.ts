@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 
 export interface CreateCompanyParams {
@@ -12,7 +13,6 @@ export interface CreateCompanyParams {
   city?: string
   state?: string
   zipcode?: string
-  status: "active" | "inactive" | "suspended"
 }
 
 export interface UpdateCompanyParams extends CreateCompanyParams {
@@ -69,7 +69,6 @@ export async function createCompany(params: CreateCompanyParams) {
         city: params.city || null,
         state: params.state || null,
         zipcode: params.zipcode || null,
-        status: params.status,
       })
       .select()
       .single()
@@ -108,7 +107,6 @@ export async function updateCompany(params: UpdateCompanyParams) {
         city: params.city || null,
         state: params.state || null,
         zipcode: params.zipcode || null,
-        status: params.status,
       })
       .eq("id", params.id)
       .select()
@@ -183,10 +181,52 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       state: (formData.get("state") as string) || null,
       zip_code: (formData.get("zip_code") as string) || null,
       sector: (formData.get("sector") as string) || null,
-      status: "active",
     }
 
     console.log("[v0] Dados da empresa:", JSON.stringify(companyData, null, 2))
+
+    const { data: existingCompany, error: checkError } = await supabase
+      .from("companies")
+      .select("id, name")
+      .eq("cnpj", companyData.cnpj)
+      .single()
+
+    if (existingCompany) {
+      console.log("[v0] ⚠ CNPJ já existe - Empresa:", existingCompany.name, "ID:", existingCompany.id)
+
+      if (customers && customers.length > 0) {
+        console.log("[v0] Adicionando clientes à empresa existente...")
+        const importResult = await importCustomersToCompany(existingCompany.id, customers)
+
+        if (importResult.success) {
+          revalidatePath("/super-admin/empresas")
+          revalidatePath("/super-admin/companies")
+
+          return {
+            success: true,
+            message: `Empresa "${existingCompany.name}" já existe. ${importResult.imported} clientes foram adicionados à empresa existente.${importResult.failed > 0 ? ` ${importResult.failed} falharam.` : ""}`,
+            data: {
+              company: existingCompany,
+              importedCount: importResult.imported,
+              failedCount: importResult.failed,
+              errors: importResult.errors,
+            },
+          }
+        } else {
+          return {
+            success: false,
+            message: `Empresa "${existingCompany.name}" já existe, mas houve erro ao adicionar os clientes: ${importResult.error}`,
+            error: importResult.error,
+          }
+        }
+      }
+
+      return {
+        success: false,
+        message: `Uma empresa com o CNPJ ${companyData.cnpj} já está cadastrada com o nome "${existingCompany.name}".`,
+        error: "CNPJ duplicado",
+      }
+    }
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
@@ -204,6 +244,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     let importedCount = 0
     let failedCount = 0
     const errors: string[] = []
+    const debtDataList: any[] = []
 
     if (customers && customers.length > 0) {
       console.log("[v0] ===== PROCESSANDO CLIENTES =====")
@@ -233,33 +274,43 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 
           const validCustomer: any = {
             company_id: company.id,
-            name: customer.name || "Cliente sem nome",
-            document: cleanDoc || null,
-            document_type: documentType,
+            name: String(customer.name || "").trim(),
+            document: String(customer.document || customer.cpf || "").trim(),
+            document_type: customer.document_type || "CPF",
           }
 
+          // Campos opcionais do cliente
           if (customer.email) validCustomer.email = String(customer.email)
           if (customer.phone) validCustomer.phone = String(customer.phone)
           if (customer.address) validCustomer.address = String(customer.address)
           if (customer.city) validCustomer.city = String(customer.city)
           if (customer.state) validCustomer.state = String(customer.state)
-          if (customer.zipcode || customer.zip_code)
-            validCustomer.zip_code = String(customer.zipcode || customer.zip_code)
-
-          if (customer.debt_amount || customer.due_date) {
-            validCustomer.metadata = {
-              debt_amount: customer.debt_amount,
-              due_date: customer.due_date,
-            }
-          }
+          if (customer.zip_code) validCustomer.zip_code = String(customer.zip_code)
+          if (customer.external_id) validCustomer.external_id = String(customer.external_id)
+          if (customer.source_system) validCustomer.source_system = String(customer.source_system)
 
           validCustomers.push(validCustomer)
-          console.log(
-            `[v0] Cliente ${i + 1} validado:`,
-            validCustomer.name,
-            "-",
-            validCustomer.document || "sem documento",
-          )
+
+          // Armazenar dados de dívida separadamente para criar depois
+          if (customer.debt_amount || customer.due_date || customer.contract_number) {
+            const debtData: any = {
+              customer_document: validCustomer.document,
+              company_id: company.id,
+            }
+
+            if (customer.debt_amount)
+              debtData.amount = Number.parseFloat(
+                String(customer.debt_amount)
+                  .replace(/[^\d.,]/g, "")
+                  .replace(",", "."),
+              )
+            if (customer.due_date) debtData.due_date = String(customer.due_date)
+            if (customer.description) debtData.description = String(customer.description)
+            if (customer.contract_number) debtData.external_id = String(customer.contract_number)
+            if (customer.status) debtData.status = String(customer.status)
+
+            debtDataList.push(debtData)
+          }
         } catch (error) {
           console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
           errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
@@ -275,7 +326,8 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
         console.log("[v0] Inserindo clientes no banco de dados...")
         console.log("[v0] Exemplo de cliente a ser inserido:", JSON.stringify(validCustomers[0], null, 2))
 
-        const { data: insertedCustomers, error: customersError } = await supabase
+        const adminClient = createAdminClient()
+        const { data: insertedCustomers, error: customersError } = await adminClient
           .from("customers")
           .insert(validCustomers)
           .select()
@@ -292,6 +344,25 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
         }
       } else {
         console.log("[v0] ⚠ Nenhum cliente válido para importar")
+      }
+
+      if (debtDataList.length > 0) {
+        console.log("[v0] Inserindo dados de dívida no banco de dados...")
+        console.log("[v0] Exemplo de dívida a ser inserida:", JSON.stringify(debtDataList[0], null, 2))
+
+        const adminClient = createAdminClient()
+        const { error: debtError } = await adminClient.from("debts").insert(debtDataList)
+
+        if (debtError) {
+          console.error("[v0] ✗ ERRO ao importar dados de dívida:", debtError)
+          console.error("[v0] Detalhes do erro:", JSON.stringify(debtError, null, 2))
+          failedCount += debtDataList.length
+          errors.push(`Erro no banco ao inserir dívidas: ${debtError.message}`)
+        } else {
+          console.log("[v0] ✓ Dados de dívida importados com sucesso:", debtDataList.length)
+        }
+      } else {
+        console.log("[v0] ⚠ Nenhum dado de dívida válido para importar")
       }
     }
 
@@ -365,6 +436,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
 
     const validCustomers = []
     const errors: string[] = []
+    const debtDataList: any[] = []
 
     for (let i = 0; i < customers.length; i++) {
       try {
@@ -386,33 +458,43 @@ export async function importCustomersToCompany(companyId: string, customers: any
 
         const validCustomer: any = {
           company_id: companyId,
-          name: customer.name || "Cliente sem nome",
-          document: cleanDoc || null,
-          document_type: documentType,
+          name: String(customer.name || "").trim(),
+          document: String(customer.document || customer.cpf || "").trim(),
+          document_type: customer.document_type || "CPF",
         }
 
+        // Campos opcionais do cliente
         if (customer.email) validCustomer.email = String(customer.email)
         if (customer.phone) validCustomer.phone = String(customer.phone)
         if (customer.address) validCustomer.address = String(customer.address)
         if (customer.city) validCustomer.city = String(customer.city)
         if (customer.state) validCustomer.state = String(customer.state)
-        if (customer.zipcode || customer.zip_code)
-          validCustomer.zip_code = String(customer.zipcode || customer.zip_code)
-
-        if (customer.debt_amount || customer.due_date) {
-          validCustomer.metadata = {
-            debt_amount: customer.debt_amount,
-            due_date: customer.due_date,
-          }
-        }
+        if (customer.zip_code) validCustomer.zip_code = String(customer.zip_code)
+        if (customer.external_id) validCustomer.external_id = String(customer.external_id)
+        if (customer.source_system) validCustomer.source_system = String(customer.source_system)
 
         validCustomers.push(validCustomer)
-        console.log(
-          `[v0] Cliente ${i + 1} validado:`,
-          validCustomer.name,
-          "-",
-          validCustomer.document || "sem documento",
-        )
+
+        // Armazenar dados de dívida separadamente para criar depois
+        if (customer.debt_amount || customer.due_date || customer.contract_number) {
+          const debtData: any = {
+            customer_document: validCustomer.document,
+            company_id: companyId,
+          }
+
+          if (customer.debt_amount)
+            debtData.amount = Number.parseFloat(
+              String(customer.debt_amount)
+                .replace(/[^\d.,]/g, "")
+                .replace(",", "."),
+            )
+          if (customer.due_date) debtData.due_date = String(customer.due_date)
+          if (customer.description) debtData.description = String(customer.description)
+          if (customer.contract_number) debtData.external_id = String(customer.contract_number)
+          if (customer.status) debtData.status = String(customer.status)
+
+          debtDataList.push(debtData)
+        }
       } catch (error) {
         console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
         errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
@@ -429,7 +511,8 @@ export async function importCustomersToCompany(companyId: string, customers: any
     if (validCustomers.length > 0) {
       console.log("[v0] Inserindo clientes no banco de dados...")
 
-      const { data: insertedCustomers, error: customersError } = await supabase
+      const adminClient = createAdminClient()
+      const { data: insertedCustomers, error: customersError } = await adminClient
         .from("customers")
         .insert(validCustomers)
         .select()
@@ -446,6 +529,25 @@ export async function importCustomersToCompany(companyId: string, customers: any
       }
     } else {
       console.log("[v0] ⚠ Nenhum cliente válido para importar")
+    }
+
+    if (debtDataList.length > 0) {
+      console.log("[v0] Inserindo dados de dívida no banco de dados...")
+      console.log("[v0] Exemplo de dívida a ser inserida:", JSON.stringify(debtDataList[0], null, 2))
+
+      const adminClient = createAdminClient()
+      const { error: debtError } = await adminClient.from("debts").insert(debtDataList)
+
+      if (debtError) {
+        console.error("[v0] ✗ ERRO ao importar dados de dívida:", debtError)
+        console.error("[v0] Detalhes do erro:", JSON.stringify(debtError, null, 2))
+        failedCount += debtDataList.length
+        errors.push(`Erro no banco ao inserir dívidas: ${debtError.message}`)
+      } else {
+        console.log("[v0] ✓ Dados de dívida importados com sucesso:", debtDataList.length)
+      }
+    } else {
+      console.log("[v0] ⚠ Nenhum dado de dívida válido para importar")
     }
 
     revalidatePath("/super-admin/empresas")
