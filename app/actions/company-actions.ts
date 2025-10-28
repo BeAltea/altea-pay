@@ -168,7 +168,7 @@ export async function deleteCompany(params: DeleteCompanyParams) {
 
 export async function createCompanyWithCustomers(formData: FormData, customers?: any[]) {
   try {
-    console.log("[v0] ===== INICIANDO CRIAÇÃO DE EMPRESA COM CLIENTES =====")
+    console.log("🚀 [IMPORTAÇÃO] Iniciando criação de empresa com", customers?.length || 0, "clientes")
     const supabase = await createClient()
 
     const companyData = {
@@ -183,7 +183,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       sector: (formData.get("sector") as string) || null,
     }
 
-    console.log("[v0] Dados da empresa:", JSON.stringify(companyData, null, 2))
+    console.log("📋 [IMPORTAÇÃO] Dados da empresa:", companyData.name, "-", companyData.cnpj)
 
     const { data: existingCompany, error: checkError } = await supabase
       .from("companies")
@@ -192,10 +192,10 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       .single()
 
     if (existingCompany) {
-      console.log("[v0] ⚠ CNPJ já existe - Empresa:", existingCompany.name, "ID:", existingCompany.id)
+      console.log("⚠️ [IMPORTAÇÃO] CNPJ já existe - Empresa:", existingCompany.name)
 
       if (customers && customers.length > 0) {
-        console.log("[v0] Adicionando clientes à empresa existente...")
+        console.log("➕ [IMPORTAÇÃO] Adicionando", customers.length, "clientes à empresa existente...")
         const importResult = await importCustomersToCompany(existingCompany.id, customers)
 
         if (importResult.success) {
@@ -228,6 +228,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       }
     }
 
+    console.log("🏢 [IMPORTAÇÃO] Criando nova empresa...")
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .insert(companyData)
@@ -235,30 +236,27 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       .single()
 
     if (companyError) {
-      console.error("[v0] ERRO ao criar empresa:", companyError)
+      console.error("❌ [IMPORTAÇÃO] ERRO ao criar empresa:", companyError)
       throw companyError
     }
 
-    console.log("[v0] ✓ Empresa criada com ID:", company.id)
+    console.log("✅ [IMPORTAÇÃO] Empresa criada com ID:", company.id)
 
     let importedCount = 0
     let failedCount = 0
     const errors: string[] = []
 
     if (customers && customers.length > 0) {
-      console.log("[v0] ===== PROCESSANDO CLIENTES =====")
-      console.log("[v0] Total de clientes:", customers.length)
+      console.log("👥 [IMPORTAÇÃO] Processando", customers.length, "clientes...")
 
       const validCustomers = []
-      const customerDebtsMap = new Map() // Mapear dívidas por índice do cliente
+      const customerDebtsMap = new Map()
 
       for (let i = 0; i < customers.length; i++) {
         try {
           const customer = customers[i]
 
           if (!customer.name && !customer.document) {
-            console.log(`[v0] Cliente ${i + 1} ignorado - sem nome e sem documento`)
-            errors.push(`Cliente ${i + 1}: Nome e documento faltando`)
             failedCount++
             continue
           }
@@ -301,19 +299,22 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
             customerDebtsMap.set(i, debtData)
           }
         } catch (error) {
-          console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
-          errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
+          console.error(`❌ [IMPORTAÇÃO] Erro ao processar cliente ${i + 1}:`, error)
           failedCount++
         }
       }
 
-      console.log("[v0] ===== RESUMO DA VALIDAÇÃO =====")
-      console.log("[v0] Clientes válidos para inserção:", validCustomers.length)
-      console.log("[v0] Clientes com dívidas:", customerDebtsMap.size)
-      console.log("[v0] Clientes com erro:", failedCount)
+      console.log(
+        "📊 [IMPORTAÇÃO] Clientes válidos:",
+        validCustomers.length,
+        "| Com dívidas:",
+        customerDebtsMap.size,
+        "| Com erro:",
+        failedCount,
+      )
 
       if (validCustomers.length > 0) {
-        console.log("[v0] Inserindo clientes no banco de dados...")
+        console.log("💾 [IMPORTAÇÃO] Inserindo", validCustomers.length, "clientes no banco...")
 
         const adminClient = createAdminClient()
         const { data: insertedCustomers, error: customersError } = await adminClient
@@ -322,16 +323,17 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
           .select()
 
         if (customersError) {
-          console.error("[v0] ✗ ERRO ao importar clientes:", customersError)
-          console.error("[v0] Detalhes do erro:", JSON.stringify(customersError, null, 2))
+          console.error("❌ [IMPORTAÇÃO] ERRO ao inserir clientes:", customersError.message)
+          console.error("❌ [IMPORTAÇÃO] Código do erro:", customersError.code)
+          console.error("❌ [IMPORTAÇÃO] Detalhes:", customersError.details)
           failedCount += validCustomers.length
           errors.push(`Erro no banco: ${customersError.message}`)
         } else {
           importedCount = insertedCustomers?.length || 0
-          console.log("[v0] ✓ Clientes importados com sucesso:", importedCount)
+          console.log("✅ [IMPORTAÇÃO] Clientes inseridos com sucesso:", importedCount)
 
           if (customerDebtsMap.size > 0 && insertedCustomers) {
-            console.log("[v0] Criando dívidas para os clientes importados...")
+            console.log("💰 [IMPORTAÇÃO] Criando", customerDebtsMap.size, "dívidas...")
             const debtsToInsert = []
 
             for (let i = 0; i < insertedCustomers.length; i++) {
@@ -341,40 +343,40 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
               if (debtData) {
                 debtsToInsert.push({
                   ...debtData,
-                  customer_id: insertedCustomer.id, // Usar o ID do cliente inserido
+                  customer_id: insertedCustomer.id,
                 })
               }
             }
 
             if (debtsToInsert.length > 0) {
-              console.log("[v0] Inserindo", debtsToInsert.length, "dívidas no banco...")
               const { data: insertedDebts, error: debtsError } = await adminClient
                 .from("debts")
                 .insert(debtsToInsert)
                 .select()
 
               if (debtsError) {
-                console.error("[v0] ✗ ERRO ao inserir dívidas:", debtsError)
-                console.error("[v0] Detalhes do erro:", JSON.stringify(debtsError, null, 2))
+                console.error("❌ [IMPORTAÇÃO] ERRO ao inserir dívidas:", debtsError.message)
                 errors.push(`Erro ao inserir dívidas: ${debtsError.message}`)
               } else {
-                console.log("[v0] ✓ Dívidas inseridas com sucesso:", insertedDebts?.length || 0)
+                console.log("✅ [IMPORTAÇÃO] Dívidas inseridas:", insertedDebts?.length || 0)
               }
             }
           }
         }
-      } else {
-        console.log("[v0] ⚠ Nenhum cliente válido para importar")
       }
     }
 
     revalidatePath("/super-admin/empresas")
     revalidatePath("/super-admin/companies")
 
-    console.log("[v0] ===== FINALIZADO =====")
-    console.log("[v0] Empresa ID:", company.id)
-    console.log("[v0] Clientes importados:", importedCount)
-    console.log("[v0] Clientes com erro:", failedCount)
+    console.log(
+      "🎉 [IMPORTAÇÃO] FINALIZADO - Empresa:",
+      company.id,
+      "| Clientes:",
+      importedCount,
+      "| Erros:",
+      failedCount,
+    )
 
     return {
       success: true,
@@ -382,7 +384,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       data: { company, importedCount, failedCount, errors },
     }
   } catch (error) {
-    console.error("[v0] ✗ ERRO FATAL ao criar empresa com clientes:", error)
+    console.error("❌ [IMPORTAÇÃO] ERRO FATAL:", error)
     return {
       success: false,
       message: "Erro ao criar empresa",
@@ -440,7 +442,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
 
     const validCustomers = []
     const errors: string[] = []
-    const customerDebtsMap = new Map() // Mapear dívidas por índice do cliente
+    const customerDebtsMap = new Map()
 
     for (let i = 0; i < customers.length; i++) {
       try {
@@ -532,7 +534,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
             if (debtData) {
               debtsToInsert.push({
                 ...debtData,
-                customer_id: insertedCustomer.id, // Usar o ID do cliente inserido
+                customer_id: insertedCustomer.id,
               })
             }
           }
