@@ -172,7 +172,7 @@ export default async function UserDetailsPage({ params }: { params: { id: string
             <Avatar className="h-12 w-12">
               {/* Fixed placeholder image URL from /.jpg to /placeholder.svg */}
               <AvatarImage
-                src={`/.jpg?key=6pncm&height=48&width=48&query=${userDetails.full_name}`}
+                src={`/.jpg?key=kinfx&height=48&width=48&query=${encodeURIComponent(userDetails.full_name)}`}
               />
               <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
                 {userDetails.full_name
