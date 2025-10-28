@@ -33,17 +33,41 @@ interface ColumnMapping {
 }
 
 const DB_FIELDS = [
-  { value: "name", label: "Nome do Cliente" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Telefone" },
-  { value: "document", label: "CPF/CNPJ" },
-  { value: "address", label: "Endereço" },
-  { value: "city", label: "Cidade" },
-  { value: "state", label: "Estado" },
-  { value: "zipcode", label: "CEP" },
-  { value: "debt_amount", label: "Valor da Dívida" },
-  { value: "due_date", label: "Data de Vencimento" },
-  { value: "ignore", label: "🚫 Ignorar esta coluna" },
+  { value: "name", label: "Nome do Cliente", required: true },
+  { value: "document", label: "CPF/CNPJ", required: true },
+  { value: "email", label: "Email", required: false },
+  { value: "phone", label: "Telefone", required: false },
+  { value: "address", label: "Endereço Completo", required: false },
+  { value: "street", label: "Rua/Avenida", required: false },
+  { value: "number", label: "Número", required: false },
+  { value: "complement", label: "Complemento", required: false },
+  { value: "neighborhood", label: "Bairro", required: false },
+  { value: "city", label: "Cidade", required: false },
+  { value: "state", label: "Estado/UF", required: false },
+  { value: "zipcode", label: "CEP", required: false },
+  { value: "country", label: "País", required: false },
+  { value: "debt_amount", label: "Valor da Dívida/Débito", required: false },
+  { value: "original_amount", label: "Valor Original", required: false },
+  { value: "interest_amount", label: "Valor de Juros", required: false },
+  { value: "fine_amount", label: "Valor de Multa", required: false },
+  { value: "due_date", label: "Data de Vencimento", required: false },
+  { value: "first_due_date", label: "Primeira Vencida", required: false },
+  { value: "payment_date", label: "Data de Pagamento", required: false },
+  { value: "contract_number", label: "Número do Contrato", required: false },
+  { value: "invoice_number", label: "Número da Fatura", required: false },
+  { value: "days_overdue", label: "Dias em Atraso", required: false },
+  { value: "status", label: "Status", required: false },
+  { value: "notes", label: "Observações/Notas", required: false },
+  { value: "birth_date", label: "Data de Nascimento", required: false },
+  { value: "company_name", label: "Razão Social", required: false },
+  { value: "trade_name", label: "Nome Fantasia", required: false },
+  { value: "contact_person", label: "Pessoa de Contato", required: false },
+  { value: "secondary_phone", label: "Telefone Secundário", required: false },
+  { value: "whatsapp", label: "WhatsApp", required: false },
+  { value: "custom_field_1", label: "Campo Customizado 1", required: false },
+  { value: "custom_field_2", label: "Campo Customizado 2", required: false },
+  { value: "custom_field_3", label: "Campo Customizado 3", required: false },
+  { value: "ignore", label: "🚫 Ignorar esta coluna", required: false },
 ]
 
 export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
@@ -422,51 +446,215 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
             <div>
               <h3 className="text-lg font-medium mb-2">Mapeamento de Colunas</h3>
               <p className="text-sm text-muted-foreground">
-                Selecione qual campo do banco de dados corresponde a cada coluna do arquivo
+                Selecione qual campo do banco de dados corresponde a cada coluna do arquivo. Cada empresa pode ter
+                colunas diferentes.
               </p>
             </div>
 
-            <div className="space-y-3">
-              {parsedData.headers.map((header, index) => (
-                <div key={index} className="flex items-center gap-4 p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <Label className="font-medium">{header}</Label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Exemplo: {parsedData.rows[headerRow + 1]?.[index] || "N/A"}
-                    </p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  <Select
-                    value={columnMapping[header] || "ignore"}
-                    onValueChange={(value) => setColumnMapping({ ...columnMapping, [header]: value })}
-                  >
-                    <SelectTrigger className="w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DB_FIELDS.map((field) => (
-                        <SelectItem key={field.value} value={field.value}>
-                          {field.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
-
             <Alert>
-              <AlertDescription>
-                <strong>Campos obrigatórios:</strong> Nome e Documento (CPF/CNPJ) são necessários para cada cliente.
+              <AlertDescription className="flex items-center justify-between">
+                <div>
+                  <strong>Campos obrigatórios:</strong> Nome e Documento (CPF/CNPJ) são necessários para cada cliente.
+                </div>
+                <div className="flex gap-2">
+                  <Badge
+                    variant={columnMapping && Object.values(columnMapping).includes("name") ? "default" : "destructive"}
+                  >
+                    Nome: {Object.values(columnMapping).includes("name") ? "✓" : "✗"}
+                  </Badge>
+                  <Badge
+                    variant={
+                      columnMapping && Object.values(columnMapping).includes("document") ? "default" : "destructive"
+                    }
+                  >
+                    Documento: {Object.values(columnMapping).includes("document") ? "✓" : "✗"}
+                  </Badge>
+                </div>
               </AlertDescription>
             </Alert>
+
+            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+              {parsedData.headers.map((header, index) => {
+                const mappedField = columnMapping[header] || "ignore"
+                const fieldInfo = DB_FIELDS.find((f) => f.value === mappedField)
+                const isRequired = fieldInfo?.required || false
+
+                return (
+                  <div
+                    key={index}
+                    className={`flex items-center gap-4 p-4 border rounded-lg transition-colors ${
+                      isRequired && mappedField !== "ignore" ? "border-primary bg-primary/5" : ""
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Label className="font-medium text-base">{header}</Label>
+                        {isRequired && (
+                          <Badge variant="destructive" className="text-xs">
+                            Obrigatório
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">
+                        Exemplo: {parsedData.rows[headerRow + 1]?.[index] || "N/A"}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                    <Select
+                      value={columnMapping[header] || "ignore"}
+                      onValueChange={(value) => setColumnMapping({ ...columnMapping, [header]: value })}
+                    >
+                      <SelectTrigger className="w-72 flex-shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[400px]">
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Campos Obrigatórios
+                        </div>
+                        {DB_FIELDS.filter((f) => f.required).map((field) => (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.label}
+                          </SelectItem>
+                        ))}
+
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-2">
+                          Informações de Contato
+                        </div>
+                        {DB_FIELDS.filter(
+                          (f) => !f.required && ["email", "phone", "secondary_phone", "whatsapp"].includes(f.value),
+                        ).map((field) => (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.label}
+                          </SelectItem>
+                        ))}
+
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-2">
+                          Endereço
+                        </div>
+                        {DB_FIELDS.filter(
+                          (f) =>
+                            !f.required &&
+                            [
+                              "address",
+                              "street",
+                              "number",
+                              "complement",
+                              "neighborhood",
+                              "city",
+                              "state",
+                              "zipcode",
+                              "country",
+                            ].includes(f.value),
+                        ).map((field) => (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.label}
+                          </SelectItem>
+                        ))}
+
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-2">
+                          Valores e Datas
+                        </div>
+                        {DB_FIELDS.filter(
+                          (f) =>
+                            !f.required &&
+                            [
+                              "debt_amount",
+                              "original_amount",
+                              "interest_amount",
+                              "fine_amount",
+                              "due_date",
+                              "first_due_date",
+                              "payment_date",
+                              "days_overdue",
+                            ].includes(f.value),
+                        ).map((field) => (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.label}
+                          </SelectItem>
+                        ))}
+
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-2">
+                          Outros Campos
+                        </div>
+                        {DB_FIELDS.filter(
+                          (f) =>
+                            !f.required &&
+                            ![
+                              "email",
+                              "phone",
+                              "secondary_phone",
+                              "whatsapp",
+                              "address",
+                              "street",
+                              "number",
+                              "complement",
+                              "neighborhood",
+                              "city",
+                              "state",
+                              "zipcode",
+                              "country",
+                              "debt_amount",
+                              "original_amount",
+                              "interest_amount",
+                              "fine_amount",
+                              "due_date",
+                              "first_due_date",
+                              "payment_date",
+                              "days_overdue",
+                              "ignore",
+                            ].includes(f.value),
+                        ).map((field) => (
+                          <SelectItem key={field.value} value={field.value}>
+                            {field.label}
+                          </SelectItem>
+                        ))}
+
+                        <div className="border-t mt-2" />
+                        <SelectItem value="ignore" className="text-muted-foreground">
+                          🚫 Ignorar esta coluna
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )
+              })}
+            </div>
+
+            <Card className="bg-muted/50">
+              <CardContent className="pt-4">
+                <div className="text-sm space-y-1">
+                  <div className="font-medium mb-2">Resumo do Mapeamento:</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      Total de colunas: <strong>{parsedData.headers.length}</strong>
+                    </div>
+                    <div>
+                      Colunas mapeadas:{" "}
+                      <strong>{Object.values(columnMapping).filter((v) => v !== "ignore").length}</strong>
+                    </div>
+                    <div>
+                      Colunas ignoradas:{" "}
+                      <strong>{Object.values(columnMapping).filter((v) => v === "ignore").length}</strong>
+                    </div>
+                    <div>
+                      Registros a importar: <strong>{parsedData.totalRows - headerRow - 1}</strong>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep("preview")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar
               </Button>
-              <Button onClick={validateData}>
+              <Button
+                onClick={validateData}
+                disabled={
+                  !Object.values(columnMapping).includes("name") || !Object.values(columnMapping).includes("document")
+                }
+              >
                 Próximo: Validar Dados
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
