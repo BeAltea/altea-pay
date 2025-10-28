@@ -58,18 +58,23 @@ export default function NovaEmpresaPage() {
     try {
       const formData = new FormData()
       formData.append("name", companyData.name)
-      formData.append("document", companyData.document)
+      formData.append("cnpj", companyData.document) // Corrigido de document para cnpj
       formData.append("email", companyData.email || "")
       formData.append("phone", companyData.phone || "")
       formData.append("address", companyData.address || "")
       formData.append("status", companyData.status)
 
-      // Convert imported data to CSV format
-      const csvContent = [Object.keys(data[0]).join(","), ...data.map((row) => Object.values(row).join(","))].join("\n")
+      if (data && data.length > 0) {
+        const headers = Object.keys(data[0])
+        const csvContent = [
+          headers.join(";"), // Usa ponto e vírgula como separador
+          ...data.map((row) => headers.map((h) => row[h] || "").join(";")),
+        ].join("\n")
 
-      const blob = new Blob([csvContent], { type: "text/csv" })
-      const file = new File([blob], "customers.csv", { type: "text/csv" })
-      formData.append("customersFile", file)
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" })
+        const file = new File([blob], "customers.csv", { type: "text/csv" })
+        formData.append("customerFile", file) // Corrigido de customersFile para customerFile
+      }
 
       const result = await createCompanyWithCustomers(formData)
 
@@ -82,7 +87,7 @@ export default function NovaEmpresaPage() {
       } else {
         toast({
           title: "Erro ao criar empresa",
-          description: result.error,
+          description: result.error || result.message,
           variant: "destructive",
         })
       }
@@ -103,7 +108,7 @@ export default function NovaEmpresaPage() {
     try {
       const formData = new FormData()
       formData.append("name", companyData.name)
-      formData.append("document", companyData.document)
+      formData.append("cnpj", companyData.document) // Corrigido de document para cnpj
       formData.append("email", companyData.email || "")
       formData.append("phone", companyData.phone || "")
       formData.append("address", companyData.address || "")
@@ -120,7 +125,7 @@ export default function NovaEmpresaPage() {
       } else {
         toast({
           title: "Erro ao criar empresa",
-          description: result.error,
+          description: result.error || result.message,
           variant: "destructive",
         })
       }

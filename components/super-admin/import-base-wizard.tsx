@@ -17,7 +17,9 @@ import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
 
 interface ImportBaseWizardProps {
-  companyId: string
+  companyId: string | null
+  onComplete?: (data: any[]) => void
+  onSkip?: () => void
 }
 
 type Step = "upload" | "preview" | "mapping" | "validation" | "importing"
@@ -70,7 +72,7 @@ const DB_FIELDS = [
   { value: "ignore", label: "🚫 Ignorar esta coluna", required: false },
 ]
 
-export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
+export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState<Step>("upload")
   const [file, setFile] = useState<File | null>(null)
@@ -85,7 +87,8 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null)
 
-  // Detecta o separador do CSV
+  const isCreationMode = companyId === null
+
   const detectDelimiter = (text: string): string => {
     const firstLine = text.split("\n")[0]
     const delimiters = [";", ",", "\t", "|"]
@@ -103,7 +106,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     return bestDelimiter
   }
 
-  // Parse CSV robusto
   const parseCSV = (text: string, delimiter: string): string[][] => {
     const lines = text.split("\n").filter((line) => line.trim())
     const result: string[][] = []
@@ -138,7 +140,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     return result
   }
 
-  // Processa o arquivo
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
@@ -148,7 +149,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
 
     try {
       if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
-        // Processar Excel
         const arrayBuffer = await selectedFile.arrayBuffer()
         const workbook = XLSX.read(arrayBuffer, { type: "array" })
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
@@ -160,7 +160,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
           totalRows: jsonData.length,
         })
       } else if (fileName.endsWith(".csv")) {
-        // Processar CSV
         const text = await selectedFile.text()
         const delimiter = detectDelimiter(text)
         console.log("[v0] Delimiter detectado:", delimiter)
@@ -183,7 +182,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     }
   }
 
-  // Atualiza a linha de cabeçalho
   const handleHeaderRowChange = (row: number) => {
     if (!parsedData) return
     setHeaderRow(row)
@@ -193,7 +191,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     })
   }
 
-  // Auto-mapeia colunas baseado nos nomes
   const autoMapColumns = () => {
     if (!parsedData) return
 
@@ -246,7 +243,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     setColumnMapping(mapping)
   }
 
-  // Valida os dados mapeados
   const validateData = () => {
     if (!parsedData) return
 
@@ -266,7 +262,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
         }
       })
 
-      // Validação: nome e documento são obrigatórios
       if (!rowData.name || !rowData.document) {
         invalid++
         errors.push(`Linha ${index + 2}: Nome ou Documento faltando`)
@@ -279,7 +274,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     setStep("validation")
   }
 
-  // Importa os dados
   const handleImport = async () => {
     if (!parsedData) return
 
@@ -287,7 +281,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     setStep("importing")
 
     try {
-      // Converte os dados para array de objetos simples (plain objects)
       const dataRows = parsedData.rows.slice(headerRow + 1)
       const customers = dataRows.map((row) => {
         const customer: Record<string, string> = {}
@@ -295,7 +288,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
         parsedData.headers.forEach((header, colIndex) => {
           const dbField = columnMapping[header]
           if (dbField && dbField !== "ignore") {
-            // Garante que o valor seja uma string simples
             customer[dbField] = String(row[colIndex] || "")
           }
         })
@@ -303,24 +295,38 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
         return customer
       })
 
-      // Serializa e desserializa para garantir plain objects
       const plainCustomers = JSON.parse(JSON.stringify(customers))
 
-      console.log("[v0] Importando", plainCustomers.length, "clientes")
+      console.log("[v0] Processando", plainCustomers.length, "clientes")
 
-      const result = await importCustomersToCompany(companyId, plainCustomers)
-
-      if (result.success) {
+      if (isCreationMode && onComplete) {
+        console.log("[v0] Modo criação: retornando dados via callback")
         setImportResult({
-          success: result.imported || 0,
-          failed: result.failed || 0,
+          success: plainCustomers.length,
+          failed: 0,
         })
         setTimeout(() => {
-          router.refresh()
-        }, 2000)
-      } else {
-        alert(result.error || "Erro ao importar clientes")
-        setStep("validation")
+          onComplete(plainCustomers)
+        }, 1000)
+        return
+      }
+
+      if (!isCreationMode && companyId) {
+        console.log("[v0] Modo importação: importando para empresa", companyId)
+        const result = await importCustomersToCompany(companyId, plainCustomers)
+
+        if (result.success) {
+          setImportResult({
+            success: result.imported || 0,
+            failed: result.failed || 0,
+          })
+          setTimeout(() => {
+            router.refresh()
+          }, 2000)
+        } else {
+          alert(result.error || "Erro ao importar clientes")
+          setStep("validation")
+        }
       }
     } catch (error) {
       console.error("[v0] Erro ao importar:", error)
@@ -335,10 +341,13 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Assistente de Importação de Clientes</CardTitle>
-        <CardDescription>Importe clientes de arquivos CSV ou Excel com mapeamento visual de colunas</CardDescription>
+        <CardDescription>
+          {isCreationMode
+            ? "Importe clientes durante a criação da empresa"
+            : "Importe clientes de arquivos CSV ou Excel com mapeamento visual de colunas"}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Step 1: Upload */}
         {step === "upload" && (
           <div className="space-y-4">
             <div className="border-2 border-dashed rounded-lg p-12 text-center">
@@ -365,10 +374,16 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
                 (CPF/CNPJ)
               </AlertDescription>
             </Alert>
+            {isCreationMode && onSkip && (
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={onSkip}>
+                  Pular Importação
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Step 2: Preview */}
         {step === "preview" && parsedData && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -436,7 +451,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
           </div>
         )}
 
-        {/* Step 3: Mapping */}
         {step === "mapping" && parsedData && (
           <div className="space-y-4">
             <div>
@@ -658,7 +672,6 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
           </div>
         )}
 
-        {/* Step 4: Validation */}
         {step === "validation" && (
           <div className="space-y-4">
             <div>
@@ -712,28 +725,31 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
                 Voltar ao Mapeamento
               </Button>
               <Button onClick={handleImport} disabled={validationResults.valid === 0}>
-                Importar {validationResults.valid} Clientes
+                {isCreationMode ? "Continuar com" : "Importar"} {validationResults.valid} Clientes
               </Button>
             </div>
           </div>
         )}
 
-        {/* Step 5: Importing */}
         {step === "importing" && (
           <div className="space-y-4 text-center py-8">
             {!importResult ? (
               <>
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-                <div className="text-lg font-medium">Importando clientes...</div>
+                <div className="text-lg font-medium">
+                  {isCreationMode ? "Processando clientes..." : "Importando clientes..."}
+                </div>
                 <p className="text-sm text-muted-foreground">Isso pode levar alguns instantes</p>
               </>
             ) : (
               <>
                 <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-                <div className="text-xl font-bold">Importação Concluída!</div>
+                <div className="text-xl font-bold">
+                  {isCreationMode ? "Dados Processados!" : "Importação Concluída!"}
+                </div>
                 <div className="space-y-2">
                   <Badge variant="default" className="text-lg px-4 py-2">
-                    {importResult.success} clientes importados com sucesso
+                    {importResult.success} clientes {isCreationMode ? "processados" : "importados"} com sucesso
                   </Badge>
                   {importResult.failed > 0 && (
                     <Badge variant="destructive" className="text-lg px-4 py-2">
