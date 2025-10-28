@@ -7,11 +7,8 @@ import { cookies } from "next/headers"
  * it.
  */
 export async function createClient() {
-  console.log("[v0] Server - Creating Supabase client")
-
   try {
     const cookieStore = await cookies()
-    console.log("[v0] Server - Got cookie store")
 
     const client = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,21 +21,17 @@ export async function createClient() {
           setAll(cookiesToSet) {
             try {
               cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-            } catch (error) {
-              console.log("[v0] Server - Cookie set error (expected in Server Components):", error)
-              // The "setAll" method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
+            } catch {
+              // Ignorar erro esperado em Server Components
             }
           },
         },
       },
     )
 
-    console.log("[v0] Server - Supabase client created successfully")
     return client
   } catch (error) {
-    console.error("[v0] Server - Error creating client:", error)
+    console.error("[v0] Erro ao criar cliente Supabase:", error)
     throw error
   }
 }

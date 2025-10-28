@@ -31,17 +31,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchingRef = useRef(false)
   const lastFetchRef = useRef<number>(0)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
+
     const fetchUser = async () => {
+      // Evitar múltiplas requisições simultâneas
       if (fetchingRef.current) {
-        console.log("[v0] useAuth - Fetch já em andamento, pulando")
         return
       }
 
+      // Debounce de 2 segundos entre requisições
       const now = Date.now()
-      if (now - lastFetchRef.current < 1000) {
-        console.log("[v0] useAuth - Debounce ativo, pulando fetch")
+      if (now - lastFetchRef.current < 2000) {
         return
       }
 
@@ -49,22 +52,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       lastFetchRef.current = now
 
       try {
-        console.log("[v0] useAuth - Fetching user")
-
         const {
           data: { user: authUser },
           error: userError,
         } = await supabase.auth.getUser()
 
+        if (!mountedRef.current) return
+
         if (userError || !authUser) {
-          console.log("[v0] useAuth - No user found")
           setUser(null)
           setProfile(null)
           setLoading(false)
           return
         }
 
-        console.log("[v0] useAuth - User found:", authUser.id)
         setUser(authUser)
 
         const { data: profileData, error: profileError } = await supabase
@@ -73,18 +74,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq("id", authUser.id)
           .single()
 
+        if (!mountedRef.current) return
+
         if (profileError) {
-          console.error("[v0] useAuth - Profile error:", profileError)
+          console.error("[v0] Erro ao carregar perfil:", profileError)
           setProfile(null)
         } else {
-          console.log("[v0] useAuth - Profile loaded:", profileData)
           setProfile(profileData)
         }
       } catch (error) {
-        console.error("[v0] useAuth - Error:", error)
+        if (mountedRef.current) {
+          console.error("[v0] Erro na autenticação:", error)
+        }
       } finally {
-        setLoading(false)
-        fetchingRef.current = false
+        if (mountedRef.current) {
+          setLoading(false)
+          fetchingRef.current = false
+        }
       }
     }
 
@@ -93,6 +99,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mountedRef.current) return
+
       if (session?.user) {
         setUser(session.user)
         lastFetchRef.current = 0
@@ -104,12 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
+      mountedRef.current = false
       subscription.unsubscribe()
     }
   }, [])
 
   const signOut = async () => {
-    console.log("[v0] Auth - Signing out")
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)

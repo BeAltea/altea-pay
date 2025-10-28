@@ -6,11 +6,9 @@ export async function middleware(request: NextRequest) {
   const currentPath = request.nextUrl.pathname
 
   if (currentPath.startsWith("/api/")) {
-    console.log("[v0] Pulando middleware completamente para rota de API:", currentPath)
     return NextResponse.next()
   }
 
-  console.log("[v0] Middleware chamado para:", currentPath)
   return await updateSession(request)
 }
 
