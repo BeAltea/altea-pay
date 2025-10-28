@@ -352,7 +352,7 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
           <div className="space-y-4">
             <div className="border-2 border-dashed rounded-lg p-12 text-center">
               <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <Label htmlFor="file-upload" className="cursor-pointer">
+              <Label className="cursor-pointer">
                 <div className="text-lg font-medium mb-2">Selecione um arquivo</div>
                 <div className="text-sm text-muted-foreground mb-4">Arraste e solte ou clique para selecionar</div>
                 <Input

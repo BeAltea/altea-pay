@@ -203,9 +203,9 @@ export default function NovaEmpresaPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
+              <Label>Status</Label>
               <Select name="status" defaultValue="active">
-                <SelectTrigger>
+                <SelectTrigger id="status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
