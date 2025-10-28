@@ -183,6 +183,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       state: (formData.get("state") as string) || null,
       zip_code: (formData.get("zip_code") as string) || null,
       sector: (formData.get("sector") as string) || null,
+      status: "active",
     }
 
     console.log("[v0] Dados da empresa:", JSON.stringify(companyData, null, 2))
@@ -207,6 +208,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     if (customers && customers.length > 0) {
       console.log("[v0] ===== PROCESSANDO CLIENTES =====")
       console.log("[v0] Total de clientes:", customers.length)
+      console.log("[v0] Primeiro cliente (exemplo):", JSON.stringify(customers[0], null, 2))
 
       const validCustomers = []
 
@@ -214,33 +216,50 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
         try {
           const customer = customers[i]
 
-          if (!customer.name || !customer.document) {
-            errors.push(`Cliente ${i + 1}: Nome ou documento faltando`)
+          if (!customer.name && !customer.document) {
+            console.log(`[v0] Cliente ${i + 1} ignorado - sem nome e sem documento`)
+            errors.push(`Cliente ${i + 1}: Nome e documento faltando`)
             failedCount++
             continue
           }
 
-          const cleanDoc = customer.document.replace(/\D/g, "")
-          const documentType = cleanDoc.length === 11 ? "CPF" : "CNPJ"
+          let cleanDoc = ""
+          let documentType = "CPF"
+
+          if (customer.document) {
+            cleanDoc = String(customer.document).replace(/\D/g, "")
+            documentType = cleanDoc.length === 14 ? "CNPJ" : "CPF"
+          }
 
           const validCustomer: any = {
             company_id: company.id,
-            name: customer.name,
-            document: cleanDoc,
+            name: customer.name || "Cliente sem nome",
+            document: cleanDoc || null,
             document_type: documentType,
           }
 
-          if (customer.email) validCustomer.email = customer.email
-          if (customer.phone) validCustomer.phone = customer.phone
-          if (customer.address) validCustomer.address = customer.address
-          if (customer.city) validCustomer.city = customer.city
-          if (customer.state) validCustomer.state = customer.state
-          if (customer.zipcode || customer.zip_code) validCustomer.zip_code = customer.zipcode || customer.zip_code
-          if (customer.debt_amount) validCustomer.debt_amount = customer.debt_amount
-          if (customer.due_date) validCustomer.due_date = customer.due_date
+          if (customer.email) validCustomer.email = String(customer.email)
+          if (customer.phone) validCustomer.phone = String(customer.phone)
+          if (customer.address) validCustomer.address = String(customer.address)
+          if (customer.city) validCustomer.city = String(customer.city)
+          if (customer.state) validCustomer.state = String(customer.state)
+          if (customer.zipcode || customer.zip_code)
+            validCustomer.zip_code = String(customer.zipcode || customer.zip_code)
+
+          if (customer.debt_amount || customer.due_date) {
+            validCustomer.metadata = {
+              debt_amount: customer.debt_amount,
+              due_date: customer.due_date,
+            }
+          }
 
           validCustomers.push(validCustomer)
-          console.log(`[v0] Cliente ${i + 1} validado:`, validCustomer.name)
+          console.log(
+            `[v0] Cliente ${i + 1} validado:`,
+            validCustomer.name,
+            "-",
+            validCustomer.document || "sem documento",
+          )
         } catch (error) {
           console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
           errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
@@ -248,8 +267,13 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
         }
       }
 
+      console.log("[v0] ===== RESUMO DA VALIDAÇÃO =====")
+      console.log("[v0] Clientes válidos para inserção:", validCustomers.length)
+      console.log("[v0] Clientes com erro:", failedCount)
+
       if (validCustomers.length > 0) {
         console.log("[v0] Inserindo clientes no banco de dados...")
+        console.log("[v0] Exemplo de cliente a ser inserido:", JSON.stringify(validCustomers[0], null, 2))
 
         const { data: insertedCustomers, error: customersError } = await supabase
           .from("customers")
@@ -258,12 +282,16 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 
         if (customersError) {
           console.error("[v0] ✗ ERRO ao importar clientes:", customersError)
+          console.error("[v0] Detalhes do erro:", JSON.stringify(customersError, null, 2))
           failedCount += validCustomers.length
           errors.push(`Erro no banco: ${customersError.message}`)
         } else {
           importedCount = insertedCustomers?.length || 0
           console.log("[v0] ✓ Clientes importados com sucesso:", importedCount)
+          console.log("[v0] IDs dos clientes importados:", insertedCustomers?.map((c) => c.id).join(", "))
         }
+      } else {
+        console.log("[v0] ⚠ Nenhum cliente válido para importar")
       }
     }
 
@@ -274,6 +302,13 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     console.log("[v0] Empresa ID:", company.id)
     console.log("[v0] Clientes importados:", importedCount)
     console.log("[v0] Clientes com erro:", failedCount)
+    if (errors.length > 0) {
+      console.log(
+        "[v0] Erros:",
+        errors.slice(0, 5).join(", "),
+        errors.length > 5 ? `... e mais ${errors.length - 5}` : "",
+      )
+    }
 
     return {
       success: true,
@@ -312,7 +347,6 @@ export async function importCustomersToCompany(companyId: string, customers: any
     console.log("[v0] Company ID:", companyId)
     console.log("[v0] Total de clientes a importar:", customers.length)
 
-    // Verify company exists
     const { data: company, error: companyError } = await supabase
       .from("companies")
       .select("id, name")
@@ -329,7 +363,6 @@ export async function importCustomersToCompany(companyId: string, customers: any
 
     console.log("[v0] Empresa encontrada:", company.name)
 
-    // Processa e valida os clientes
     const validCustomers = []
     const errors: string[] = []
 
@@ -337,36 +370,49 @@ export async function importCustomersToCompany(companyId: string, customers: any
       try {
         const customer = customers[i]
 
-        // Valida campos obrigatórios
-        if (!customer.name || !customer.document) {
-          errors.push(`Cliente ${i + 1}: Nome ou documento faltando`)
+        if (!customer.name && !customer.document) {
+          console.log(`[v0] Cliente ${i + 1} ignorado - sem nome e sem documento`)
+          errors.push(`Cliente ${i + 1}: Nome e documento faltando`)
           continue
         }
 
-        // Limpa e formata o documento
-        const cleanDoc = customer.document.replace(/\D/g, "")
-        const documentType = cleanDoc.length === 11 ? "CPF" : "CNPJ"
+        let cleanDoc = ""
+        let documentType = "CPF"
 
-        // Prepara o objeto do cliente para inserção
+        if (customer.document) {
+          cleanDoc = String(customer.document).replace(/\D/g, "")
+          documentType = cleanDoc.length === 14 ? "CNPJ" : "CPF"
+        }
+
         const validCustomer: any = {
           company_id: companyId,
-          name: customer.name,
-          document: cleanDoc,
+          name: customer.name || "Cliente sem nome",
+          document: cleanDoc || null,
           document_type: documentType,
         }
 
-        // Adiciona campos opcionais se existirem
-        if (customer.email) validCustomer.email = customer.email
-        if (customer.phone) validCustomer.phone = customer.phone
-        if (customer.address) validCustomer.address = customer.address
-        if (customer.city) validCustomer.city = customer.city
-        if (customer.state) validCustomer.state = customer.state
-        if (customer.zipcode || customer.zip_code) validCustomer.zip_code = customer.zipcode || customer.zip_code
-        if (customer.debt_amount) validCustomer.debt_amount = customer.debt_amount
-        if (customer.due_date) validCustomer.due_date = customer.due_date
+        if (customer.email) validCustomer.email = String(customer.email)
+        if (customer.phone) validCustomer.phone = String(customer.phone)
+        if (customer.address) validCustomer.address = String(customer.address)
+        if (customer.city) validCustomer.city = String(customer.city)
+        if (customer.state) validCustomer.state = String(customer.state)
+        if (customer.zipcode || customer.zip_code)
+          validCustomer.zip_code = String(customer.zipcode || customer.zip_code)
+
+        if (customer.debt_amount || customer.due_date) {
+          validCustomer.metadata = {
+            debt_amount: customer.debt_amount,
+            due_date: customer.due_date,
+          }
+        }
 
         validCustomers.push(validCustomer)
-        console.log(`[v0] Cliente ${i + 1} validado:`, validCustomer.name)
+        console.log(
+          `[v0] Cliente ${i + 1} validado:`,
+          validCustomer.name,
+          "-",
+          validCustomer.document || "sem documento",
+        )
       } catch (error) {
         console.error(`[v0] Erro ao processar cliente ${i + 1}:`, error)
         errors.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
@@ -390,12 +436,16 @@ export async function importCustomersToCompany(companyId: string, customers: any
 
       if (customersError) {
         console.error("[v0] ✗ ERRO ao importar clientes:", customersError)
+        console.error("[v0] Detalhes do erro:", JSON.stringify(customersError, null, 2))
         failedCount += validCustomers.length
         errors.push(`Erro no banco: ${customersError.message}`)
       } else {
         importedCount = insertedCustomers?.length || 0
         console.log("[v0] ✓ Clientes importados com sucesso:", importedCount)
+        console.log("[v0] IDs dos clientes importados:", insertedCustomers?.map((c) => c.id).join(", "))
       }
+    } else {
+      console.log("[v0] ⚠ Nenhum cliente válido para importar")
     }
 
     revalidatePath("/super-admin/empresas")
@@ -406,6 +456,13 @@ export async function importCustomersToCompany(companyId: string, customers: any
     console.log("[v0] ===== FINALIZADO =====")
     console.log("[v0] Clientes importados:", importedCount)
     console.log("[v0] Clientes com erro:", failedCount)
+    if (errors.length > 0) {
+      console.log(
+        "[v0] Erros:",
+        errors.slice(0, 5).join(", "),
+        errors.length > 5 ? `... e mais ${errors.length - 5}` : "",
+      )
+    }
 
     return {
       success: true,
