@@ -78,7 +78,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
         <div className="min-w-0 flex items-center space-x-4">
           <Avatar className="h-16 w-16">
             <AvatarImage
-              src={`/.jpg?key=k6w6v&height=64&width=64&query=${encodeURIComponent(formData.full_name)}`}
+              src={`/.jpg?key=3m18p&height=64&width=64&query=${encodeURIComponent(formData.full_name)}`}
             />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
               {formData.full_name
