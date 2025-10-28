@@ -86,6 +86,7 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
   })
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null)
+  const [dataProcessed, setDataProcessed] = useState(false)
 
   const isCreationMode = companyId === null
 
@@ -305,9 +306,8 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
           success: plainCustomers.length,
           failed: 0,
         })
-        setTimeout(() => {
-          onComplete(plainCustomers)
-        }, 1000)
+        setDataProcessed(true)
+        setImporting(false)
         return
       }
 
@@ -335,6 +335,28 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
     } finally {
       setImporting(false)
     }
+  }
+
+  const handleConfirmAndCreate = () => {
+    if (!parsedData || !onComplete) return
+
+    const dataRows = parsedData.rows.slice(headerRow + 1)
+    const customers = dataRows.map((row) => {
+      const customer: Record<string, string> = {}
+
+      parsedData.headers.forEach((header, colIndex) => {
+        const dbField = columnMapping[header]
+        if (dbField && dbField !== "ignore") {
+          customer[dbField] = String(row[colIndex] || "")
+        }
+      })
+
+      return customer
+    })
+
+    const plainCustomers = JSON.parse(JSON.stringify(customers))
+    console.log("[v0] Confirmando criação da empresa com", plainCustomers.length, "clientes")
+    onComplete(plainCustomers)
   }
 
   return (
@@ -757,6 +779,19 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
                     </Badge>
                   )}
                 </div>
+                {isCreationMode && dataProcessed && (
+                  <div className="mt-6 space-y-3">
+                    <Alert>
+                      <AlertDescription className="text-center">
+                        <strong>Próximo passo:</strong> Clique no botão abaixo para criar a empresa e salvar todos os
+                        {importResult.success} clientes processados no banco de dados.
+                      </AlertDescription>
+                    </Alert>
+                    <Button size="lg" onClick={handleConfirmAndCreate} className="w-full">
+                      Criar Empresa e Salvar {importResult.success} Clientes
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
