@@ -70,9 +70,7 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0 flex items-center space-x-4">
           <Avatar className="h-16 w-16">
-            <AvatarImage
-              src={`/.jpg?key=113z6&height=64&width=64&query=${encodeURIComponent(companyName)}`}
-            />
+            <AvatarImage src={`/generic-placeholder-icon.png`} alt={companyName} />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
               {companyName
                 .split(" ")

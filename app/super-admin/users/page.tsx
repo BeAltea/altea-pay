@@ -309,9 +309,7 @@ export default function UsersPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-4 mb-3 lg:mb-0">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage
-                          src={`/.jpg?key=vx8jx&height=48&width=48&query=${encodeURIComponent(`user-avatar-${user.full_name}`)}`}
-                        />
+                        <AvatarImage src={`/generic-placeholder-icon.png`} alt={user.full_name} />
                         <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
                           {user.full_name
                             .split(" ")

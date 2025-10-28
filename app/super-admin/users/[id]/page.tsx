@@ -170,9 +170,7 @@ export default async function UserDetailsPage({ params }: { params: { id: string
           </Button>
           <div className="flex items-center space-x-3">
             <Avatar className="h-12 w-12">
-              <AvatarImage
-                src={`/.jpg?key=6pkjn&height=48&width=48&query=${encodeURIComponent(userDetails.full_name)}`}
-              />
+              <AvatarImage src={`/generic-placeholder-icon.png`} alt={userDetails.full_name} />
               <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
                 {userDetails.full_name
                   .split(" ")

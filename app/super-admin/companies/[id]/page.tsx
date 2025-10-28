@@ -145,9 +145,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
           </div>
           <div className="flex items-center space-x-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage
-                src={`/.jpg?key=nodrk&height=64&width=64&query=${encodeURIComponent(company.name)}`}
-              />
+              <AvatarImage src={`/generic-placeholder-icon.png`} alt={company.name} />
               <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
                 {company.name
                   .split(" ")
