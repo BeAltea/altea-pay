@@ -79,7 +79,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
           <Avatar className="h-16 w-16">
             {/* Fixed placeholder image URL from /.jpg to /placeholder.svg */}
             <AvatarImage
-              src={`/.jpg?key=bnnw7&height=64&width=64&query=${encodeURIComponent(formData.full_name)}`}
+              src={`/.jpg?key=4g48z&height=64&width=64&query=${encodeURIComponent(formData.full_name)}`}
             />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
               {formData.full_name

@@ -284,7 +284,7 @@ export default function ManageCustomersPage({ params }: { params: { id: string }
                 <div className="flex items-center space-x-4">
                   <Avatar>
                     <AvatarImage
-                      src={`/.jpg?key=mqhvy&height=40&width=40&query=${encodeURIComponent(customer.name)}`}
+                      src={`/.jpg?key=5vsxx&height=40&width=40&query=${encodeURIComponent(customer.name)}`}
                     />
                     <AvatarFallback>
                       {customer.name

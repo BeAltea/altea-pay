@@ -72,7 +72,7 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
           <Avatar className="h-16 w-16">
             {/* Fixed placeholder image URL from /.jpg to /placeholder.svg */}
             <AvatarImage
-              src={`/.jpg?key=yy67a&height=64&width=64&query=${encodeURIComponent(companyName)}`}
+              src={`/.jpg?key=x4m65&height=64&width=64&query=${encodeURIComponent(companyName)}`}
             />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
               {companyName
