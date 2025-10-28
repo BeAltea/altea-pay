@@ -281,38 +281,30 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
 
   // Importa os dados
   const handleImport = async () => {
-    if (!parsedData || !file) return
+    if (!parsedData) return
 
     setImporting(true)
     setStep("importing")
 
     try {
-      // Converte os dados para CSV com o mapeamento correto
-      const headers = Object.entries(columnMapping)
-        .filter(([_, dbField]) => dbField !== "ignore")
-        .map(([fileCol, _]) => fileCol)
-
-      const mappedHeaders = Object.entries(columnMapping)
-        .filter(([_, dbField]) => dbField !== "ignore")
-        .map(([_, dbField]) => dbField)
-
+      // Converte os dados para array de objetos simples
       const dataRows = parsedData.rows.slice(headerRow + 1)
+      const customers = dataRows.map((row) => {
+        const customer: any = {}
 
-      const csvLines = [mappedHeaders.join(",")]
-
-      dataRows.forEach((row) => {
-        const mappedRow = headers.map((header) => {
-          const colIndex = parsedData.headers.indexOf(header)
-          return row[colIndex] || ""
+        parsedData.headers.forEach((header, colIndex) => {
+          const dbField = columnMapping[header]
+          if (dbField && dbField !== "ignore") {
+            customer[dbField] = row[colIndex] || ""
+          }
         })
-        csvLines.push(mappedRow.join(","))
+
+        return customer
       })
 
-      const csvContent = csvLines.join("\n")
-      const csvBlob = new Blob([csvContent], { type: "text/csv" })
-      const csvFile = new File([csvBlob], "mapped_data.csv", { type: "text/csv" })
+      console.log("[v0] Importando", customers.length, "clientes")
 
-      const result = await importCustomersToCompany(companyId, csvFile)
+      const result = await importCustomersToCompany(companyId, customers)
 
       if (result.success) {
         setImportResult({
