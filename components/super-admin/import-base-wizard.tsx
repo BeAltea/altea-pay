@@ -287,24 +287,28 @@ export function ImportBaseWizard({ companyId }: ImportBaseWizardProps) {
     setStep("importing")
 
     try {
-      // Converte os dados para array de objetos simples
+      // Converte os dados para array de objetos simples (plain objects)
       const dataRows = parsedData.rows.slice(headerRow + 1)
       const customers = dataRows.map((row) => {
-        const customer: any = {}
+        const customer: Record<string, string> = {}
 
         parsedData.headers.forEach((header, colIndex) => {
           const dbField = columnMapping[header]
           if (dbField && dbField !== "ignore") {
-            customer[dbField] = row[colIndex] || ""
+            // Garante que o valor seja uma string simples
+            customer[dbField] = String(row[colIndex] || "")
           }
         })
 
         return customer
       })
 
-      console.log("[v0] Importando", customers.length, "clientes")
+      // Serializa e desserializa para garantir plain objects
+      const plainCustomers = JSON.parse(JSON.stringify(customers))
 
-      const result = await importCustomersToCompany(companyId, customers)
+      console.log("[v0] Importando", plainCustomers.length, "clientes")
+
+      const result = await importCustomersToCompany(companyId, plainCustomers)
 
       if (result.success) {
         setImportResult({
