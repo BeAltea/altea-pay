@@ -73,6 +73,23 @@ export default function NovaEmpresaPage() {
       console.log("[v0] Resultado:", result)
 
       if (result.success) {
+        if (result.data?.company?.id) {
+          console.log("[v0] Verificando dados salvos no banco...")
+          try {
+            const verifyResponse = await fetch(`/api/verify-company?id=${result.data.company.id}`)
+            const verifyData = await verifyResponse.json()
+            console.log("[v0] ===== DADOS REAIS NO BANCO =====")
+            console.log("[v0] Empresa ID:", result.data.company.id)
+            console.log("[v0] Clientes no banco:", verifyData.customersCount)
+            console.log("[v0] Dividas no banco:", verifyData.debtsCount)
+            console.log("[v0] Primeiros clientes:", verifyData.customers)
+            console.log("[v0] Primeiras dividas:", verifyData.debts)
+            console.log("[v0] ===================================")
+          } catch (verifyError) {
+            console.error("[v0] Erro ao verificar dados:", verifyError)
+          }
+        }
+
         toast({
           title: "Empresa criada com sucesso!",
           description: result.message,
