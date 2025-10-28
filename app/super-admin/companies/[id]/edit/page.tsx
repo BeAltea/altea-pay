@@ -69,9 +69,8 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0 flex items-center space-x-4">
           <Avatar className="h-16 w-16">
-            {/* Fixed placeholder image URL from /.jpg to /placeholder.svg */}
             <AvatarImage
-              src={`/.jpg?key=wpk2n&height=64&width=64&query=${encodeURIComponent(formData.name)}`}
+              src={`/.jpg?key=t8uoy&height=64&width=64&query=${encodeURIComponent(formData.name)}`}
             />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
               {formData.name
