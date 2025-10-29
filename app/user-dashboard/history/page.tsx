@@ -98,114 +98,40 @@ export default function HistoryPage() {
       } = await supabase.auth.getUser()
       if (!user) return
 
-      const mockPayments: PaymentHistory[] = [
-        {
-          id: "1",
-          debt_id: "debt-1",
-          amount: 1500.0,
-          payment_date: "2024-01-15T10:30:00Z",
-          payment_method: "pix",
-          status: "completed",
-          reference_number: "PIX123456789",
-          debt: {
-            description: "Fatura Janeiro 2024 - Serviços de Consultoria",
-            customer: { name: "João Silva Santos" },
-          },
-        },
-        {
-          id: "2",
-          debt_id: "debt-2",
-          amount: 850.5,
-          payment_date: "2024-01-10T14:20:00Z",
-          payment_method: "credit_card",
-          status: "completed",
-          reference_number: "CC987654321",
-          debt: {
-            description: "Serviços Dezembro 2023 - Manutenção Sistema",
-            customer: { name: "Maria Santos Oliveira" },
-          },
-        },
-        {
-          id: "3",
-          debt_id: "debt-3",
-          amount: 2200.0,
-          payment_date: "2024-01-08T09:15:00Z",
-          payment_method: "bank_transfer",
-          status: "pending",
-          reference_number: "TED456789123",
-          debt: {
-            description: "Produto XYZ - Licença Anual Software",
-            customer: { name: "Carlos Oliveira Costa" },
-          },
-        },
-        {
-          id: "4",
-          debt_id: "debt-4",
-          amount: 750.0,
-          payment_date: "2024-01-05T16:45:00Z",
-          payment_method: "pix",
-          status: "failed",
-          reference_number: "PIX789123456",
-          debt: {
-            description: "Consultoria Novembro - Análise Financeira",
-            customer: { name: "Ana Costa Silva" },
-          },
-        },
-        {
-          id: "5",
-          debt_id: "debt-5",
-          amount: 3200.0,
-          payment_date: "2024-01-03T11:30:00Z",
-          payment_method: "credit_card",
-          status: "completed",
-          reference_number: "CC456123789",
-          debt: {
-            description: "Desenvolvimento Website - Projeto Completo",
-            customer: { name: "Roberto Lima Pereira" },
-          },
-        },
-        {
-          id: "6",
-          debt_id: "debt-6",
-          amount: 1200.0,
-          payment_date: "2024-01-01T08:00:00Z",
-          payment_method: "bank_transfer",
-          status: "completed",
-          reference_number: "TED123789456",
-          debt: {
-            description: "Hospedagem Anual - Servidor Dedicado",
-            customer: { name: "Fernanda Souza" },
-          },
-        },
-        {
-          id: "7",
-          debt_id: "debt-7",
-          amount: 450.0,
-          payment_date: "2023-12-28T15:20:00Z",
-          payment_method: "pix",
-          status: "pending",
-          reference_number: "PIX987456123",
-          debt: {
-            description: "Suporte Técnico - Dezembro 2023",
-            customer: { name: "Lucas Martins" },
-          },
-        },
-        {
-          id: "8",
-          debt_id: "debt-8",
-          amount: 1800.0,
-          payment_date: "2023-12-25T12:10:00Z",
-          payment_method: "credit_card",
-          status: "failed",
-          reference_number: "CC789456123",
-          debt: {
-            description: "Treinamento Equipe - Curso Avançado",
-            customer: { name: "Patricia Alves" },
-          },
-        },
-      ]
+      const { data: realPayments, error } = await supabase
+        .from("payments")
+        .select(`
+          *,
+          debt:debts(
+            description,
+            customer:customers(name)
+          )
+        `)
+        .eq("user_id", user.id)
+        .order("payment_date", { ascending: false })
 
-      setPayments(mockPayments)
+      if (error) {
+        console.error("Error fetching payment history:", error)
+        setPayments([])
+      } else {
+        const formattedPayments = (realPayments || []).map((payment) => ({
+          id: payment.id,
+          debt_id: payment.debt_id,
+          amount: Number(payment.amount),
+          payment_date: payment.payment_date,
+          payment_method: payment.payment_method,
+          status: payment.status,
+          reference_number: payment.transaction_id || `REF-${payment.id.slice(0, 8)}`,
+          debt: {
+            description: payment.debt?.description || "",
+            customer: {
+              name: payment.debt?.customer?.name || "",
+            },
+          },
+        }))
+
+        setPayments(formattedPayments)
+      }
     } catch (error) {
       console.error("Error fetching payment history:", error)
       toast({
@@ -213,6 +139,7 @@ export default function HistoryPage() {
         description: "Não foi possível carregar o histórico de pagamentos.",
         variant: "destructive",
       })
+      setPayments([])
     } finally {
       setLoading(false)
     }
@@ -793,14 +720,6 @@ export default function HistoryPage() {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* Disclaimer */}
-      <div className="text-center">
-        <p className="text-xs text-muted-foreground">
-          💡 Todos os dados exibidos são fictícios para demonstração. A plataforma está preparada para integração com
-          dados reais e modelos de IA.
-        </p>
-      </div>
     </div>
   )
 }

@@ -21,15 +21,6 @@ import { DebtFilters } from "@/components/user-dashboard/debt-filters"
 import { EnhancedDebtCard } from "@/components/user-dashboard/enhanced-debt-card"
 import { EnhancedExportButton } from "@/components/user-dashboard/enhanced-export-button"
 import { CreateNegotiationDialog } from "@/components/user-dashboard/create-negotiation-dialog"
-import {
-  MOCK_DEBTS,
-  getOpenDebts,
-  getOverdueDebts,
-  getPaidDebts,
-  getTotalOpenAmount,
-  getTotalPaidAmount,
-  getAveragePaymentScore,
-} from "@/lib/mock-data"
 
 function DebtsSkeleton() {
   return (
@@ -86,19 +77,12 @@ export default function UserDebtsPage() {
 
       if (error) {
         console.error("Error fetching debts:", error)
-        // Fallback para mock se houver erro
-        setDebts(MOCK_DEBTS)
-        setFilteredDebts(MOCK_DEBTS)
-      } else if (realDebts && realDebts.length > 0) {
-        // Usar dados reais se existirem
-        console.log("[v0] UserDebts - Using REAL data:", realDebts.length, "debts")
-        setDebts(realDebts)
-        setFilteredDebts(realDebts)
+        setDebts([])
+        setFilteredDebts([])
       } else {
-        // Usar mock apenas se não houver dados reais
-        console.log("[v0] UserDebts - No real data, using mock")
-        setDebts(MOCK_DEBTS)
-        setFilteredDebts(MOCK_DEBTS)
+        console.log("[v0] UserDebts - Using REAL data:", realDebts?.length || 0, "debts")
+        setDebts(realDebts || [])
+        setFilteredDebts(realDebts || [])
       }
     } catch (error) {
       console.error("Error fetching debts:", error)
@@ -107,9 +91,8 @@ export default function UserDebtsPage() {
         description: "Não foi possível carregar suas dívidas.",
         variant: "destructive",
       })
-      // Fallback para mock em caso de erro
-      setDebts(MOCK_DEBTS)
-      setFilteredDebts(MOCK_DEBTS)
+      setDebts([])
+      setFilteredDebts([])
     } finally {
       setLoading(false)
     }
@@ -135,6 +118,24 @@ export default function UserDebtsPage() {
     }
   }
 
+  const getOpenDebts = (debts: any[]) =>
+    debts.filter((debt) => ["open", "overdue", "in_collection"].includes(debt.status))
+
+  const getOverdueDebts = (debts: any[]) => debts.filter((debt) => debt.status === "overdue")
+
+  const getPaidDebts = (debts: any[]) => debts.filter((debt) => debt.status === "paid")
+
+  const getTotalOpenAmount = (debts: any[]) => getOpenDebts(debts).reduce((sum, debt) => sum + Number(debt.amount), 0)
+
+  const getTotalPaidAmount = (debts: any[]) => getPaidDebts(debts).reduce((sum, debt) => sum + Number(debt.amount), 0)
+
+  const getAveragePaymentScore = (debts: any[]) => {
+    const openDebts = getOpenDebts(debts)
+    return openDebts.length
+      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_payment_score || 0), 0) / openDebts.length
+      : 0
+  }
+
   const totalDebts = debts.length
   const openDebts = getOpenDebts(debts)
   const overdueDebts = getOverdueDebts(debts)
@@ -142,7 +143,7 @@ export default function UserDebtsPage() {
   const negotiatedDebts = debts.filter((debt) => debt.status === "negotiated")
 
   const totalOpenAmount = getTotalOpenAmount(debts)
-  const totalOverdueAmount = overdueDebts.reduce((sum, debt) => sum + debt.amount, 0)
+  const totalOverdueAmount = overdueDebts.reduce((sum, debt) => sum + Number(debt.amount), 0)
   const totalPaidAmount = getTotalPaidAmount(debts)
 
   const avgPaymentScore = getAveragePaymentScore(debts)
@@ -337,14 +338,6 @@ export default function UserDebtsPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Disclaimer */}
-      <div className="text-center">
-        <p className="text-xs text-muted-foreground">
-          💡 Todos os dados exibidos são fictícios para demonstração. A plataforma está preparada para integração com
-          dados reais e modelos de IA.
-        </p>
-      </div>
     </div>
   )
 }

@@ -20,18 +20,6 @@ import Link from "next/link"
 import { Suspense } from "react"
 import { EnhancedDebtCard } from "@/components/user-dashboard/enhanced-debt-card"
 import { EnhancedExportButton } from "@/components/user-dashboard/enhanced-export-button"
-import {
-  MOCK_DEBTS,
-  MOCK_PAYMENTS,
-  MOCK_AGREEMENTS,
-  getOpenDebts,
-  getOverdueDebts,
-  getPaidDebts,
-  getTotalOpenAmount,
-  getTotalPaidAmount,
-  getAveragePaymentScore,
-  getAverageLoanScore,
-} from "@/lib/mock-data"
 import { redirect } from "next/navigation"
 
 function DashboardSkeleton() {
@@ -105,50 +93,65 @@ export default async function UserDashboardPage() {
 
     console.log("[v0] UserDashboard - Fetching real debts for user:", user.id)
 
-    const { data: realDebts, error: debtsError } = await supabase
+    const { data: debts, error: debtsError } = await supabase
       .from("debts")
       .select("*")
       .eq("user_id", user.id)
       .order("due_date", { ascending: false })
 
-    console.log("[v0] UserDashboard - Real debts fetched:", realDebts?.length || 0, "Error:", debtsError)
+    console.log("[v0] UserDashboard - Real debts fetched:", debts?.length || 0, "Error:", debtsError)
 
-    const { data: realPayments, error: paymentsError } = await supabase
+    const { data: payments, error: paymentsError } = await supabase
       .from("payments")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
-    console.log("[v0] UserDashboard - Real payments fetched:", realPayments?.length || 0, "Error:", paymentsError)
+    console.log("[v0] UserDashboard - Real payments fetched:", payments?.length || 0, "Error:", paymentsError)
 
-    const { data: realAgreements, error: agreementsError } = await supabase
+    const { data: agreements, error: agreementsError } = await supabase
       .from("agreements")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
-    console.log("[v0] UserDashboard - Real agreements fetched:", realAgreements?.length || 0, "Error:", agreementsError)
+    console.log("[v0] UserDashboard - Real agreements fetched:", agreements?.length || 0, "Error:", agreementsError)
 
-    const debts = realDebts && realDebts.length > 0 ? realDebts : MOCK_DEBTS
-    const payments = realPayments && realPayments.length > 0 ? realPayments : MOCK_PAYMENTS
-    const agreements = realAgreements && realAgreements.length > 0 ? realAgreements : MOCK_AGREEMENTS
+    const getOpenDebts = (debts: any[]) =>
+      debts?.filter((debt) => ["open", "overdue", "in_collection"].includes(debt.status)) || []
 
-    console.log("[v0] UserDashboard - Using data:", {
-      debtsSource: realDebts && realDebts.length > 0 ? "REAL" : "MOCK",
-      paymentsSource: realPayments && realPayments.length > 0 ? "REAL" : "MOCK",
-      agreementsSource: realAgreements && realAgreements.length > 0 ? "REAL" : "MOCK",
-    })
+    const getOverdueDebts = (debts: any[]) => debts?.filter((debt) => debt.status === "overdue") || []
 
-    const totalDebts = debts.length
-    const openDebts = getOpenDebts(debts)
-    const paidDebts = getPaidDebts(debts)
-    const overdueDebts = getOverdueDebts(debts)
+    const getPaidDebts = (debts: any[]) => debts?.filter((debt) => debt.status === "paid") || []
 
-    const totalOpenAmount = getTotalOpenAmount(debts)
-    const totalPaidAmount = getTotalPaidAmount(debts)
+    const getTotalOpenAmount = (debts: any[]) => getOpenDebts(debts).reduce((sum, debt) => sum + Number(debt.amount), 0)
 
-    const avgPaymentScore = getAveragePaymentScore(debts)
-    const avgLoanScore = getAverageLoanScore(debts)
+    const getTotalPaidAmount = (debts: any[]) => getPaidDebts(debts).reduce((sum, debt) => sum + Number(debt.amount), 0)
+
+    const getAveragePaymentScore = (debts: any[]) => {
+      const openDebts = getOpenDebts(debts)
+      return openDebts.length
+        ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_payment_score || 0), 0) / openDebts.length
+        : 0
+    }
+
+    const getAverageLoanScore = (debts: any[]) => {
+      const openDebts = getOpenDebts(debts)
+      return openDebts.length
+        ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_loan_score || 0), 0) / openDebts.length
+        : 0
+    }
+
+    const totalDebts = debts?.length || 0
+    const openDebts = getOpenDebts(debts || [])
+    const paidDebts = getPaidDebts(debts || [])
+    const overdueDebts = getOverdueDebts(debts || [])
+
+    const totalOpenAmount = getTotalOpenAmount(debts || [])
+    const totalPaidAmount = getTotalPaidAmount(debts || [])
+
+    const avgPaymentScore = getAveragePaymentScore(debts || [])
+    const avgLoanScore = getAverageLoanScore(debts || [])
 
     // Recent activity based on real data
     const recentActivity = []
@@ -413,12 +416,6 @@ export default async function UserDashboardPage() {
               </div>
             </CardContent>
           </Card>
-
-          <div className="text-center pt-1 sm:pt-2">
-            <p className="text-xs text-muted-foreground">
-              💡 Dados fictícios para demonstração. Plataforma preparada para integração com dados reais e IA.
-            </p>
-          </div>
         </div>
       </Suspense>
     )

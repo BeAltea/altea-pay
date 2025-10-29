@@ -14,7 +14,6 @@ import {
   TrendingDown,
   DollarSign,
   CreditCard,
-  Target,
   Info,
   AlertCircle,
   RefreshCw,
@@ -26,7 +25,6 @@ import { PropensityChart } from "@/components/user-dashboard/propensity-chart"
 import { PropensityInsights } from "@/components/user-dashboard/propensity-insights"
 import { PropensityRecommendations } from "@/components/user-dashboard/propensity-recommendations"
 import { AIAnalysisSimulator } from "@/components/user-dashboard/ai-analysis-simulator"
-import { MOCK_DEBTS, getOpenDebts, getAveragePaymentScore, getAverageLoanScore } from "@/lib/mock-data"
 
 function PropensitySkeleton() {
   return (
@@ -85,27 +83,14 @@ export default function PropensityAnalysisPage() {
         .from("debts")
         .select("*")
         .eq("user_id", user.id)
-        .in("status", ["pending", "in_collection"])
+        .in("status", ["pending", "in_collection", "open", "overdue"])
 
       if (error) {
         console.error("[v0] Error fetching debts:", error)
-        throw error
-      }
-
-      console.log("[v0] Fetched debts:", debtsData?.length || 0)
-
-      // Se não houver dívidas reais, usar mock data
-      if (!debtsData || debtsData.length === 0) {
-        console.log("[v0] No real debts found, using mock data")
-        setDebts(MOCK_DEBTS)
+        setDebts([])
       } else {
-        // Formatar dívidas reais com scores de propensão
-        const formattedDebts = debtsData.map((debt) => ({
-          ...debt,
-          propensity_payment_score: Math.random() * 100, // TODO: Calcular score real
-          propensity_loan_score: Math.random() * 100, // TODO: Calcular score real
-        }))
-        setDebts(formattedDebts)
+        console.log("[v0] Fetched debts:", debtsData?.length || 0)
+        setDebts(debtsData || [])
       }
     } catch (error) {
       console.error("[v0] Error fetching propensity data:", error)
@@ -114,8 +99,7 @@ export default function PropensityAnalysisPage() {
         description: "Não foi possível carregar a análise de propensão.",
         variant: "destructive",
       })
-      // Fallback to mock data on error
-      setDebts(MOCK_DEBTS)
+      setDebts([])
     } finally {
       setLoading(false)
     }
@@ -124,7 +108,6 @@ export default function PropensityAnalysisPage() {
   const handleRefreshAnalysis = async () => {
     setAnalyzing(true)
     try {
-      // Simulate AI analysis
       await new Promise((resolve) => setTimeout(resolve, 2000))
       await fetchPropensityData()
       toast({
@@ -176,6 +159,23 @@ export default function PropensityAnalysisPage() {
       title: "Relatório exportado",
       description: "Análise de propensão exportada com sucesso!",
     })
+  }
+
+  const getOpenDebts = (debts: any[]) =>
+    debts.filter((debt) => ["open", "overdue", "in_collection", "pending"].includes(debt.status))
+
+  const getAveragePaymentScore = (debts: any[]) => {
+    const openDebts = getOpenDebts(debts)
+    return openDebts.length
+      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_payment_score || 0), 0) / openDebts.length
+      : 0
+  }
+
+  const getAverageLoanScore = (debts: any[]) => {
+    const openDebts = getOpenDebts(debts)
+    return openDebts.length
+      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_loan_score || 0), 0) / openDebts.length
+      : 0
   }
 
   const openDebts = getOpenDebts(debts)
@@ -314,9 +314,9 @@ export default function PropensityAnalysisPage() {
         </Card>
 
         <Card className="hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Limite de Crédito Estimado</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
+          <CardHeader>
+            <CardTitle>Limite de Crédito Estimado</CardTitle>
+            <CardDescription>Baseado no perfil atual</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -458,14 +458,6 @@ export default function PropensityAnalysisPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Disclaimer */}
-      <div className="text-center">
-        <p className="text-xs text-muted-foreground">
-          💡 Todos os dados exibidos são fictícios para demonstração. A plataforma está preparada para integração com
-          dados reais e modelos de IA.
-        </p>
-      </div>
 
       {/* AI Analysis Modal */}
       <AIAnalysisSimulator

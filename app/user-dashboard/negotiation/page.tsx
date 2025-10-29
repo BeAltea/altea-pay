@@ -24,7 +24,6 @@ import { CreateNegotiationDialog } from "@/components/user-dashboard/create-nego
 import { NegotiationCard } from "@/components/user-dashboard/negotiation-card"
 import { NegotiationFilters } from "@/components/user-dashboard/negotiation-filters"
 import { NegotiationResponseSimulator } from "@/components/user-dashboard/negotiation-response-simulator"
-import { MOCK_DEBTS, getOpenDebts } from "@/lib/mock-data"
 
 interface Negotiation {
   id: string
@@ -97,46 +96,52 @@ export default function NegotiationPage() {
 
   const fetchNegotiations = async () => {
     try {
-      const mockNegotiations: Negotiation[] = [
-        {
-          id: "1",
-          debt_id: "1", // References debt from MOCK_DEBTS
-          status: "pending",
-          original_amount: 2500.0,
-          proposed_amount: 1800.0,
-          installments: 3,
-          created_at: "2024-01-15T10:30:00Z",
-          updated_at: "2024-01-15T10:30:00Z",
-          user_message:
-            "Gostaria de negociar um desconto devido a dificuldades financeiras temporárias. Posso pagar à vista com desconto ou parcelar em até 3x.",
-          debt: {
-            description: "Fatura Janeiro 2024 - Serviços de Consultoria Empresarial",
-            amount: 2500.0,
-            customer: { name: "João Silva Santos" },
-          },
-        },
-        {
-          id: "2",
-          debt_id: "5", // References debt from MOCK_DEBTS
-          status: "accepted",
-          original_amount: 1200.0,
-          proposed_amount: 1000.0,
-          installments: 2,
-          created_at: "2024-01-10T14:20:00Z",
-          updated_at: "2024-01-12T09:15:00Z",
-          user_message: "Posso pagar R$ 1.000 em 2x sem juros? Estou passando por uma reestruturação financeira.",
-          admin_response:
-            "Proposta aceita! Você pode pagar em 2 parcelas de R$ 500,00. Primeira parcela vence em 15 dias e a segunda em 45 dias. Enviaremos os boletos por email.",
-          debt: {
-            description: "Suporte Técnico - Pacote Premium Q1 2024",
-            amount: 1200.0,
-            customer: { name: "Roberto Lima Pereira" },
-          },
-        },
-      ]
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
 
-      setNegotiations(mockNegotiations)
-      setFilteredNegotiations(mockNegotiations)
+      const { data: realNegotiations, error } = await supabase
+        .from("agreements")
+        .select(`
+          *,
+          debt:debts(
+            description,
+            amount,
+            customer:customers(name)
+          )
+        `)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error fetching negotiations:", error)
+        setNegotiations([])
+        setFilteredNegotiations([])
+      } else {
+        const formattedNegotiations = (realNegotiations || []).map((neg) => ({
+          id: neg.id,
+          debt_id: neg.debt_id,
+          status: neg.status,
+          original_amount: Number(neg.original_amount),
+          proposed_amount: Number(neg.agreed_amount),
+          installments: neg.installments,
+          created_at: neg.created_at,
+          updated_at: neg.updated_at,
+          user_message: neg.terms || "",
+          admin_response: "",
+          debt: {
+            description: neg.debt?.description || "",
+            amount: Number(neg.debt?.amount || 0),
+            customer: {
+              name: neg.debt?.customer?.name || "",
+            },
+          },
+        }))
+
+        setNegotiations(formattedNegotiations)
+        setFilteredNegotiations(formattedNegotiations)
+      }
     } catch (error) {
       console.error("Error fetching negotiations:", error)
       toast({
@@ -144,6 +149,8 @@ export default function NegotiationPage() {
         description: "Não foi possível carregar as negociações.",
         variant: "destructive",
       })
+      setNegotiations([])
+      setFilteredNegotiations([])
     } finally {
       setLoading(false)
     }
@@ -151,15 +158,29 @@ export default function NegotiationPage() {
 
   const fetchAvailableDebts = async () => {
     try {
-      console.log("[v0] Negotiation - Using centralized debt data for available debts")
-      const openDebts = getOpenDebts(MOCK_DEBTS)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
 
-      // Filter out debts that already have negotiations
-      const debtsWithoutNegotiations = openDebts.filter((debt) => !negotiations.some((neg) => neg.debt_id === debt.id))
+      const { data: debts, error } = await supabase
+        .from("debts")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("status", ["open", "overdue", "in_collection"])
 
-      setAvailableDebts(debtsWithoutNegotiations)
+      if (error) {
+        console.error("Error fetching available debts:", error)
+        setAvailableDebts([])
+      } else {
+        const debtsWithoutNegotiations = (debts || []).filter(
+          (debt) => !negotiations.some((neg) => neg.debt_id === debt.id),
+        )
+        setAvailableDebts(debtsWithoutNegotiations)
+      }
     } catch (error) {
       console.error("Error fetching available debts:", error)
+      setAvailableDebts([])
     }
   }
 
@@ -412,14 +433,6 @@ export default function NegotiationPage() {
             </CardContent>
           </Card>
         )}
-      </div>
-
-      {/* Disclaimer */}
-      <div className="text-center">
-        <p className="text-xs text-muted-foreground">
-          💡 Todos os dados exibidos são fictícios para demonstração. A plataforma está preparada para integração com
-          dados reais e modelos de IA.
-        </p>
       </div>
 
       {/* Response Simulator Modal */}
