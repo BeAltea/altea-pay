@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,7 +11,7 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
     redirect("/super-admin/empresas/nova")
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
@@ -20,12 +20,24 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
     .single()
 
   if (companyError || !company) {
+    console.error("[v0] Erro ao buscar empresa:", companyError)
     notFound()
   }
 
-  const { data: customers } = await supabase.from("customers").select("*").eq("company_id", params.id)
+  console.log("[v0] Buscando dados da empresa:", params.id)
 
-  const { data: debts } = await supabase.from("debts").select("*").eq("company_id", params.id)
+  const { data: customers, error: customersError } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("company_id", params.id)
+
+  console.log("[v0] Clientes encontrados:", customers?.length || 0)
+  if (customersError) console.error("[v0] Erro ao buscar clientes:", customersError)
+
+  const { data: debts, error: debtsError } = await supabase.from("debts").select("*").eq("company_id", params.id)
+
+  console.log("[v0] Dívidas encontradas:", debts?.length || 0)
+  if (debtsError) console.error("[v0] Erro ao buscar dívidas:", debtsError)
 
   const totalDebts = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
   const paidDebts = debts?.filter((d) => d.status === "paid").length || 0

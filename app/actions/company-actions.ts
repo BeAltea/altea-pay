@@ -169,6 +169,11 @@ export async function deleteCompany(params: DeleteCompanyParams) {
 export async function createCompanyWithCustomers(formData: FormData, customers?: any[]) {
   try {
     console.log("🚀 [IMPORTAÇÃO] Iniciando criação de empresa com", customers?.length || 0, "clientes")
+
+    if (customers && customers.length > 0) {
+      console.log("📋 [IMPORTAÇÃO] Colunas do primeiro cliente:", Object.keys(customers[0]))
+    }
+
     const supabase = await createClient()
 
     const companyData = {
@@ -277,22 +282,51 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
           if (customer.source_system) validCustomer.source_system = String(customer.source_system)
 
           let debtData = null
-          if (customer.debt_amount || customer.due_date || customer.contract_number) {
+          // Verifica se tem QUALQUER informação de dívida
+          if (
+            customer.debt_amount ||
+            customer.due_date ||
+            customer.contract_number ||
+            customer.valor ||
+            customer.valor_divida ||
+            customer.amount ||
+            customer.vencimento ||
+            customer.data_vencimento
+          ) {
             debtData = {
               company_id: company.id,
+              status: customer.status || "pending",
             }
 
-            if (customer.debt_amount) {
-              const amountStr = String(customer.debt_amount)
+            // Tenta múltiplos nomes de colunas para o valor da dívida
+            const amountValue = customer.debt_amount || customer.valor || customer.valor_divida || customer.amount || 0
+
+            if (amountValue) {
+              const amountStr = String(amountValue)
                 .replace(/[^\d.,]/g, "")
                 .replace(",", ".")
-              debtData.amount = Number.parseFloat(amountStr)
+              debtData.amount = Number.parseFloat(amountStr) || 0
+            } else {
+              // Se não tem valor, cria com 0
+              debtData.amount = 0
             }
-            if (customer.due_date) debtData.due_date = String(customer.due_date)
+
+            // Tenta múltiplos nomes de colunas para a data de vencimento
+            const dueDate = customer.due_date || customer.vencimento || customer.data_vencimento
+            if (dueDate) debtData.due_date = String(dueDate)
+
             if (customer.description) debtData.description = String(customer.description)
             if (customer.contract_number) debtData.external_id = String(customer.contract_number)
-            if (customer.status) debtData.status = String(customer.status)
-            else debtData.status = "pending"
+
+            console.log(`💰 [IMPORTAÇÃO] Cliente ${i + 1} - Dívida criada:`, debtData.amount)
+          } else {
+            debtData = {
+              company_id: company.id,
+              amount: 0,
+              status: "pending",
+              description: "Dívida importada sem valor especificado",
+            }
+            console.log(`💰 [IMPORTAÇÃO] Cliente ${i + 1} - Dívida padrão criada (sem valor no CSV)`)
           }
 
           validCustomers.push({ customer: validCustomer, debt: debtData })
