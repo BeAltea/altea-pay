@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Company ID required" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Buscar empresa
     const { data: company, error: companyError } = await supabase
@@ -41,6 +41,8 @@ export async function GET(request: Request) {
       debtsCount: debts?.length || 0,
       customers: customers?.slice(0, 5), // Primeiros 5 clientes
       debts: debts?.slice(0, 5), // Primeiras 5 dívidas
+      customersError: customersError?.message,
+      debtsError: debtsError?.message,
     })
   } catch (error) {
     console.error("[v0] Erro ao verificar empresa:", error)
