@@ -300,6 +300,36 @@ export function ImportBaseWizard({ companyId, onComplete, onSkip }: ImportBaseWi
 
       console.log("[v0] Processando", plainCustomers.length, "clientes")
 
+      const customersWithDebtInfo = plainCustomers.filter(
+        (c) =>
+          c.debt_amount ||
+          c.valor ||
+          c.valor_divida ||
+          c.amount ||
+          c.due_date ||
+          c.vencimento ||
+          c.data_vencimento ||
+          c.contract_number,
+      )
+
+      console.log("[v0] 💰 Clientes com informação de dívida no CSV:", customersWithDebtInfo.length)
+      console.log("[v0] 💰 Clientes SEM informação de dívida:", plainCustomers.length - customersWithDebtInfo.length)
+
+      if (customersWithDebtInfo.length > 0) {
+        console.log("[v0] 💰 Primeiros 3 clientes com dívida:", customersWithDebtInfo.slice(0, 3))
+      }
+
+      console.log(
+        "[v0] 📋 Colunas mapeadas:",
+        Object.keys(columnMapping).filter((k) => columnMapping[k] !== "ignore"),
+      )
+      console.log(
+        "[v0] 📋 Campos de dívida mapeados:",
+        Object.values(columnMapping).filter((v) =>
+          ["debt_amount", "due_date", "contract_number", "valor", "vencimento"].includes(v),
+        ),
+      )
+
       if (isCreationMode && onComplete) {
         console.log("[v0] Modo criação: retornando dados via callback")
         setImportResult({

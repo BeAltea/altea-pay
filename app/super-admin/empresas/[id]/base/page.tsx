@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { ImportBaseWizard } from "@/components/super-admin/import-base-wizard"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -6,8 +6,13 @@ import { Download, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export default async function EmpresaBasePage({ params }: { params: { id: string } }) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
+
+  console.log("[v0] 📂 Carregando página de base da empresa:", params.id)
 
   const { data: company } = await supabase.from("companies").select("*").eq("id", params.id).single()
 

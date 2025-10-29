@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -29,16 +29,17 @@ interface CompanyStats {
   admins: number
 }
 
-export default async function SuperAdminDashboardPage() {
-  const supabase = await createClient()
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
-  // Get user data
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
+export default async function SuperAdminDashboardPage() {
+  const supabase = createAdminClient()
+
+  console.log("[v0] 📊 Carregando dashboard do super-admin...")
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
+
+  console.log("[v0] 🏢 Empresas encontradas:", companies?.length || 0)
 
   // Buscar estatísticas reais para cada empresa
   const companiesStats: CompanyStats[] = []
