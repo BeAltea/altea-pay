@@ -6,12 +6,17 @@ import { Users, FileText, TrendingUp, ArrowLeft, Upload, Download } from "lucide
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export default async function EmpresaDetalhesPage({ params }: { params: { id: string } }) {
   if (params.id === "nova") {
     redirect("/super-admin/empresas/nova")
   }
 
   const supabase = createAdminClient()
+
+  console.log("[v0] 🔍 Buscando empresa:", params.id)
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
@@ -20,24 +25,24 @@ export default async function EmpresaDetalhesPage({ params }: { params: { id: st
     .single()
 
   if (companyError || !company) {
-    console.error("[v0] Erro ao buscar empresa:", companyError)
+    console.error("[v0] ❌ Erro ao buscar empresa:", companyError)
     notFound()
   }
 
-  console.log("[v0] Buscando dados da empresa:", params.id)
+  console.log("[v0] ✅ Empresa encontrada:", company.name)
 
   const { data: customers, error: customersError } = await supabase
     .from("customers")
     .select("*")
     .eq("company_id", params.id)
 
-  console.log("[v0] Clientes encontrados:", customers?.length || 0)
-  if (customersError) console.error("[v0] Erro ao buscar clientes:", customersError)
+  console.log("[v0] 👥 Clientes encontrados:", customers?.length || 0)
+  if (customersError) console.error("[v0] ❌ Erro ao buscar clientes:", customersError)
 
   const { data: debts, error: debtsError } = await supabase.from("debts").select("*").eq("company_id", params.id)
 
-  console.log("[v0] Dívidas encontradas:", debts?.length || 0)
-  if (debtsError) console.error("[v0] Erro ao buscar dívidas:", debtsError)
+  console.log("[v0] 💰 Dívidas encontradas:", debts?.length || 0)
+  if (debtsError) console.error("[v0] ❌ Erro ao buscar dívidas:", debtsError)
 
   const totalDebts = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
   const paidDebts = debts?.filter((d) => d.status === "paid").length || 0

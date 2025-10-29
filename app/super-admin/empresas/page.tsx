@@ -1,11 +1,14 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Building2, Plus, Upload, Download } from "lucide-react"
 import Link from "next/link"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 export default async function EmpresasPage() {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data: companies } = await supabase.from("companies").select("*").order("name")
 
