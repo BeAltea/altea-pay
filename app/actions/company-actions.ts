@@ -315,53 +315,99 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 
       if (validCustomers.length > 0) {
         console.log("💾 [IMPORTAÇÃO] Inserindo", validCustomers.length, "clientes no banco...")
+        console.log(
+          "🔍 [DEBUG] Primeiros 3 clientes a serem inseridos:",
+          JSON.stringify(validCustomers.slice(0, 3), null, 2),
+        )
+        console.log("🔍 [DEBUG] Company ID sendo usado:", company.id)
 
-        const adminClient = createAdminClient()
-        const { data: insertedCustomers, error: customersError } = await adminClient
-          .from("customers")
-          .insert(validCustomers)
-          .select()
+        try {
+          const adminClient = createAdminClient()
+          console.log("🔑 [DEBUG] Admin client criado com sucesso")
 
-        if (customersError) {
-          console.error("❌ [IMPORTAÇÃO] ERRO ao inserir clientes:", customersError.message)
-          console.error("❌ [IMPORTAÇÃO] Código do erro:", customersError.code)
-          console.error("❌ [IMPORTAÇÃO] Detalhes:", customersError.details)
-          failedCount += validCustomers.length
-          errors.push(`Erro no banco: ${customersError.message}`)
-        } else {
-          importedCount = insertedCustomers?.length || 0
-          console.log("✅ [IMPORTAÇÃO] Clientes inseridos com sucesso:", importedCount)
+          const { data: insertedCustomers, error: customersError } = await adminClient
+            .from("customers")
+            .insert(validCustomers)
+            .select()
 
-          if (customerDebtsMap.size > 0 && insertedCustomers) {
-            console.log("💰 [IMPORTAÇÃO] Criando", customerDebtsMap.size, "dívidas...")
-            const debtsToInsert = []
+          console.log("🔍 [DEBUG] Resultado da inserção - Data:", insertedCustomers?.length || 0, "registros")
+          console.log(
+            "🔍 [DEBUG] Resultado da inserção - Error:",
+            customersError ? JSON.stringify(customersError, null, 2) : "null",
+          )
 
-            for (let i = 0; i < insertedCustomers.length; i++) {
-              const insertedCustomer = insertedCustomers[i]
-              const debtData = customerDebtsMap.get(i)
+          if (customersError) {
+            console.error("❌ [IMPORTAÇÃO] ERRO ao inserir clientes:", customersError.message)
+            console.error("❌ [IMPORTAÇÃO] Código do erro:", customersError.code)
+            console.error("❌ [IMPORTAÇÃO] Detalhes:", customersError.details)
+            console.error("❌ [IMPORTAÇÃO] Hint:", customersError.hint)
+            failedCount += validCustomers.length
+            errors.push(`Erro no banco: ${customersError.message}`)
+          } else {
+            importedCount = insertedCustomers?.length || 0
+            console.log("✅ [IMPORTAÇÃO] Clientes inseridos com sucesso:", importedCount)
+            console.log(
+              "🔍 [DEBUG] IDs dos primeiros 3 clientes inseridos:",
+              insertedCustomers?.slice(0, 3).map((c) => c.id),
+            )
 
-              if (debtData) {
-                debtsToInsert.push({
-                  ...debtData,
-                  customer_id: insertedCustomer.id,
-                })
-              }
+            const { data: verifyCustomers, error: verifyError } = await adminClient
+              .from("customers")
+              .select("id, name, company_id")
+              .eq("company_id", company.id)
+              .limit(5)
+
+            console.log("🔍 [VERIFICAÇÃO IMEDIATA] Clientes encontrados:", verifyCustomers?.length || 0)
+            if (verifyCustomers && verifyCustomers.length > 0) {
+              console.log("🔍 [VERIFICAÇÃO IMEDIATA] Primeiros clientes:", JSON.stringify(verifyCustomers, null, 2))
+            }
+            if (verifyError) {
+              console.error("❌ [VERIFICAÇÃO IMEDIATA] Erro ao verificar:", verifyError)
             }
 
-            if (debtsToInsert.length > 0) {
-              const { data: insertedDebts, error: debtsError } = await adminClient
-                .from("debts")
-                .insert(debtsToInsert)
-                .select()
+            if (customerDebtsMap.size > 0 && insertedCustomers) {
+              console.log("💰 [IMPORTAÇÃO] Criando", customerDebtsMap.size, "dívidas...")
+              const debtsToInsert = []
 
-              if (debtsError) {
-                console.error("❌ [IMPORTAÇÃO] ERRO ao inserir dívidas:", debtsError.message)
-                errors.push(`Erro ao inserir dívidas: ${debtsError.message}`)
-              } else {
-                console.log("✅ [IMPORTAÇÃO] Dívidas inseridas:", insertedDebts?.length || 0)
+              for (let i = 0; i < insertedCustomers.length; i++) {
+                const insertedCustomer = insertedCustomers[i]
+                const debtData = customerDebtsMap.get(i)
+
+                if (debtData) {
+                  debtsToInsert.push({
+                    ...debtData,
+                    customer_id: insertedCustomer.id,
+                  })
+                }
+              }
+
+              if (debtsToInsert.length > 0) {
+                console.log(
+                  "🔍 [DEBUG] Primeiras 3 dívidas a serem inseridas:",
+                  JSON.stringify(debtsToInsert.slice(0, 3), null, 2),
+                )
+
+                const { data: insertedDebts, error: debtsError } = await adminClient
+                  .from("debts")
+                  .insert(debtsToInsert)
+                  .select()
+
+                if (debtsError) {
+                  console.error("❌ [IMPORTAÇÃO] ERRO ao inserir dívidas:", debtsError.message)
+                  console.error("❌ [IMPORTAÇÃO] Código do erro:", debtsError.code)
+                  console.error("❌ [IMPORTAÇÃO] Detalhes:", debtsError.details)
+                  errors.push(`Erro ao inserir dívidas: ${debtsError.message}`)
+                } else {
+                  console.log("✅ [IMPORTAÇÃO] Dívidas inseridas:", insertedDebts?.length || 0)
+                }
               }
             }
           }
+        } catch (insertError) {
+          console.error("❌ [IMPORTAÇÃO] ERRO FATAL na inserção:", insertError)
+          console.error("❌ [IMPORTAÇÃO] Stack trace:", insertError instanceof Error ? insertError.stack : "N/A")
+          failedCount += validCustomers.length
+          errors.push(`Erro fatal: ${insertError instanceof Error ? insertError.message : "Erro desconhecido"}`)
         }
       }
     }
@@ -385,6 +431,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     }
   } catch (error) {
     console.error("❌ [IMPORTAÇÃO] ERRO FATAL:", error)
+    console.error("❌ [IMPORTAÇÃO] Stack trace:", error instanceof Error ? error.stack : "N/A")
     return {
       success: false,
       message: "Erro ao criar empresa",
