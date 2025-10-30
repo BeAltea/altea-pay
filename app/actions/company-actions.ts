@@ -254,17 +254,17 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     console.log("💰 [TESTE] Inserindo 3 dívidas de teste...")
 
     const today = new Date()
-    const dueDate = new Date(today.setDate(today.getDate() + 30)) // 30 dias a partir de hoje
-    const dueDateString = dueDate.toISOString().split("T")[0] // Formato YYYY-MM-DD
+    const dueDate = new Date(today.setDate(today.getDate() + 30))
+    const dueDateString = dueDate.toISOString().split("T")[0]
 
     const testDebts = insertedCustomers!.map((customer, index) => ({
       company_id: company.id,
       customer_id: customer.id,
-      amount: (index + 1) * 100, // 100, 200, 300
+      amount: (index + 1) * 100,
       status: "pending",
       description: `Dívida teste ${index + 1}`,
-      due_date: dueDateString, // Data de vencimento obrigatória
-      classification: "normal", // Classificação padrão
+      due_date: dueDateString,
+      classification: "low", // Valores válidos: 'low', 'medium', 'high', 'critical'
     }))
 
     console.log("📋 [TESTE] Dados das dívidas:", JSON.stringify(testDebts, null, 2))
