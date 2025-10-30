@@ -75,29 +75,45 @@ export default function NovaEmpresaPage() {
       if (result.success) {
         if (result.data?.company?.id) {
           console.log("[v0] Verificando dados salvos no banco...")
+          const companyId = result.data.company.id
+          console.log("[v0] 🏢 ID da empresa criada:", companyId)
+
           try {
-            const verifyResponse = await fetch(`/api/verify-company?id=${result.data.company.id}`)
+            const verifyResponse = await fetch(`/api/verify-company?id=${companyId}`)
             const verifyData = await verifyResponse.json()
+
             console.log("[v0] ===== DADOS REAIS NO BANCO =====")
-            console.log("[v0] Empresa ID:", result.data.company.id)
+            console.log("[v0] Empresa ID:", companyId)
             console.log("[v0] Clientes no banco:", verifyData.customersCount)
             console.log("[v0] Dividas no banco:", verifyData.debtsCount)
-            console.log("[v0] Primeiros 5 clientes:", verifyData.customers?.slice(0, 5))
+
             if (verifyData.customers?.length > 0) {
-              console.log("[v0] 🔍 Company IDs dos primeiros 5 clientes:")
+              console.log("[v0] 🔍 VERIFICANDO COMPANY_ID DOS CLIENTES:")
               verifyData.customers.slice(0, 5).forEach((c: any, i: number) => {
-                console.log(`[v0]   Cliente ${i + 1}: ${c.name} - company_id: ${c.company_id}`)
+                const isCorrect = c.company_id === companyId
+                const status = isCorrect ? "✅ CORRETO" : "❌ ERRADO"
+                console.log(`[v0]   Cliente ${i + 1}: ${c.name}`)
+                console.log(`[v0]     - company_id: ${c.company_id} ${status}`)
+                console.log(`[v0]     - esperado: ${companyId}`)
               })
+            } else {
+              console.log("[v0] ⚠️ NENHUM CLIENTE ENCONTRADO NO BANCO!")
             }
-            console.log("[v0] Primeiras 5 dividas:", verifyData.debts?.slice(0, 5))
+
             if (verifyData.debts?.length > 0) {
-              console.log("[v0] 🔍 Company IDs das primeiras 5 dívidas:")
+              console.log("[v0] 🔍 VERIFICANDO COMPANY_ID DAS DÍVIDAS:")
               verifyData.debts.slice(0, 5).forEach((d: any, i: number) => {
-                console.log(
-                  `[v0]   Dívida ${i + 1}: R$ ${d.amount} - company_id: ${d.company_id} - customer_id: ${d.customer_id}`,
-                )
+                const isCorrect = d.company_id === companyId
+                const status = isCorrect ? "✅ CORRETO" : "❌ ERRADO"
+                console.log(`[v0]   Dívida ${i + 1}: R$ ${d.amount}`)
+                console.log(`[v0]     - company_id: ${d.company_id} ${status}`)
+                console.log(`[v0]     - customer_id: ${d.customer_id}`)
+                console.log(`[v0]     - esperado company_id: ${companyId}`)
               })
+            } else {
+              console.log("[v0] ⚠️ NENHUMA DÍVIDA ENCONTRADA NO BANCO!")
             }
+
             console.log("[v0] ===================================")
           } catch (verifyError) {
             console.error("[v0] Erro ao verificar dados:", verifyError)
