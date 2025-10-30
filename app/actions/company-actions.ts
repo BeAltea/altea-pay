@@ -246,8 +246,16 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       "✅ [TESTE] IDs dos clientes:",
       insertedCustomers?.map((c) => c.id),
     )
+    console.log(
+      "✅ [TESTE] Company IDs dos clientes:",
+      insertedCustomers?.map((c) => c.company_id),
+    )
 
     console.log("💰 [TESTE] Inserindo 3 dívidas de teste...")
+
+    const today = new Date()
+    const dueDate = new Date(today.setDate(today.getDate() + 30)) // 30 dias a partir de hoje
+    const dueDateString = dueDate.toISOString().split("T")[0] // Formato YYYY-MM-DD
 
     const testDebts = insertedCustomers!.map((customer, index) => ({
       company_id: company.id,
@@ -255,6 +263,8 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       amount: (index + 1) * 100, // 100, 200, 300
       status: "pending",
       description: `Dívida teste ${index + 1}`,
+      due_date: dueDateString, // Data de vencimento obrigatória
+      classification: "normal", // Classificação padrão
     }))
 
     console.log("📋 [TESTE] Dados das dívidas:", JSON.stringify(testDebts, null, 2))
@@ -271,6 +281,10 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     console.log(
       "✅ [TESTE] IDs das dívidas:",
       insertedDebts?.map((d) => d.id),
+    )
+    console.log(
+      "✅ [TESTE] Company IDs das dívidas:",
+      insertedDebts?.map((d) => d.company_id),
     )
 
     console.log("🔍 [TESTE] Verificando dados no banco...")
