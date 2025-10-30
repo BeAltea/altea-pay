@@ -82,8 +82,22 @@ export default function NovaEmpresaPage() {
             console.log("[v0] Empresa ID:", result.data.company.id)
             console.log("[v0] Clientes no banco:", verifyData.customersCount)
             console.log("[v0] Dividas no banco:", verifyData.debtsCount)
-            console.log("[v0] Primeiros clientes:", verifyData.customers)
-            console.log("[v0] Primeiras dividas:", verifyData.debts)
+            console.log("[v0] Primeiros 5 clientes:", verifyData.customers?.slice(0, 5))
+            if (verifyData.customers?.length > 0) {
+              console.log("[v0] 🔍 Company IDs dos primeiros 5 clientes:")
+              verifyData.customers.slice(0, 5).forEach((c: any, i: number) => {
+                console.log(`[v0]   Cliente ${i + 1}: ${c.name} - company_id: ${c.company_id}`)
+              })
+            }
+            console.log("[v0] Primeiras 5 dividas:", verifyData.debts?.slice(0, 5))
+            if (verifyData.debts?.length > 0) {
+              console.log("[v0] 🔍 Company IDs das primeiras 5 dívidas:")
+              verifyData.debts.slice(0, 5).forEach((d: any, i: number) => {
+                console.log(
+                  `[v0]   Dívida ${i + 1}: R$ ${d.amount} - company_id: ${d.company_id} - customer_id: ${d.customer_id}`,
+                )
+              })
+            }
             console.log("[v0] ===================================")
           } catch (verifyError) {
             console.error("[v0] Erro ao verificar dados:", verifyError)
