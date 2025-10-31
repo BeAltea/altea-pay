@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { Mail, Lock, User, Building, ArrowLeft } from "lucide-react"
+import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from "lucide-react"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -18,9 +19,46 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [fullName, setFullName] = useState("")
   const [companyName, setCompanyName] = useState("")
+  const [personType, setPersonType] = useState<"PF" | "PJ">("PF")
+  const [cpfCnpj, setCpfCnpj] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+
+  const formatCpfCnpj = (value: string) => {
+    const numbers = value.replace(/\D/g, "")
+
+    if (personType === "PF") {
+      // Format CPF: 000.000.000-00
+      if (numbers.length <= 11) {
+        return numbers
+          .replace(/(\d{3})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+      }
+    } else {
+      // Format CNPJ: 00.000.000/0000-00
+      if (numbers.length <= 14) {
+        return numbers
+          .replace(/(\d{2})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d)/, "$1/$2")
+          .replace(/(\d{4})(\d{1,2})$/, "$1-$2")
+      }
+    }
+
+    return value
+  }
+
+  const validateCpfCnpj = (value: string) => {
+    const numbers = value.replace(/\D/g, "")
+
+    if (personType === "PF") {
+      return numbers.length === 11
+    } else {
+      return numbers.length === 14
+    }
+  }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,8 +78,30 @@ export default function RegisterPage() {
       return
     }
 
+    if (!validateCpfCnpj(cpfCnpj)) {
+      setError(`${personType === "PF" ? "CPF" : "CNPJ"} inválido. Verifique o formato.`)
+      setIsLoading(false)
+      return
+    }
+
     try {
       console.log("[v0] Starting user registration process")
+
+      const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
+      console.log("[v0] Verificando CPF/CNPJ na tabela VMAX:", cleanCpfCnpj)
+
+      const { data: vmaxData, error: vmaxError } = await supabase
+        .from("VMAX")
+        .select("*")
+        .eq("CPF/CNPJ", cleanCpfCnpj)
+        .single()
+
+      if (vmaxError && vmaxError.code !== "PGRST116") {
+        console.error("[v0] Erro ao verificar VMAX:", vmaxError)
+      }
+
+      const hasVmaxData = !!vmaxData
+      console.log("[v0] CPF/CNPJ encontrado na VMAX?", hasVmaxData, vmaxData?.Cliente)
 
       console.log("[v0] Verificando se email pertence a uma empresa...")
       const { data: company, error: companyError } = await supabase
@@ -66,8 +126,10 @@ export default function RegisterPage() {
           data: {
             full_name: fullName,
             company_name: companyName,
-            company_id: company?.id || null,
+            company_id: company?.id || vmaxData?.id_company || null,
             role: isCompanyEmail ? "admin" : "user",
+            cpf_cnpj: cleanCpfCnpj,
+            person_type: personType,
           },
         },
       })
@@ -87,8 +149,10 @@ export default function RegisterPage() {
           email: email,
           full_name: fullName,
           role: isCompanyEmail ? "admin" : "user",
-          company_id: company?.id || null,
+          company_id: company?.id || vmaxData?.id_company || null,
           company_name: isCompanyEmail ? company.name : companyName,
+          cpf_cnpj: cleanCpfCnpj,
+          person_type: personType,
         })
 
         if (profileError) {
@@ -97,6 +161,9 @@ export default function RegisterPage() {
           console.log("[v0] Profile criado com sucesso")
           if (isCompanyEmail) {
             console.log("[v0] Usuário associado automaticamente à empresa:", company.name)
+          }
+          if (hasVmaxData) {
+            console.log("[v0] Usuário associado aos dados da VMAX:", vmaxData.Cliente)
           }
         }
 
@@ -157,6 +224,50 @@ export default function RegisterPage() {
           </CardHeader>
           <CardContent className="px-4 sm:px-6">
             <form onSubmit={handleRegister} className="space-y-3 sm:space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Tipo de Pessoa</Label>
+                <RadioGroup
+                  value={personType}
+                  onValueChange={(value) => {
+                    setPersonType(value as "PF" | "PJ")
+                    setCpfCnpj("") // Clear CPF/CNPJ when changing type
+                  }}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="PF" id="pf" />
+                    <Label htmlFor="pf" className="cursor-pointer font-normal">
+                      Pessoa Física (CPF)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="PJ" id="pj" />
+                    <Label htmlFor="pj" className="cursor-pointer font-normal">
+                      Pessoa Jurídica (CNPJ)
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cpfCnpj" className="text-sm font-medium">
+                  {personType === "PF" ? "CPF" : "CNPJ"}
+                </Label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="cpfCnpj"
+                    type="text"
+                    placeholder={personType === "PF" ? "000.000.000-00" : "00.000.000/0000-00"}
+                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
+                    required
+                    value={cpfCnpj}
+                    onChange={(e) => setCpfCnpj(formatCpfCnpj(e.target.value))}
+                    maxLength={personType === "PF" ? 14 : 18}
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="fullName" className="text-sm font-medium">
@@ -175,22 +286,24 @@ export default function RegisterPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="companyName" className="text-sm font-medium">
-                    Nome da empresa
-                  </Label>
-                  <div className="relative">
-                    <Building className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="companyName"
-                      type="text"
-                      placeholder="Nome da sua empresa"
-                      className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                    />
+                {personType === "PJ" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName" className="text-sm font-medium">
+                      Nome da empresa
+                    </Label>
+                    <div className="relative">
+                      <Building className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="companyName"
+                        type="text"
+                        placeholder="Nome da sua empresa"
+                        className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium">

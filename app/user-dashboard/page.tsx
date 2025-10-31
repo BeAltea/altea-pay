@@ -101,6 +101,48 @@ export default async function UserDashboardPage() {
 
     console.log("[v0] UserDashboard - Real debts fetched:", debts?.length || 0, "Error:", debtsError)
 
+    let vmaxDebts: any[] = []
+    if (profile?.cpf_cnpj) {
+      console.log("[v0] UserDashboard - Fetching VMAX debts for CPF/CNPJ:", profile.cpf_cnpj)
+      const { data: vmaxData, error: vmaxError } = await supabase
+        .from("VMAX")
+        .select("*")
+        .eq("CPF/CNPJ", profile.cpf_cnpj)
+
+      if (vmaxError) {
+        console.error("[v0] UserDashboard - Error fetching VMAX debts:", vmaxError)
+      } else {
+        console.log("[v0] UserDashboard - VMAX debts fetched:", vmaxData?.length || 0)
+
+        vmaxDebts = (vmaxData || []).map((vmax) => {
+          const amount = Number.parseFloat(vmax.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
+          const dueDate = vmax.Primeira_Vencida
+          const daysOverdue = Number.parseInt(vmax["Dias_Inad."] || "0")
+
+          return {
+            id: vmax.id,
+            user_id: user.id,
+            customer_id: null,
+            amount: amount,
+            due_date: dueDate,
+            status: daysOverdue > 0 ? "overdue" : "open",
+            description: `Fatura - ${vmax.Cliente}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            propensity_payment_score: 0,
+            propensity_loan_score: 0,
+            classification: daysOverdue > 90 ? "high_risk" : daysOverdue > 30 ? "medium_risk" : "low_risk",
+            source_system: "VMAX",
+            external_id: vmax.id,
+            company_id: vmax.id_company,
+          }
+        })
+      }
+    }
+
+    const allDebts = [...(debts || []), ...vmaxDebts]
+    console.log("[v0] UserDashboard - Total debts (debts + VMAX):", allDebts.length)
+
     const { data: payments, error: paymentsError } = await supabase
       .from("payments")
       .select("*")
@@ -142,24 +184,22 @@ export default async function UserDashboardPage() {
         : 0
     }
 
-    const totalDebts = debts?.length || 0
-    const openDebts = getOpenDebts(debts || [])
-    const paidDebts = getPaidDebts(debts || [])
-    const overdueDebts = getOverdueDebts(debts || [])
+    const totalDebts = allDebts?.length || 0
+    const openDebts = getOpenDebts(allDebts || [])
+    const paidDebts = getPaidDebts(allDebts || [])
+    const overdueDebts = getOverdueDebts(allDebts || [])
 
-    const totalOpenAmount = getTotalOpenAmount(debts || [])
-    const totalPaidAmount = getTotalPaidAmount(debts || [])
+    const totalOpenAmount = getTotalOpenAmount(allDebts || [])
+    const totalPaidAmount = getTotalPaidAmount(allDebts || [])
 
-    const avgPaymentScore = getAveragePaymentScore(debts || [])
-    const avgLoanScore = getAverageLoanScore(debts || [])
+    const avgPaymentScore = getAveragePaymentScore(allDebts || [])
+    const avgLoanScore = getAverageLoanScore(allDebts || [])
 
-    // Recent activity based on real data
     const recentActivity = []
 
-    // Add recent payments
     if (payments && payments.length > 0) {
       payments.slice(0, 2).forEach((payment) => {
-        const debt = debts?.find((d) => d.id === payment.debt_id)
+        const debt = allDebts?.find((d) => d.id === payment.debt_id)
         recentActivity.push({
           id: `payment-${payment.id}`,
           type: "payment",
@@ -177,10 +217,9 @@ export default async function UserDashboardPage() {
       })
     }
 
-    // Add recent agreements
     if (agreements && agreements.length > 0) {
       agreements.slice(0, 1).forEach((agreement) => {
-        const debt = debts?.find((d) => d.id === agreement.debt_id)
+        const debt = allDebts?.find((d) => d.id === agreement.debt_id)
         recentActivity.push({
           id: `agreement-${agreement.id}`,
           type: "negotiation",
@@ -192,7 +231,6 @@ export default async function UserDashboardPage() {
       })
     }
 
-    // Add overdue notifications
     if (overdueDebts.length > 0) {
       recentActivity.push({
         id: "overdue-notification",
@@ -204,7 +242,6 @@ export default async function UserDashboardPage() {
       })
     }
 
-    // Sort by most recent and limit to 5
     recentActivity.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     const limitedActivity = recentActivity.slice(0, 5)
 
@@ -288,7 +325,6 @@ export default async function UserDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
-            {/* Recent Debts - Ocupa 2 colunas */}
             <Card className="xl:col-span-2">
               <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -327,7 +363,6 @@ export default async function UserDashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Recent Activity - Ocupa 1 coluna */}
             <Card>
               <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
                 <CardTitle className="text-base sm:text-lg">Atividade Recente</CardTitle>

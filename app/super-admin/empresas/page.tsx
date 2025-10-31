@@ -12,31 +12,56 @@ export default async function EmpresasPage() {
 
   const { data: companies } = await supabase.from("companies").select("*").order("name")
 
-  // Para cada empresa, busca a contagem de clientes e dívidas
   const companiesWithCounts = await Promise.all(
     (companies || []).map(async (company) => {
+      // Buscar clientes da tabela customers
       const { count: customersCount } = await supabase
         .from("customers")
         .select("*", { count: "exact", head: true })
         .eq("company_id", company.id)
 
-      const { count: debtsCount } = await supabase
-        .from("debts")
-        .select("*", { count: "exact", head: true })
-        .eq("company_id", company.id)
+      // Buscar dívidas da tabela debts
+      const { data: debts } = await supabase.from("debts").select("amount").eq("company_id", company.id)
+
+      // Buscar clientes da tabela VMAX
+      const { data: vmaxData } = await supabase.from("VMAX").select("*").eq("id_company", company.id)
+
+      // Calcular total de clientes (customers + VMAX)
+      const vmaxCount = vmaxData?.length || 0
+      const totalCustomers = (customersCount || 0) + vmaxCount
+
+      // Calcular total de dívidas (debts + VMAX)
+      const debtsTotal = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
+
+      // Processar valores da tabela VMAX (coluna Vencido)
+      const vmaxTotal = (vmaxData || []).reduce((sum, vmax) => {
+        const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
+        const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
+        return sum + vencidoValue
+      }, 0)
+
+      const totalDebts = debtsTotal + vmaxTotal
+      const debtsCount = (debts?.length || 0) + vmaxCount
+
+      console.log(`[v0] Empresa ${company.name}:`, {
+        customersTable: customersCount || 0,
+        vmaxTable: vmaxCount,
+        totalCustomers,
+        debtsTotal,
+        vmaxTotal,
+        totalDebts,
+      })
 
       return {
         ...company,
-        customersCount: customersCount || 0,
-        debtsCount: debtsCount || 0,
+        customersCount: totalCustomers,
+        debtsCount: debtsCount,
+        totalDebtAmount: totalDebts,
       }
     }),
   )
 
   console.log("[v0] Empresas carregadas:", companiesWithCounts.length)
-  companiesWithCounts.forEach((c) => {
-    console.log(`[v0] Empresa: ${c.name} - Clientes: ${c.customersCount} - Dívidas: ${c.debtsCount}`)
-  })
 
   return (
     <div className="space-y-6">
@@ -76,6 +101,18 @@ export default async function EmpresasPage() {
                   <p className="text-2xl font-bold">{company.debtsCount}</p>
                 </div>
               </div>
+
+              {company.totalDebtAmount > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs text-muted-foreground">Valor Total</p>
+                  <p className="text-lg font-bold text-primary">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(company.totalDebtAmount)}
+                  </p>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Link href={`/super-admin/empresas/${company.id}`} className="flex-1">
