@@ -80,23 +80,51 @@ export default async function DashboardPage() {
     .select("id")
     .eq("company_id", companyId)
 
-  console.log("[v0] Dashboard: Clientes obtidos", { count: customers?.length, error: customersError })
+  // Buscar clientes da tabela VMAX se existir
+  const { data: vmaxCustomers } = await supabase.from("VMAX").select("id").eq("id_company", companyId)
+
+  const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
+
+  console.log("[v0] Dashboard: Clientes obtidos", {
+    customersTable: customers?.length,
+    vmaxTable: vmaxCustomers?.length,
+    total: totalCustomers,
+    error: customersError,
+  })
 
   const { data: debts, error: debtsError } = await supabase
     .from("debts")
     .select("amount, status")
     .eq("company_id", companyId)
 
-  console.log("[v0] Dashboard: Dívidas obtidas", { count: debts?.length, error: debtsError })
+  // Buscar dívidas da tabela VMAX
+  const { data: vmaxDebts } = await supabase.from("VMAX").select("Vencido, DT_Cancelamento").eq("id_company", companyId)
+
+  // Converter dívidas VMAX para o formato esperado
+  const vmaxDebtsFormatted =
+    vmaxDebts?.map((debt) => ({
+      amount: Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0"),
+      status: debt.DT_Cancelamento ? "paid" : "pending",
+    })) || []
+
+  const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
+
+  console.log("[v0] Dashboard: Dívidas obtidas", {
+    debtsTable: debts?.length,
+    vmaxTable: vmaxDebts?.length,
+    total: allDebts.length,
+    error: debtsError,
+  })
 
   const stats = {
-    totalCustomers: customers?.length || 0,
-    totalDebts: debts?.length || 0,
-    totalAmount: debts?.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0) || 0,
-    recoveredAmount:
-      debts?.filter((d) => d.status === "paid").reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0) || 0,
+    totalCustomers,
+    totalDebts: allDebts.length,
+    totalAmount: allDebts.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
+    recoveredAmount: allDebts
+      .filter((d) => d.status === "paid")
+      .reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
     recoveryRate: 0,
-    pendingActions: debts?.filter((d) => d.status === "pending" || d.status === "in_collection").length || 0,
+    pendingActions: allDebts.filter((d) => d.status === "pending" || d.status === "in_collection").length,
   }
 
   stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0

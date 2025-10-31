@@ -85,9 +85,10 @@ export default function RegisterPage() {
         const { error: profileError } = await supabase.from("profiles").insert({
           id: data.user.id,
           email: email,
-          name: fullName,
+          full_name: fullName,
           role: isCompanyEmail ? "admin" : "user",
           company_id: company?.id || null,
+          company_name: isCompanyEmail ? company.name : companyName,
         })
 
         if (profileError) {
@@ -95,7 +96,7 @@ export default function RegisterPage() {
         } else {
           console.log("[v0] Profile criado com sucesso")
           if (isCompanyEmail) {
-            console.log("[v0] Usuário associado à empresa:", company.name)
+            console.log("[v0] Usuário associado automaticamente à empresa:", company.name)
           }
         }
 

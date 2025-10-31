@@ -55,13 +55,82 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     .eq("company_id", params.id)
     .eq("role", "admin")
 
-  const totalCustomers = customersData?.length || 0
+  const { data: vmaxData } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
+
+  const allCustomers = [...(customersData || []), ...(vmaxData || [])]
+  const totalCustomers = allCustomers.length
+
   const totalDebts = debtsData?.length || 0
   const totalAmount = debtsData?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
+
+  const vmaxTotalAmount =
+    vmaxData?.reduce((sum, v) => {
+      const vencido = String(v.Vencido || v.vencido || "0")
+        .replace(/[^\d,]/g, "")
+        .replace(",", ".")
+      return sum + (Number(vencido) || 0)
+    }, 0) || 0
+
+  const combinedTotalAmount = totalAmount + vmaxTotalAmount
   const recoveredAmount = paymentsData?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
-  const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+  const recoveryRate = combinedTotalAmount > 0 ? (recoveredAmount / combinedTotalAmount) * 100 : 0
+
   const overdueDebts = debtsData?.filter((d) => d.status === "overdue").length || 0
+  const vmaxOverdueDebts =
+    vmaxData?.filter((v) => {
+      const diasInad = Number(v["Dias_Inad."] || v.dias_inad || 0)
+      return diasInad > 0
+    }).length || 0
+  const totalOverdueDebts = overdueDebts + vmaxOverdueDebts
+
   const admins = adminsData?.length || 0
+
+  const { data: recentPayments } = await supabase
+    .from("payments")
+    .select("*, customers(name)")
+    .eq("company_id", params.id)
+    .order("created_at", { ascending: false })
+    .limit(2)
+
+  const { data: recentDebts } = await supabase
+    .from("debts")
+    .select("*, customers(name)")
+    .eq("company_id", params.id)
+    .order("created_at", { ascending: false })
+    .limit(2)
+
+  const recentActivity = [
+    ...(recentPayments || []).map((payment) => ({
+      id: payment.id,
+      type: "payment",
+      description: `Pagamento de ${new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(payment.amount)} recebido${payment.customers?.name ? ` - ${payment.customers.name}` : ""}`,
+      amount: payment.amount,
+      time: new Date(payment.created_at).toLocaleDateString("pt-BR"),
+      status: "success",
+    })),
+    ...(recentDebts || []).map((debt) => ({
+      id: debt.id,
+      type: "debt_added",
+      description: `Nova dívida adicionada${debt.customers?.name ? ` - Cliente ${debt.customers.name}` : ""}`,
+      time: new Date(debt.created_at).toLocaleDateString("pt-BR"),
+      status: "info",
+    })),
+  ]
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    .slice(0, 4)
+
+  if (recentActivity.length === 0) {
+    recentActivity.push({
+      id: "empty",
+      type: "info",
+      description: "Nenhuma atividade recente registrada",
+      time: "N/A",
+      status: "info",
+    })
+  }
 
   const company = {
     id: companyData.id,
@@ -81,11 +150,11 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     },
     segment: companyData.segment || "N/A",
     totalCustomers,
-    totalDebts,
-    totalAmount,
+    totalDebts: totalDebts + (vmaxData?.length || 0),
+    totalAmount: combinedTotalAmount,
     recoveredAmount,
     recoveryRate,
-    overdueDebts,
+    overdueDebts: totalOverdueDebts,
     admins,
     lastActivity: companyData.updated_at || companyData.created_at,
   }
@@ -94,41 +163,10 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     id: company.id,
     name: company.name,
     totalCustomers,
-    totalDebts,
-    totalAmount,
+    totalDebts: company.totalDebts,
+    totalAmount: combinedTotalAmount,
+    vmaxRecords: vmaxData?.length || 0,
   })
-
-  const recentActivity = [
-    {
-      id: 1,
-      type: "payment",
-      description: "Pagamento de R$ 15.250,00 recebido",
-      amount: 15250.0,
-      time: "2 horas atrás",
-      status: "success",
-    },
-    {
-      id: 2,
-      type: "debt_added",
-      description: "Nova dívida adicionada - Cliente João Silva",
-      time: "5 horas atrás",
-      status: "info",
-    },
-    {
-      id: 3,
-      type: "admin_login",
-      description: "Administrador Maria Santos fez login",
-      time: "1 dia atrás",
-      status: "info",
-    },
-    {
-      id: 4,
-      type: "alert",
-      description: "15 dívidas venceram hoje",
-      time: "1 dia atrás",
-      status: "warning",
-    },
-  ]
 
   return (
     <div className="space-y-6">
@@ -313,7 +351,11 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                     </div>
                     {activity.amount && (
                       <div className="text-sm font-medium text-green-600 dark:text-green-400 hidden sm:block">
-                        +R$ {activity.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        +
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(activity.amount)}
                       </div>
                     )}
                   </div>

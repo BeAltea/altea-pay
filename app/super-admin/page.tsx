@@ -46,14 +46,31 @@ export default async function SuperAdminDashboardPage() {
 
   if (companies) {
     for (const company of companies) {
-      // Buscar clientes da empresa
       const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
 
-      // Buscar dívidas da empresa
+      const { data: vmaxCustomers } = await supabase.from("VMAX").select("id").eq("id_company", company.id)
+
+      const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
+
       const { data: debts } = await supabase
         .from("debts")
         .select("amount, status, due_date")
         .eq("company_id", company.id)
+
+      const { data: vmaxDebts } = await supabase
+        .from("VMAX")
+        .select("Vencido, DT_Cancelamento, Primeira_Vencida")
+        .eq("id_company", company.id)
+
+      // Converter dívidas VMAX para o formato esperado
+      const vmaxDebtsFormatted =
+        vmaxDebts?.map((debt) => ({
+          amount: Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0"),
+          status: debt.DT_Cancelamento ? "paid" : "pending",
+          due_date: debt.Primeira_Vencida || new Date().toISOString(),
+        })) || []
+
+      const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
       // Buscar admins da empresa
       const { data: admins } = await supabase
@@ -62,21 +79,21 @@ export default async function SuperAdminDashboardPage() {
         .eq("company_id", company.id)
         .eq("role", "admin")
 
-      const totalAmount = debts?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
-      const recoveredAmount =
-        debts?.filter((d) => d.status === "paid").reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
-      const overdueDebts =
-        debts?.filter((d) => {
-          if (d.status === "paid") return false
-          const dueDate = new Date(d.due_date)
-          return dueDate < new Date()
-        }).length || 0
+      const totalAmount = allDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+      const recoveredAmount = allDebts
+        .filter((d) => d.status === "paid")
+        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+      const overdueDebts = allDebts.filter((d) => {
+        if (d.status === "paid") return false
+        const dueDate = new Date(d.due_date)
+        return dueDate < new Date()
+      }).length
 
       companiesStats.push({
         id: company.id,
         name: company.name,
-        totalCustomers: customers?.length || 0,
-        totalDebts: debts?.length || 0,
+        totalCustomers,
+        totalDebts: allDebts.length,
         totalAmount,
         recoveredAmount,
         recoveryRate: totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0,
