@@ -7,9 +7,19 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Download, RefreshCw, TrendingUp, TrendingDown, AlertCircle } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Search, Download, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Sparkles, Loader2 } from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
 
 interface CreditAnalysis {
   id: string
@@ -32,6 +42,9 @@ export default function AnalysesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterRisk, setFilterRisk] = useState<string>("all")
   const [filterType, setFilterType] = useState<string>("all")
+  const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
   const { toast } = useToast()
   const supabase = createBrowserClient()
 
@@ -130,6 +143,77 @@ export default function AnalysesPage() {
     highRisk: analyses.filter((a) => a.risk_level === "high" || a.risk_level === "very_high").length,
   }
 
+  const toggleCustomerSelection = (customerId: string) => {
+    const newSelection = new Set(selectedCustomers)
+    if (newSelection.has(customerId)) {
+      newSelection.delete(customerId)
+    } else {
+      newSelection.add(customerId)
+    }
+    setSelectedCustomers(newSelection)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedCustomers.size === filteredAnalyses.length) {
+      setSelectedCustomers(new Set())
+    } else {
+      setSelectedCustomers(new Set(filteredAnalyses.map((a) => a.customer_id)))
+    }
+  }
+
+  const handleRunAssertivaAnalysis = async () => {
+    if (selectedCustomers.size === 0) {
+      toast({
+        title: "Nenhum cliente selecionado",
+        description: "Selecione pelo menos um cliente para executar a análise.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setShowConfirmModal(true)
+  }
+
+  const confirmAndRunAnalysis = async () => {
+    setShowConfirmModal(false)
+    setIsRunningAnalysis(true)
+
+    try {
+      const firstCustomer = analyses.find((a) => selectedCustomers.has(a.customer_id))
+      if (!firstCustomer) {
+        throw new Error("Cliente não encontrado")
+      }
+
+      const result = await runAssertivaManualAnalysis(Array.from(selectedCustomers), firstCustomer.company_id)
+
+      if (result.success) {
+        toast({
+          title: "Análise concluída!",
+          description: result.message,
+        })
+
+        await loadAnalyses()
+
+        setSelectedCustomers(new Set())
+      } else {
+        toast({
+          title: "Erro na análise",
+          description: result.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error("[v0] Error running Assertiva analysis:", error)
+      toast({
+        title: "Erro ao executar análise",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsRunningAnalysis(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -164,6 +248,36 @@ export default function AnalysesPage() {
           </CardHeader>
         </Card>
       </div>
+
+      {/* Fixed button for Assertiva analysis */}
+      {selectedCustomers.size > 0 && (
+        <Card className="border-2 border-primary">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Sparkles className="h-8 w-8 text-primary" />
+                <div>
+                  <h3 className="text-lg font-semibold">Análise Paga (Assertiva)</h3>
+                  <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
+                </div>
+              </div>
+              <Button size="lg" onClick={handleRunAssertivaAnalysis} disabled={isRunningAnalysis} className="gap-2">
+                {isRunningAnalysis ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-5 w-5" />
+                    Rodar Análise Paga ({selectedCustomers.size})
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -223,6 +337,12 @@ export default function AnalysesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedCustomers.size === filteredAnalyses.length && filteredAnalyses.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Documento</TableHead>
                   <TableHead>Empresa</TableHead>
@@ -236,13 +356,19 @@ export default function AnalysesPage() {
               <TableBody>
                 {filteredAnalyses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
                       Nenhuma análise encontrada
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredAnalyses.map((analysis) => (
                     <TableRow key={analysis.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedCustomers.has(analysis.customer_id)}
+                          onCheckedChange={() => toggleCustomerSelection(analysis.customer_id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{analysis.customer_name}</TableCell>
                       <TableCell>{analysis.document}</TableCell>
                       <TableCell>{analysis.company_name}</TableCell>
@@ -263,6 +389,42 @@ export default function AnalysesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirmation modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-yellow-600" />
+              Confirmar Análise Paga
+            </DialogTitle>
+            <DialogDescription className="space-y-4 pt-4">
+              <p>Você está prestes a executar uma análise detalhada usando a API da Assertiva Soluções.</p>
+
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                <p className="font-semibold text-yellow-900">⚠️ Atenção:</p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800">
+                  <li>Esta ação consome créditos da Assertiva</li>
+                  <li>Não pode ser desfeita</li>
+                  <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
+                  <li>O processo pode levar alguns minutos</li>
+                </ul>
+              </div>
+
+              <p className="text-sm">Deseja continuar?</p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmAndRunAnalysis} className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              Confirmar e Executar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

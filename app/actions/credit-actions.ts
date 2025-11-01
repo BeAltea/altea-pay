@@ -1,7 +1,12 @@
 "use server"
 
 import { createServerClient } from "@/lib/supabase/server"
-import { analyzeCreditFree, analyzeCreditAssertiva } from "@/services/creditAnalysisService"
+import {
+  analyzeCreditFree,
+  analyzeCreditAssertiva,
+  runVMAXAutoAnalysis,
+  runAssertivaManualAnalysis as runAssertivaManualAnalysisService,
+} from "@/services/creditAnalysisService"
 
 interface RunCreditAnalysisParams {
   company_id: string
@@ -229,4 +234,100 @@ export async function exportBase(params: ExportBaseParams) {
 
 export async function exportCustomerBase(company_id: string, include_analysis = false) {
   return exportBase({ company_id, include_analysis })
+}
+
+export async function runVMAXAnalysis(companyId: string) {
+  try {
+    console.log("[v0] runVMAXAnalysis action - Starting for company:", companyId)
+
+    const result = await runVMAXAutoAnalysis(companyId)
+
+    if (!result.success) {
+      return {
+        success: false,
+        message: `Erro ao executar análise: ${result.error}`,
+      }
+    }
+
+    const message = `
+Análise VMAX concluída com sucesso!
+
+📊 Resumo:
+- Total de registros na tabela VMAX: ${result.total}
+- Novos CPFs analisados: ${result.analyzed}
+- CPFs já analisados (cache): ${result.cached}
+- Falhas: ${result.failed}
+- Tempo total: ${(result.duration / 1000).toFixed(2)}s
+
+${result.sample_result ? `\n📋 Exemplo de resultado:\n- CPF: ${result.sample_result.cpf}\n- Score: ${result.sample_result.score}\n- Vínculos públicos: ${result.sample_result.vinculos_count}\n- Situação: ${result.sample_result.situacao_cpf}` : ""}
+
+${result.cpfs_analyzed.length > 0 ? `\n✅ CPFs analisados:\n${result.cpfs_analyzed.slice(0, 10).join(", ")}${result.cpfs_analyzed.length > 10 ? `\n... e mais ${result.cpfs_analyzed.length - 10}` : ""}` : ""}
+    `.trim()
+
+    return {
+      success: true,
+      message,
+      data: result,
+    }
+  } catch (error: any) {
+    console.error("[v0] runVMAXAnalysis action - Error:", error)
+    return {
+      success: false,
+      message: `Erro ao executar análise: ${error.message}`,
+    }
+  }
+}
+
+// Renamed function to avoid redeclaration
+export async function runAssertivaManualAnalysisWrapper(customerIds: string[], companyId: string) {
+  try {
+    console.log("[v0] runAssertivaManualAnalysis action - Starting for customers:", customerIds.length)
+
+    const result = await runAssertivaManualAnalysisService(customerIds, companyId)
+
+    if (!result.success) {
+      return {
+        success: false,
+        message: `Erro ao executar análise: ${result.error}`,
+      }
+    }
+
+    const message = `
+Análise Assertiva concluída com sucesso!
+
+📊 Resumo:
+- Total de clientes selecionados: ${result.total}
+- Análises realizadas: ${result.analyzed}
+- Já tinham análise (cache): ${result.cached}
+- Falhas: ${result.failed}
+- Tempo total: ${(result.duration / 1000).toFixed(2)}s
+
+${
+  result.customers_analyzed.length > 0
+    ? `\n✅ Clientes analisados:\n${result.customers_analyzed
+        .slice(0, 5)
+        .map((c) => `- ${c.name} (CPF: ${c.cpf}) - Score: ${c.score || "N/A"}`)
+        .join(
+          "\n",
+        )}${result.customers_analyzed.length > 5 ? `\n... e mais ${result.customers_analyzed.length - 5}` : ""}`
+    : ""
+}
+    `.trim()
+
+    return {
+      success: true,
+      message,
+      data: result,
+    }
+  } catch (error: any) {
+    console.error("[v0] runAssertivaManualAnalysis action - Error:", error)
+    return {
+      success: false,
+      message: `Erro ao executar análise: ${error.message}`,
+    }
+  }
+}
+
+export async function runAssertivaManualAnalysis(customerIds: string[], companyId: string) {
+  return runAssertivaManualAnalysisWrapper(customerIds, companyId)
 }
