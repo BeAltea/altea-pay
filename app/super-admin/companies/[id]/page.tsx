@@ -68,8 +68,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       const vencido = String(v.Vencido || v.vencido || "0")
         .replace(/[^\d,]/g, "")
         .replace(",", ".")
-      return sum + (Number(vencido) || 0)
+      const value = Number(vencido) || 0
+      console.log("[v0] VMAX record:", v.Cliente, "Vencido:", v.Vencido, "Parsed:", value)
+      return sum + value
     }, 0) || 0
+
+  console.log("[v0] VMAX total amount:", vmaxTotalAmount, "Regular debts:", totalAmount)
 
   const combinedTotalAmount = totalAmount + vmaxTotalAmount
   const recoveredAmount = paymentsData?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
@@ -141,13 +145,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     status: companyData.status || "active",
     created_at: companyData.created_at,
     description: companyData.description || "",
-    address: companyData.address || {
-      street: "N/A",
-      neighborhood: "N/A",
-      city: "N/A",
-      state: "N/A",
-      cep: "N/A",
-    },
+    address: typeof companyData.address === "string" ? companyData.address : companyData.address || "N/A",
     segment: companyData.segment || "N/A",
     totalCustomers,
     totalDebts: totalDebts + (vmaxData?.length || 0),
@@ -166,6 +164,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     totalDebts: company.totalDebts,
     totalAmount: combinedTotalAmount,
     vmaxRecords: vmaxData?.length || 0,
+    vmaxTotalAmount,
   })
 
   return (
@@ -302,9 +301,9 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                 <div>
                   <p className="text-sm font-medium">Endereço</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {company.address.street}, {company.address.neighborhood}
-                    <br />
-                    {company.address.city} - {company.address.state}, {company.address.cep}
+                    {typeof company.address === "string"
+                      ? company.address
+                      : `${company.address.street}, ${company.address.neighborhood}, ${company.address.city} - ${company.address.state}, ${company.address.cep}`}
                   </p>
                 </div>
               </div>

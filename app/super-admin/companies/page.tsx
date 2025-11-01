@@ -48,6 +48,10 @@ export default async function CompaniesPage() {
   // Fetch admins count per company
   const { data: adminsData } = await supabase.from("profiles").select("company_id, role").eq("role", "admin")
 
+  const { data: vmaxData } = await supabase.from("VMAX").select("id_company, Vencido")
+
+  console.log("[v0] VMAX data fetched:", vmaxData?.length || 0, "records")
+
   // Calculate stats for each company
   const companies: Company[] = (companiesData || []).map((company) => {
     const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
@@ -55,9 +59,22 @@ export default async function CompaniesPage() {
     const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
     const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
 
+    const companyVmaxData = vmaxData?.filter((v) => v.id_company === company.id) || []
+
     const totalAmount = companyDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+
+    const vmaxTotalAmount = companyVmaxData.reduce((sum, v) => {
+      const vencido = String(v.Vencido || "0")
+        .replace(/[^\d,]/g, "")
+        .replace(",", ".")
+      return sum + (Number(vencido) || 0)
+    }, 0)
+
+    console.log("[v0] Company:", company.name, "VMAX records:", companyVmaxData.length, "VMAX total:", vmaxTotalAmount)
+
+    const combinedTotalAmount = totalAmount + vmaxTotalAmount
     const recoveredAmount = companyPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-    const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+    const recoveryRate = combinedTotalAmount > 0 ? (recoveredAmount / combinedTotalAmount) * 100 : 0
 
     return {
       id: company.id,
@@ -67,9 +84,9 @@ export default async function CompaniesPage() {
       phone: company.phone || "N/A",
       status: company.status || "active",
       created_at: company.created_at,
-      totalCustomers: companyCustomers.length,
-      totalDebts: companyDebts.length,
-      totalAmount,
+      totalCustomers: companyCustomers.length + companyVmaxData.length,
+      totalDebts: companyDebts.length + companyVmaxData.length,
+      totalAmount: combinedTotalAmount,
       recoveredAmount,
       recoveryRate,
       admins: companyAdmins.length,
