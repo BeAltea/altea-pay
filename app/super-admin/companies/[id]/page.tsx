@@ -92,14 +92,14 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
   const { data: recentPayments } = await supabase
     .from("payments")
-    .select("*, customers(name)")
+    .select("*")
     .eq("company_id", params.id)
     .order("created_at", { ascending: false })
     .limit(2)
 
   const { data: recentDebts } = await supabase
     .from("debts")
-    .select("*, customers(name)")
+    .select("*")
     .eq("company_id", params.id)
     .order("created_at", { ascending: false })
     .limit(2)
@@ -111,7 +111,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       description: `Pagamento de ${new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
-      }).format(payment.amount)} recebido${payment.customers?.name ? ` - ${payment.customers.name}` : ""}`,
+      }).format(payment.amount)} recebido`,
       amount: payment.amount,
       time: new Date(payment.created_at).toLocaleDateString("pt-BR"),
       status: "success",
@@ -119,7 +119,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     ...(recentDebts || []).map((debt) => ({
       id: debt.id,
       type: "debt_added",
-      description: `Nova dívida adicionada${debt.customers?.name ? ` - Cliente ${debt.customers.name}` : ""}`,
+      description: `Nova dívida adicionada`,
       time: new Date(debt.created_at).toLocaleDateString("pt-BR"),
       status: "info",
     })),

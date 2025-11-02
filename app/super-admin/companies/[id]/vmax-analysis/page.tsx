@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import { redirect } from "next/navigation"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, PlayCircle, Database, CheckCircle, Clock } from "lucide-react"
@@ -12,7 +12,7 @@ interface PageProps {
 }
 
 async function VMAXAnalysisContent({ companyId }: { companyId: string }) {
-  const supabase = createServerClient()
+  const supabase = createAdminClient()
 
   // Buscar informações da empresa
   const { data: company } = await supabase.from("companies").select("*").eq("id", companyId).single()
