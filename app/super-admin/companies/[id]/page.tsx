@@ -21,6 +21,7 @@ import {
   Mail,
   MapPin,
   Plug,
+  Sparkles,
 } from "lucide-react"
 
 interface CompanyDetailsProps {
@@ -402,6 +403,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               <CardTitle>Ações Rápidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href={`/super-admin/companies/${company.id}/vmax-analysis`}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Análise VMAX (Gratuita)
+                </Link>
+              </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/users`}>
                   <Users className="mr-2 h-4 w-4" />
