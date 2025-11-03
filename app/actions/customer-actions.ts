@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS } from "@/lib/notifications/sms"
 
@@ -264,5 +265,55 @@ export async function sendCustomerNotification(payload: any) {
   } catch (err: any) {
     console.error("[sendCustomerNotification] Erro:", err.message, err.stack)
     return { success: false, error: err.message, stack: err.stack }
+  }
+}
+
+export async function getCustomerDetails(companyId: string, document: string) {
+  try {
+    const supabase = createAdminClient()
+
+    // Remove formatação do documento
+    const cleanDocument = document.replace(/\D/g, "")
+
+    // Buscar na tabela VMAX
+    const { data: vmaxData } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", companyId)
+      .ilike("CPF/CNPJ", `%${cleanDocument}%`)
+      .single()
+
+    if (!vmaxData) {
+      return { success: false, error: "Cliente não encontrado" }
+    }
+
+    // Buscar análises de crédito
+    const { data: creditProfiles } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("cpf", cleanDocument)
+      .order("created_at", { ascending: false })
+
+    const latestProfile = creditProfiles?.[0]
+
+    return {
+      success: true,
+      data: {
+        id: vmaxData.id,
+        name: vmaxData.Cliente || vmaxData.cliente || "N/A",
+        document: vmaxData["CPF/CNPJ"] || vmaxData.cpf_cnpj || cleanDocument,
+        city: vmaxData.Cidade || vmaxData.cidade || null,
+        email: null,
+        phone: null,
+        created_at: vmaxData.Primeira_Vencida || vmaxData.primeira_vencida || new Date().toISOString(),
+        score: latestProfile?.score || null,
+        analysis_data: latestProfile?.data || null,
+        analysis_history: creditProfiles || [],
+      },
+    }
+  } catch (error: any) {
+    console.error("[SERVER] getCustomerDetails - Error:", error)
+    return { success: false, error: error.message }
   }
 }

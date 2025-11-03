@@ -28,8 +28,7 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
         id,
         amount,
         status,
-        due_date,
-        paid_at
+        due_date
       )
     `)
     .eq("company_id", params.id)
@@ -75,8 +74,8 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     })
     const overdueDebt = overdueDebts.reduce((sum: number, debt: any) => sum + (debt.amount || 0), 0)
     const lastPayment = debts
-      .filter((d: any) => d.paid_at)
-      .sort((a: any, b: any) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime())[0]?.paid_at
+      .filter((d: any) => d.status === "paid")
+      .sort((a: any, b: any) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime())[0]?.due_date
 
     const oldestOverdueDebt = overdueDebts.sort(
       (a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime(),

@@ -140,10 +140,8 @@ export default async function SuperAdminDashboardPage() {
       {/* Welcome Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
-            Painel Altea Pay - Super Admin
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1 text-xs sm:text-sm lg:text-base">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">Painel Altea Pay - Super Admin</h1>
+          <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
             Visão geral de todas as empresas clientes e suas operações de cobrança.
           </p>
         </div>
@@ -241,10 +239,8 @@ export default async function SuperAdminDashboardPage() {
                       <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-altea-navy dark:text-altea-gold" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-medium text-gray-900 dark:text-white truncate text-sm sm:text-base">
-                        {company.name}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                      <h3 className="font-medium text-foreground truncate text-sm sm:text-base">{company.name}</h3>
+                      <p className="text-xs sm:text-sm text-muted-foreground">
                         {company.totalCustomers.toLocaleString()} clientes • {company.totalDebts.toLocaleString()}{" "}
                         dívidas
                       </p>
@@ -254,17 +250,17 @@ export default async function SuperAdminDashboardPage() {
 
                 <div className="flex flex-row sm:flex-row sm:items-center gap-3 sm:gap-6 mt-3 sm:mt-0">
                   <div className="text-center sm:text-right">
-                    <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                    <p className="text-xs sm:text-sm font-medium text-foreground">
                       R$ {(company.totalAmount / 1000).toFixed(0)}k
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
                   </div>
 
                   <div className="text-center sm:text-right">
                     <p className="text-xs sm:text-sm font-medium text-green-600 dark:text-green-400">
                       {company.recoveryRate.toFixed(1)}%
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
+                    <p className="text-xs text-muted-foreground">Recuperação</p>
                   </div>
 
                   {company.overdueDebts > 0 && (
@@ -316,13 +312,11 @@ export default async function SuperAdminDashboardPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
-                      {activity.description}
-                    </p>
+                    <p className="text-xs sm:text-sm font-medium text-foreground">{activity.description}</p>
                     <div className="flex items-center space-x-2 mt-1">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{activity.company}</p>
+                      <p className="text-xs text-muted-foreground">{activity.company}</p>
                       <span className="text-xs text-gray-400">•</span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{activity.time}</p>
+                      <p className="text-xs text-muted-foreground">{activity.time}</p>
                     </div>
                   </div>
                   {activity.amount && (

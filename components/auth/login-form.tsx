@@ -20,12 +20,13 @@ export function LoginForm() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
     try {
       console.log("[v0] Tentando fazer login com:", email)
+
+      const supabase = createClient()
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -40,7 +41,7 @@ export function LoginForm() {
       if (data.user) {
         console.log("[v0] Login bem-sucedido para usuário:", data.user.email)
 
-        await new Promise((resolve) => setTimeout(resolve, 3000))
+        await new Promise((resolve) => setTimeout(resolve, 1000))
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
@@ -67,25 +68,28 @@ export function LoginForm() {
           }
 
           console.log("[v0] Perfil criado, redirecionando para dashboard de usuário")
-          window.location.replace("/user-dashboard")
+          router.push("/user-dashboard")
+          router.refresh()
           return
         }
 
         if (profile.role === "super_admin") {
           console.log("[v0] Redirecionando super admin para painel Altea")
-          window.location.replace("/super-admin")
+          router.push("/super-admin")
+          router.refresh()
         } else if (profile.role === "admin") {
           console.log("[v0] Redirecionando admin para dashboard administrativo")
-          window.location.replace("/dashboard")
+          router.push("/dashboard")
+          router.refresh()
         } else {
           console.log("[v0] Redirecionando usuário para dashboard de usuário")
-          window.location.replace("/user-dashboard")
+          router.push("/user-dashboard")
+          router.refresh()
         }
       }
     } catch (error: unknown) {
       console.error("[v0] Erro no processo de login:", error)
       setError(error instanceof Error ? error.message : "Erro ao fazer login")
-    } finally {
       setIsLoading(false)
     }
   }
