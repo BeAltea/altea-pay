@@ -63,6 +63,8 @@ interface CollectionRule {
   updatedAt: string
 }
 
+export const dynamic = "force-dynamic"
+
 export default function CollectionRulesPage() {
   const [rules, setRules] = useState<CollectionRule[]>([])
   const [selectedRule, setSelectedRule] = useState<CollectionRule | null>(null)

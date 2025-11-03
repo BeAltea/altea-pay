@@ -42,6 +42,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { sendCollectionNotification } from "@/app/actions/send-notification"
 import { createDebt } from "@/app/actions/create-debt"
+import { updateDebt } from "@/app/actions/update-debt"
 
 interface Debt {
   id: string
@@ -78,10 +79,19 @@ export default function DebtsPage() {
   const [isClassifying, setIsClassifying] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
   const [isAddDebtOpen, setIsAddDebtOpen] = useState(false)
+  const [isEditDebtOpen, setIsEditDebtOpen] = useState(false)
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [newDebt, setNewDebt] = useState({
+    customerId: "",
+    amount: "",
+    dueDate: "",
+    description: "",
+    status: "pending" as const,
+    classification: "low" as const,
+  })
+  const [editDebt, setEditDebt] = useState({
     customerId: "",
     amount: "",
     dueDate: "",
@@ -300,11 +310,67 @@ export default function DebtsPage() {
     const debt = debts.find((d) => d.id === debtId)
     if (!debt) return
 
-    toast({
-      title: "Editar dívida",
-      description: `Abrindo formulário de edição para ${debt.customerName}`,
+    setSelectedDebt(debt)
+    setEditDebt({
+      customerId: debt.customerId,
+      amount: debt.currentAmount.toString(),
+      dueDate: debt.dueDate,
+      description: debt.description || "",
+      status: debt.status,
+      classification: debt.classification,
     })
-    // TODO: Implementar modal de edição
+    setIsEditDebtOpen(true)
+  }
+
+  const handleUpdateDebt = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!profile?.company_id || !selectedDebt) {
+      toast({
+        title: "Erro",
+        description: "Empresa ou dívida não identificada",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!editDebt.customerId || !editDebt.amount || !editDebt.dueDate) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      })
+      return
+    }
+
+    console.log("[v0] Updating debt:", selectedDebt.id, editDebt)
+
+    const result = await updateDebt({
+      debtId: selectedDebt.id,
+      customerId: editDebt.customerId,
+      amount: Number.parseFloat(editDebt.amount),
+      dueDate: editDebt.dueDate,
+      description: editDebt.description,
+      status: editDebt.status,
+      classification: editDebt.classification,
+      companyId: profile.company_id,
+    })
+
+    if (result.success) {
+      toast({
+        title: "Sucesso",
+        description: result.message,
+      })
+      setIsEditDebtOpen(false)
+      setSelectedDebt(null)
+      await fetchDebts()
+    } else {
+      toast({
+        title: "Erro",
+        description: result.message,
+        variant: "destructive",
+      })
+    }
   }
 
   const handleAction = async (action: string, debtId: string) => {
@@ -1060,6 +1126,123 @@ export default function DebtsPage() {
               Editar Dívida
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Debt Dialog */}
+      <Dialog open={isEditDebtOpen} onOpenChange={setIsEditDebtOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Dívida</DialogTitle>
+            <DialogDescription>Atualize os dados da dívida selecionada.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateDebt}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              <div className="col-span-1 md:col-span-2 space-y-2">
+                <Label htmlFor="edit-customerId">Cliente *</Label>
+                <Select
+                  value={editDebt.customerId}
+                  onValueChange={(value) => setEditDebt({ ...editDebt, customerId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} - {customer.document}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-amount">Valor *</Label>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  step="0.01"
+                  value={editDebt.amount}
+                  onChange={(e) => setEditDebt({ ...editDebt, amount: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-dueDate">Data de Vencimento *</Label>
+                <Input
+                  id="edit-dueDate"
+                  type="date"
+                  value={editDebt.dueDate}
+                  onChange={(e) => setEditDebt({ ...editDebt, dueDate: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select
+                  value={editDebt.status}
+                  onValueChange={(value: any) => setEditDebt({ ...editDebt, status: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="in_collection">Em Cobrança</SelectItem>
+                    <SelectItem value="paid">Pago</SelectItem>
+                    <SelectItem value="written_off">Baixado</SelectItem>
+                    <SelectItem value="in_agreement">Acordo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-classification">Classificação</Label>
+                <Select
+                  value={editDebt.classification}
+                  onValueChange={(value: any) => setEditDebt({ ...editDebt, classification: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Baixo</SelectItem>
+                    <SelectItem value="medium">Médio</SelectItem>
+                    <SelectItem value="high">Alto</SelectItem>
+                    <SelectItem value="critical">Crítico</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="col-span-1 md:col-span-2 space-y-2">
+                <Label htmlFor="edit-description">Descrição</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editDebt.description}
+                  onChange={(e) => setEditDebt({ ...editDebt, description: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter className="flex-col space-y-2 md:flex-row md:space-y-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsEditDebtOpen(false)
+                  setSelectedDebt(null)
+                }}
+                className="w-full md:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" className="w-full md:w-auto">
+                Salvar Alterações
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
