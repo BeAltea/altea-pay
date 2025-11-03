@@ -44,6 +44,8 @@ import { sendCollectionNotification } from "@/app/actions/send-notification"
 import { createDebt } from "@/app/actions/create-debt"
 import { updateDebt } from "@/app/actions/update-debt"
 
+export const dynamic = "force-dynamic"
+
 interface Debt {
   id: string
   customerName: string

@@ -16,6 +16,8 @@ import {
 import { Settings, Bell, Mail, MessageSquare, Shield, Save, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
+export const dynamic = "force-dynamic"
+
 export default function SettingsPage() {
   const [notifications, setNotifications] = useState({
     email: true,

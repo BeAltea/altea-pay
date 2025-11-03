@@ -13,6 +13,8 @@ import { Mail, Calendar, Save, CheckCircle, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
+export const dynamic = "force-dynamic"
+
 export default function ProfilePage() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState({

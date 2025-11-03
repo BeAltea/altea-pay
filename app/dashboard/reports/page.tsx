@@ -192,6 +192,8 @@ const generateAgingReportByPeriod = (period: string) => {
   ]
 }
 
+export const dynamic = "force-dynamic"
+
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("30d")
   const [selectedMetric, setSelectedMetric] = useState("recovery")

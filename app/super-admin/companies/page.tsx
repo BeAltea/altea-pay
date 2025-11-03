@@ -24,6 +24,8 @@ interface Company {
   admins: number
 }
 
+export const dynamic = "force-dynamic"
+
 export default async function CompaniesPage() {
   const supabase = await createClient()
 

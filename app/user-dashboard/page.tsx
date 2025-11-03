@@ -22,6 +22,8 @@ import { EnhancedDebtCard } from "@/components/user-dashboard/enhanced-debt-card
 import { EnhancedExportButton } from "@/components/user-dashboard/enhanced-export-button"
 import { redirect } from "next/navigation"
 
+export const dynamic = "force-dynamic"
+
 function DashboardSkeleton() {
   return (
     <div className="space-y-4">

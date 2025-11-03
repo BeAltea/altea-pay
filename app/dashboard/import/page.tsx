@@ -17,6 +17,8 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+export const dynamic = "force-dynamic"
+
 interface ImportRecord {
   id: string
   filename: string
