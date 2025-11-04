@@ -8,14 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -186,14 +179,36 @@ export default function AnalysesPage() {
 
       console.log("[v0] AnalysesPage - Company ID:", firstCustomer.company_id)
 
-      const result = await runAssertivaManualAnalysis(Array.from(selectedCustomers), firstCustomer.company_id)
+      const customerIdsToAnalyze = analyses
+        .filter((a) => selectedCustomers.has(a.customer_id))
+        .map((a) => a.customer_id)
+
+      console.log("[v0] AnalysesPage - Customer IDs to analyze:", customerIdsToAnalyze)
+      console.log("[v0] AnalysesPage - IDs type check:", {
+        is_array: Array.isArray(customerIdsToAnalyze),
+        length: customerIdsToAnalyze.length,
+        first_id: customerIdsToAnalyze[0],
+        first_id_type: typeof customerIdsToAnalyze[0],
+      })
+
+      const result = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
 
       console.log("[v0] AnalysesPage - Analysis result:", result)
 
       if (result.success) {
+        const durationInSeconds =
+          result.duration && typeof result.duration === "number" ? (result.duration / 1000).toFixed(2) : "0.00"
+
         toast({
           title: "Análise concluída!",
-          description: result.message,
+          description: `Análise Assertiva concluída com sucesso!
+
+📊 Resumo:
+- Total de clientes selecionados: ${result.total}
+- Análises realizadas: ${result.analyzed}
+- Já tinham análise (cache): ${result.cached}
+- Falhas: ${result.failed}
+- Tempo total: ${durationInSeconds}s`,
         })
 
         await loadAnalyses()
@@ -201,7 +216,7 @@ export default function AnalysesPage() {
       } else {
         toast({
           title: "Erro na análise",
-          description: result.message,
+          description: result.error || "Erro desconhecido",
           variant: "destructive",
         })
       }
@@ -439,12 +454,12 @@ export default function AnalysesPage() {
               <AlertCircle className="h-5 w-5 text-yellow-600" />
               Confirmar Análise Paga
             </DialogTitle>
-            <DialogDescription className="space-y-4 pt-4">
+            <div className="space-y-4 pt-4 text-sm text-muted-foreground">
               <p>Você está prestes a executar uma análise detalhada usando a API da Assertiva Soluções.</p>
 
-              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                <p className="font-semibold text-yellow-900">⚠️ Atenção:</p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800">
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:bg-yellow-950/20">
+                <p className="font-semibold text-yellow-900 dark:text-yellow-100">⚠️ Atenção:</p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
                   <li>Esta ação consome créditos da Assertiva</li>
                   <li>Não pode ser desfeita</li>
                   <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
@@ -453,7 +468,7 @@ export default function AnalysesPage() {
               </div>
 
               <p className="text-sm">Deseja continuar?</p>
-            </DialogDescription>
+            </div>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowConfirmModal(false)}>

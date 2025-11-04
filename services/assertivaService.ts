@@ -43,18 +43,42 @@ async function getAssertivaToken(): Promise<string> {
 
     console.log("[v0] getAssertivaToken - Fetching new token")
 
-    const clientId = process.env.ASSERTIVA_CLIENT_ID
-    const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
-    const baseUrl = process.env.ASSERTIVA_BASE_URL || "https://api.assertivasolucoes.com.br"
+    const clientId = process.env.ASSERTIVA_CLIENT_ID?.trim()
+    const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET?.trim()
+    const baseUrl = process.env.ASSERTIVA_BASE_URL?.trim() || "https://api.assertivasolucoes.com.br"
 
     if (!clientId || !clientSecret) {
-      throw new Error("ASSERTIVA_CLIENT_ID e ASSERTIVA_CLIENT_SECRET são obrigatórios")
+      const errorMsg =
+        "❌ ERRO DE CONFIGURAÇÃO: As variáveis de ambiente ASSERTIVA_CLIENT_ID e ASSERTIVA_CLIENT_SECRET não estão configuradas. Por favor, configure-as no painel do Vercel."
+      console.error("[v0] getAssertivaToken -", errorMsg)
+      throw new Error(errorMsg)
     }
+
+    console.log("[v0] getAssertivaToken - Environment check:", {
+      hasClientId: !!clientId,
+      clientIdLength: clientId.length,
+      clientIdStart: clientId.substring(0, 10) + "...",
+      clientIdEnd: "..." + clientId.substring(clientId.length - 10),
+      hasClientSecret: !!clientSecret,
+      clientSecretLength: clientSecret.length,
+      clientSecretStart: clientSecret.substring(0, 10) + "...",
+      clientSecretEnd: "..." + clientSecret.substring(clientSecret.length - 10),
+      baseUrl,
+    })
 
     // Basic Auth: base64(client_id:client_secret)
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
-    const response = await fetch(`${baseUrl}/oauth2/v3/token`, {
+    console.log("[v0] getAssertivaToken - Basic Auth created:", {
+      basicAuthLength: basicAuth.length,
+      basicAuthStart: basicAuth.substring(0, 20) + "...",
+      basicAuthEnd: "..." + basicAuth.substring(basicAuth.length - 20),
+    })
+
+    const tokenUrl = `${baseUrl}/oauth2/v3/token`
+    console.log("[v0] getAssertivaToken - Calling:", tokenUrl)
+
+    const response = await fetch(tokenUrl, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
@@ -63,9 +87,22 @@ async function getAssertivaToken(): Promise<string> {
       body: "grant_type=client_credentials",
     })
 
+    console.log("[v0] getAssertivaToken - Response status:", response.status)
+
     if (!response.ok) {
       const errorText = await response.text()
       console.error("[v0] getAssertivaToken - Error response:", errorText)
+      console.error("[v0] getAssertivaToken - Response headers:", Object.fromEntries(response.headers.entries()))
+
+      if (response.status === 401) {
+        throw new Error(
+          `❌ ERRO DE AUTENTICAÇÃO ASSERTIVA (401): As credenciais estão sendo rejeitadas pela API. ` +
+            `Verifique se as credenciais no Vercel são EXATAMENTE iguais às do email (sem espaços extras). ` +
+            `Pode ser necessário fazer um REDEPLOY após atualizar as variáveis. ` +
+            `Detalhes: ${errorText}`,
+        )
+      }
+
       throw new Error(`Falha ao obter token: ${response.status} ${errorText}`)
     }
 
@@ -75,7 +112,7 @@ async function getAssertivaToken(): Promise<string> {
     tokenCache.token = data.access_token
     tokenCache.expiresAt = now + data.expires_in * 1000
 
-    console.log("[v0] getAssertivaToken - Token obtained, expires in:", data.expires_in, "seconds")
+    console.log("[v0] getAssertivaToken - ✅ Token obtained successfully, expires in:", data.expires_in, "seconds")
 
     return data.access_token
   } catch (error: any) {
@@ -177,7 +214,7 @@ export async function analyzeDetailedWithCache(
   try {
     const cleanCpf = cpf.replace(/\D/g, "")
 
-    console.log("[v0] analyzeDetailedWithCache - Starting for CPF:", cleanCpf)
+    console.log("[v0] analyzeDetailedWithCache - 🚀 Starting for CPF:", cleanCpf)
 
     // 1. Verificar cache local (credit_profiles)
     const supabase = await createClient()
@@ -192,39 +229,51 @@ export async function analyzeDetailedWithCache(
       .maybeSingle()
 
     if (cached && !cacheError) {
-      console.log("[v0] analyzeDetailedWithCache - Using cached result from:", cached.created_at)
+      console.log("[v0] analyzeDetailedWithCache - 📋 Using cached result from:", cached.created_at)
       return { success: true, data: cached.data, cached: true }
     }
 
+    console.log("[v0] analyzeDetailedWithCache - 🔄 No cache found, calling Assertiva API...")
+
     // 2. Obter token
+    console.log("[v0] analyzeDetailedWithCache - 🔑 Getting OAuth token...")
     const token = await getAssertivaToken()
+    console.log("[v0] analyzeDetailedWithCache - ✅ Token obtained")
 
     // 3. Criar consulta
+    console.log("[v0] analyzeDetailedWithCache - 📤 Creating Assertiva consultation...")
     const idConsulta = await createAssertivaConsulta(cleanCpf, token)
-
-    // 4. Log da operação POST
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
-      cpf: cleanCpf,
-      operation: "POST_CONSULTA",
-      status: "success",
-      details: { idConsulta },
-    })
+    console.log("[v0] analyzeDetailedWithCache - ✅ Consultation created, ID:", idConsulta)
 
     // 5. Buscar resultado (polling)
+    console.log("[v0] analyzeDetailedWithCache - ⏳ Fetching result (polling)...")
     const resultado = await getAssertivaResult(idConsulta, token)
+    console.log("[v0] analyzeDetailedWithCache - ✅ Result obtained")
 
-    // 6. Log da operação GET
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
+    console.log("[v0] analyzeDetailedWithCache - 📦 ASSERTIVA API FULL RESPONSE SAMPLE:", {
       cpf: cleanCpf,
-      operation: "GET_RESULT",
-      status: "success",
-      details: { idConsulta, resultado },
+      consultation_id: idConsulta,
+      response_keys: resultado ? Object.keys(resultado) : [],
+      sample_data: {
+        nome_completo: resultado?.nome_completo,
+        data_nascimento: resultado?.data_nascimento,
+        situacao_cpf: resultado?.situacao_cpf,
+        score_serasa: resultado?.score_serasa,
+        score_assertiva: resultado?.score_assertiva,
+        renda_presumida: resultado?.renda_presumida,
+        protestos: resultado?.protestos?.length || 0,
+        acoes_judiciais: resultado?.acoes_judiciais?.length || 0,
+        cheques_sem_fundo: resultado?.cheques_sem_fundo?.length || 0,
+        dividas_ativas: resultado?.dividas_ativas?.length || 0,
+        participacao_empresas: resultado?.participacao_empresas?.length || 0,
+      },
+      has_real_api_data: !!resultado,
     })
 
     // 7. Calcular score interno
-    const score = resultado?.score || resultado?.pontuacao || 0
+    const score = resultado?.score || resultado?.pontuacao || resultado?.score_assertiva || resultado?.score_serasa || 0
+
+    console.log("[v0] analyzeDetailedWithCache - 📊 Calculated score:", score)
 
     // 8. Salvar em credit_profiles
     const { error: insertError } = await supabase.from("credit_profiles").insert({
@@ -238,15 +287,18 @@ export async function analyzeDetailedWithCache(
     })
 
     if (insertError) {
-      console.error("[v0] analyzeDetailedWithCache - Error saving to DB:", insertError)
+      console.error("[v0] analyzeDetailedWithCache - ❌ Error saving to DB:", insertError)
       // Não falhar se não conseguir salvar, mas logar o erro
+    } else {
+      console.log("[v0] analyzeDetailedWithCache - ✅ Saved to database")
     }
 
-    console.log("[v0] analyzeDetailedWithCache - Success, score:", score)
+    console.log("[v0] analyzeDetailedWithCache - 🎉 Success, score:", score)
 
     return { success: true, data: resultado, cached: false }
   } catch (error: any) {
-    console.error("[v0] analyzeDetailedWithCache - Error:", error)
+    console.error("[v0] analyzeDetailedWithCache - 💥 Error:", error)
+    console.error("[v0] analyzeDetailedWithCache - Error stack:", error.stack)
 
     // Log de erro
     const supabase = await createClient()

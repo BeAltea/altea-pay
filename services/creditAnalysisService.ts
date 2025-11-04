@@ -487,8 +487,24 @@ export async function storeAnalysisResult(
     const cleanCpf = cpf.replace(/\D/g, "")
 
     let customerId: string | null = null
+    let customerName: string | null = null
+    let customerCity: string | null = null
+    let customerEmail: string | null = null
+    let customerPhone: string | null = null
 
-    const { data: vmaxRecords } = await supabase.from("VMAX").select('id, "CPF/CNPJ"').eq("id_company", companyId)
+    const { data: vmaxRecords } = await supabase
+      .from("VMAX")
+      .select('id, "CPF/CNPJ", Cliente, Cidade')
+      .eq("id_company", companyId)
+
+    console.log("[v0] storeAnalysisResult - Query result:", {
+      records_found: vmaxRecords?.length || 0,
+    })
+
+    if (!vmaxRecords || vmaxRecords.length === 0) {
+      console.log("[v0] storeAnalysisResult - No records found in VMAX table")
+      return { success: false, error: "No VMAX records found" }
+    }
 
     // Encontrar o registro que corresponde ao CPF limpo
     const vmaxRecord = vmaxRecords?.find((record) => {
@@ -498,13 +514,52 @@ export async function storeAnalysisResult(
 
     if (vmaxRecord) {
       customerId = vmaxRecord.id
+      customerName = vmaxRecord.Cliente
+      customerCity = vmaxRecord.Cidade
       console.log("[v0] storeAnalysisResult - ✅ Found customer_id from VMAX:", customerId, "for CPF:", cleanCpf)
     } else {
-      console.log("[v0] storeAnalysisResult - ⚠️ No customer_id found in VMAX for CPF:", cleanCpf)
+      // Try to find in customers table
+      const { data: customerRecord } = await supabase
+        .from("customers")
+        .select("id, name, city, email, phone")
+        .eq("company_id", companyId)
+        .eq("document", cleanCpf)
+        .maybeSingle()
+
+      if (customerRecord) {
+        customerId = customerRecord.id
+        customerName = customerRecord.name
+        customerCity = customerRecord.city
+        customerEmail = customerRecord.email
+        customerPhone = customerRecord.phone
+        console.log("[v0] storeAnalysisResult - ✅ Found customer_id from customers table:", customerId)
+      } else {
+        console.log("[v0] storeAnalysisResult - ⚠️ No customer_id found for CPF:", cleanCpf)
+      }
     }
 
     // Calcular score interno
     const score = data.score_calculado || data.score_assertiva || data.score_serasa || 0
+
+    let riskLevel: "low" | "medium" | "high" | "very_high" = "medium"
+    if (score >= 700) riskLevel = "low"
+    else if (score >= 500) riskLevel = "medium"
+    else if (score >= 300) riskLevel = "high"
+    else riskLevel = "very_high"
+
+    const hasSanctions =
+      (data.sancoes_ceis && Array.isArray(data.sancoes_ceis) && data.sancoes_ceis.length > 0) ||
+      (data.punicoes_cnep && Array.isArray(data.punicoes_cnep) && data.punicoes_cnep.length > 0)
+
+    const sanctionsCount =
+      (data.sancoes_ceis?.length || 0) + (data.punicoes_cnep?.length || 0) + (data.total_sancoes || 0)
+
+    const hasPublicBonds =
+      data.vinculos_publicos && Array.isArray(data.vinculos_publicos) && data.vinculos_publicos.length > 0
+
+    const publicBondsCount = data.vinculos_publicos?.length || 0
+
+    const documentType = cleanCpf.length === 14 ? "CNPJ" : "CPF"
 
     const profileData: any = {
       company_id: companyId,
@@ -514,17 +569,26 @@ export async function storeAnalysisResult(
       data,
       score,
       status: "completed",
+      risk_level: riskLevel,
+      has_sanctions: hasSanctions,
+      has_public_bonds: hasPublicBonds,
+      sanctions_count: sanctionsCount,
+      public_bonds_count: publicBondsCount,
+      document_type: documentType,
+      last_analysis_date: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
-    if (customerId) {
-      profileData.customer_id = customerId
-    }
+    if (customerId) profileData.customer_id = customerId
+    if (customerName) profileData.name = customerName
+    if (customerCity) profileData.city = customerCity
+    if (customerEmail) profileData.email = customerEmail
+    if (customerPhone) profileData.phone = customerPhone
 
     const { data: insertedData, error } = await supabase
       .from("credit_profiles")
       .upsert(profileData, {
-        onConflict: "cpf,company_id",
+        onConflict: "cpf,company_id,source,analysis_type",
       })
       .select()
 
@@ -538,6 +602,9 @@ export async function storeAnalysisResult(
       source,
       type,
       score,
+      risk_level: riskLevel,
+      has_sanctions: hasSanctions,
+      has_public_bonds: hasPublicBonds,
       customer_id: customerId,
       record_id: insertedData?.[0]?.id,
     })
@@ -917,7 +984,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           api_status: analysisResult.data?.api_status || "SUCCESS",
         })
 
-        await storeAnalysisResult(item.cpf, companyId, analysisResult.data.score_calculado, analysisResult.data)
+        // Simpler call to storeAnalysisResult for VMAX auto-analysis
+        await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId)
 
         analyzedCount++
         cpfsAnalyzed.push(item.cpf)
@@ -976,9 +1044,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
         cpfs_analyzed: cpfsAnalyzed,
       },
       duration_ms: duration,
-      records_processed: vmaxRecords.length,
-      records_success: analyzedCount,
-      records_failed: failedCount,
+      created_at: new Date().toISOString(),
     })
 
     return {
@@ -1001,11 +1067,9 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
       operation_type: "vmax_auto_analysis",
       status: "error",
       request_data: { company_id: companyId },
-      response_data: { error: error.message },
+      response_data: { error: error.message, stack: error.stack },
       duration_ms: duration,
-      records_processed: 0,
-      records_success: 0,
-      records_failed: 1,
+      created_at: new Date().toISOString(),
     })
 
     return {
@@ -1036,9 +1100,12 @@ export async function runAssertivaManualAnalysis(
   error?: string
 }> {
   const startTime = Date.now()
+  const supabase = createAdminClient()
 
   try {
     console.log("[v0] runAssertivaManualAnalysis - Starting for customers:", customerIds.length)
+    console.log("[v0] runAssertivaManualAnalysis - Received IDs:", customerIds)
+    console.log("[v0] runAssertivaManualAnalysis - Company ID (for reference):", companyId)
 
     if (!customerIds || customerIds.length === 0) {
       return {
@@ -1053,17 +1120,26 @@ export async function runAssertivaManualAnalysis(
       }
     }
 
-    const supabase = await createClient()
+    console.log("[v0] runAssertivaManualAnalysis - Querying VMAX table with IDs:", customerIds)
 
-    // 1. Buscar dados dos clientes selecionados
-    const { data: customers, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document")
+    const { data: vmaxData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
       .in("id", customerIds)
-      .eq("company_id", companyId)
 
-    if (customersError) {
-      console.error("[v0] runAssertivaManualAnalysis - Error fetching customers:", customersError)
+    console.log("[v0] runAssertivaManualAnalysis - VMAX query result:", {
+      found: vmaxData?.length || 0,
+      error: vmaxError?.message,
+      sample_data: vmaxData?.map((v) => ({
+        id: v.id,
+        company: v.id_company,
+        name: v.Cliente,
+        cpf: v["CPF/CNPJ"]?.substring(0, 6) + "***",
+      })),
+    })
+
+    if (vmaxError) {
+      console.error("[v0] runAssertivaManualAnalysis - Error fetching from VMAX:", vmaxError)
       return {
         success: false,
         total: 0,
@@ -1072,12 +1148,12 @@ export async function runAssertivaManualAnalysis(
         failed: 0,
         duration: Date.now() - startTime,
         customers_analyzed: [],
-        error: customersError.message,
+        error: vmaxError.message,
       }
     }
 
-    if (!customers || customers.length === 0) {
-      console.log("[v0] runAssertivaManualAnalysis - No customers found")
+    if (!vmaxData || vmaxData.length === 0) {
+      console.log("[v0] runAssertivaManualAnalysis - No customers found in VMAX")
       return {
         success: true,
         total: 0,
@@ -1089,17 +1165,29 @@ export async function runAssertivaManualAnalysis(
       }
     }
 
-    console.log("[v0] runAssertivaManualAnalysis - Found customers:", customers.length)
+    const customers = vmaxData.map((record) => ({
+      id: record.id,
+      name: record.Cliente || "N/A",
+      document: record["CPF/CNPJ"]?.replace(/\D/g, "") || "",
+      city: record.Cidade || "N/A",
+      company_id: record.id_company, // Use the record's own company ID
+    }))
+
+    console.log("[v0] runAssertivaManualAnalysis - ✅ Found customers in VMAX:", customers.length)
+    console.log(
+      "[v0] runAssertivaManualAnalysis - Customer details:",
+      customers.map((c) => ({ id: c.id, name: c.name, document: c.document, city: c.city, company_id: c.company_id })),
+    )
 
     // 2. Verificar quais já têm análise Assertiva em cache
-    const customersToAnalyze: Array<{ id: string; cpf: string; name: string }> = []
+    const customersToAnalyze: Array<{ id: string; cpf: string; name: string; city: string; company_id: string }> = []
     let cachedCount = 0
 
     for (const customer of customers) {
-      const cpf = customer.document?.replace(/\D/g, "")
+      const cpf = customer.document
 
       if (!cpf || (cpf.length !== 11 && cpf.length !== 14)) {
-        console.log("[v0] runAssertivaManualAnalysis - Invalid document, skipping:", customer.document)
+        console.log("[v0] runAssertivaManualAnalysis - ⚠️ Invalid document, skipping:", customer.document)
         continue
       }
 
@@ -1107,24 +1195,34 @@ export async function runAssertivaManualAnalysis(
         .from("credit_profiles")
         .select("id, score, created_at")
         .eq("cpf", cpf)
-        .eq("company_id", companyId)
+        .eq("company_id", customer.company_id)
         .eq("source", "assertiva")
         .maybeSingle()
 
       if (existingAnalysis) {
-        console.log("[v0] runAssertivaManualAnalysis - Customer already analyzed (cached):", customer.id)
+        console.log("[v0] runAssertivaManualAnalysis - 📋 Customer already analyzed (cached):", {
+          id: customer.id,
+          name: customer.name,
+          cpf,
+          cached_at: existingAnalysis.created_at,
+        })
         cachedCount++
       } else {
         customersToAnalyze.push({
           id: customer.id,
           cpf,
-          name: customer.name || "N/A",
+          name: customer.name,
+          city: customer.city,
+          company_id: customer.company_id,
         })
       }
     }
 
-    console.log("[v0] runAssertivaManualAnalysis - Customers to analyze:", customersToAnalyze.length)
-    console.log("[v0] runAssertivaManualAnalysis - Customers already cached:", cachedCount)
+    console.log("[v0] runAssertivaManualAnalysis - 📊 Analysis summary:", {
+      total: customers.length,
+      to_analyze: customersToAnalyze.length,
+      already_cached: cachedCount,
+    })
 
     // 3. Processar em lotes de 5 (controle de concorrência)
     let analyzedCount = 0
@@ -1135,7 +1233,8 @@ export async function runAssertivaManualAnalysis(
     for (let i = 0; i < customersToAnalyze.length; i += batchSize) {
       const batch = customersToAnalyze.slice(i, i + batchSize)
 
-      console.log("[v0] runAssertivaManualAnalysis - Processing batch:", {
+      console.log("[v0] runAssertivaManualAnalysis - 🔄 Processing batch:", {
+        batch_number: Math.floor(i / batchSize) + 1,
         start: i + 1,
         end: Math.min(i + batchSize, customersToAnalyze.length),
         total: customersToAnalyze.length,
@@ -1144,37 +1243,65 @@ export async function runAssertivaManualAnalysis(
       const batchResults = await Promise.allSettled(
         batch.map(async (customer) => {
           try {
-            console.log("[v0] runAssertivaManualAnalysis - Analyzing customer:", {
+            console.log("[v0] runAssertivaManualAnalysis - 🔍 Analyzing customer:", {
               id: customer.id,
               cpf: customer.cpf,
               name: customer.name,
+              city: customer.city,
+              company_id: customer.company_id,
             })
 
-            // Executar análise detalhada (Assertiva)
-            const analysisResult = await analyzeDetailed(customer.cpf, companyId, customer.id)
+            const analysisResult = await analyzeDetailed(customer.cpf, customer.company_id, customer.id)
 
             if (!analysisResult.success) {
               console.error(
-                "[v0] runAssertivaManualAnalysis - Analysis failed for customer:",
+                "[v0] runAssertivaManualAnalysis - ❌ Analysis failed for customer:",
                 customer.id,
                 analysisResult.error,
               )
               return { success: false, customerId: customer.id, error: analysisResult.error }
             }
 
-            // Salvar resultado em credit_profiles
+            console.log("[v0] runAssertivaManualAnalysis - 📦 ASSERTIVA API RESPONSE:", {
+              customer_id: customer.id,
+              customer_name: customer.name,
+              customer_city: customer.city,
+              cpf: customer.cpf,
+              response_keys: analysisResult.data ? Object.keys(analysisResult.data) : [],
+              score_assertiva: analysisResult.data?.score_assertiva,
+              score_serasa: analysisResult.data?.score_serasa,
+              nome_completo: analysisResult.data?.nome_completo,
+              data_nascimento: analysisResult.data?.data_nascimento,
+              situacao_cpf: analysisResult.data?.situacao_cpf,
+              renda_presumida: analysisResult.data?.renda_presumida,
+              protestos_count: analysisResult.data?.protestos?.length || 0,
+              acoes_judiciais_count: analysisResult.data?.acoes_judiciais?.length || 0,
+              dividas_ativas_count: analysisResult.data?.dividas_ativas?.length || 0,
+              cheques_sem_fundo_count: analysisResult.data?.cheques_sem_fundo?.length || 0,
+              participacao_empresas_count: analysisResult.data?.participacao_empresas?.length || 0,
+            })
+
+            if (analysisResult.data) {
+              console.log("[v0] runAssertivaManualAnalysis - 📋SAMPLE DATA:", {
+                first_protesto: analysisResult.data.protestos?.[0] || "Nenhum",
+                first_acao_judicial: analysisResult.data.acoes_judiciais?.[0] || "Nenhuma",
+                first_divida_ativa: analysisResult.data.dividas_ativas?.[0] || "Nenhuma",
+                first_empresa: analysisResult.data.participacao_empresas?.[0] || "Nenhuma",
+              })
+            }
+
             const storeResult = await storeAnalysisResult(
               customer.cpf,
               analysisResult.data,
               "assertiva",
               "detailed",
-              companyId,
+              customer.company_id,
               customer.id,
             )
 
             if (!storeResult.success) {
               console.error(
-                "[v0] runAssertivaManualAnalysis - Failed to store result for customer:",
+                "[v0] runAssertivaManualAnalysis - ❌ Failed to store result for customer:",
                 customer.id,
                 storeResult.error,
               )
@@ -1183,7 +1310,9 @@ export async function runAssertivaManualAnalysis(
 
             const score = analysisResult.data?.score_assertiva || analysisResult.data?.score_serasa || 0
 
-            console.log("[v0] runAssertivaManualAnalysis - Successfully analyzed and stored customer:", customer.id, {
+            console.log("[v0] runAssertivaManualAnalysis - ✅ Successfully analyzed and stored customer:", {
+              id: customer.id,
+              name: customer.name,
               score,
             })
 
@@ -1196,7 +1325,25 @@ export async function runAssertivaManualAnalysis(
               data: analysisResult.data,
             }
           } catch (error: any) {
-            console.error("[v0] runAssertivaManualAnalysis - Error processing customer:", customer.id, error)
+            console.error("[v0] runAssertivaManualAnalysis - ❌ Error processing customer:", customer.id, error)
+
+            try {
+              await supabase.from("integration_logs").insert({
+                company_id: customer.company_id,
+                cpf: customer.cpf,
+                operation: "ASSERTIVA_MANUAL_ANALYSIS",
+                status: "failed",
+                details: {
+                  error: error.message,
+                  customer_id: customer.id,
+                  customer_name: customer.name,
+                  stack: error.stack,
+                },
+              })
+            } catch (logError) {
+              console.error("[v0] runAssertivaManualAnalysis - Failed to log error:", logError)
+            }
+
             return { success: false, customerId: customer.id, error: error.message }
           }
         }),
@@ -1223,18 +1370,20 @@ export async function runAssertivaManualAnalysis(
 
       // Delay between batches to avoid rate limiting
       if (i + batchSize < customersToAnalyze.length) {
+        console.log("[v0] runAssertivaManualAnalysis - ⏳ Waiting 2s before next batch...")
         await new Promise((resolve) => setTimeout(resolve, 2000))
       }
     }
 
     const duration = Date.now() - startTime
 
-    console.log("[v0] runAssertivaManualAnalysis - Completed:", {
+    console.log("[v0] runAssertivaManualAnalysis - 🎉 COMPLETED:", {
       total: customers.length,
       analyzed: analyzedCount,
       cached: cachedCount,
       failed: failedCount,
       duration_ms: duration,
+      duration_seconds: (duration / 1000).toFixed(2),
     })
 
     // Log final consolidado
@@ -1242,7 +1391,6 @@ export async function runAssertivaManualAnalysis(
       operation_type: "assertiva_manual_analysis",
       status: "completed",
       request_data: {
-        company_id: companyId,
         customer_ids: customerIds,
         total_customers: customers.length,
         customers_to_analyze: customersToAnalyze.length,
@@ -1268,15 +1416,15 @@ export async function runAssertivaManualAnalysis(
     }
   } catch (error: any) {
     const duration = Date.now() - startTime
-    console.error("[v0] runAssertivaManualAnalysis - Error:", error)
+    console.error("[v0] runAssertivaManualAnalysis - 💥 FATAL ERROR:", error)
+    console.error("[v0] runAssertivaManualAnalysis - Error stack:", error.stack)
 
     // Log de erro
-    const supabase = await createClient()
     await supabase.from("integration_logs").insert({
       operation_type: "assertiva_manual_analysis",
       status: "error",
       request_data: { company_id: companyId, customer_ids: customerIds },
-      response_data: { error: error.message },
+      response_data: { error: error.message, stack: error.stack },
       duration_ms: duration,
       created_at: new Date().toISOString(),
     })
