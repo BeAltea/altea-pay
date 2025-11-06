@@ -121,8 +121,7 @@ export default function RegisterPage() {
         email,
         password,
         options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
+          emailRedirectTo: "https://alteapay.com/auth/callback",
           data: {
             full_name: fullName,
             company_name: companyName,

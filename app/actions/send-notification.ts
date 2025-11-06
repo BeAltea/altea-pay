@@ -69,7 +69,7 @@ export async function sendCollectionNotification({
         debtAmount: debt.amount,
         dueDate: new Date(debt.due_date).toLocaleDateString("pt-BR"),
         companyName: debt.company.name,
-        paymentLink: `${process.env.NEXT_PUBLIC_APP_URL}/user-dashboard/debts/${debtId}`,
+        paymentLink: `https://alteapay.com/user-dashboard/debts/${debtId}`,
       })
 
       result = await sendEmail({
@@ -82,7 +82,7 @@ export async function sendCollectionNotification({
         customerName: debt.customer.name,
         debtAmount: debt.amount,
         companyName: debt.company.name,
-        paymentLink: `${process.env.NEXT_PUBLIC_APP_URL}/user-dashboard`,
+        paymentLink: `https://alteapay.com/user-dashboard`,
       })
 
       result = await sendSMS({

@@ -2,6 +2,7 @@
 
 import { useState, createContext, useContext } from "react"
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -115,64 +116,78 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
     },
   ]
 
-  return (
-    <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
-      <div className="flex h-full flex-col bg-white dark:bg-[oklch(0.12_0.02_240)] border-r border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
-        {/* Logo */}
-        <div className="flex h-16 items-center px-4 sm:px-6 border-b border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
-          <div className="flex items-center space-x-3">
-            <div className="bg-altea-gold p-2 rounded-lg flex-shrink-0">
-              <div className="h-5 w-5 bg-altea-navy rounded-sm flex items-center justify-center">
-                <span className="text-altea-gold font-bold text-xs">A</span>
-              </div>
+  const SidebarContent = () => (
+    <>
+      {/* Logo */}
+      <div className="flex h-16 items-center px-4 sm:px-6 border-b border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
+        <div className="flex items-center space-x-3">
+          <div className="bg-altea-gold p-2 rounded-lg flex-shrink-0">
+            <div className="h-5 w-5 bg-altea-navy rounded-sm flex items-center justify-center">
+              <span className="text-altea-gold font-bold text-xs">A</span>
             </div>
-            <div className="min-w-0">
-              <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">Altea Pay</span>
-              <div className="flex items-center space-x-1">
-                <Shield className="h-3 w-3 text-altea-gold" />
-                <span className="text-xs text-altea-gold font-medium">Super Admin</span>
-              </div>
+          </div>
+          <div className="min-w-0">
+            <span className="text-lg font-semibold text-gray-900 dark:text-white truncate">Altea Pay</span>
+            <div className="flex items-center space-x-1">
+              <Shield className="h-3 w-3 text-altea-gold" />
+              <span className="text-xs text-altea-gold font-medium">Super Admin</span>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navigation.map((item) => (
-            <Link key={item.name} href={item.href}>
-              <Button
-                variant={item.current ? "secondary" : "ghost"}
-                className={cn(
-                  "w-full justify-start text-left h-10 px-3 transition-all duration-200",
-                  item.current
-                    ? "bg-altea-gold/10 text-altea-navy dark:bg-[oklch(0.82_0.18_85)] dark:text-[oklch(0.12_0.02_240)] font-semibold"
-                    : "text-gray-700 dark:text-[oklch(0.92_0_0)] hover:bg-gray-100 dark:hover:bg-[oklch(0.2_0.02_240)] hover:text-gray-900 dark:hover:text-[oklch(0.98_0_0)]",
-                )}
-              >
-                <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{item.name}</span>
-              </Button>
-            </Link>
-          ))}
-        </nav>
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {navigation.map((item) => (
+          <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
+            <Button
+              variant={item.current ? "secondary" : "ghost"}
+              className={cn(
+                "w-full justify-start text-left h-10 px-3 transition-all duration-200",
+                item.current
+                  ? "bg-altea-gold/10 text-altea-navy dark:bg-[oklch(0.82_0.18_85)] dark:text-[oklch(0.12_0.02_240)] font-semibold"
+                  : "text-gray-700 dark:text-[oklch(0.92_0_0)] hover:bg-gray-100 dark:hover:bg-[oklch(0.2_0.02_240)] hover:text-gray-900 dark:hover:text-[oklch(0.98_0_0)]",
+              )}
+            >
+              <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{item.name}</span>
+            </Button>
+          </Link>
+        ))}
+      </nav>
 
-        {/* User Info */}
-        {user && (
-          <div className="border-t border-gray-200 dark:border-[oklch(0.26_0.02_240)] p-4">
-            <div className="flex items-center space-x-3 w-full min-w-0">
-              <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-full flex-shrink-0">
-                <Shield className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {user.user_metadata?.full_name || "Super Admin"}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Altea Pay</p>
-              </div>
+      {/* User Info */}
+      {user && (
+        <div className="border-t border-gray-200 dark:border-[oklch(0.26_0.02_240)] p-4">
+          <div className="flex items-center space-x-3 w-full min-w-0">
+            <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-full flex-shrink-0">
+              <Shield className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {user.user_metadata?.full_name || "Super Admin"}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Altea Pay</p>
             </div>
           </div>
-        )}
+        </div>
+      )}
+    </>
+  )
+
+  return (
+    <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
+      <div className="hidden lg:flex h-full flex-col bg-white dark:bg-[oklch(0.12_0.02_240)] border-r border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
+        <SidebarContent />
       </div>
+
+      <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+        <SheetContent side="left" className="p-0 w-80 max-w-[85vw] bg-white dark:bg-[oklch(0.12_0.02_240)]">
+          <div className="flex h-full flex-col">
+            <SidebarContent />
+          </div>
+        </SheetContent>
+      </Sheet>
     </MobileSuperAdminSidebarContext.Provider>
   )
 }

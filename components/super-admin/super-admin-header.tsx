@@ -160,10 +160,13 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
             variant="ghost"
             size="sm"
             className="lg:hidden h-10 w-10 p-0 bg-white dark:bg-altea-navy border border-gray-200 dark:border-gray-700 shadow-sm"
-            onClick={() => setIsMobileMenuOpen(true)}
+            onClick={() => {
+              console.log("[v0] Mobile menu button clicked, current state:", isMobileMenuOpen)
+              setIsMobileMenuOpen(!isMobileMenuOpen)
+            }}
           >
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Abrir menu</span>
+            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <span className="sr-only">{isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}</span>
           </Button>
 
           <div className="flex items-center space-x-4 flex-1 max-w-md">
