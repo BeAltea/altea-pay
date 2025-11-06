@@ -117,9 +117,9 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
 
   return (
     <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
-      <div className="flex h-full flex-col bg-white dark:bg-altea-navy border-r border-gray-200 dark:border-gray-700">
+      <div className="flex h-full flex-col bg-white dark:bg-[oklch(0.12_0.02_240)] border-r border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
         {/* Logo */}
-        <div className="flex h-16 items-center px-4 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex h-16 items-center px-4 sm:px-6 border-b border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
           <div className="flex items-center space-x-3">
             <div className="bg-altea-gold p-2 rounded-lg flex-shrink-0">
               <div className="h-5 w-5 bg-altea-navy rounded-sm flex items-center justify-center">
@@ -143,8 +143,10 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
               <Button
                 variant={item.current ? "secondary" : "ghost"}
                 className={cn(
-                  "w-full justify-start text-left h-10 px-3",
-                  item.current && "bg-altea-gold/10 text-altea-navy dark:bg-altea-gold/20 dark:text-altea-gold",
+                  "w-full justify-start text-left h-10 px-3 transition-all duration-200",
+                  item.current
+                    ? "bg-altea-gold/10 text-altea-navy dark:bg-[oklch(0.82_0.18_85)] dark:text-[oklch(0.12_0.02_240)] font-semibold"
+                    : "text-gray-700 dark:text-[oklch(0.92_0_0)] hover:bg-gray-100 dark:hover:bg-[oklch(0.2_0.02_240)] hover:text-gray-900 dark:hover:text-[oklch(0.98_0_0)]",
                 )}
               >
                 <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
@@ -156,7 +158,7 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
 
         {/* User Info */}
         {user && (
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+          <div className="border-t border-gray-200 dark:border-[oklch(0.26_0.02_240)] p-4">
             <div className="flex items-center space-x-3 w-full min-w-0">
               <div className="bg-altea-gold/10 dark:bg-altea-gold/20 p-2 rounded-full flex-shrink-0">
                 <Shield className="h-4 w-4 text-altea-navy dark:text-altea-gold" />
