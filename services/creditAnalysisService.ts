@@ -117,16 +117,56 @@ export async function analyzeFree(
 
         if (cepimResponse.ok) {
           const rawCepimData = await cepimResponse.json()
-          cepimData = Array.isArray(rawCepimData) ? rawCepimData : []
-          console.log("[v0] analyzeFree - CEPIM:", { status: cepimResponse.status, count: cepimData.length })
+          cepimData = Array.isArray(rawCepimData)
+            ? rawCepimData.filter((impediment: any) => {
+                const impedimentCnpj =
+                  impediment.cnpj?.replace(/\D/g, "") ||
+                  impediment.pessoa?.cnpjFormatado?.replace(/\D/g, "") ||
+                  impediment.entidade?.cnpj?.replace(/\D/g, "")
+                const matches = impedimentCnpj === cleanCpf
+                if (!matches && impedimentCnpj) {
+                  console.log("[v0] analyzeFree - Filtering out CEPIM impediment from different CNPJ:", {
+                    queried: cleanCpf,
+                    found: impedimentCnpj,
+                    entity_name: impediment.entidade?.nome || impediment.pessoa?.nome || "N/A",
+                  })
+                }
+                return matches
+              })
+            : []
+          console.log("[v0] analyzeFree - CEPIM:", {
+            status: cepimResponse.status,
+            raw_count: Array.isArray(rawCepimData) ? rawCepimData.length : 0,
+            filtered_count: cepimData.length,
+          })
         } else {
           console.log("[v0] analyzeFree - CEPIM API Error:", cepimResponse.status)
         }
 
         if (ceafResponse.ok) {
           const rawCeafData = await ceafResponse.json()
-          ceafData = Array.isArray(rawCeafData) ? rawCeafData : []
-          console.log("[v0] analyzeFree - CEAF:", { status: ceafResponse.status, count: ceafData.length })
+          ceafData = Array.isArray(rawCeafData)
+            ? rawCeafData.filter((expulsion: any) => {
+                const expulsionCpf =
+                  expulsion.pessoa?.cpfFormatado?.replace(/\D/g, "") ||
+                  expulsion.pessoa?.cnpjFormatado?.replace(/\D/g, "") ||
+                  expulsion.punicao?.cpfPunidoFormatado?.replace(/\D/g, "")
+                const matches = expulsionCpf === cleanCpf
+                if (!matches && expulsionCpf) {
+                  console.log("[v0] analyzeFree - Filtering out CEAF expulsion from different CPF/CNPJ:", {
+                    queried: cleanCpf,
+                    found: expulsionCpf,
+                    person_name: expulsion.pessoa?.nome || expulsion.punicao?.nomePunido || "N/A",
+                  })
+                }
+                return matches
+              })
+            : []
+          console.log("[v0] analyzeFree - CEAF:", {
+            status: ceafResponse.status,
+            raw_count: Array.isArray(rawCeafData) ? rawCeafData.length : 0,
+            filtered_count: ceafData.length,
+          })
         } else {
           console.log("[v0] analyzeFree - CEAF API Error:", ceafResponse.status)
         }
