@@ -678,7 +678,7 @@ function generatePDFHTML(analysis: any): string {
       }
 
       <div class="footer">
-        <div class="footer-logo">CobrançaAuto System</div>
+        <div class="footer-logo">AlteaPay</div>
         <p><strong>Relatório Confidencial de Análise de Crédito</strong></p>
         <p>Este documento é confidencial e destinado exclusivamente para fins de análise de crédito e gestão de risco.</p>
         <p>Os dados foram obtidos através do Portal da Transparência do Governo Federal.</p>

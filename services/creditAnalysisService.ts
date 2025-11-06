@@ -354,12 +354,17 @@ export async function analyzeFree(
       }
     }
 
-    console.log("[v0] analyzeFree - CPF detected, querying Portal da Transparência API")
-
-    const logStartTime = Date.now()
+    console.log("[v0] analyzeFree - CPF detected, querying Portal da Transparência APIs")
 
     const apiKey = process.env.PORTAL_TRANSPARENCIA_API_KEY
+    const logStartTime = Date.now()
+
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    }
+
     if (apiKey) {
+      headers["chave-api-dados"] = apiKey
       console.log(
         "[v0] analyzeFree - API Key configured:",
         `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
@@ -368,175 +373,286 @@ export async function analyzeFree(
       console.log("[v0] analyzeFree - API Key NOT configured")
     }
 
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-    }
+    try {
+      const [ceisResponse, cnepResponse, cepimResponse, ceafResponse] = await Promise.all([
+        fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/ceis?cpfSancionado=${cleanCpf}`, {
+          headers,
+        }),
+        fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/cnep?cpfSancionado=${cleanCpf}`, {
+          headers,
+        }),
+        fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/cepim?cpf=${cleanCpf}`, { headers }),
+        fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/ceaf?cpf=${cleanCpf}`, { headers }),
+      ])
 
-    if (apiKey) {
-      headers["chave-api-dados"] = apiKey
-    }
+      const duration = Date.now() - logStartTime
 
-    const response = await fetch(
-      `https://api.portaldatransparencia.gov.br/api-de-dados/servidores/por-cpf?cpf=${cleanCpf}`,
-      {
-        method: "GET",
-        headers,
-      },
-    )
+      let ceisData = []
+      let cnepData = []
+      let cepimData = []
+      let ceafData = []
+      let hasApiError = false
 
-    const duration = Date.now() - logStartTime
+      if (ceisResponse.ok) {
+        const rawCeisData = await ceisResponse.json()
 
-    console.log("[v0] analyzeFree - API Response:", {
-      status: response.status,
-      statusText: response.statusText,
-      contentType: response.headers.get("content-type"),
-      hasApiKey: !!apiKey,
-    })
+        ceisData = Array.isArray(rawCeisData)
+          ? rawCeisData.filter((sanction: any) => {
+              const sanctionCpf =
+                sanction.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+                sanction.pessoa?.cpfFormatado?.replace(/\D/g, "") ||
+                sanction.cpfSancionado?.replace(/\D/g, "") ||
+                sanction.cpf?.replace(/\D/g, "")
 
-    if (!response.ok) {
-      let errorText = ""
-      try {
-        errorText = await response.text()
-      } catch (e) {
-        errorText = "Unable to read error response"
+              if (!sanctionCpf) {
+                console.log("[v0] analyzeFree - CEIS sanction without CPF field, REJECTING:", {
+                  sanction_name: sanction.sancionado?.nome || sanction.pessoa?.nome || "N/A",
+                })
+                return false
+              }
+
+              const matches = sanctionCpf === cleanCpf
+
+              console.log("[v0] analyzeFree - CEIS sanction comparison:", {
+                queried_cpf: cleanCpf,
+                found_cpf: sanctionCpf,
+                matches,
+                sanction_name: sanction.sancionado?.nome || sanction.pessoa?.nome || "N/A",
+              })
+
+              return matches
+            })
+          : []
+
+        console.log("[v0] analyzeFree - CEIS:", {
+          status: ceisResponse.status,
+          raw_count: Array.isArray(rawCeisData) ? rawCeisData.length : 0,
+          filtered_count: ceisData.length,
+        })
+      } else {
+        console.log("[v0] analyzeFree - CEIS API Error:", ceisResponse.status)
+        hasApiError = true
       }
 
-      console.error("[v0] analyzeFree - API Error:", response.status, errorText)
+      if (cnepResponse.ok) {
+        const rawCnepData = await cnepResponse.json()
+
+        cnepData = Array.isArray(rawCnepData)
+          ? rawCnepData.filter((punishment: any) => {
+              const punishmentCpf =
+                punishment.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+                punishment.pessoa?.cpfFormatado?.replace(/\D/g, "") ||
+                punishment.cpfSancionado?.replace(/\D/g, "") ||
+                punishment.cpf?.replace(/\D/g, "")
+
+              if (!punishmentCpf) {
+                console.log("[v0] analyzeFree - CNEP punishment without CPF field, REJECTING:", {
+                  punishment_name: punishment.sancionado?.nome || punishment.pessoa?.nome || "N/A",
+                })
+                return false
+              }
+
+              const matches = punishmentCpf === cleanCpf
+
+              console.log("[v0] analyzeFree - CNEP punishment comparison:", {
+                queried_cpf: cleanCpf,
+                found_cpf: punishmentCpf,
+                matches,
+                punishment_name: punishment.sancionado?.nome || punishment.pessoa?.nome || "N/A",
+              })
+
+              return matches
+            })
+          : []
+
+        console.log("[v0] analyzeFree - CNEP:", {
+          status: cnepResponse.status,
+          raw_count: Array.isArray(rawCnepData) ? rawCnepData.length : 0,
+          filtered_count: cnepData.length,
+        })
+      } else {
+        console.log("[v0] analyzeFree - CNEP API Error:", cnepResponse.status)
+        hasApiError = true
+      }
+
+      if (cepimResponse.ok) {
+        const rawCepimData = await cepimResponse.json()
+
+        cepimData = Array.isArray(rawCepimData)
+          ? rawCepimData.filter((impediment: any) => {
+              const impedimentCpf =
+                impediment.cpf?.replace(/\D/g, "") ||
+                impediment.pessoa?.cpfFormatado?.replace(/\D/g, "") ||
+                impediment.entidade?.cpf?.replace(/\D/g, "")
+
+              if (!impedimentCpf) {
+                console.log("[v0] analyzeFree - CEPIM impediment without CPF field, REJECTING:", {
+                  impediment_name: impediment.pessoa?.nome || impediment.entidade?.nome || "N/A",
+                })
+                return false
+              }
+
+              const matches = impedimentCpf === cleanCpf
+
+              console.log("[v0] analyzeFree - CEPIM impediment comparison:", {
+                queried_cpf: cleanCpf,
+                found_cpf: impedimentCpf,
+                matches,
+                impediment_name: impediment.pessoa?.nome || impediment.entidade?.nome || "N/A",
+              })
+
+              return matches
+            })
+          : []
+
+        console.log("[v0] analyzeFree - CEPIM:", {
+          status: cepimResponse.status,
+          raw_count: Array.isArray(rawCepimData) ? rawCepimData.length : 0,
+          filtered_count: cepimData.length,
+        })
+      } else {
+        console.log("[v0] analyzeFree - CEPIM API Error:", cepimResponse.status)
+      }
+
+      if (ceafResponse.ok) {
+        const rawCeafData = await ceafResponse.json()
+
+        ceafData = Array.isArray(rawCeafData)
+          ? rawCeafData.filter((expulsion: any) => {
+              const expulsionCpf =
+                expulsion.pessoa?.cpfFormatado?.replace(/\D/g, "") ||
+                expulsion.punicao?.cpfPunidoFormatado?.replace(/\D/g, "") ||
+                expulsion.cpf?.replace(/\D/g, "")
+
+              if (!expulsionCpf) {
+                console.log("[v0] analyzeFree - CEAF expulsion without CPF field, REJECTING:", {
+                  expulsion_name: expulsion.pessoa?.nome || "N/A",
+                })
+                return false
+              }
+
+              const matches = expulsionCpf === cleanCpf
+
+              console.log("[v0] analyzeFree - CEAF expulsion comparison:", {
+                queried_cpf: cleanCpf,
+                found_cpf: expulsionCpf,
+                matches,
+                expulsion_name: expulsion.pessoa?.nome || "N/A",
+              })
+
+              return matches
+            })
+          : []
+
+        console.log("[v0] analyzeFree - CEAF:", {
+          status: ceafResponse.status,
+          raw_count: Array.isArray(rawCeafData) ? rawCeafData.length : 0,
+          filtered_count: ceafData.length,
+        })
+      } else {
+        console.log("[v0] analyzeFree - CEAF API Error:", ceafResponse.status)
+      }
+
+      let score = 700
+      const sanctions = [
+        ...(Array.isArray(ceisData) ? ceisData : []),
+        ...(Array.isArray(cnepData) ? cnepData : []),
+        ...(Array.isArray(cepimData) ? cepimData : []),
+        ...(Array.isArray(ceafData) ? ceafData : []),
+      ]
+
+      console.log("[v0] analyzeFree - Total sanctions/impediments:", {
+        cpf: cleanCpf,
+        ceis: ceisData.length,
+        cnep: cnepData.length,
+        cepim: cepimData.length,
+        ceaf: ceafData.length,
+        total: sanctions.length,
+      })
+
+      if (sanctions.length > 0) {
+        const now = new Date()
+        const recentSanctions = sanctions.filter((s: any) => {
+          const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento
+          if (!sanctionDate) return false
+          const date = new Date(sanctionDate)
+          const monthsAgo = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
+          return monthsAgo <= 24
+        })
+
+        if (recentSanctions.length > 0) {
+          score = 300 // Alto risco
+        } else {
+          score = 500 // Médio risco
+        }
+
+        console.log("[v0] analyzeFree - CPF has sanctions:", {
+          total: sanctions.length,
+          recent: recentSanctions.length,
+          calculated_score: score,
+        })
+      } else {
+        console.log("[v0] analyzeFree - No sanctions found for this CPF:", cleanCpf)
+      }
+
+      const cpfData = {
+        cpf: cleanCpf,
+        tipo: "CPF",
+        situacao_cpf: sanctions.length > 0 ? "COM_RESTRICOES" : "REGULAR",
+        vinculos_publicos: [],
+        sancoes_ceis: ceisData,
+        punicoes_cnep: cnepData,
+        impedimentos_cepim: cepimData,
+        expulsoes_ceaf: ceafData,
+        total_sancoes: sanctions.length,
+        historico_financeiro: {
+          protestos: 0,
+          acoes_judiciais: 0,
+        },
+        score_calculado: score,
+        api_consulted: !hasApiError,
+      }
 
       await supabase.from("integration_logs").insert({
         company_id: companyId || null,
         cpf: cleanCpf,
-        operation: "PORTAL_TRANSPARENCIA_QUERY",
-        status: "error",
-        details: { status: response.status, error: errorText },
+        operation: "GOV_API_FULL_QUERY_CPF",
+        status: hasApiError ? "warning" : "success",
+        details: {
+          ceis_count: ceisData.length,
+          cnep_count: cnepData.length,
+          cepim_count: cepimData.length,
+          ceaf_count: ceafData.length,
+          score: score,
+        },
         duration_ms: duration,
       })
 
-      if (response.status === 429 || errorText.includes("Too Many")) {
-        return { success: false, error: "Limite de requisições atingido. Aguarde alguns minutos e tente novamente." }
+      return { success: true, data: cpfData }
+    } catch (error: any) {
+      console.error("[v0] analyzeFree - Error querying CPF APIs:", error)
+
+      const neutralData = {
+        cpf: cleanCpf,
+        tipo: "CPF",
+        situacao_cpf: "REGULAR",
+        vinculos_publicos: [],
+        sancoes_ceis: [],
+        punicoes_cnep: [],
+        impedimentos_cepim: [],
+        expulsoes_ceaf: [],
+        total_sancoes: 0,
+        historico_financeiro: {
+          protestos: 0,
+          acoes_judiciais: 0,
+        },
+        score_calculado: 500,
+        api_consulted: false,
+        error_message: error.message,
       }
 
-      if (response.status === 404) {
-        const emptyData = {
-          cpf: cleanCpf,
-          tipo: "CPF",
-          situacao_cpf: "REGULAR",
-          vinculos_publicos: [],
-          historico_financeiro: {
-            protestos: 0,
-            acoes_judiciais: 0,
-          },
-          score_calculado: 700,
-        }
-
-        console.log("[v0] analyzeFree - CPF not found in government database, returning empty data")
-
-        await supabase.from("integration_logs").insert({
-          company_id: companyId || null,
-          cpf: cleanCpf,
-          operation: "PORTAL_TRANSPARENCIA_QUERY",
-          status: "success",
-          details: { vinculos_count: 0, message: "CPF não encontrado" },
-          duration_ms: duration,
-        })
-
-        return { success: true, data: emptyData }
-      }
-
-      if (response.status === 403) {
-        console.log("[v0] analyzeFree - API returned 403, saving with neutral score")
-
-        const neutralData = {
-          cpf: cleanCpf,
-          tipo: "CPF",
-          situacao_cpf: "REGULAR",
-          vinculos_publicos: [],
-          historico_financeiro: {
-            protestos: 0,
-            acoes_judiciais: 0,
-          },
-          score_calculado: 500,
-          api_status: "403_FORBIDDEN",
-          message: apiKey
-            ? "API do Portal da Transparência retornou 403. A chave pode estar inválida ou expirada."
-            : "API do Portal da Transparência retornou 403. Configure a variável PORTAL_TRANSPARENCIA_API_KEY.",
-        }
-
-        await supabase.from("integration_logs").insert({
-          company_id: companyId || null,
-          cpf: cleanCpf,
-          operation: "PORTAL_TRANSPARENCIA_QUERY",
-          status: "warning",
-          details: {
-            status: 403,
-            message: "API returned 403, saved with neutral score",
-            has_api_key: !!apiKey,
-          },
-          duration_ms: duration,
-        })
-
-        return { success: true, data: neutralData }
-      }
-
-      return { success: false, error: `Erro na API: ${response.status} - ${errorText}` }
+      return { success: true, data: neutralData }
     }
-
-    const apiData = await response.json()
-    console.log("[v0] analyzeFree - API Response:", {
-      vinculos_count: Array.isArray(apiData) ? apiData.length : 0,
-      has_data: !!apiData,
-    })
-
-    console.log("[v0] analyzeFree - 📊 DETAILED API DATA:", {
-      cpf: cleanCpf,
-      raw_data: apiData,
-      is_array: Array.isArray(apiData),
-      data_keys: apiData ? Object.keys(apiData) : [],
-    })
-
-    const resultData = {
-      cpf: cleanCpf,
-      tipo: "CPF",
-      situacao_cpf: apiData?.situacao || "REGULAR",
-      vinculos_publicos: Array.isArray(apiData) ? apiData : apiData ? [apiData] : [],
-      historico_financeiro: {
-        protestos: 0,
-        acoes_judiciais: 0,
-      },
-      score_calculado: Array.isArray(apiData) && apiData.length > 0 ? Math.min(700, 400 + apiData.length * 50) : 700,
-    }
-
-    console.log("[v0] analyzeFree - ✅ PROCESSED RESULT:", {
-      cpf: cleanCpf,
-      vinculos_count: resultData.vinculos_publicos.length,
-      score: resultData.score_calculado,
-      situacao: resultData.situacao_cpf,
-      vinculos_details: resultData.vinculos_publicos.map((v: any) => ({
-        nome: v.nome || "N/A",
-        orgao: v.orgao || "N/A",
-        cargo: v.cargo || "N/A",
-      })),
-    })
-
-    console.log("[v0] analyzeFree - Success:", {
-      cpf: cleanCpf,
-      vinculos_count: resultData.vinculos_publicos.length,
-      score: resultData.score_calculado,
-    })
-
-    await supabase.from("integration_logs").insert({
-      company_id: companyId || null,
-      cpf: cleanCpf,
-      operation: "PORTAL_TRANSPARENCIA_QUERY",
-      status: "success",
-      details: {
-        vinculos_count: resultData.vinculos_publicos.length,
-        score: resultData.score_calculado,
-      },
-      duration_ms: duration,
-    })
-
-    return { success: true, data: resultData }
   } catch (error: any) {
     console.error("[v0] analyzeFree - Error:", error)
 
