@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Briefcase,
   TrendingUp,
+  Download,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
@@ -236,6 +237,50 @@ export default function AnalysesPage() {
     console.log("[v0] AnalysesPage - Viewing analysis details:", analysis.id)
     setSelectedAnalysis(analysis)
     setShowDetailsDrawer(true)
+  }
+
+  const exportToPDF = async (analysis: CreditAnalysis) => {
+    try {
+      console.log("[v0] exportToPDF - Starting export for analysis:", analysis.id)
+
+      const response = await fetch("/api/export-analysis-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId: analysis.id }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Falha ao gerar PDF")
+      }
+
+      const { html } = await response.json()
+
+      // Criar uma nova janela com o HTML
+      const printWindow = window.open("", "_blank")
+      if (!printWindow) {
+        throw new Error("Popup bloqueado. Permita popups para exportar PDF.")
+      }
+
+      printWindow.document.write(html)
+      printWindow.document.close()
+
+      // Aguardar carregamento e imprimir
+      printWindow.onload = () => {
+        printWindow.print()
+      }
+
+      toast({
+        title: "PDF gerado com sucesso!",
+        description: "Use Ctrl+P ou Cmd+P para salvar como PDF",
+      })
+    } catch (error: any) {
+      console.error("[v0] exportToPDF - Error:", error)
+      toast({
+        title: "Erro ao gerar PDF",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
   }
 
   const getScoreColor = (score: number | null) => {
@@ -488,6 +533,14 @@ export default function AnalysesPage() {
           <SheetHeader>
             <SheetTitle>Detalhes da Análise</SheetTitle>
             <SheetDescription>Informações completas da análise de crédito</SheetDescription>
+            <Button
+              onClick={() => selectedAnalysis && exportToPDF(selectedAnalysis)}
+              className="gap-2 mt-4"
+              variant="outline"
+            >
+              <Download className="h-4 w-4" />
+              Extrair PDF
+            </Button>
           </SheetHeader>
 
           {selectedAnalysis && (

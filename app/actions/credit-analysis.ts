@@ -29,9 +29,16 @@ export async function runVMAXAnalysisAll(companyId: string) {
   }
 }
 
-export async function runVMAXAnalysisSelected(companyId: string, recordIds: string[]) {
+export async function runVMAXAnalysisSelected(companyId: string, recordIds: string[], forceRefresh = true) {
   try {
-    console.log("[v0] runVMAXAnalysisSelected action - Starting for company:", companyId, "records:", recordIds.length)
+    console.log(
+      "[v0] runVMAXAnalysisSelected action - Starting for company:",
+      companyId,
+      "records:",
+      recordIds.length,
+      "forceRefresh:",
+      forceRefresh,
+    )
 
     const supabase = createAdminClient()
 
@@ -66,39 +73,50 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
         continue
       }
 
-      const { data: existingAnalysis } = await supabase
-        .from("credit_profiles")
-        .select("id, customer_id")
-        .eq("cpf", document)
-        .eq("company_id", companyId)
-        .eq("source", "gov")
-        .not("customer_id", "is", null) // Só considera cached se tiver customer_id
-        .maybeSingle()
+      if (!forceRefresh) {
+        const { data: existingAnalysis } = await supabase
+          .from("credit_profiles")
+          .select("id, customer_id, created_at, score")
+          .eq("cpf", document)
+          .eq("company_id", companyId)
+          .eq("source", "gov")
+          .not("customer_id", "is", null)
+          .maybeSingle()
 
-      if (existingAnalysis) {
+        if (existingAnalysis) {
+          console.log("[v0] runVMAXAnalysisSelected - ♻️ USING CACHED ANALYSIS:", {
+            document,
+            customer_id: existingAnalysis.customer_id,
+            cached_at: existingAnalysis.created_at,
+            score: existingAnalysis.score,
+            vmax_record: record.Cliente,
+          })
+          cachedCount++
+          continue
+        }
+      } else {
         console.log(
-          "[v0] runVMAXAnalysisSelected - Document already analyzed (cached):",
+          "[v0] runVMAXAnalysisSelected - 🔄 FORCE REFRESH: Ignoring cache, running new analysis for:",
           document,
-          "with customer_id:",
-          existingAnalysis.customer_id,
         )
-        cachedCount++
-        continue
       }
 
       try {
-        console.log("[v0] runVMAXAnalysisSelected - Analyzing document:", {
+        console.log("[v0] runVMAXAnalysisSelected - 🔍 ANALYZING DOCUMENT (NEW API CALL):", {
           index: i + 1,
           total: vmaxRecords.length,
           cpf: document,
+          customer_name: record.Cliente,
+          customer_city: record.Cidade,
           vmaxId: record.id,
+          force_refresh: forceRefresh,
         })
 
         // Executar análise
         const analysisResult = await analyzeFree(document, companyId)
 
         if (!analysisResult.success) {
-          console.error("[v0] runVMAXAnalysisSelected - Analysis failed:", document, analysisResult.error)
+          console.error("[v0] runVMAXAnalysisSelected - ❌ Analysis failed:", document, analysisResult.error)
           failedCount++
           // Aguardar 15 segundos antes da próxima requisição
           if (i < vmaxRecords.length - 1) {
@@ -107,36 +125,49 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
           continue
         }
 
+        console.log("[v0] runVMAXAnalysisSelected - ✅ API RETURNED DATA FOR:", {
+          document,
+          customer_name: record.Cliente,
+          score: analysisResult.data?.score_calculado,
+          sanctions_count: analysisResult.data?.total_sancoes || 0,
+          public_bonds_count: analysisResult.data?.vinculos_publicos?.length || 0,
+        })
+
         // Salvar resultado
         const storeResult = await storeAnalysisResult(document, analysisResult.data, "gov", "free", companyId)
 
         if (!storeResult.success) {
-          console.error("[v0] runVMAXAnalysisSelected - Failed to store:", document, storeResult.error)
+          console.error("[v0] runVMAXAnalysisSelected - ❌ Failed to store:", document, storeResult.error)
           failedCount++
         } else {
           analyzedCount++
-          console.log("[v0] runVMAXAnalysisSelected - Success:", document)
+          console.log("[v0] runVMAXAnalysisSelected - ✅ Successfully analyzed and stored:", {
+            document,
+            customer_name: record.Cliente,
+            score: analysisResult.data?.score_calculado,
+          })
         }
       } catch (error: any) {
-        console.error("[v0] runVMAXAnalysisSelected - Error processing:", document, error)
+        console.error("[v0] runVMAXAnalysisSelected - ❌ Error processing:", document, error)
         failedCount++
       }
 
       // Aguardar 15 segundos antes da próxima requisição (rate limiting)
       if (i < vmaxRecords.length - 1) {
-        console.log("[v0] runVMAXAnalysisSelected - Waiting 15s before next request...")
+        console.log("[v0] runVMAXAnalysisSelected - ⏳ Waiting 15s before next request...")
         await new Promise((resolve) => setTimeout(resolve, 15000))
       }
     }
 
     const duration = Date.now() - startTime
 
-    console.log("[v0] runVMAXAnalysisSelected action - Completed:", {
+    console.log("[v0] runVMAXAnalysisSelected action - 🎉 COMPLETED:", {
       total: vmaxRecords.length,
       analyzed: analyzedCount,
       cached: cachedCount,
       failed: failedCount,
       duration_ms: duration,
+      force_refresh: forceRefresh,
     })
 
     return {

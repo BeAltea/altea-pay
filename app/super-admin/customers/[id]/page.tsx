@@ -1,11 +1,13 @@
+"use client"
+
 import { notFound } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail } from "lucide-react"
 import Link from "next/link"
 import { getCustomerDetails } from "@/app/actions/analyses-actions"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail, FileDown } from "lucide-react"
 
 export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
   const { id } = await params
@@ -43,10 +45,53 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
             Voltar
           </Link>
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold">{customer.name}</h1>
           <p className="text-muted-foreground">Detalhes completos do cliente e análises de crédito</p>
         </div>
+        {profile && (
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const response = await fetch("/api/export-analysis-pdf", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    customer: {
+                      name: customer.name,
+                      document: customer.document,
+                      city: customer.city,
+                      email: customer.email,
+                      phone: customer.phone,
+                    },
+                    score: profile.score,
+                    source: profile.source,
+                    analysis_type: profile.analysis_type,
+                    data: profile.data,
+                  }),
+                })
+
+                if (!response.ok) throw new Error("Erro ao gerar PDF")
+
+                const html = await response.text()
+                const printWindow = window.open("", "_blank")
+                if (printWindow) {
+                  printWindow.document.write(html)
+                  printWindow.document.close()
+                  printWindow.focus()
+                  setTimeout(() => printWindow.print(), 250)
+                }
+              } catch (error) {
+                console.error("Erro ao exportar PDF:", error)
+                alert("Erro ao gerar PDF. Tente novamente.")
+              }
+            }}
+          >
+            <FileDown className="h-4 w-4 mr-2" />
+            Extrair PDF
+          </Button>
+        )}
       </div>
 
       {/* Informações Básicas */}

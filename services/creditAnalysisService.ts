@@ -43,16 +43,14 @@ export async function analyzeFree(
   try {
     console.log("[v0] analyzeFree - Starting for CPF:", cpf)
 
-    // Limpar CPF (remover pontos e hífens)
     const cleanCpf = cpf.replace(/\D/g, "")
 
-    // Validar CPF (11 dígitos) ou CNPJ (14 dígitos)
     if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
       return { success: false, error: "CPF/CNPJ inválido" }
     }
 
     if (cleanCpf.length === 14) {
-      console.log("[v0] analyzeFree - CNPJ detected, querying Portal da Transparência CEIS/CNEP APIs")
+      console.log("[v0] analyzeFree - CNPJ detected, querying Portal da Transparência APIs")
 
       const apiKey = process.env.PORTAL_TRANSPARENCIA_API_KEY
       const logStartTime = Date.now()
@@ -66,65 +64,104 @@ export async function analyzeFree(
       }
 
       try {
-        // Consultar CEIS (Cadastro Nacional de Empresas Inidôneas e Suspensas)
-        const ceisResponse = await fetch(
-          `https://api.portaldatransparencia.gov.br/api-de-dados/ceis?cnpjSancionado=${cleanCpf}`,
-          { headers },
-        )
-
-        // Consultar CNEP (Cadastro Nacional de Empresas Punidas)
-        const cnepResponse = await fetch(
-          `https://api.portaldatransparencia.gov.br/api-de-dados/cnep?cnpjSancionado=${cleanCpf}`,
-          { headers },
-        )
+        const [ceisResponse, cnepResponse, cepimResponse, ceafResponse] = await Promise.all([
+          fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/ceis?cnpjSancionado=${cleanCpf}`, {
+            headers,
+          }),
+          fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/cnep?cnpjSancionado=${cleanCpf}`, {
+            headers,
+          }),
+          fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/cepim?cnpj=${cleanCpf}`, { headers }),
+          fetch(`https://api.portaldatransparencia.gov.br/api-de-dados/ceaf?cnpj=${cleanCpf}`, { headers }),
+        ])
 
         const duration = Date.now() - logStartTime
 
         let ceisData = []
         let cnepData = []
+        let cepimData = []
+        let ceafData = []
         let hasApiError = false
 
         if (ceisResponse.ok) {
-          ceisData = await ceisResponse.json()
-          console.log("[v0] analyzeFree - CEIS Response:", {
-            status: ceisResponse.status,
-            sanctions_count: Array.isArray(ceisData) ? ceisData.length : 0,
-          })
+          const rawCeisData = await ceisResponse.json()
+          ceisData = Array.isArray(rawCeisData)
+            ? rawCeisData.filter((sanction: any) => {
+                const sanctionCnpj =
+                  sanction.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+                  sanction.pessoa?.cnpjFormatado?.replace(/\D/g, "")
+                return sanctionCnpj === cleanCpf
+              })
+            : []
+          console.log("[v0] analyzeFree - CEIS:", { status: ceisResponse.status, count: ceisData.length })
         } else {
           console.log("[v0] analyzeFree - CEIS API Error:", ceisResponse.status)
           hasApiError = true
         }
 
         if (cnepResponse.ok) {
-          cnepData = await cnepResponse.json()
-          console.log("[v0] analyzeFree - CNEP Response:", {
-            status: cnepResponse.status,
-            punishments_count: Array.isArray(cnepData) ? cnepData.length : 0,
-          })
+          const rawCnepData = await cnepResponse.json()
+          cnepData = Array.isArray(rawCnepData)
+            ? rawCnepData.filter((punishment: any) => {
+                const punishmentCnpj =
+                  punishment.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+                  punishment.pessoa?.cnpjFormatado?.replace(/\D/g, "")
+                return punishmentCnpj === cleanCpf
+              })
+            : []
+          console.log("[v0] analyzeFree - CNEP:", { status: cnepResponse.status, count: cnepData.length })
         } else {
           console.log("[v0] analyzeFree - CNEP API Error:", cnepResponse.status)
           hasApiError = true
         }
 
-        // Calcular score baseado nas sanções e punições
-        let score = 700 // Score inicial bom para empresas sem sanções
-        const sanctions = [...(Array.isArray(ceisData) ? ceisData : []), ...(Array.isArray(cnepData) ? cnepData : [])]
+        if (cepimResponse.ok) {
+          const rawCepimData = await cepimResponse.json()
+          cepimData = Array.isArray(rawCepimData) ? rawCepimData : []
+          console.log("[v0] analyzeFree - CEPIM:", { status: cepimResponse.status, count: cepimData.length })
+        } else {
+          console.log("[v0] analyzeFree - CEPIM API Error:", cepimResponse.status)
+        }
+
+        if (ceafResponse.ok) {
+          const rawCeafData = await ceafResponse.json()
+          ceafData = Array.isArray(rawCeafData) ? rawCeafData : []
+          console.log("[v0] analyzeFree - CEAF:", { status: ceafResponse.status, count: ceafData.length })
+        } else {
+          console.log("[v0] analyzeFree - CEAF API Error:", ceafResponse.status)
+        }
+
+        let score = 700
+        const sanctions = [
+          ...(Array.isArray(ceisData) ? ceisData : []),
+          ...(Array.isArray(cnepData) ? cnepData : []),
+          ...(Array.isArray(cepimData) ? cepimData : []),
+          ...(Array.isArray(ceafData) ? ceafData : []),
+        ]
+
+        console.log("[v0] analyzeFree - Total sanctions/impediments:", {
+          cnpj: cleanCpf,
+          ceis: ceisData.length,
+          cnep: cnepData.length,
+          cepim: cepimData.length,
+          ceaf: ceafData.length,
+          total: sanctions.length,
+        })
 
         if (sanctions.length > 0) {
-          // Verificar se há sanções ativas/recentes
           const now = new Date()
           const recentSanctions = sanctions.filter((s: any) => {
-            const sanctionDate = s.dataInicioSancao || s.dataPublicacao
+            const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento
             if (!sanctionDate) return false
             const date = new Date(sanctionDate)
             const monthsAgo = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
-            return monthsAgo <= 24 // Sanções nos últimos 2 anos
+            return monthsAgo <= 24
           })
 
           if (recentSanctions.length > 0) {
-            score = 300 // Score baixo para sanções recentes
+            score = 300 // Alto risco
           } else {
-            score = 500 // Score médio para sanções antigas
+            score = 500 // Médio risco
           }
 
           console.log("[v0] analyzeFree - CNPJ has sanctions:", {
@@ -132,6 +169,8 @@ export async function analyzeFree(
             recent: recentSanctions.length,
             calculated_score: score,
           })
+        } else {
+          console.log("[v0] analyzeFree - No sanctions found for this CNPJ:", cleanCpf)
         }
 
         const cnpjData = {
@@ -141,6 +180,8 @@ export async function analyzeFree(
           vinculos_publicos: [],
           sancoes_ceis: ceisData,
           punicoes_cnep: cnepData,
+          impedimentos_cepim: cepimData,
+          expulsoes_ceaf: ceafData,
           total_sancoes: sanctions.length,
           historico_financeiro: {
             protestos: 0,
@@ -152,25 +193,23 @@ export async function analyzeFree(
 
         await supabase.from("integration_logs").insert({
           company_id: companyId || null,
-          operation_type: "portal_transparencia_cnpj",
+          cpf: cleanCpf,
+          operation: "GOV_API_FULL_QUERY",
           status: hasApiError ? "warning" : "success",
-          request_data: { cnpj: cleanCpf },
-          response_data: {
-            ceis_count: Array.isArray(ceisData) ? ceisData.length : 0,
-            cnep_count: Array.isArray(cnepData) ? cnepData.length : 0,
+          details: {
+            ceis_count: ceisData.length,
+            cnep_count: cnepData.length,
+            cepim_count: cepimData.length,
+            ceaf_count: ceafData.length,
             score: score,
           },
           duration_ms: duration,
-          records_processed: 1,
-          records_success: 1,
-          records_failed: 0,
         })
 
         return { success: true, data: cnpjData }
       } catch (error: any) {
         console.error("[v0] analyzeFree - Error querying CNPJ APIs:", error)
 
-        // Retornar dados neutros em caso de erro
         const neutralData = {
           cpf: cleanCpf,
           tipo: "CNPJ",
@@ -178,6 +217,8 @@ export async function analyzeFree(
           vinculos_publicos: [],
           sancoes_ceis: [],
           punicoes_cnep: [],
+          impedimentos_cepim: [],
+          expulsoes_ceaf: [],
           total_sancoes: 0,
           historico_financeiro: {
             protestos: 0,
@@ -243,21 +284,17 @@ export async function analyzeFree(
 
       await supabase.from("integration_logs").insert({
         company_id: companyId || null,
-        operation_type: "portal_transparencia_consulta",
+        cpf: cleanCpf,
+        operation: "PORTAL_TRANSPARENCIA_QUERY",
         status: "error",
-        request_data: { cpf: cleanCpf },
-        response_data: { status: response.status, error: errorText },
+        details: { status: response.status, error: errorText },
         duration_ms: duration,
-        records_processed: 0,
-        records_success: 0,
-        records_failed: 1,
       })
 
       if (response.status === 429 || errorText.includes("Too Many")) {
         return { success: false, error: "Limite de requisições atingido. Aguarde alguns minutos e tente novamente." }
       }
 
-      // Se CPF não encontrado (404), retornar dados vazios mas com sucesso
       if (response.status === 404) {
         const emptyData = {
           cpf: cleanCpf,
@@ -267,21 +304,18 @@ export async function analyzeFree(
             protestos: 0,
             acoes_judiciais: 0,
           },
-          score_calculado: 600, // Score bom para CPF sem vínculos
+          score_calculado: 600,
         }
 
         console.log("[v0] analyzeFree - CPF not found in government database, returning empty data")
 
         await supabase.from("integration_logs").insert({
           company_id: companyId || null,
-          operation_type: "portal_transparencia_consulta",
+          cpf: cleanCpf,
+          operation: "PORTAL_TRANSPARENCIA_QUERY",
           status: "success",
-          request_data: { cpf: cleanCpf },
-          response_data: { vinculos_count: 0, message: "CPF não encontrado" },
+          details: { vinculos_count: 0, message: "CPF não encontrado" },
           duration_ms: duration,
-          records_processed: 1,
-          records_success: 1,
-          records_failed: 0,
         })
 
         return { success: true, data: emptyData }
@@ -299,7 +333,7 @@ export async function analyzeFree(
             protestos: 0,
             acoes_judiciais: 0,
           },
-          score_calculado: 500, // Score neutro
+          score_calculado: 500,
           api_status: "403_FORBIDDEN",
           message: apiKey
             ? "API do Portal da Transparência retornou 403. A chave pode estar inválida ou expirada."
@@ -308,18 +342,15 @@ export async function analyzeFree(
 
         await supabase.from("integration_logs").insert({
           company_id: companyId || null,
-          operation_type: "portal_transparencia_consulta",
+          cpf: cleanCpf,
+          operation: "PORTAL_TRANSPARENCIA_QUERY",
           status: "warning",
-          request_data: { cpf: cleanCpf },
-          response_data: {
+          details: {
             status: 403,
             message: "API returned 403, saved with neutral score",
             has_api_key: !!apiKey,
           },
           duration_ms: duration,
-          records_processed: 1,
-          records_success: 1,
-          records_failed: 0,
         })
 
         return { success: true, data: neutralData }
@@ -328,7 +359,6 @@ export async function analyzeFree(
       return { success: false, error: `Erro na API: ${response.status} - ${errorText}` }
     }
 
-    // Parse da resposta
     const apiData = await response.json()
     console.log("[v0] analyzeFree - API Response:", {
       vinculos_count: Array.isArray(apiData) ? apiData.length : 0,
@@ -342,7 +372,6 @@ export async function analyzeFree(
       data_keys: apiData ? Object.keys(apiData) : [],
     })
 
-    // Montar objeto de retorno
     const resultData = {
       cpf: cleanCpf,
       situacao_cpf: apiData?.situacao || "REGULAR",
@@ -351,8 +380,6 @@ export async function analyzeFree(
         protestos: 0,
         acoes_judiciais: 0,
       },
-      // Calcular score baseado nos vínculos públicos
-      // Quanto mais vínculos, melhor o score (indica estabilidade)
       score_calculado: Array.isArray(apiData) ? Math.min(700, 400 + apiData.length * 50) : 500,
     }
 
@@ -376,17 +403,14 @@ export async function analyzeFree(
 
     await supabase.from("integration_logs").insert({
       company_id: companyId || null,
-      operation_type: "portal_transparencia_consulta",
+      cpf: cleanCpf,
+      operation: "PORTAL_TRANSPARENCIA_QUERY",
       status: "success",
-      request_data: { cpf: cleanCpf },
-      response_data: {
+      details: {
         vinculos_count: resultData.vinculos_publicos.length,
         score: resultData.score_calculado,
       },
       duration_ms: duration,
-      records_processed: 1,
-      records_success: 1,
-      records_failed: 0,
     })
 
     return { success: true, data: resultData }
@@ -395,13 +419,10 @@ export async function analyzeFree(
 
     await supabase.from("integration_logs").insert({
       company_id: companyId || null,
-      operation_type: "portal_transparencia_consulta",
+      cpf: cpf.replace(/\D/g, ""),
+      operation: "PORTAL_TRANSPARENCIA_QUERY",
       status: "error",
-      request_data: { cpf: cpf.replace(/\D/g, "") },
-      response_data: { error: error.message },
-      records_processed: 0,
-      records_success: 0,
-      records_failed: 1,
+      details: { error: error.message },
     })
 
     return { success: false, error: error.message }
@@ -549,10 +570,16 @@ export async function storeAnalysisResult(
 
     const hasSanctions =
       (data.sancoes_ceis && Array.isArray(data.sancoes_ceis) && data.sancoes_ceis.length > 0) ||
-      (data.punicoes_cnep && Array.isArray(data.punicoes_cnep) && data.punicoes_cnep.length > 0)
+      (data.punicoes_cnep && Array.isArray(data.punicoes_cnep) && data.punicoes_cnep.length > 0) ||
+      (data.impedimentos_cepim && Array.isArray(data.impedimentos_cepim) && data.impedimentos_cepim.length > 0) ||
+      (data.expulsoes_ceaf && Array.isArray(data.expulsoes_ceaf) && data.expulsoes_ceaf.length > 0)
 
     const sanctionsCount =
-      (data.sancoes_ceis?.length || 0) + (data.punicoes_cnep?.length || 0) + (data.total_sancoes || 0)
+      (data.sancoes_ceis?.length || 0) +
+      (data.punicoes_cnep?.length || 0) +
+      (data.impedimentos_cepim?.length || 0) +
+      (data.expulsoes_ceaf?.length || 0) +
+      (data.total_sancoes || 0)
 
     const hasPublicBonds =
       data.vinculos_publicos && Array.isArray(data.vinculos_publicos) && data.vinculos_publicos.length > 0
@@ -885,6 +912,16 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
 
     if (vmaxError) {
       console.error("[SERVER][v0] runVMAXAutoAnalysis - Error fetching VMAX records:", vmaxError)
+      await supabase.from("integration_logs").insert({
+        company_id: companyId,
+        operation: "VMAX_AUTO_ANALYSIS",
+        status: "error",
+        details: {
+          error: vmaxError.message,
+          total_records: vmaxRecords?.length || 0,
+        },
+        duration_ms: Date.now() - startTime,
+      })
       return {
         success: false,
         total: 0,
@@ -984,13 +1021,11 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           api_status: analysisResult.data?.api_status || "SUCCESS",
         })
 
-        // Simpler call to storeAnalysisResult for VMAX auto-analysis
         await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId)
 
         analyzedCount++
         cpfsAnalyzed.push(item.cpf)
 
-        // Guardar primeiro resultado como amostra
         if (!sampleResult && analysisResult.data) {
           sampleResult = {
             cpf: item.cpf,
@@ -1023,35 +1058,31 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
     console.log("[SERVER][v0] runVMAXAutoAnalysis - Completed:", {
       total: vmaxRecords.length,
       analyzed: analyzedCount,
-      cached: 0, // No more caching - always fresh data
+      cached: 0,
       failed: failedCount,
       duration_ms: duration,
     })
 
     await supabase.from("integration_logs").insert({
       company_id: companyId,
-      operation_type: "vmax_auto_analysis",
+      operation: "VMAX_AUTO_ANALYSIS",
       status: "completed",
-      request_data: {
-        company_id: companyId,
+      details: {
         total_records: vmaxRecords.length,
         cpfs_to_analyze: cpfsToAnalyze.length,
-      },
-      response_data: {
         analyzed: analyzedCount,
         cached: 0,
         failed: failedCount,
         cpfs_analyzed: cpfsAnalyzed,
       },
       duration_ms: duration,
-      created_at: new Date().toISOString(),
     })
 
     return {
       success: true,
       total: vmaxRecords.length,
       analyzed: analyzedCount,
-      cached: 0, // No more caching - always fresh data
+      cached: 0,
       failed: failedCount,
       duration,
       cpfs_analyzed: cpfsAnalyzed,
@@ -1064,12 +1095,10 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
     const supabase = createAdminClient()
     await supabase.from("integration_logs").insert({
       company_id: companyId,
-      operation_type: "vmax_auto_analysis",
+      operation: "VMAX_AUTO_ANALYSIS",
       status: "error",
-      request_data: { company_id: companyId },
-      response_data: { error: error.message, stack: error.stack },
+      details: { error: error.message },
       duration_ms: duration,
-      created_at: new Date().toISOString(),
     })
 
     return {
@@ -1140,6 +1169,13 @@ export async function runAssertivaManualAnalysis(
 
     if (vmaxError) {
       console.error("[v0] runAssertivaManualAnalysis - Error fetching from VMAX:", vmaxError)
+      await supabase.from("integration_logs").insert({
+        company_id: companyId,
+        operation: "ASSERTIVA_MANUAL_ANALYSIS",
+        status: "error",
+        details: { error: vmaxError.message, customer_ids: customerIds },
+        duration_ms: Date.now() - startTime,
+      })
       return {
         success: false,
         total: 0,
@@ -1170,7 +1206,7 @@ export async function runAssertivaManualAnalysis(
       name: record.Cliente || "N/A",
       document: record["CPF/CNPJ"]?.replace(/\D/g, "") || "",
       city: record.Cidade || "N/A",
-      company_id: record.id_company, // Use the record's own company ID
+      company_id: record.id_company,
     }))
 
     console.log("[v0] runAssertivaManualAnalysis - ✅ Found customers in VMAX:", customers.length)
@@ -1334,11 +1370,11 @@ export async function runAssertivaManualAnalysis(
                 operation: "ASSERTIVA_MANUAL_ANALYSIS",
                 status: "failed",
                 details: {
-                  error: error.message,
                   customer_id: customer.id,
                   customer_name: customer.name,
-                  stack: error.stack,
+                  error: error.message,
                 },
+                duration_ms: Date.now() - startTime,
               })
             } catch (logError) {
               console.error("[v0] runAssertivaManualAnalysis - Failed to log error:", logError)
@@ -1386,23 +1422,20 @@ export async function runAssertivaManualAnalysis(
       duration_seconds: (duration / 1000).toFixed(2),
     })
 
-    // Log final consolidado
     await supabase.from("integration_logs").insert({
-      operation_type: "assertiva_manual_analysis",
+      company_id: companyId,
+      operation: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "completed",
-      request_data: {
+      details: {
         customer_ids: customerIds,
         total_customers: customers.length,
         customers_to_analyze: customersToAnalyze.length,
-      },
-      response_data: {
         analyzed: analyzedCount,
         cached: cachedCount,
         failed: failedCount,
         customers_analyzed: customersAnalyzed.map((c) => ({ id: c.id, cpf: c.cpf, score: c.score })),
       },
       duration_ms: duration,
-      created_at: new Date().toISOString(),
     })
 
     return {
@@ -1419,14 +1452,12 @@ export async function runAssertivaManualAnalysis(
     console.error("[v0] runAssertivaManualAnalysis - 💥 FATAL ERROR:", error)
     console.error("[v0] runAssertivaManualAnalysis - Error stack:", error.stack)
 
-    // Log de erro
     await supabase.from("integration_logs").insert({
-      operation_type: "assertiva_manual_analysis",
+      company_id: companyId,
+      operation: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "error",
-      request_data: { company_id: companyId, customer_ids: customerIds },
-      response_data: { error: error.message, stack: error.stack },
+      details: { error: error.message, customer_ids: customerIds },
       duration_ms: duration,
-      created_at: new Date().toISOString(),
     })
 
     return {

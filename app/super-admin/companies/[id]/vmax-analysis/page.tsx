@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { ArrowLeft, Play, CheckSquare, Eye, User, TrendingUp } from "lucide-react"
+import { ArrowLeft, Play, CheckSquare, Eye, User, TrendingUp, FileDown } from "lucide-react"
 import { runVMAXAnalysisAll, runVMAXAnalysisSelected } from "@/app/actions/credit-analysis"
 import { getVMAXRecords, getCustomerDetails } from "@/app/actions/vmax-actions"
 
@@ -192,6 +192,60 @@ export default function VMAXAnalysisPage() {
     }
   }
 
+  async function exportToPDF() {
+    if (!selectedCustomer) return
+
+    try {
+      console.log("[v0] exportToPDF - Starting for customer:", selectedCustomer.id)
+
+      if (!selectedCustomer.analysis_data) {
+        alert("Nenhum dado de análise disponível para este cliente. Execute a análise primeiro.")
+        return
+      }
+
+      const response = await fetch("/api/export-analysis-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: {
+            name: selectedCustomer.name,
+            document: selectedCustomer.document,
+            city: selectedCustomer.city,
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone,
+          },
+          score: selectedCustomer.score,
+          source: "gov",
+          analysis_type: "free",
+          data: selectedCustomer.analysis_data,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[v0] exportToPDF - API error:", response.status, errorText)
+        throw new Error(`Erro ao gerar PDF (${response.status})`)
+      }
+
+      const html = await response.text()
+      const printWindow = window.open("", "_blank", "width=1200,height=800")
+
+      if (!printWindow) {
+        alert("Não foi possível abrir a janela de impressão. Verifique se pop-ups estão bloqueados.")
+        return
+      }
+
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.focus()
+
+      console.log("[v0] exportToPDF - Success - Window opened with PDF content")
+    } catch (error: any) {
+      console.error("[v0] exportToPDF - Error:", error)
+      alert(`Erro ao exportar PDF: ${error.message}`)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -361,6 +415,15 @@ export default function VMAXAnalysisPage() {
                               Análise completa baseada em dados do Portal da Transparência
                             </SheetDescription>
                           </SheetHeader>
+
+                          {!loadingCustomer && selectedCustomer && selectedCustomer.score !== null && (
+                            <div className="mt-4 flex justify-end">
+                              <Button onClick={exportToPDF} variant="outline" size="sm">
+                                <FileDown className="h-4 w-4 mr-2" />
+                                Extrair PDF
+                              </Button>
+                            </div>
+                          )}
 
                           {loadingCustomer ? (
                             <div className="flex items-center justify-center py-20">
@@ -578,7 +641,6 @@ export default function VMAXAnalysisPage() {
                                       </Card>
                                     )}
 
-                                  {/* Vínculos Públicos */}
                                   {selectedCustomer.analysis_data?.vinculos_publicos &&
                                     Array.isArray(selectedCustomer.analysis_data.vinculos_publicos) &&
                                     selectedCustomer.analysis_data.vinculos_publicos.length > 0 && (
