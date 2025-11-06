@@ -48,7 +48,35 @@ export async function getCustomerDetails(vmaxId: string) {
       document: vmaxData["CPF/CNPJ"],
     })
 
-    // Buscar análises de crédito usando customer_id = VMAX.id
+    // Buscar análise da Assertiva primeiro
+    const { data: assertivaProfile, error: assertivaError } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("customer_id", vmaxId)
+      .eq("source", "assertiva")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (assertivaError) {
+      console.error("[SERVER][v0] getCustomerDetails - Error fetching Assertiva profile:", assertivaError)
+    }
+
+    // Buscar análise gratuita (gov) como fallback
+    const { data: govProfile, error: govError } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("customer_id", vmaxId)
+      .eq("source", "gov")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (govError) {
+      console.error("[SERVER][v0] getCustomerDetails - Error fetching Gov profile:", govError)
+    }
+
+    // Buscar histórico completo de análises
     const { data: creditProfiles, error: creditError } = await supabase
       .from("credit_profiles")
       .select("*")
@@ -59,13 +87,20 @@ export async function getCustomerDetails(vmaxId: string) {
       console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profiles:", creditError)
     }
 
-    const latestProfile = creditProfiles?.[0]
+    // Priorizar Assertiva, depois Gov
+    const latestProfile = assertivaProfile || govProfile
 
-    console.log("[SERVER][v0] getCustomerDetails - Credit profiles found:", creditProfiles?.length || 0)
+    console.log("[SERVER][v0] getCustomerDetails - Analysis summary:", {
+      has_assertiva: !!assertivaProfile,
+      has_gov: !!govProfile,
+      using_source: latestProfile?.source || "none",
+      total_analyses: creditProfiles?.length || 0,
+    })
+
     if (latestProfile) {
       console.log("[SERVER][v0] getCustomerDetails - Latest analysis:", {
-        score: latestProfile.score,
         source: latestProfile.source,
+        score: latestProfile.score,
         created_at: latestProfile.created_at,
         has_data: !!latestProfile.data,
         data_keys: latestProfile.data ? Object.keys(latestProfile.data) : [],
@@ -93,6 +128,12 @@ export async function getCustomerDetails(vmaxId: string) {
         analysis_data: latestProfile?.data || null,
         analysis_status: latestProfile?.status || null,
         analysis_source: latestProfile?.source || null,
+        assertiva_analysis: assertivaProfile?.data || null,
+        assertiva_score: assertivaProfile?.score || null,
+        assertiva_date: assertivaProfile?.created_at || null,
+        gov_analysis: govProfile?.data || null,
+        gov_score: govProfile?.score || null,
+        gov_date: govProfile?.created_at || null,
         analysis_history: creditProfiles || [],
       },
     }

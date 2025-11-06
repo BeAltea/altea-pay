@@ -67,7 +67,17 @@ function generatePDFHTML(analysis: any): string {
   const totalCNEP = analysis.data?.punicoes_cnep?.length || 0
   const totalCEPIM = analysis.data?.impedimentos_cepim?.length || 0
   const totalCEAF = analysis.data?.expulsoes_ceaf?.length || 0
+  const totalVinculos = analysis.data?.vinculos_publicos?.length || 0
   const totalRestrictions = totalCEIS + totalCNEP + totalCEPIM + totalCEAF
+
+  const scoreRecupere = analysis.data?.score_recupere?.pontos || analysis.data?.recupere?.resposta?.score?.pontos
+  const rendaPresumida =
+    analysis.data?.renda_presumida?.valor || analysis.data?.credito?.resposta?.rendaPresumida?.valor
+  const debitos = analysis.data?.debitos?.list || analysis.data?.credito?.resposta?.registrosDebitos?.list || []
+  const debitosTotal =
+    analysis.data?.debitos?.valorTotal || analysis.data?.credito?.resposta?.registrosDebitos?.valorTotal || 0
+  const protestos = analysis.data?.protestos?.list || analysis.data?.credito?.resposta?.protestosPublicos?.list || []
+  const acoesJudiciais = analysis.data?.acoes_judiciais?.list || analysis.data?.acoes?.resposta?.acoes || []
 
   return `
 <!DOCTYPE html>
@@ -86,7 +96,7 @@ function generatePDFHTML(analysis: any): string {
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
-      color: #1F2937;
+      color: #0D1B2A;
       background: #F9FAFB;
       padding: 0;
     }
@@ -100,25 +110,28 @@ function generatePDFHTML(analysis: any): string {
     
     .no-print {
       padding: 20px;
-      background: #3B82F6;
+      background: linear-gradient(135deg, #0D1B2A 0%, #1a2f47 100%);
       color: white;
       text-align: center;
     }
     
     .no-print button {
-      background: white;
-      color: #3B82F6;
+      background: #D4AF37;
+      color: #0D1B2A;
       border: none;
-      padding: 12px 32px;
+      padding: 14px 36px;
       border-radius: 8px;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       margin-top: 10px;
+      transition: all 0.3s ease;
     }
     
     .no-print button:hover {
-      background: #F3F4F6;
+      background: #E5C158;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
     }
     
     .content {
@@ -129,12 +142,12 @@ function generatePDFHTML(analysis: any): string {
       text-align: center;
       margin-bottom: 40px;
       padding-bottom: 20px;
-      border-bottom: 4px solid #3B82F6;
+      border-bottom: 4px solid #D4AF37;
     }
     
     .header h1 {
       font-size: 32px;
-      color: #1F2937;
+      color: #0D1B2A;
       margin-bottom: 10px;
       font-weight: 700;
     }
@@ -152,10 +165,10 @@ function generatePDFHTML(analysis: any): string {
     .section-title {
       font-size: 20px;
       font-weight: 700;
-      color: #1F2937;
+      color: #0D1B2A;
       margin-bottom: 20px;
       padding-bottom: 10px;
-      border-bottom: 3px solid #E5E7EB;
+      border-bottom: 3px solid #D4AF37;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -176,7 +189,7 @@ function generatePDFHTML(analysis: any): string {
       padding: 18px;
       background: #F9FAFB;
       border-radius: 10px;
-      border-left: 5px solid #3B82F6;
+      border-left: 5px solid #D4AF37;
     }
     
     .info-label {
@@ -191,24 +204,25 @@ function generatePDFHTML(analysis: any): string {
     .info-value {
       font-size: 17px;
       font-weight: 600;
-      color: #1F2937;
+      color: #0D1B2A;
     }
     
     .score-box {
-      background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      background: linear-gradient(135deg, #0D1B2A 0%, #1a2f47 100%);
       color: white;
       padding: 40px;
       border-radius: 16px;
       text-align: center;
       margin-bottom: 35px;
-      box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+      box-shadow: 0 10px 25px rgba(13, 27, 42, 0.3);
+      border: 3px solid #D4AF37;
     }
     
     .score-value {
       font-size: 80px;
       font-weight: 800;
       margin-bottom: 15px;
-      color: white;
+      color: #D4AF37;
       text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.3);
     }
     
@@ -222,17 +236,17 @@ function generatePDFHTML(analysis: any): string {
     .risk-badge {
       display: inline-block;
       padding: 10px 24px;
-      background: rgba(255, 255, 255, 0.25);
+      background: #D4AF37;
+      color: #0D1B2A;
       border-radius: 25px;
       font-size: 16px;
       font-weight: 700;
       margin-top: 12px;
-      backdrop-filter: blur(10px);
     }
     
     .summary-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 15px;
       margin-bottom: 35px;
     }
@@ -258,6 +272,11 @@ function generatePDFHTML(analysis: any): string {
     .summary-card.success {
       background: #F0FDF4;
       border-color: #86EFAC;
+    }
+    
+    .summary-card.info {
+      background: #EFF6FF;
+      border-color: #93C5FD;
     }
     
     .summary-number {
@@ -321,12 +340,12 @@ function generatePDFHTML(analysis: any): string {
       background: #F9FAFB;
       border-radius: 8px;
       margin-bottom: 12px;
-      border-left: 4px solid #3B82F6;
+      border-left: 4px solid #D4AF37;
     }
     
     .list-item-title {
       font-weight: 700;
-      color: #1F2937;
+      color: #0D1B2A;
       margin-bottom: 8px;
       font-size: 15px;
     }
@@ -338,24 +357,28 @@ function generatePDFHTML(analysis: any): string {
     }
     
     .list-item-detail strong {
-      color: #1F2937;
+      color: #0D1B2A;
       font-weight: 600;
     }
     
     .footer {
       margin-top: 60px;
       padding-top: 30px;
-      border-top: 3px solid #E5E7EB;
+      border-top: 3px solid #D4AF37;
       text-align: center;
       color: #6B7280;
       font-size: 13px;
     }
     
     .footer-logo {
-      font-size: 20px;
+      font-size: 24px;
       font-weight: 700;
-      color: #3B82F6;
+      color: #0D1B2A;
       margin-bottom: 10px;
+    }
+    
+    .footer-logo span {
+      color: #D4AF37;
     }
     
     .badge {
@@ -385,6 +408,11 @@ function generatePDFHTML(analysis: any): string {
     .badge-info {
       background: #DBEAFE;
       color: #1E40AF;
+    }
+    
+    .badge-gold {
+      background: #D4AF37;
+      color: #0D1B2A;
     }
     
     .empty-state {
@@ -428,7 +456,6 @@ function generatePDFHTML(analysis: any): string {
       
       .score-box {
         box-shadow: none;
-        border: 2px solid #3B82F6;
       }
     }
     
@@ -440,7 +467,7 @@ function generatePDFHTML(analysis: any): string {
 <body>
   <div class="container">
     <div class="no-print">
-      <h2>Relatório Pronto para Download</h2>
+      <h2>📄 Relatório Pronto para Download</h2>
       <p>Clique no botão abaixo para baixar o relatório em PDF</p>
       <button onclick="window.print()">📥 Baixar como PDF</button>
     </div>
@@ -450,10 +477,10 @@ function generatePDFHTML(analysis: any): string {
         <h1>📊 Relatório de Análise de Crédito</h1>
         <p>Documento gerado em ${formatDate(analysis.created_at)}</p>
         <div style="margin-top: 15px;">
-          <span class="badge ${analysis.source === "assertiva" ? "badge-success" : "badge-info"}">
-            ${analysis.source === "assertiva" ? "Análise Assertiva" : "Análise Portal da Transparência"}
+          <span class="badge badge-gold">
+            ${analysis.source === "assertiva" ? "Análise Assertiva" : "Portal da Transparência"}
           </span>
-          <span class="badge badge-warning">
+          <span class="badge ${analysis.analysis_type === "free" ? "badge-info" : "badge-success"}">
             ${analysis.analysis_type === "free" ? "Análise Gratuita" : "Análise Detalhada"}
           </span>
         </div>
@@ -471,17 +498,23 @@ function generatePDFHTML(analysis: any): string {
             </div>
             <div class="summary-label">Total de Restrições</div>
           </div>
-          <div class="summary-card">
-            <div class="summary-number" style="color: #6B7280">
-              ${totalCEIS + totalCNEP}
+          <div class="summary-card danger">
+            <div class="summary-number" style="color: #EF4444">
+              ${totalCEIS}
             </div>
-            <div class="summary-label">Sanções e Punições</div>
+            <div class="summary-label">Sanções CEIS</div>
           </div>
-          <div class="summary-card">
-            <div class="summary-number" style="color: #6B7280">
-              ${totalCEPIM + totalCEAF}
+          <div class="summary-card warning">
+            <div class="summary-number" style="color: #F59E0B">
+              ${totalCNEP}
             </div>
-            <div class="summary-label">Impedimentos e Expulsões</div>
+            <div class="summary-label">Punições CNEP</div>
+          </div>
+          <div class="summary-card info">
+            <div class="summary-number" style="color: #3B82F6">
+              ${totalVinculos}
+            </div>
+            <div class="summary-label">Vínculos Públicos</div>
           </div>
         </div>
       </div>
@@ -529,6 +562,123 @@ function generatePDFHTML(analysis: any): string {
       </div>
 
       ${
+        analysis.source === "assertiva"
+          ? `
+      <!-- Assertiva Data Section -->
+      ${
+        scoreRecupere
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">📈</span> Score Recupere
+        </div>
+        <div class="score-box" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%);">
+          <div class="score-label">Índice de Recuperação</div>
+          <div class="score-value">${scoreRecupere}</div>
+          <div class="risk-badge">${analysis.data?.score_recupere?.classe || analysis.data?.recupere?.resposta?.score?.classe || "N/A"}</div>
+        </div>
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        rendaPresumida
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">💰</span> Renda Presumida
+        </div>
+        <div class="alert-box alert-info">
+          <div class="alert-title">Renda Estimada</div>
+          <div class="alert-content" style="font-size: 24px; font-weight: 700;">
+            R$ ${rendaPresumida.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        debitos.length > 0
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">⚠️</span> Débitos Registrados (${debitos.length})
+        </div>
+        ${debitos
+          .map(
+            (debito: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Débito #${idx + 1} - ${debito.credor || "Credor não informado"}</div>
+            <div class="list-item-detail"><strong>Valor:</strong> R$ ${(debito.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+          </div>
+        `,
+          )
+          .join("")}
+        <div class="alert-box alert-warning">
+          <div class="alert-title">Total de Débitos</div>
+          <div class="alert-content" style="font-size: 20px; font-weight: 700;">
+            R$ ${debitosTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        protestos.length > 0
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">🚨</span> Protestos (${protestos.length})
+        </div>
+        ${protestos
+          .map(
+            (protesto: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Protesto #${idx + 1} - ${protesto.cartorio || "Cartório não informado"}</div>
+            <div class="list-item-detail"><strong>Valor:</strong> R$ ${(protesto.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+            ${protesto.data ? `<div class="list-item-detail"><strong>Data:</strong> ${new Date(protesto.data).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${protesto.cidade ? `<div class="list-item-detail"><strong>Cidade:</strong> ${protesto.cidade}</div>` : ""}
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        acoesJudiciais.length > 0
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">⚖️</span> Ações Judiciais (${acoesJudiciais.length})
+        </div>
+        ${acoesJudiciais
+          .map(
+            (acao: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Ação #${idx + 1} - ${acao.tribunal || "Tribunal não informado"}</div>
+            ${acao.processo ? `<div class="list-item-detail"><strong>Processo:</strong> ${acao.processo}</div>` : ""}
+            ${acao.valorCausa ? `<div class="list-item-detail"><strong>Valor da Causa:</strong> R$ ${acao.valorCausa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>` : ""}
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+      `
+          : ""
+      }
+      `
+          : ""
+      }
+
+      ${
         analysis.data?.situacao_cpf
           ? `
       <!-- Situação do CPF/CNPJ -->
@@ -557,16 +707,14 @@ function generatePDFHTML(analysis: any): string {
         </div>
         ${analysis.data.sancoes_ceis
           .map(
-            (sancao: any) => `
-          <div class="alert-box alert-danger">
-            <div class="alert-title">${sancao.fonteSancao?.nomeExibicao || sancao.orgaoSancionador || "Órgão não informado"}</div>
-            <div class="alert-content">
-              ${sancao.tipoSancao ? `<strong>Tipo de Sanção:</strong> ${sancao.tipoSancao}<br>` : ""}
-              ${sancao.dataPublicacao ? `<strong>Data de Publicação:</strong> ${new Date(sancao.dataPublicacao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${sancao.dataInicioSancao ? `<strong>Data de Início:</strong> ${new Date(sancao.dataInicioSancao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${sancao.dataFimSancao ? `<strong>Data de Término:</strong> ${new Date(sancao.dataFimSancao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${sancao.fundamentacaoLegal ? `<strong>Fundamentação Legal:</strong> ${sancao.fundamentacaoLegal}` : ""}
-            </div>
+            (sancao: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Sanção #${idx + 1} - ${sancao.fonteSancao?.nomeExibicao || sancao.orgaoSancionador || "Órgão não informado"}</div>
+            ${sancao.tipoSancao?.descricaoResumida ? `<div class="list-item-detail"><strong>Tipo:</strong> ${sancao.tipoSancao.descricaoResumida}</div>` : ""}
+            ${sancao.dataPublicacao ? `<div class="list-item-detail"><strong>Data de Publicação:</strong> ${new Date(sancao.dataPublicacao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${sancao.dataInicioSancao ? `<div class="list-item-detail"><strong>Início:</strong> ${new Date(sancao.dataInicioSancao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${sancao.dataFimSancao ? `<div class="list-item-detail"><strong>Término:</strong> ${new Date(sancao.dataFimSancao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${sancao.fundamentacaoLegal ? `<div class="list-item-detail"><strong>Fundamentação Legal:</strong> ${sancao.fundamentacaoLegal}</div>` : ""}
           </div>
         `,
           )
@@ -586,17 +734,15 @@ function generatePDFHTML(analysis: any): string {
         </div>
         ${analysis.data.punicoes_cnep
           .map(
-            (punicao: any) => `
-          <div class="alert-box alert-warning">
-            <div class="alert-title">${punicao.orgaoSancionador?.nome || "Órgão não informado"}</div>
-            <div class="alert-content">
-              ${punicao.tipoSancao?.descricaoResumida ? `<strong>Tipo de Sanção:</strong> ${punicao.tipoSancao.descricaoResumida}<br>` : ""}
-              ${punicao.dataPublicacaoSancao ? `<strong>Data de Publicação:</strong> ${new Date(punicao.dataPublicacaoSancao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${punicao.dataInicioSancao ? `<strong>Data de Início:</strong> ${new Date(punicao.dataInicioSancao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${punicao.dataFimSancao ? `<strong>Data de Término:</strong> ${new Date(punicao.dataFimSancao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${punicao.valorMulta ? `<strong>Valor da Multa:</strong> R$ ${Number.parseFloat(punicao.valorMulta).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}<br>` : ""}
-              ${punicao.fundamentacaoLegal ? `<strong>Fundamentação Legal:</strong> ${punicao.fundamentacaoLegal}` : ""}
-            </div>
+            (punicao: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Punição #${idx + 1} - ${punicao.orgaoSancionador?.nome || "Órgão não informado"}</div>
+            ${punicao.tipoSancao?.descricaoResumida ? `<div class="list-item-detail"><strong>Tipo:</strong> ${punicao.tipoSancao.descricaoResumida}</div>` : ""}
+            ${punicao.dataPublicacaoSancao ? `<div class="list-item-detail"><strong>Data de Publicação:</strong> ${new Date(punicao.dataPublicacaoSancao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${punicao.dataInicioSancao ? `<div class="list-item-detail"><strong>Início:</strong> ${new Date(punicao.dataInicioSancao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${punicao.dataFimSancao ? `<div class="list-item-detail"><strong>Término:</strong> ${new Date(punicao.dataFimSancao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${punicao.valorMulta ? `<div class="list-item-detail"><strong>Valor da Multa:</strong> R$ ${Number.parseFloat(punicao.valorMulta).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>` : ""}
+            ${punicao.fundamentacaoLegal ? `<div class="list-item-detail"><strong>Fundamentação Legal:</strong> ${punicao.fundamentacaoLegal}</div>` : ""}
           </div>
         `,
           )
@@ -616,14 +762,14 @@ function generatePDFHTML(analysis: any): string {
         </div>
         ${analysis.data.impedimentos_cepim
           .map(
-            (impedimento: any) => `
-          <div class="alert-box alert-danger">
-            <div class="alert-title">${impedimento.orgaoSancionador?.nome || "Órgão não informado"}</div>
-            <div class="alert-content">
-              ${impedimento.motivoImpedimento ? `<strong>Motivo:</strong> ${impedimento.motivoImpedimento}<br>` : ""}
-              ${impedimento.dataInicioImpedimento ? `<strong>Data de Início:</strong> ${new Date(impedimento.dataInicioImpedimento).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${impedimento.dataFimImpedimento ? `<strong>Data de Término:</strong> ${new Date(impedimento.dataFimImpedimento).toLocaleDateString("pt-BR")}` : ""}
-            </div>
+            (impedimento: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Impedimento #${idx + 1} - ${impedimento.nome || "Nome não informado"}</div>
+            ${impedimento.orgao_sancionador ? `<div class="list-item-detail"><strong>Órgão Sancionador:</strong> ${impedimento.orgao_sancionador}</div>` : ""}
+            ${impedimento.motivo ? `<div class="list-item-detail"><strong>Motivo:</strong> ${impedimento.motivo}</div>` : ""}
+            ${impedimento.uf ? `<div class="list-item-detail"><strong>UF:</strong> ${impedimento.uf}</div>` : ""}
+            ${impedimento.cnpj ? `<div class="list-item-detail"><strong>CNPJ:</strong> ${impedimento.cnpj}</div>` : ""}
+            ${impedimento.convenio ? `<div class="list-item-detail"><strong>Convênio:</strong> ${impedimento.convenio}</div>` : ""}
           </div>
         `,
           )
@@ -643,14 +789,14 @@ function generatePDFHTML(analysis: any): string {
         </div>
         ${analysis.data.expulsoes_ceaf
           .map(
-            (expulsao: any) => `
-          <div class="alert-box alert-danger">
-            <div class="alert-title">${expulsao.orgao || "Órgão não informado"}</div>
-            <div class="alert-content">
-              ${expulsao.tipoExpulsao ? `<strong>Tipo de Expulsão:</strong> ${expulsao.tipoExpulsao}<br>` : ""}
-              ${expulsao.dataExpulsao ? `<strong>Data da Expulsão:</strong> ${new Date(expulsao.dataExpulsao).toLocaleDateString("pt-BR")}<br>` : ""}
-              ${expulsao.motivo ? `<strong>Motivo:</strong> ${expulsao.motivo}` : ""}
-            </div>
+            (expulsao: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Expulsão #${idx + 1} - ${expulsao.nome || "Nome não informado"}</div>
+            ${expulsao.orgao ? `<div class="list-item-detail"><strong>Órgão:</strong> ${expulsao.orgao}</div>` : ""}
+            ${expulsao.tipoExpulsao ? `<div class="list-item-detail"><strong>Tipo:</strong> ${expulsao.tipoExpulsao}</div>` : ""}
+            ${expulsao.data_expulsao ? `<div class="list-item-detail"><strong>Data da Expulsão:</strong> ${new Date(expulsao.data_expulsao).toLocaleDateString("pt-BR")}</div>` : ""}
+            ${expulsao.motivo ? `<div class="list-item-detail"><strong>Motivo:</strong> ${expulsao.motivo}</div>` : ""}
+            ${expulsao.cargo ? `<div class="list-item-detail"><strong>Cargo:</strong> ${expulsao.cargo}</div>` : ""}
           </div>
         `,
           )
@@ -661,15 +807,47 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        totalRestrictions === 0
+        totalVinculos > 0
+          ? `
+      <!-- Vínculos Públicos -->
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">🏛️</span> Vínculos com Serviço Público (${totalVinculos})
+        </div>
+        <div class="alert-box alert-info">
+          <div class="alert-title">ℹ️ Informação</div>
+          <div class="alert-content">
+            Este cliente possui vínculos registrados com o serviço público federal. Isso não representa necessariamente uma restrição, mas é uma informação relevante para análise de crédito.
+          </div>
+        </div>
+        ${analysis.data.vinculos_publicos
+          .map(
+            (vinculo: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Vínculo #${idx + 1}</div>
+            ${vinculo.orgao ? `<div class="list-item-detail"><strong>Órgão:</strong> ${vinculo.orgao}</div>` : ""}
+            ${vinculo.cargo ? `<div class="list-item-detail"><strong>Cargo:</strong> ${vinculo.cargo}</div>` : ""}
+            ${vinculo.situacao ? `<div class="list-item-detail"><strong>Situação:</strong> ${vinculo.situacao}</div>` : ""}
+            ${vinculo.data_inicio ? `<div class="list-item-detail"><strong>Data de Início:</strong> ${new Date(vinculo.data_inicio).toLocaleDateString("pt-BR")}</div>` : ""}
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        totalRestrictions === 0 && totalVinculos === 0
           ? `
       <!-- Estado Limpo -->
       <div class="section">
         <div class="empty-state">
           <div class="empty-state-icon">✅</div>
           <div class="empty-state-text">
-            <strong>Nenhuma restrição encontrada!</strong><br>
-            Este cliente não possui sanções, punições, impedimentos ou expulsões registradas no Portal da Transparência.
+            <strong>Nenhuma restrição ou vínculo encontrado!</strong><br>
+            Este cliente não possui sanções, punições, impedimentos, expulsões ou vínculos públicos registrados no Portal da Transparência.
           </div>
         </div>
       </div>
@@ -678,20 +856,19 @@ function generatePDFHTML(analysis: any): string {
       }
 
       <div class="footer">
-        <div class="footer-logo">AlteaPay</div>
+        <div class="footer-logo">Altea<span>Pay</span></div>
         <p><strong>Relatório Confidencial de Análise de Crédito</strong></p>
         <p>Este documento é confidencial e destinado exclusivamente para fins de análise de crédito e gestão de risco.</p>
         <p>Os dados foram obtidos através do Portal da Transparência do Governo Federal.</p>
-        <p style="margin-top: 15px;">Gerado automaticamente pelo sistema em ${formatDate(analysis.created_at)}</p>
+        <p style="margin-top: 15px; color: #0D1B2A; font-weight: 600;">Gerado automaticamente pelo sistema AlteaPay em ${formatDate(analysis.created_at)}</p>
       </div>
     </div>
   </div>
   
   <script>
-    // Auto-trigger print dialog after page loads
     window.addEventListener('load', function() {
       setTimeout(function() {
-        // Uncomment the line below to auto-trigger print on load
+        // Auto-trigger print can be enabled by uncommenting the line below
         // window.print();
       }, 500);
     });

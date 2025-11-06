@@ -675,56 +675,44 @@ export async function analyzeDetailed(
   userId?: string,
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log("[v0] analyzeDetailed - Starting for CPF:", cpf)
+    console.log("[v0] analyzeDetailed - Starting for CPF/CNPJ:", cpf)
 
-    // Limpar CPF
     const cleanCpf = cpf.replace(/\D/g, "")
+    const isCnpj = cleanCpf.length === 14
+    const documentType = isCnpj ? "CNPJ" : "CPF"
 
-    // Se companyId foi fornecido, usar o serviço Assertiva com cache
+    console.log("[v0] analyzeDetailed - Document type:", documentType)
+
+    // If companyId provided, use Assertiva service with ALL endpoints
     if (companyId) {
       const { analyzeDetailedWithCache } = await import("./assertivaService")
+
+      console.log("[v0] analyzeDetailed - Calling Assertiva API for ALL endpoints...")
+
+      // This will call ALL 4 GET endpoints + POST behavioral analysis
       const result = await analyzeDetailedWithCache(cpf, companyId, userId)
+
+      console.log("[v0] analyzeDetailed - Assertiva result:", {
+        success: result.success,
+        has_data: !!result.data,
+        data_keys: result.data ? Object.keys(result.data) : [],
+      })
+
       return result
     }
 
-    // Verificar se já existe análise em cache
+    // Check cache first
     const cached = await getCachedResult(cleanCpf)
     if (cached) {
       console.log("[v0] analyzeDetailed - Using cached result")
       return { success: true, data: cached.data }
     }
 
-    // Integração com Assertiva Soluções
-    // Documentação: https://integracao.assertivasolucoes.com.br/v3/doc
-
-    // TODO: Implementar integração real com Assertiva
-    // const response = await fetch("https://integracao.assertivasolucoes.com.br/v3/consultas", {
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //     "Authorization": `Bearer ${process.env.ASSERTIVA_API_KEY}`
-    //   },
-    //   body: JSON.stringify({ cpf: cleanCpf })
-    // })
-
-    // Simular resposta da Assertiva
-    const mockData = {
-      cpf: cleanCpf,
-      nome_completo: "Cliente Exemplo Completo",
-      data_nascimento: "1990-01-01",
-      situacao_cpf: "REGULAR",
-      score_serasa: Math.floor(Math.random() * 400) + 400, // Score entre 400-800
-      renda_presumida: Math.floor(Math.random() * 5000) + 2000,
-      protestos: [],
-      acoes_judiciais: [],
-      cheques_sem_fundo: [],
-      dividas_ativas: [],
-      participacao_empresas: [],
-      score_assertiva: Math.floor(Math.random() * 400) + 500, // Score entre 500-900
+    // If no companyId, return error (Assertiva requires company context)
+    return {
+      success: false,
+      error: "Company ID is required for detailed analysis with Assertiva",
     }
-
-    console.log("[v0] analyzeDetailed - Success:", mockData)
-    return { success: true, data: mockData }
   } catch (error: any) {
     console.error("[v0] analyzeDetailed - Error:", error)
     return { success: false, error: error.message }
@@ -798,8 +786,31 @@ export async function storeAnalysisResult(
       }
     }
 
-    // Calcular score interno
-    const score = data.score_calculado || data.score_assertiva || data.score_serasa || 0
+    let score = 0
+
+    if (source === "assertiva") {
+      // Try multiple possible score locations in Assertiva data
+      score =
+        data.score_credito?.pontos || // Main score from credito endpoint
+        data.credito?.resposta?.score?.pontos || // Alternative structure
+        data.score_assertiva || // Legacy field
+        data.score_serasa || // Legacy field
+        0
+
+      console.log("[v0] storeAnalysisResult - Extracted Assertiva score:", {
+        score,
+        score_credito: data.score_credito,
+        has_credito_resposta: !!data.credito?.resposta?.score,
+      })
+    } else {
+      // Portal da Transparência
+      score = data.score_calculado || 0
+
+      console.log("[v0] storeAnalysisResult - Extracted Gov score:", {
+        score,
+        score_calculado: data.score_calculado,
+      })
+    }
 
     let riskLevel: "low" | "medium" | "high" | "very_high" = "medium"
     if (score >= 700) riskLevel = "low"
@@ -832,7 +843,7 @@ export async function storeAnalysisResult(
       cpf: cleanCpf,
       analysis_type: type,
       source,
-      data,
+      data: data, // <-- SAVE COMPLETE DATA OBJECT HERE
       score,
       status: "completed",
       risk_level: riskLevel,
@@ -851,12 +862,24 @@ export async function storeAnalysisResult(
     if (customerEmail) profileData.email = customerEmail
     if (customerPhone) profileData.phone = customerPhone
 
-    const { data: insertedData, error } = await supabase
+    const { data: existingRecord } = await supabase
       .from("credit_profiles")
-      .upsert(profileData, {
-        onConflict: "cpf,company_id,source,analysis_type",
-      })
-      .select()
+      .select("id")
+      .eq("cpf", cleanCpf)
+      .eq("company_id", companyId)
+      .maybeSingle()
+
+    let result
+
+    if (existingRecord) {
+      console.log("[v0] storeAnalysisResult - Updating existing record:", existingRecord.id)
+      result = await supabase.from("credit_profiles").update(profileData).eq("id", existingRecord.id).select()
+    } else {
+      console.log("[v0] storeAnalysisResult - Inserting new record")
+      result = await supabase.from("credit_profiles").insert(profileData).select()
+    }
+
+    const { data: insertedData, error } = result
 
     if (error) {
       console.error("[v0] storeAnalysisResult - Error:", error)
@@ -873,6 +896,8 @@ export async function storeAnalysisResult(
       has_public_bonds: hasPublicBonds,
       customer_id: customerId,
       record_id: insertedData?.[0]?.id,
+      data_saved: !!data, // <-- Confirm data was saved
+      operation: existingRecord ? "UPDATE" : "INSERT", // <-- Log which operation was performed
     })
 
     return { success: true }
@@ -1410,6 +1435,7 @@ export async function runAssertivaManualAnalysis(
       console.error("[v0] runAssertivaManualAnalysis - Error fetching from VMAX:", vmaxError)
       await supabase.from("integration_logs").insert({
         company_id: companyId,
+        cpf: null, // Changed from customerIds[0] to null for batch error
         operation: "ASSERTIVA_MANUAL_ANALYSIS",
         status: "error",
         details: { error: vmaxError.message, customer_ids: customerIds },
@@ -1605,7 +1631,7 @@ export async function runAssertivaManualAnalysis(
             try {
               await supabase.from("integration_logs").insert({
                 company_id: customer.company_id,
-                cpf: customer.cpf,
+                cpf: customer.cpf, // Added cpf field
                 operation: "ASSERTIVA_MANUAL_ANALYSIS",
                 status: "failed",
                 details: {
@@ -1663,6 +1689,7 @@ export async function runAssertivaManualAnalysis(
 
     await supabase.from("integration_logs").insert({
       company_id: companyId,
+      cpf: customersToAnalyze.length > 0 ? customersToAnalyze[0].cpf : null, // Added cpf field
       operation: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "completed",
       details: {
@@ -1693,6 +1720,7 @@ export async function runAssertivaManualAnalysis(
 
     await supabase.from("integration_logs").insert({
       company_id: companyId,
+      cpf: null, // Added cpf field (null for batch errors)
       operation: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "error",
       details: { error: error.message, customer_ids: customerIds },

@@ -60,7 +60,6 @@ export async function getAnalysesData() {
     const customerIds = allCustomers.filter((c) => c.source_table === "customers").map((c) => c.id)
     const vmaxIds = allCustomers.filter((c) => c.source_table === "vmax").map((c) => c.id)
 
-    // Buscar perfis de crédito para clientes da tabela customers
     const { data: profilesData } = await supabase
       .from("credit_profiles")
       .select("*")
@@ -86,7 +85,7 @@ export async function getAnalysesData() {
         customer_id: customer.id,
         company_id: customer.company_id,
         cpf: customer.document || "N/A",
-        score: profile?.score || null,
+        score: profile?.score ?? null, // Use nullish coalescing to preserve 0
         source: profile?.source || "none",
         analysis_type: profile?.analysis_type || "none",
         status: profile ? "completed" : "pending",
@@ -94,6 +93,7 @@ export async function getAnalysesData() {
         customer_name: customer.name || "N/A",
         company_name: company?.name || "N/A",
         source_table: customer.source_table,
+        data: profile?.data || null, // Include data field (JSONB)
       }
     })
 

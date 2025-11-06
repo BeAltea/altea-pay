@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, createContext, useContext } from "react"
+import { createContext, useContext } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -30,7 +30,6 @@ interface SuperAdminSidebarProps {
   }
 }
 
-// Context for mobile sidebar state
 const MobileSuperAdminSidebarContext = createContext<{
   isMobileMenuOpen: boolean
   setIsMobileMenuOpen: (open: boolean) => void
@@ -43,9 +42,11 @@ export function useMobileSuperAdminSidebar() {
   return useContext(MobileSuperAdminSidebarContext)
 }
 
+export { MobileSuperAdminSidebarContext }
+
 export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
   const pathname = usePathname()
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileSuperAdminSidebar()
 
   const navigation = [
     {
@@ -176,7 +177,7 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
   )
 
   return (
-    <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
+    <>
       <div className="hidden lg:flex h-full flex-col bg-white dark:bg-[oklch(0.12_0.02_240)] border-r border-gray-200 dark:border-[oklch(0.26_0.02_240)]">
         <SidebarContent />
       </div>
@@ -188,6 +189,6 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           </div>
         </SheetContent>
       </Sheet>
-    </MobileSuperAdminSidebarContext.Provider>
+    </>
   )
 }

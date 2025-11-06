@@ -29,6 +29,13 @@ interface CustomerDetails {
   created_at: string
   score: number | null
   analysis_data: any
+  analysis_source: string | null
+  assertiva_analysis: any
+  assertiva_score: number | null
+  assertiva_date: string | null
+  gov_analysis: any
+  gov_score: number | null
+  gov_date: string | null
   analysis_history: Array<{
     id: string
     score: number
@@ -414,28 +421,36 @@ export default function VMAXAnalysisPage() {
                             Ver
                           </Button>
                         </SheetTrigger>
-                        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto bg-background">
-                          <SheetHeader className="pb-6 border-b">
-                            <SheetTitle className="text-2xl font-bold">Detalhes do Cliente</SheetTitle>
-                            <SheetDescription className="text-base">
-                              Análise completa baseada em dados do Portal da Transparência
-                            </SheetDescription>
-                          </SheetHeader>
-
-                          {!loadingCustomer && selectedCustomer && selectedCustomer.score !== null && (
-                            <div className="mt-4 flex justify-end">
-                              <Button onClick={exportToPDF} variant="outline" size="sm">
-                                <FileDown className="h-4 w-4 mr-2" />
-                                Extrair PDF
-                              </Button>
+                        <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background">
+                          <SheetHeader className="pb-6 border-b border-border px-6 pt-6">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <SheetTitle className="text-2xl font-bold text-foreground">
+                                  Análise de Crédito Completa
+                                </SheetTitle>
+                                <SheetDescription className="text-base text-muted-foreground mt-1">
+                                  Dados do Portal da Transparência do Governo Federal
+                                </SheetDescription>
+                              </div>
+                              {!loadingCustomer && selectedCustomer && selectedCustomer.score !== null && (
+                                <Button
+                                  onClick={exportToPDF}
+                                  variant="default"
+                                  size="lg"
+                                  className="shrink-0 bg-altea-gold hover:bg-altea-gold/90 text-altea-navy font-semibold shadow-lg hover:shadow-xl transition-all"
+                                >
+                                  <FileDown className="h-5 w-5 mr-2" />
+                                  Exportar PDF
+                                </Button>
+                              )}
                             </div>
-                          )}
+                          </SheetHeader>
 
                           {loadingCustomer ? (
                             <div className="flex items-center justify-center py-20">
                               <div className="text-center space-y-4">
-                                <Spinner className="h-10 w-10 mx-auto" />
-                                <p className="text-muted-foreground">Carregando informações...</p>
+                                <Spinner className="h-10 w-10 mx-auto text-primary" />
+                                <p className="text-muted-foreground">Carregando análise completa...</p>
                               </div>
                             </div>
                           ) : !selectedCustomer ? (
@@ -443,277 +458,551 @@ export default function VMAXAnalysisPage() {
                               <p className="text-muted-foreground">Nenhum dado encontrado</p>
                             </div>
                           ) : (
-                            <div className="mt-8 space-y-6">
-                              {selectedCustomer.score !== null && selectedCustomer.score !== undefined ? (
-                                <>
-                                  {/* Score de Crédito */}
-                                  <Card className="border-2 bg-gradient-to-br from-primary/10 to-primary/5">
-                                    <div className="p-6">
-                                      <div className="flex items-center justify-between">
+                            <div className="mt-6 space-y-6 px-6 pb-6">
+                              {/* Source Indicator */}
+                              {selectedCustomer.assertiva_analysis && (
+                                <Card className="border-2 border-altea-gold bg-gradient-to-r from-altea-gold/10 to-altea-gold/5">
+                                  <div className="p-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-altea-gold/20">
+                                          <TrendingUp className="h-5 w-5 text-altea-gold" />
+                                        </div>
                                         <div>
-                                          <p className="text-sm text-muted-foreground mb-1">Score de Crédito</p>
-                                          <p className="text-5xl font-bold text-primary">{selectedCustomer.score}</p>
-                                          <p className="text-sm text-muted-foreground mt-2">
-                                            {selectedCustomer.score >= 700
-                                              ? "Excelente - Baixo risco"
-                                              : selectedCustomer.score >= 500
-                                                ? "Bom - Risco moderado"
-                                                : selectedCustomer.score >= 300
-                                                  ? "Regular - Requer atenção"
-                                                  : "Atenção - Alto risco"}
+                                          <h3 className="font-semibold text-lg text-foreground">
+                                            Análise Completa - Assertiva Soluções
+                                          </h3>
+                                          <p className="text-sm text-muted-foreground">
+                                            Dados detalhados de crédito e comportamento financeiro
                                           </p>
                                         </div>
-                                        <TrendingUp className="h-16 w-16 text-primary/30" />
                                       </div>
+                                      <Badge className="bg-altea-gold text-altea-navy font-semibold">
+                                        Análise Premium
+                                      </Badge>
                                     </div>
-                                  </Card>
+                                  </div>
+                                </Card>
+                              )}
 
-                                  {/* Informações Básicas */}
+                              {!selectedCustomer.assertiva_analysis && selectedCustomer.gov_analysis && (
+                                <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+                                  <div className="p-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                                          <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                        </div>
+                                        <div>
+                                          <h3 className="font-semibold text-lg text-foreground">
+                                            Análise Gratuita - Portal da Transparência
+                                          </h3>
+                                          <p className="text-sm text-muted-foreground">
+                                            Dados públicos do Governo Federal
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <Badge variant="secondary">Análise Básica</Badge>
+                                    </div>
+                                  </div>
+                                </Card>
+                              )}
+
+                              {selectedCustomer.score !== null && selectedCustomer.score !== undefined ? (
+                                <>
+                                  {/* Summary Cards Grid */}
+                                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    {/* Score Card */}
+                                    <Card className="col-span-1 md:col-span-2 border-2 bg-gradient-to-br from-altea-gold/10 to-altea-gold/5 dark:from-altea-gold/20 dark:to-altea-gold/10">
+                                      <div className="p-6">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex-1">
+                                            <p className="text-sm text-muted-foreground mb-2">Score de Crédito</p>
+                                            <p className="text-5xl font-bold text-altea-gold mb-2">
+                                              {selectedCustomer.score}
+                                            </p>
+                                            <Badge
+                                              variant={
+                                                selectedCustomer.score >= 700
+                                                  ? "default"
+                                                  : selectedCustomer.score >= 500
+                                                    ? "secondary"
+                                                    : "destructive"
+                                              }
+                                              className="text-sm"
+                                            >
+                                              {selectedCustomer.score >= 700
+                                                ? "Baixo Risco"
+                                                : selectedCustomer.score >= 500
+                                                  ? "Risco Moderado"
+                                                  : "Alto Risco"}
+                                            </Badge>
+                                            <p className="text-xs text-muted-foreground mt-2">
+                                              Fonte:{" "}
+                                              {selectedCustomer.analysis_source === "assertiva"
+                                                ? "Assertiva Soluções"
+                                                : "Portal da Transparência"}
+                                            </p>
+                                          </div>
+                                          <TrendingUp className="h-16 w-16 text-altea-gold/30" />
+                                        </div>
+                                      </div>
+                                    </Card>
+
+                                    {/* Metric Cards - Different for Assertiva vs Gov */}
+                                    {selectedCustomer.assertiva_analysis ? (
+                                      <>
+                                        <Card className="border-2">
+                                          <div className="p-6">
+                                            <p className="text-sm text-muted-foreground mb-2">Protestos</p>
+                                            <p className="text-3xl font-bold text-foreground">
+                                              {selectedCustomer.assertiva_analysis?.protestos?.length || 0}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-2">Títulos Protestados</p>
+                                          </div>
+                                        </Card>
+
+                                        <Card className="border-2">
+                                          <div className="p-6">
+                                            <p className="text-sm text-muted-foreground mb-2">Ações Judiciais</p>
+                                            <p className="text-3xl font-bold text-foreground">
+                                              {selectedCustomer.assertiva_analysis?.acoes_judiciais?.length || 0}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-2">Processos Ativos</p>
+                                          </div>
+                                        </Card>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Card className="border-2">
+                                          <div className="p-6">
+                                            <p className="text-sm text-muted-foreground mb-2">Sanções CEIS</p>
+                                            <p className="text-3xl font-bold text-foreground">
+                                              {selectedCustomer.analysis_data?.sancoes_ceis?.length || 0}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-2">Empresas Inidôneas</p>
+                                          </div>
+                                        </Card>
+
+                                        <Card className="border-2">
+                                          <div className="p-6">
+                                            <p className="text-sm text-muted-foreground mb-2">Punições CNEP</p>
+                                            <p className="text-3xl font-bold text-foreground">
+                                              {selectedCustomer.analysis_data?.punicoes_cnep?.length || 0}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-2">Empresas Punidas</p>
+                                          </div>
+                                        </Card>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* Customer Information Card */}
                                   <Card className="border-2">
                                     <div className="p-6">
                                       <div className="flex items-center gap-3 mb-4">
-                                        <User className="h-5 w-5 text-primary" />
-                                        <h3 className="text-lg font-semibold">Informações Básicas</h3>
+                                        <div className="p-2 rounded-lg bg-altea-navy/10 dark:bg-altea-navy/20">
+                                          <User className="h-5 w-5 text-altea-navy dark:text-altea-gold" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-foreground">
+                                          Informações do Cliente
+                                        </h3>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <p className="text-xs text-muted-foreground mb-1">Nome</p>
-                                          <p className="font-semibold">{selectedCustomer.name}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-muted-foreground mb-1">CPF/CNPJ</p>
-                                          <p className="font-mono font-semibold">{selectedCustomer.document}</p>
-                                        </div>
-                                        {selectedCustomer.city && (
-                                          <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Cidade</p>
-                                            <p>{selectedCustomer.city}</p>
-                                          </div>
-                                        )}
-                                        <div>
-                                          <p className="text-xs text-muted-foreground mb-1">Cadastrado em</p>
-                                          <p>
-                                            {selectedCustomer.created_at
-                                              ? new Date(selectedCustomer.created_at).toLocaleDateString("pt-BR")
-                                              : "N/A"}
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                            Nome Completo
+                                          </p>
+                                          <p className="text-base font-semibold text-foreground">
+                                            {selectedCustomer.name}
                                           </p>
                                         </div>
+                                        <div className="space-y-1">
+                                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                            CPF/CNPJ
+                                          </p>
+                                          <p className="text-base font-mono font-semibold text-foreground">
+                                            {selectedCustomer.document}
+                                          </p>
+                                        </div>
+                                        {selectedCustomer.city && (
+                                          <div className="space-y-1">
+                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                              Cidade
+                                            </p>
+                                            <p className="text-base font-semibold text-foreground">
+                                              {selectedCustomer.city}
+                                            </p>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   </Card>
 
-                                  {/* Situação Cadastral */}
-                                  {selectedCustomer.analysis_data?.situacao_cpf && (
-                                    <Card className="border-2">
-                                      <div className="p-6">
-                                        <h3 className="font-semibold mb-3">Situação Cadastral</h3>
-                                        <Badge
-                                          variant={
-                                            selectedCustomer.analysis_data.situacao_cpf === "REGULAR"
-                                              ? "default"
-                                              : "destructive"
-                                          }
-                                          className="text-sm px-3 py-1"
-                                        >
-                                          {selectedCustomer.analysis_data.situacao_cpf}
-                                        </Badge>
-                                      </div>
-                                    </Card>
+                                  {/* Assertiva-specific sections */}
+                                  {selectedCustomer.assertiva_analysis && (
+                                    <>
+                                      {/* Renda Presumida */}
+                                      {selectedCustomer.assertiva_analysis.renda_presumida && (
+                                        <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20">
+                                          <div className="p-6">
+                                            <div className="flex items-center gap-3 mb-4">
+                                              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                                                <span className="text-2xl">💰</span>
+                                              </div>
+                                              <div>
+                                                <h3 className="font-semibold text-lg text-green-700 dark:text-green-400">
+                                                  Renda Presumida
+                                                </h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                  Estimativa baseada em dados comportamentais
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                                              R${" "}
+                                              {Number(
+                                                selectedCustomer.assertiva_analysis.renda_presumida,
+                                              ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                            </p>
+                                          </div>
+                                        </Card>
+                                      )}
+
+                                      {/* Protestos */}
+                                      {selectedCustomer.assertiva_analysis.protestos &&
+                                        Array.isArray(selectedCustomer.assertiva_analysis.protestos) &&
+                                        selectedCustomer.assertiva_analysis.protestos.length > 0 && (
+                                          <Card className="border-2 border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20">
+                                            <div className="p-6">
+                                              <div className="flex items-center gap-3 mb-6">
+                                                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
+                                                  <span className="text-2xl">⚠️</span>
+                                                </div>
+                                                <div>
+                                                  <h3 className="font-semibold text-lg text-red-700 dark:text-red-400">
+                                                    Protestos Registrados
+                                                  </h3>
+                                                  <p className="text-sm text-muted-foreground">
+                                                    {selectedCustomer.assertiva_analysis.protestos.length} protesto(s)
+                                                    encontrado(s)
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="space-y-4">
+                                                {selectedCustomer.assertiva_analysis.protestos.map(
+                                                  (protesto: any, idx: number) => (
+                                                    <div
+                                                      key={idx}
+                                                      className="bg-white dark:bg-red-950/30 border-2 border-red-200 dark:border-red-800 rounded-lg p-5"
+                                                    >
+                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {protesto.cartorio && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Cartório
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {protesto.cartorio}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {protesto.valor && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Valor
+                                                            </p>
+                                                            <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                                                              R${" "}
+                                                              {Number(protesto.valor).toLocaleString("pt-BR", {
+                                                                minimumFractionDigits: 2,
+                                                              })}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {protesto.data && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {protesto.data}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {protesto.cidade && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Cidade
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {protesto.cidade}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  ),
+                                                )}
+                                              </div>
+                                            </div>
+                                          </Card>
+                                        )}
+
+                                      {/* Ações Judiciais */}
+                                      {selectedCustomer.assertiva_analysis.acoes_judiciais &&
+                                        Array.isArray(selectedCustomer.assertiva_analysis.acoes_judiciais) &&
+                                        selectedCustomer.assertiva_analysis.acoes_judiciais.length > 0 && (
+                                          <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
+                                            <div className="p-6">
+                                              <div className="flex items-center gap-3 mb-6">
+                                                <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                                                  <span className="text-2xl">⚖️</span>
+                                                </div>
+                                                <div>
+                                                  <h3 className="font-semibold text-lg text-orange-700 dark:text-orange-400">
+                                                    Ações Judiciais
+                                                  </h3>
+                                                  <p className="text-sm text-muted-foreground">
+                                                    {selectedCustomer.assertiva_analysis.acoes_judiciais.length}{" "}
+                                                    ação(ões) encontrada(s)
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="space-y-4">
+                                                {selectedCustomer.assertiva_analysis.acoes_judiciais.map(
+                                                  (acao: any, idx: number) => (
+                                                    <div
+                                                      key={idx}
+                                                      className="bg-white dark:bg-orange-950/30 border-2 border-orange-200 dark:border-orange-800 rounded-lg p-5"
+                                                    >
+                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {acao.numero_processo && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Número do Processo
+                                                            </p>
+                                                            <p className="font-mono font-semibold text-foreground">
+                                                              {acao.numero_processo}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {acao.tipo && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Tipo
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">{acao.tipo}</p>
+                                                          </div>
+                                                        )}
+                                                        {acao.valor && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Valor
+                                                            </p>
+                                                            <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                                                              R${" "}
+                                                              {Number(acao.valor).toLocaleString("pt-BR", {
+                                                                minimumFractionDigits: 2,
+                                                              })}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {acao.data && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">{acao.data}</p>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  ),
+                                                )}
+                                              </div>
+                                            </div>
+                                          </Card>
+                                        )}
+                                    </>
                                   )}
 
-                                  {selectedCustomer.analysis_data?.sancoes_ceis &&
-                                    Array.isArray(selectedCustomer.analysis_data.sancoes_ceis) &&
-                                    selectedCustomer.analysis_data.sancoes_ceis.length > 0 && (
-                                      <Card className="border-2 border-red-200 bg-red-50/50 dark:bg-red-950/20">
-                                        <div className="p-6">
-                                          <div className="flex items-center gap-3 mb-4">
-                                            <span className="text-2xl">⚠️</span>
-                                            <div>
-                                              <h3 className="font-semibold text-lg text-red-700 dark:text-red-400">
-                                                Sanções CEIS
-                                              </h3>
-                                              <p className="text-sm text-muted-foreground">
-                                                {selectedCustomer.analysis_data.sancoes_ceis.length} sanção(ões)
-                                                encontrada(s)
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="space-y-3">
-                                            {selectedCustomer.analysis_data.sancoes_ceis.map(
-                                              (sancao: any, idx: number) => (
-                                                <div
-                                                  key={idx}
-                                                  className="bg-white dark:bg-red-950/30 border border-red-200 rounded-lg p-4"
-                                                >
-                                                  <div className="space-y-2 text-sm">
-                                                    {sancao.fonteSancao?.nomeExibicao && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">
-                                                          Órgão Sancionador
-                                                        </p>
-                                                        <p className="font-semibold">
-                                                          {sancao.fonteSancao.nomeExibicao}
-                                                        </p>
-                                                      </div>
-                                                    )}
-                                                    {sancao.tipoSancao?.descricaoResumida && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">Tipo de Sanção</p>
-                                                        <Badge variant="destructive" className="mt-1">
-                                                          {sancao.tipoSancao.descricaoResumida}
-                                                        </Badge>
-                                                      </div>
-                                                    )}
-                                                    {sancao.dataInicioSancao && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">Data Início</p>
-                                                        <p>{sancao.dataInicioSancao}</p>
-                                                      </div>
-                                                    )}
-                                                    {sancao.dataFimSancao && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">Data Fim</p>
-                                                        <p>{sancao.dataFimSancao}</p>
-                                                      </div>
-                                                    )}
-                                                  </div>
+                                  {/* Government Data sections */}
+                                  {selectedCustomer.gov_analysis && (
+                                    <>
+                                      {/* Sanções CEIS */}
+                                      {selectedCustomer.analysis_data?.sancoes_ceis &&
+                                        Array.isArray(selectedCustomer.analysis_data.sancoes_ceis) &&
+                                        selectedCustomer.analysis_data.sancoes_ceis.length > 0 && (
+                                          <Card className="border-2 border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20">
+                                            <div className="p-6">
+                                              <div className="flex items-center gap-3 mb-6">
+                                                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
+                                                  <span className="text-2xl">🚫</span>
                                                 </div>
-                                              ),
-                                            )}
-                                          </div>
-                                        </div>
-                                      </Card>
-                                    )}
-
-                                  {selectedCustomer.analysis_data?.punicoes_cnep &&
-                                    Array.isArray(selectedCustomer.analysis_data.punicoes_cnep) &&
-                                    selectedCustomer.analysis_data.punicoes_cnep.length > 0 && (
-                                      <Card className="border-2 border-orange-200 bg-orange-50/50 dark:bg-orange-950/20">
-                                        <div className="p-6">
-                                          <div className="flex items-center gap-3 mb-4">
-                                            <span className="text-2xl">⚠️</span>
-                                            <div>
-                                              <h3 className="font-semibold text-lg text-orange-700 dark:text-orange-400">
-                                                Punições CNEP
-                                              </h3>
-                                              <p className="text-sm text-muted-foreground">
-                                                {selectedCustomer.analysis_data.punicoes_cnep.length} punição(ões)
-                                                encontrada(s)
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="space-y-3">
-                                            {selectedCustomer.analysis_data.punicoes_cnep.map(
-                                              (punicao: any, idx: number) => (
-                                                <div
-                                                  key={idx}
-                                                  className="bg-white dark:bg-orange-950/30 border border-orange-200 rounded-lg p-4"
-                                                >
-                                                  <div className="space-y-2 text-sm">
-                                                    {punicao.orgaoSancionador?.nome && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">
-                                                          Órgão Sancionador
-                                                        </p>
-                                                        <p className="font-semibold">{punicao.orgaoSancionador.nome}</p>
-                                                      </div>
-                                                    )}
-                                                    {punicao.tipoSancao?.descricaoResumida && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">Tipo de Sanção</p>
-                                                        <Badge className="bg-orange-600 mt-1">
-                                                          {punicao.tipoSancao.descricaoResumida}
-                                                        </Badge>
-                                                      </div>
-                                                    )}
-                                                    {punicao.valorMulta && (
-                                                      <div>
-                                                        <p className="text-xs text-muted-foreground">Valor da Multa</p>
-                                                        <p className="text-xl font-bold text-orange-600">
-                                                          R${" "}
-                                                          {Number.parseFloat(punicao.valorMulta).toLocaleString(
-                                                            "pt-BR",
-                                                            { minimumFractionDigits: 2 },
-                                                          )}
-                                                        </p>
-                                                      </div>
-                                                    )}
-                                                  </div>
+                                                <div>
+                                                  <h3 className="font-semibold text-lg text-red-700 dark:text-red-400">
+                                                    Sanções CEIS
+                                                  </h3>
+                                                  <p className="text-sm text-muted-foreground">
+                                                    Cadastro de Empresas Inidôneas e Suspensas
+                                                  </p>
                                                 </div>
-                                              ),
-                                            )}
-                                          </div>
-                                        </div>
-                                      </Card>
-                                    )}
-
-                                  {selectedCustomer.analysis_data?.vinculos_publicos &&
-                                    Array.isArray(selectedCustomer.analysis_data.vinculos_publicos) &&
-                                    selectedCustomer.analysis_data.vinculos_publicos.length > 0 && (
-                                      <Card className="border-2 border-blue-200 bg-blue-50/50 dark:bg-blue-950/20">
-                                        <div className="p-6">
-                                          <div className="flex items-center gap-3 mb-4">
-                                            <User className="h-5 w-5 text-blue-600" />
-                                            <div>
-                                              <h3 className="font-semibold text-lg text-blue-700 dark:text-blue-400">
-                                                Vínculos Públicos
-                                              </h3>
-                                              <p className="text-sm text-muted-foreground">
-                                                {selectedCustomer.analysis_data.vinculos_publicos.length} vínculo(s)
-                                                encontrado(s)
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="grid gap-3 md:grid-cols-2">
-                                            {selectedCustomer.analysis_data.vinculos_publicos.map(
-                                              (vinculo: any, idx: number) => (
-                                                <div
-                                                  key={idx}
-                                                  className="bg-white dark:bg-blue-950/30 border border-blue-200 rounded-lg p-4"
-                                                >
-                                                  {vinculo.orgao && (
-                                                    <div className="mb-2">
-                                                      <p className="text-xs text-muted-foreground">Órgão</p>
-                                                      <p className="font-semibold">{vinculo.orgao}</p>
+                                              </div>
+                                              <div className="space-y-4">
+                                                {selectedCustomer.analysis_data.sancoes_ceis.map(
+                                                  (sancao: any, idx: number) => (
+                                                    <div
+                                                      key={idx}
+                                                      className="bg-white dark:bg-red-950/30 border-2 border-red-200 dark:border-red-800 rounded-lg p-5"
+                                                    >
+                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {sancao.orgao_sancionador && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Órgão Sancionador
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {sancao.orgao_sancionador}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {sancao.tipo_sancao && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Tipo de Sanção
+                                                            </p>
+                                                            <Badge variant="destructive">{sancao.tipo_sancao}</Badge>
+                                                          </div>
+                                                        )}
+                                                        {sancao.data_inicio && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data Início
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {new Date(sancao.data_inicio).toLocaleDateString("pt-BR")}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {sancao.data_fim && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data Fim
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {new Date(sancao.data_fim).toLocaleDateString("pt-BR")}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                      </div>
                                                     </div>
-                                                  )}
-                                                  {vinculo.cargo && (
-                                                    <div>
-                                                      <p className="text-xs text-muted-foreground">Cargo</p>
-                                                      <Badge variant="secondary">{vinculo.cargo}</Badge>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              ),
-                                            )}
-                                          </div>
-                                        </div>
-                                      </Card>
-                                    )}
+                                                  ),
+                                                )}
+                                              </div>
+                                            </div>
+                                          </Card>
+                                        )}
 
-                                  {/* Dados Completos */}
-                                  <Card className="border-2">
-                                    <div className="p-6">
-                                      <h3 className="font-semibold mb-3">Dados Completos da API</h3>
-                                      <details>
-                                        <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                                          Ver JSON completo
-                                        </summary>
-                                        <pre className="mt-3 bg-muted p-4 rounded-lg overflow-x-auto text-xs">
-                                          {JSON.stringify(selectedCustomer.analysis_data, null, 2)}
-                                        </pre>
-                                      </details>
-                                    </div>
-                                  </Card>
+                                      {/* Punições CNEP */}
+                                      {selectedCustomer.analysis_data?.punicoes_cnep &&
+                                        Array.isArray(selectedCustomer.analysis_data.punicoes_cnep) &&
+                                        selectedCustomer.analysis_data.punicoes_cnep.length > 0 && (
+                                          <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
+                                            <div className="p-6">
+                                              <div className="flex items-center gap-3 mb-6">
+                                                <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                                                  <span className="text-2xl">⚠️</span>
+                                                </div>
+                                                <div>
+                                                  <h3 className="font-semibold text-lg text-orange-700 dark:text-orange-400">
+                                                    Punições CNEP
+                                                  </h3>
+                                                  <p className="text-sm text-muted-foreground">
+                                                    Cadastro Nacional de Empresas Punidas
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="space-y-4">
+                                                {selectedCustomer.analysis_data.punicoes_cnep.map(
+                                                  (punicao: any, idx: number) => (
+                                                    <div
+                                                      key={idx}
+                                                      className="bg-white dark:bg-orange-950/30 border-2 border-orange-200 dark:border-orange-800 rounded-lg p-5"
+                                                    >
+                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {punicao.orgao_sancionador && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Órgão Sancionador
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {punicao.orgao_sancionador}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {punicao.tipo_sancao && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Tipo de Sanção
+                                                            </p>
+                                                            <Badge variant="secondary">{punicao.tipo_sancao}</Badge>
+                                                          </div>
+                                                        )}
+                                                        {punicao.data_inicio && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data Início
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {new Date(punicao.data_inicio).toLocaleDateString(
+                                                                "pt-BR",
+                                                              )}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                        {punicao.data_fim && (
+                                                          <div className="space-y-1">
+                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                              Data Fim
+                                                            </p>
+                                                            <p className="font-semibold text-foreground">
+                                                              {new Date(punicao.data_fim).toLocaleDateString("pt-BR")}
+                                                            </p>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  ),
+                                                )}
+                                              </div>
+                                            </div>
+                                          </Card>
+                                        )}
+                                    </>
+                                  )}
                                 </>
                               ) : (
-                                <Card className="border-2 border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/20">
-                                  <div className="p-12 text-center">
-                                    <span className="text-4xl mb-4 block">⚠️</span>
-                                    <h3 className="text-xl font-semibold mb-2">Análise ainda não realizada</h3>
-                                    <p className="text-muted-foreground">
-                                      Execute a análise de crédito para ver o score e dados completos deste cliente.
+                                <Card className="border-2 border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20">
+                                  <div className="p-8 text-center">
+                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 dark:bg-yellow-900/30 mb-4">
+                                      <span className="text-3xl">📊</span>
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                                      Análise Não Realizada
+                                    </h3>
+                                    <p className="text-muted-foreground mb-4">
+                                      Este cliente ainda não possui análise de crédito. Execute a análise para
+                                      visualizar os dados.
                                     </p>
+                                    <Button
+                                      onClick={() => {
+                                        setSelectedCustomer(null)
+                                      }}
+                                      variant="outline"
+                                    >
+                                      Fechar
+                                    </Button>
                                   </div>
                                 </Card>
                               )}
@@ -729,12 +1018,6 @@ export default function VMAXAnalysisPage() {
           </table>
         </div>
       </Card>
-
-      {vmaxRecords.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Nenhum registro VMAX encontrado para esta empresa.</p>
-        </div>
-      )}
     </div>
   )
 }
