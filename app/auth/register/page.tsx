@@ -93,10 +93,10 @@ export default function RegisterPage() {
       const { data: vmaxData, error: vmaxError } = await supabase
         .from("VMAX")
         .select("*")
-        .eq("CPF/CNPJ", cleanCpfCnpj)
-        .single()
+        .eq('"CPF/CNPJ"', cleanCpfCnpj)
+        .maybeSingle()
 
-      if (vmaxError && vmaxError.code !== "PGRST116") {
+      if (vmaxError) {
         console.error("[v0] Erro ao verificar VMAX:", vmaxError)
       }
 
@@ -108,9 +108,9 @@ export default function RegisterPage() {
         .from("companies")
         .select("id, name, email")
         .eq("email", email)
-        .single()
+        .maybeSingle()
 
-      if (companyError && companyError.code !== "PGRST116") {
+      if (companyError) {
         console.error("[v0] Erro ao verificar empresa:", companyError)
       }
 
@@ -144,27 +144,18 @@ export default function RegisterPage() {
       if (data.user) {
         console.log("[v0] User created successfully:", data.user.id)
 
-        const { error: profileError } = await supabase.from("profiles").insert({
-          id: data.user.id,
-          email: email,
+        console.log("[v0] User metadata set:", {
           full_name: fullName,
+          company_name: isCompanyEmail ? company?.name : companyName,
           role: isCompanyEmail ? "admin" : "user",
           company_id: company?.id || vmaxData?.id_company || null,
-          company_name: isCompanyEmail ? company.name : companyName,
-          cpf_cnpj: cleanCpfCnpj,
-          person_type: personType,
         })
 
-        if (profileError) {
-          console.error("[v0] Erro ao criar profile:", profileError)
-        } else {
-          console.log("[v0] Profile criado com sucesso")
-          if (isCompanyEmail) {
-            console.log("[v0] Usuário associado automaticamente à empresa:", company.name)
-          }
-          if (hasVmaxData) {
-            console.log("[v0] Usuário associado aos dados da VMAX:", vmaxData.Cliente)
-          }
+        if (isCompanyEmail) {
+          console.log("[v0] Usuário associado automaticamente à empresa:", company?.name)
+        }
+        if (hasVmaxData) {
+          console.log("[v0] Usuário associado aos dados da VMAX:", vmaxData?.Cliente)
         }
 
         router.push("/auth/register-success")
