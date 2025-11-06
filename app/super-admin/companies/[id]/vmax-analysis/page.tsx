@@ -169,21 +169,27 @@ export default function VMAXAnalysisPage() {
     try {
       const response = await runVMAXAnalysisSelected(companyId, Array.from(selectedRecords))
 
-      if (response.success) {
-        setResult({
-          success: true,
-          total: response.total || 0,
-          analyzed: response.analyzed || 0,
-          cached: response.cached || 0,
-          failed: response.failed || 0,
-          duration: response.duration || 0,
-        })
-      } else {
-        alert(`Erro: ${response.error}`)
+      if (!response) {
+        alert("Erro: Resposta vazia do servidor. Tente novamente.")
+        return
       }
+
+      if (!response.success) {
+        alert(`Erro: ${response.error || "Erro desconhecido"}`)
+        return
+      }
+
+      setResult({
+        success: true,
+        total: response.total || 0,
+        analyzed: response.analyzed || 0,
+        cached: response.cached || 0,
+        failed: response.failed || 0,
+        duration: response.duration || 0,
+      })
     } catch (error: any) {
       console.error("Error running analysis:", error)
-      alert(`Erro: ${error.message}`)
+      alert(`Erro: ${error.message || "Erro desconhecido"}`)
     } finally {
       setAnalyzing(false)
       setProgress(null)

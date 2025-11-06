@@ -118,9 +118,8 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
         if (!analysisResult.success) {
           console.error("[v0] runVMAXAnalysisSelected - ❌ Analysis failed:", document, analysisResult.error)
           failedCount++
-          // Aguardar 15 segundos antes da próxima requisição
           if (i < vmaxRecords.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 15000))
+            await new Promise((resolve) => setTimeout(resolve, 5000))
           }
           continue
         }
@@ -152,10 +151,9 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
         failedCount++
       }
 
-      // Aguardar 15 segundos antes da próxima requisição (rate limiting)
       if (i < vmaxRecords.length - 1) {
-        console.log("[v0] runVMAXAnalysisSelected - ⏳ Waiting 15s before next request...")
-        await new Promise((resolve) => setTimeout(resolve, 15000))
+        console.log("[v0] runVMAXAnalysisSelected - ⏳ Waiting 5s before next request...")
+        await new Promise((resolve) => setTimeout(resolve, 5000))
       }
     }
 
