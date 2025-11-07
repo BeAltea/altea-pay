@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrendingUp, DollarSign, Users, Building2, Download, FileText, Calendar, Settings } from "lucide-react"
+import { createBrowserClient } from "@supabase/ssr"
 
 interface CompanyReport {
   id: string
@@ -31,144 +32,120 @@ export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("current-month")
   const [reportData, setReportData] = useState<any>(null)
   const [isReportOpen, setIsReportOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [realData, setRealData] = useState<any>(null)
 
-  const getDataForPeriod = (period: string) => {
-    const baseData = {
-      "current-month": {
-        totalAmount: 6724336.46,
-        totalRecovered: 3308643.95,
-        totalDebts: 8835,
-        totalCustomers: 3336,
-        monthlyGrowth: 12.5,
-        companiesReport: [
-          {
-            id: "11111111-1111-1111-1111-111111111111",
-            name: "Enel Distribuição São Paulo",
-            totalCustomers: 1247,
-            totalDebts: 3456,
-            totalAmount: 2847392.5,
-            recoveredAmount: 1234567.89,
-            recoveryRate: 43.4,
-            overdueDebts: 234,
-            monthlyGrowth: 12.5,
-          },
-          {
-            id: "22222222-2222-2222-2222-222222222222",
-            name: "Sabesp - Companhia de Saneamento",
-            totalCustomers: 892,
-            totalDebts: 2134,
-            totalAmount: 1654321.75,
-            recoveredAmount: 876543.21,
-            recoveryRate: 53.0,
-            overdueDebts: 156,
-            monthlyGrowth: 8.3,
-          },
-          {
-            id: "33333333-3333-3333-3333-333333333333",
-            name: "CPFL Energia",
-            totalCustomers: 654,
-            totalDebts: 1789,
-            totalAmount: 1234567.89,
-            recoveredAmount: 654321.98,
-            recoveryRate: 53.0,
-            overdueDebts: 98,
-            monthlyGrowth: -2.1,
-          },
-          {
-            id: "44444444-4444-4444-4444-444444444444",
-            name: "Cemig Distribuição",
-            totalCustomers: 543,
-            totalDebts: 1456,
-            totalAmount: 987654.32,
-            recoveredAmount: 543210.87,
-            recoveryRate: 55.0,
-            overdueDebts: 87,
-            monthlyGrowth: 15.7,
-          },
-        ],
-        monthlyData: [
-          { month: "Jan", recovered: 450000, target: 500000, companies: 3, newDebts: 1200 },
-          { month: "Fev", recovered: 520000, target: 550000, companies: 4, newDebts: 1350 },
-          { month: "Mar", recovered: 680000, target: 600000, companies: 4, newDebts: 1500 },
-        ],
-      },
-      "last-month": {
-        totalAmount: 5892445.23,
-        totalRecovered: 2946222.61,
-        totalDebts: 7654,
-        totalCustomers: 2987,
-        monthlyGrowth: 8.7,
-        companiesReport: [
-          {
-            id: "11111111-1111-1111-1111-111111111111",
-            name: "Enel Distribuição São Paulo",
-            totalCustomers: 1156,
-            totalDebts: 3123,
-            totalAmount: 2456789.12,
-            recoveredAmount: 1123456.78,
-            recoveryRate: 45.7,
-            overdueDebts: 198,
-            monthlyGrowth: 9.2,
-          },
-          {
-            id: "22222222-2222-2222-2222-222222222222",
-            name: "Sabesp - Companhia de Saneamento",
-            totalCustomers: 823,
-            totalDebts: 1987,
-            totalAmount: 1456789.23,
-            recoveredAmount: 789123.45,
-            recoveryRate: 54.2,
-            overdueDebts: 134,
-            monthlyGrowth: 7.8,
-          },
-          {
-            id: "33333333-3333-3333-3333-333333333333",
-            name: "CPFL Energia",
-            totalCustomers: 598,
-            totalDebts: 1654,
-            totalAmount: 1098765.43,
-            recoveredAmount: 587432.1,
-            recoveryRate: 53.5,
-            overdueDebts: 87,
-            monthlyGrowth: 6.4,
-          },
-          {
-            id: "44444444-4444-4444-4444-444444444444",
-            name: "Cemig Distribuição",
-            totalCustomers: 410,
-            totalDebts: 890,
-            totalAmount: 880101.45,
-            recoveredAmount: 446210.28,
-            recoveryRate: 50.7,
-            overdueDebts: 65,
-            monthlyGrowth: 12.1,
-          },
-        ],
-        monthlyData: [
-          { month: "Dez", recovered: 380000, target: 450000, companies: 3, newDebts: 1100 },
-          { month: "Jan", recovered: 420000, target: 480000, companies: 4, newDebts: 1250 },
-          { month: "Fev", recovered: 580000, target: 520000, companies: 4, newDebts: 1400 },
-        ],
-      },
+  useEffect(() => {
+    const fetchRealData = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        console.log("[v0] 📊 Carregando dados reais dos relatórios...")
+
+        const { data: companies, error: companiesError } = await supabase.from("companies").select("id, name")
+
+        if (companiesError) throw companiesError
+
+        const { data: customers, error: customersError } = await supabase.from("customers").select(`
+            id,
+            company_id,
+            companies (name)
+          `)
+
+        if (customersError) throw customersError
+
+        const { data: vmaxCustomers, error: vmaxError } = await supabase.from("VMAX").select("id, Empresa")
+
+        if (vmaxError) throw vmaxError
+
+        const { data: debts, error: debtsError } = await supabase
+          .from("debts")
+          .select("id, customer_id, amount, status")
+
+        if (debtsError) throw debtsError
+
+        const { data: creditProfiles, error: profilesError } = await supabase.from("credit_profiles").select("*")
+
+        if (profilesError) throw profilesError
+
+        const totalCompanies = companies?.length || 0
+        const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
+        const totalAmount = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
+        const paidDebts = debts?.filter((d) => d.status === "paid") || []
+        const totalRecovered = paidDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
+
+        const companiesReport = (companies || []).map((company: any) => {
+          const companyCustomers = customers?.filter((c) => c.company_id === company.id) || []
+          const companyDebts =
+            debts?.filter((d) => {
+              const customer = customers?.find((c) => c.id === d.customer_id)
+              return customer?.company_id === company.id
+            }) || []
+
+          const companyAmount = companyDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
+          const companyPaid = companyDebts.filter((d) => d.status === "paid")
+          const companyRecovered = companyPaid.reduce((sum, debt) => sum + (debt.amount || 0), 0)
+          const recoveryRate = companyAmount > 0 ? (companyRecovered / companyAmount) * 100 : 0
+
+          return {
+            id: company.id,
+            name: company.name,
+            totalCustomers: companyCustomers.length,
+            totalDebts: companyDebts.length,
+            totalAmount: companyAmount,
+            recoveredAmount: companyRecovered,
+            recoveryRate: recoveryRate,
+            overdueDebts: companyDebts.filter((d) => d.status === "overdue").length,
+            monthlyGrowth: 0,
+          }
+        })
+
+        const data = {
+          totalCompanies,
+          totalCustomers,
+          totalAmount,
+          totalRecovered,
+          companiesReport,
+          totalDebts: debts?.length || 0,
+        }
+
+        console.log("[v0] ✅ Dados reais carregados:", data)
+        setRealData(data)
+      } catch (error) {
+        console.error("[v0] ❌ Erro ao carregar dados reais:", error)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    return baseData[period as keyof typeof baseData] || baseData["current-month"]
-  }
+    fetchRealData()
+  }, [])
 
-  const currentData = getDataForPeriod(selectedPeriod)
-  const companiesReport = currentData.companiesReport
-  const monthlyData = currentData.monthlyData
+  const globalStats = realData
+    ? {
+        totalCompanies: realData.totalCompanies,
+        totalCustomers: realData.totalCustomers,
+        totalDebts: realData.totalDebts,
+        totalAmount: realData.totalAmount,
+        totalRecovered: realData.totalRecovered,
+        totalOverdue:
+          realData.companiesReport?.reduce((sum: number, company: any) => sum + company.overdueDebts, 0) || 0,
+      }
+    : {
+        totalCompanies: 0,
+        totalCustomers: 0,
+        totalDebts: 0,
+        totalAmount: 0,
+        totalRecovered: 0,
+        totalOverdue: 0,
+      }
 
-  const globalStats = {
-    totalCompanies: companiesReport.length,
-    totalCustomers: currentData.totalCustomers,
-    totalDebts: currentData.totalDebts,
-    totalAmount: currentData.totalAmount,
-    totalRecovered: currentData.totalRecovered,
-    totalOverdue: companiesReport.reduce((sum: number, company: any) => sum + company.overdueDebts, 0),
-  }
-
-  const overallRecoveryRate = (globalStats.totalRecovered / globalStats.totalAmount) * 100
+  const companiesReport = realData?.companiesReport || []
+  const overallRecoveryRate =
+    globalStats.totalAmount > 0 ? (globalStats.totalRecovered / globalStats.totalAmount) * 100 : 0
 
   const topPerformers = [...companiesReport].sort((a, b) => b.recoveryRate - a.recoveryRate).slice(0, 3)
   const bottomPerformers = [...companiesReport].sort((a, b) => a.recoveryRate - b.recoveryRate).slice(0, 3)
@@ -229,7 +206,7 @@ export default function ReportsPage() {
         description: "Identificação de padrões e tendências de recuperação",
         data: {
           trendDirection: "Crescimento",
-          growthRate: currentData.monthlyGrowth,
+          growthRate: 0, // Historical data not available
           seasonalPatterns: [
             "Pico de recuperação no final do mês",
             "Queda típica nos primeiros 10 dias",
@@ -279,12 +256,21 @@ export default function ReportsPage() {
   const handlePeriodChange = (newPeriod: string) => {
     console.log("[v0] Mudando período para:", newPeriod)
     setSelectedPeriod(newPeriod)
-    // Data will automatically update due to reactive getDataForPeriod call
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Carregando dados reais...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Relatórios Globais</h1>
@@ -298,8 +284,8 @@ export default function ReportsPage() {
               <SelectValue placeholder="Selecionar período" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="current">Mês Atual</SelectItem>
-              <SelectItem value="previous">Mês Anterior</SelectItem>
+              <SelectItem value="current-month">Mês Atual</SelectItem>
+              <SelectItem value="last-month">Mês Anterior</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={handleExportReport} variant="outline" className="flex items-center space-x-2 bg-transparent">
@@ -309,7 +295,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Global Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardContent className="p-6">
@@ -338,7 +323,7 @@ export default function ReportsPage() {
               <Users className="h-8 w-8 text-green-600" />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              <span className="text-green-600">+{currentData.monthlyGrowth.toFixed(1)}%</span> vs mês anterior
+              <span className="text-green-600">+0%</span> vs mês anterior
             </p>
           </CardContent>
         </Card>
@@ -376,7 +361,6 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      {/* Report Generation Buttons */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -426,7 +410,6 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      {/* Companies Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -499,7 +482,6 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      {/* Report Modal */}
       <Dialog open={isReportOpen} onOpenChange={setIsReportOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

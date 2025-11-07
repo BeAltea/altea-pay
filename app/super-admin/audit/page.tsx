@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
+import { createBrowserClient } from "@/supabase/supabase-browser"
 import {
   Search,
   Filter,
@@ -51,137 +52,155 @@ interface AuditLog {
 
 interface SecurityEvent {
   id: string
-  timestamp: string
+  created_at: string
   event_type: string
-  description: string
-  user_id?: string
-  user_name?: string
-  ip_address: string
   severity: "low" | "medium" | "high" | "critical"
-  status: "resolved" | "investigating" | "open"
+  user_id?: string
+  user_email?: string
+  company_id?: string
+  company_name?: string
+  ip_address?: string
+  user_agent?: string
+  action: string
+  resource_type?: string
+  resource_id?: string
+  metadata?: Record<string, any>
+  status: "success" | "failed" | "blocked" | "pending"
 }
 
-const mockAuditLogs: AuditLog[] = [
-  {
-    id: "1",
-    timestamp: "2024-03-15T14:30:00Z",
-    user_id: "1",
-    user_name: "Super Administrador",
-    user_email: "super@alteapay.com",
-    action: "CREATE_COMPANY",
-    resource: "companies",
-    resource_id: "33333333-3333-3333-3333-333333333333",
-    details: "Nova empresa CPFL Energia criada no sistema",
-    ip_address: "192.168.1.100",
-    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    severity: "medium",
-    status: "success",
-  },
-  {
-    id: "2",
-    timestamp: "2024-03-15T13:45:00Z",
-    user_id: "2",
-    user_name: "Maria Santos",
-    user_email: "admin@enel.com.br",
-    company_name: "Enel Distribuição São Paulo",
-    action: "UPDATE_DEBT",
-    resource: "debts",
-    resource_id: "debt-12345",
-    details: "Dívida atualizada - valor alterado de R$ 1.500,00 para R$ 1.200,00",
-    ip_address: "10.0.0.45",
-    user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    severity: "low",
-    status: "success",
-  },
-  {
-    id: "3",
-    timestamp: "2024-03-15T12:20:00Z",
-    user_id: "4",
-    user_name: "Carlos Oliveira",
-    user_email: "admin@sabesp.com.br",
-    company_name: "Sabesp - Companhia de Saneamento",
-    action: "DELETE_USER",
-    resource: "users",
-    resource_id: "user-789",
-    details: "Usuário João Silva removido do sistema",
-    ip_address: "172.16.0.23",
-    user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-    severity: "high",
-    status: "success",
-  },
-  {
-    id: "4",
-    timestamp: "2024-03-15T11:15:00Z",
-    user_id: "6",
-    user_name: "Roberto Lima",
-    user_email: "admin@cpfl.com.br",
-    company_name: "CPFL Energia",
-    action: "LOGIN_FAILED",
-    resource: "auth",
-    details: "Tentativa de login falhada - senha incorreta",
-    ip_address: "203.0.113.45",
-    user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-    severity: "medium",
-    status: "failed",
-  },
-  {
-    id: "5",
-    timestamp: "2024-03-15T10:30:00Z",
-    user_id: "1",
-    user_name: "Super Administrador",
-    user_email: "super@alteapay.com",
-    action: "EXPORT_DATA",
-    resource: "reports",
-    details: "Relatório global exportado - dados de todas as empresas",
-    ip_address: "192.168.1.100",
-    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    severity: "medium",
-    status: "success",
-  },
-]
-
-const mockSecurityEvents: SecurityEvent[] = [
-  {
-    id: "1",
-    timestamp: "2024-03-15T15:45:00Z",
-    event_type: "SUSPICIOUS_LOGIN",
-    description: "Múltiplas tentativas de login de IP suspeito",
-    user_id: "unknown",
-    ip_address: "198.51.100.42",
-    severity: "high",
-    status: "investigating",
-  },
-  {
-    id: "2",
-    timestamp: "2024-03-15T14:20:00Z",
-    event_type: "RATE_LIMIT_EXCEEDED",
-    description: "API rate limit excedido - possível ataque DDoS",
-    ip_address: "203.0.113.89",
-    severity: "medium",
-    status: "resolved",
-  },
-  {
-    id: "3",
-    timestamp: "2024-03-15T13:10:00Z",
-    event_type: "PRIVILEGE_ESCALATION",
-    description: "Tentativa de acesso a recursos não autorizados",
-    user_id: "5",
-    user_name: "Ana Costa",
-    ip_address: "10.0.0.67",
-    severity: "critical",
-    status: "resolved",
-  },
-]
-
 export default function AuditPage() {
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(mockAuditLogs)
-  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>(mockSecurityEvents)
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [actionFilter, setActionFilter] = useState("all-actions")
   const [severityFilter, setSeverityFilter] = useState("all-severity")
+  const [eventTypeFilter, setEventTypeFilter] = useState("all-events")
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadRealAuditLogs = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        console.log("[v0] 📋 Carregando logs reais de auditoria...")
+
+        const { data: logs, error } = await supabase
+          .from("integration_logs")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50)
+
+        if (error) throw error
+
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name, email, company_id")
+        const { data: companies } = await supabase.from("companies").select("id, name")
+
+        const formattedLogs: AuditLog[] = (logs || []).map((log) => {
+          const profile = profiles?.find((p) => p.id === log.company_id)
+          const company = companies?.find((c) => c.id === log.company_id)
+
+          return {
+            id: log.id,
+            timestamp: log.created_at,
+            user_id: log.company_id || "system",
+            user_name: profile?.full_name || "Sistema",
+            user_email: profile?.email || "system@alteapay.com",
+            company_name: company?.name,
+            action: log.operation?.toUpperCase().replace(/ /g, "_") || "SYSTEM_ACTION",
+            resource: log.status === "success" ? "api_integration" : "error",
+            resource_id: log.cpf,
+            details: log.details ? JSON.stringify(log.details) : `Operação: ${log.operation} - Status: ${log.status}`,
+            ip_address: "Sistema Interno",
+            user_agent: "Altea Pay API",
+            severity: log.status === "error" ? "high" : "low",
+            status: log.status === "success" ? "success" : "failed",
+          }
+        })
+
+        console.log("[v0] ✅ Logs de auditoria carregados:", formattedLogs.length)
+        setAuditLogs(formattedLogs)
+      } catch (error) {
+        console.error("[v0] ❌ Erro ao carregar logs:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const loadSecurityEvents = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        console.log("[v0] 🔒 Carregando eventos de segurança reais...")
+
+        const { data: events, error } = await supabase
+          .from("security_events")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(100)
+
+        if (error) throw error
+
+        const { data: companies } = await supabase.from("companies").select("id, name")
+
+        const formattedEvents: SecurityEvent[] = (events || []).map((event) => {
+          const company = companies?.find((c) => c.id === event.company_id)
+
+          return {
+            id: event.id,
+            created_at: event.created_at,
+            event_type: event.event_type,
+            severity: event.severity,
+            user_id: event.user_id,
+            user_email: event.user_email,
+            company_id: event.company_id,
+            company_name: company?.name,
+            ip_address: event.ip_address,
+            user_agent: event.user_agent,
+            action: event.action,
+            resource_type: event.resource_type,
+            resource_id: event.resource_id,
+            metadata: event.metadata,
+            status: event.status,
+          }
+        })
+
+        console.log("[v0] ✅ Eventos de segurança carregados:", formattedEvents.length)
+        setSecurityEvents(formattedEvents)
+      } catch (error) {
+        console.error("[v0] ❌ Erro ao carregar eventos:", error)
+        toast({
+          title: "Erro ao carregar eventos",
+          description: "Não foi possível carregar os eventos de segurança.",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadRealAuditLogs()
+    loadSecurityEvents()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Carregando logs de auditoria...</p>
+        </div>
+      </div>
+    )
+  }
 
   const filteredLogs = auditLogs.filter((log) => {
     const matchesSearch =
@@ -194,6 +213,19 @@ export default function AuditPage() {
     const matchesSeverity = severityFilter === "all-severity" || log.severity === severityFilter
 
     return matchesSearch && matchesAction && matchesSeverity
+  })
+
+  const filteredEvents = securityEvents.filter((event) => {
+    const matchesSearch =
+      event.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.event_type.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesEventType = eventTypeFilter === "all-events" || event.event_type === eventTypeFilter
+
+    const matchesSeverity = severityFilter === "all-severity" || event.severity === severityFilter
+
+    return matchesSearch && matchesEventType && matchesSeverity
   })
 
   const handleExport = async (type: string) => {
@@ -212,7 +244,7 @@ export default function AuditPage() {
         filename = "audit-logs"
         break
       case "security-events":
-        data = securityEvents
+        data = filteredEvents
         filename = "security-events"
         break
       case "lgpd-report":
@@ -344,6 +376,10 @@ export default function AuditPage() {
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
       case "open":
         return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
+      case "blocked":
+        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
+      case "pending":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300"
     }
@@ -363,6 +399,9 @@ export default function AuditPage() {
     criticalEvents: securityEvents.filter((e) => e.severity === "critical").length,
     failedActions: filteredLogs.filter((l) => l.status === "failed").length,
     activeInvestigations: securityEvents.filter((e) => e.status === "investigating").length,
+    totalEvents: filteredEvents.length,
+    failedEvents: filteredEvents.filter((e) => e.status === "failed").length,
+    dataExports: filteredEvents.filter((e) => e.event_type === "data_export").length,
   }
 
   return (
@@ -382,6 +421,7 @@ export default function AuditPage() {
               setSearchTerm("")
               setActionFilter("all-actions")
               setSeverityFilter("all-severity")
+              setEventTypeFilter("all-events")
               toast({ title: "Filtros limpos", description: "Todos os filtros foram removidos." })
             }}
           >
@@ -633,18 +673,56 @@ export default function AuditPage() {
         <TabsContent value="security" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2 text-red-700 dark:text-red-400">
-                <Shield className="h-5 w-5" />
-                <span>Eventos de Segurança</span>
-              </CardTitle>
-              <CardDescription>Monitoramento de ameaças e atividades suspeitas</CardDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Eventos de Segurança</CardTitle>
+                  <CardDescription>
+                    Mostrando {filteredEvents.length} de {securityEvents.length} eventos
+                  </CardDescription>
+                </div>
+                <div className="flex space-x-2">
+                  <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all-events">Todos os Tipos</SelectItem>
+                      <SelectItem value="credit_analysis">Análise de Crédito</SelectItem>
+                      <SelectItem value="data_export">Exportação de Dados</SelectItem>
+                      <SelectItem value="login">Login</SelectItem>
+                      <SelectItem value="user_created">Criação de Usuário</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={severityFilter} onValueChange={setSeverityFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all-severity">Todas as Severidades</SelectItem>
+                      <SelectItem value="critical">Crítico</SelectItem>
+                      <SelectItem value="high">Alto</SelectItem>
+                      <SelectItem value="medium">Médio</SelectItem>
+                      <SelectItem value="low">Baixo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="relative mt-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar eventos por ação, email ou tipo..."
+                  className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {securityEvents.map((event) => (
+                {filteredEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg"
+                    className="flex flex-col lg:flex-row lg:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3 mb-2">
@@ -660,47 +738,61 @@ export default function AuditPage() {
                                     : "bg-blue-100 dark:bg-blue-900/20"
                             }`}
                           >
-                            <AlertTriangle className="h-4 w-4" />
+                            {event.event_type.includes("analysis") ? (
+                              <FileText className="h-4 w-4" />
+                            ) : event.event_type.includes("export") ? (
+                              <Download className="h-4 w-4" />
+                            ) : event.event_type.includes("login") ? (
+                              <User className="h-4 w-4" />
+                            ) : (
+                              <Shield className="h-4 w-4" />
+                            )}
                           </div>
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center space-x-2 mb-1">
                             <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                              {event.event_type.replace(/_/g, " ")}
+                              {event.event_type.replace(/_/g, " ").toUpperCase()}
                             </h3>
                             <Badge className={getSeverityColor(event.severity)}>{event.severity.toUpperCase()}</Badge>
                             <Badge className={getStatusColor(event.status)}>{event.status.toUpperCase()}</Badge>
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{event.description}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{event.action}</p>
                           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            {event.user_name && (
+                            {event.user_email && (
                               <div className="flex items-center space-x-1">
                                 <User className="h-3 w-3" />
-                                <span>{event.user_name}</span>
+                                <span>{event.user_email}</span>
+                              </div>
+                            )}
+                            {event.company_name && (
+                              <div className="flex items-center space-x-1">
+                                <Building2 className="h-3 w-3" />
+                                <span>{event.company_name}</span>
                               </div>
                             )}
                             <div className="flex items-center space-x-1">
                               <Clock className="h-3 w-3" />
-                              <span>{new Date(event.timestamp).toLocaleString("pt-BR")}</span>
+                              <span>{new Date(event.created_at).toLocaleString("pt-BR")}</span>
                             </div>
-                            <span>IP: {event.ip_address}</span>
+                            {event.ip_address && <span>IP: {event.ip_address}</span>}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 lg:mt-0 lg:ml-6 flex space-x-2">
+                    <div className="mt-4 lg:mt-0 lg:ml-6">
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" onClick={() => handleInvestigate(event)}>
+                          <Button size="sm" variant="outline" onClick={() => setSelectedEvent(event)}>
                             <Eye className="h-4 w-4 mr-1" />
-                            Investigar
+                            Detalhes
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-2xl">
                           <DialogHeader>
-                            <DialogTitle>Investigação de Evento de Segurança</DialogTitle>
-                            <DialogDescription>Análise detalhada do evento de segurança</DialogDescription>
+                            <DialogTitle>Detalhes do Evento de Segurança</DialogTitle>
+                            <DialogDescription>Informações completas sobre o evento registrado</DialogDescription>
                           </DialogHeader>
                           {selectedEvent && (
                             <div className="space-y-4">
@@ -712,60 +804,79 @@ export default function AuditPage() {
                                   </p>
                                 </div>
                                 <div>
+                                  <h4 className="font-medium mb-1">Status</h4>
+                                  <Badge className={getStatusColor(selectedEvent.status)}>
+                                    {selectedEvent.status.toUpperCase()}
+                                  </Badge>
+                                </div>
+                                {selectedEvent.user_email && (
+                                  <div>
+                                    <h4 className="font-medium mb-1">Usuário</h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                      {selectedEvent.user_email}
+                                    </p>
+                                  </div>
+                                )}
+                                <div>
+                                  <h4 className="font-medium mb-1">Data/Hora</h4>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {new Date(selectedEvent.created_at).toLocaleString("pt-BR")}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-medium mb-1">Ação</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{selectedEvent.action}</p>
+                              </div>
+                              {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
+                                <div>
+                                  <h4 className="font-medium mb-1">Metadados</h4>
+                                  <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">
+                                    {JSON.stringify(selectedEvent.metadata, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-2 gap-4">
+                                {selectedEvent.ip_address && (
+                                  <div>
+                                    <h4 className="font-medium mb-1">Endereço IP</h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                      {selectedEvent.ip_address}
+                                    </p>
+                                  </div>
+                                )}
+                                <div>
                                   <h4 className="font-medium mb-1">Severidade</h4>
                                   <Badge className={getSeverityColor(selectedEvent.severity)}>
                                     {selectedEvent.severity.toUpperCase()}
                                   </Badge>
                                 </div>
                               </div>
-                              <div>
-                                <h4 className="font-medium mb-1">Descrição</h4>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">{selectedEvent.description}</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4">
+                              {selectedEvent.user_agent && (
                                 <div>
-                                  <h4 className="font-medium mb-1">Endereço IP</h4>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">{selectedEvent.ip_address}</p>
-                                </div>
-                                <div>
-                                  <h4 className="font-medium mb-1">Status</h4>
-                                  <Badge className={getStatusColor(selectedEvent.status)}>
-                                    {selectedEvent.status.toUpperCase()}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div>
-                                <h4 className="font-medium mb-1">Ações Recomendadas</h4>
-                                <div className="space-y-2">
-                                  {selectedEvent.severity === "critical" && (
-                                    <p className="text-sm text-red-600 dark:text-red-400">
-                                      • Bloqueio imediato do IP suspeito
-                                    </p>
-                                  )}
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    • Monitoramento contínuo da atividade
-                                  </p>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    • Análise de logs relacionados
-                                  </p>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    • Notificação da equipe de segurança
+                                  <h4 className="font-medium mb-1">User Agent</h4>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 break-all">
+                                    {selectedEvent.user_agent}
                                   </p>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           )}
                         </DialogContent>
                       </Dialog>
-                      {event.status === "open" && (
-                        <Button size="sm" onClick={() => handleResolveEvent(event.id)}>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Resolver
-                        </Button>
-                      )}
                     </div>
                   </div>
                 ))}
+
+                {filteredEvents.length === 0 && (
+                  <div className="text-center py-12">
+                    <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Nenhum evento encontrado</h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Tente ajustar os filtros ou limpar a busca para ver mais eventos.
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

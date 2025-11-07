@@ -24,11 +24,61 @@ import {
 } from "lucide-react"
 
 import { useToast } from "@/hooks/use-toast"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createBrowserClient } from "@supabase/ssr"
 
 export default function SystemPage() {
   const { toast } = useToast()
   const [isSeeding, setIsSeeding] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [dbStats, setDbStats] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchDatabaseStats = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        console.log("[v0] 🔧 Carregando estatísticas reais do banco de dados...")
+
+        // Count records in each table
+        const [
+          { count: companiesCount },
+          { count: profilesCount },
+          { count: debtsCount },
+          { count: customersCount },
+          { count: vmaxCount },
+          { count: creditProfilesCount },
+        ] = await Promise.all([
+          supabase.from("companies").select("*", { count: "exact", head: true }),
+          supabase.from("profiles").select("*", { count: "exact", head: true }),
+          supabase.from("debts").select("*", { count: "exact", head: true }),
+          supabase.from("customers").select("*", { count: "exact", head: true }),
+          supabase.from("VMAX").select("*", { count: "exact", head: true }),
+          supabase.from("credit_profiles").select("*", { count: "exact", head: true }),
+        ])
+
+        const stats = {
+          companies: companiesCount || 0,
+          profiles: profilesCount || 0,
+          debts: debtsCount || 0,
+          customers: (customersCount || 0) + (vmaxCount || 0),
+          creditProfiles: creditProfilesCount || 0,
+        }
+
+        console.log("[v0] ✅ Estatísticas reais do banco:", stats)
+        setDbStats(stats)
+      } catch (error) {
+        console.error("[v0] ❌ Erro ao carregar estatísticas do banco:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDatabaseStats()
+  }, [])
 
   const handleSeedDemo = async () => {
     setIsSeeding(true)
@@ -47,6 +97,8 @@ export default function SystemPage() {
         title: "Seed executado com sucesso!",
         description: `Criadas ${data.companies} empresas, ${data.customers} clientes e ${data.debts} dívidas.`,
       })
+
+      window.location.reload()
     } catch (error) {
       toast({
         title: "Erro ao executar seed",
@@ -58,6 +110,17 @@ export default function SystemPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Carregando estatísticas do sistema...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -66,7 +129,7 @@ export default function SystemPage() {
           <p className="text-muted-foreground">Monitoramento e gerenciamento do sistema</p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Atualizar
           </Button>
@@ -333,19 +396,23 @@ export default function SystemPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm">companies</span>
-                    <Badge variant="outline">1,247 registros</Badge>
+                    <Badge variant="outline">{dbStats?.companies || 0} registros</Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">profiles</span>
-                    <Badge variant="outline">3,891 registros</Badge>
+                    <Badge variant="outline">{dbStats?.profiles || 0} registros</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">customers (total)</span>
+                    <Badge variant="outline">{dbStats?.customers || 0} registros</Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">debts</span>
-                    <Badge variant="outline">15,672 registros</Badge>
+                    <Badge variant="outline">{dbStats?.debts || 0} registros</Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">payments</span>
-                    <Badge variant="outline">8,934 registros</Badge>
+                    <span className="text-sm">credit_profiles</span>
+                    <Badge variant="outline">{dbStats?.creditProfiles || 0} registros</Badge>
                   </div>
                 </div>
               </CardContent>

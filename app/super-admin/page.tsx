@@ -124,8 +124,25 @@ export default async function SuperAdminDashboardPage() {
     .order("created_at", { ascending: false })
     .limit(4)
 
-  const recentActivity =
-    recentPayments?.map((payment, index) => ({
+  const { data: recentAnalyses } = await supabase
+    .from("credit_profiles")
+    .select("id, name, company_id, created_at, score, analysis_type, companies(name)")
+    .order("created_at", { ascending: false })
+    .limit(3)
+
+  const analysisActivities =
+    recentAnalyses?.map((analysis) => ({
+      id: analysis.id,
+      type: "analysis",
+      description: `Análise de crédito ${analysis.analysis_type === "free" ? "Gov" : "Assertiva"} realizada - Score: ${analysis.score || "N/A"}`,
+      company: analysis.companies?.name || "Empresa",
+      amount: null,
+      time: new Date(analysis.created_at).toLocaleDateString("pt-BR"),
+      status: "info",
+    })) || []
+
+  const paymentActivities =
+    recentPayments?.map((payment) => ({
       id: payment.id,
       type: "payment",
       description: `Pagamento de R$ ${Number(payment.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recebido`,
@@ -134,6 +151,10 @@ export default async function SuperAdminDashboardPage() {
       time: new Date(payment.created_at).toLocaleDateString("pt-BR"),
       status: "success",
     })) || []
+
+  const recentActivity = [...analysisActivities, ...paymentActivities]
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    .slice(0, 4)
 
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">

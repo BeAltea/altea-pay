@@ -28,31 +28,28 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
         role: roleFilter,
         status: statusFilter,
       })
-    }, 300) // Debounce de 300ms
+    }, 300)
 
     return () => clearTimeout(timeoutId)
-  }, [searchTerm, roleFilter, statusFilter, onFiltersChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, roleFilter, statusFilter])
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
-    console.log("[v0] Pesquisando usuários por:", value)
     setSearchTerm(value)
   }
 
   const handleRoleFilter = (value: string) => {
     const role = value === "all" ? null : value
-    console.log("[v0] Filtro de função alterado para:", role)
     setRoleFilter(role)
   }
 
   const handleStatusFilter = (value: string) => {
     const status = value === "all" ? null : value
-    console.log("[v0] Filtro de status alterado para:", status)
-    setStatusFilter(status)
+    setStatusFilter(value)
   }
 
   const clearFilters = () => {
-    console.log("[v0] Limpando todos os filtros")
     setSearchTerm("")
     setRoleFilter(null)
     setStatusFilter(null)

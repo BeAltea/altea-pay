@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
-import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock } from "lucide-react"
+import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2 } from "lucide-react"
 import { UserFilters } from "@/components/super-admin/user-filters"
+import { createBrowserClient } from "@supabase/ssr"
 
 interface User {
   id: string
@@ -23,82 +24,66 @@ interface User {
 }
 
 export default function UsersPage() {
+  const [allUsers, setAllUsers] = useState<User[]>([])
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [isFiltered, setIsFiltered] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  // Mock data for users
-  const allUsers: User[] = [
-    {
-      id: "1",
-      email: "super@alteapay.com",
-      full_name: "Super Administrador",
-      role: "super_admin",
-      status: "active",
-      last_login: "2024-03-15T14:30:00Z",
-      created_at: "2024-01-01T00:00:00Z",
-      total_logins: 245,
-    },
-    {
-      id: "2",
-      email: "admin@enel.com.br",
-      full_name: "Maria Santos",
-      role: "admin",
-      company_name: "Enel Distribuição São Paulo",
-      company_id: "11111111-1111-1111-1111-111111111111",
-      status: "active",
-      last_login: "2024-03-15T10:15:00Z",
-      created_at: "2024-01-15T10:00:00Z",
-      total_logins: 89,
-    },
-    {
-      id: "3",
-      email: "joao.silva@enel.com.br",
-      full_name: "João Silva",
-      role: "user",
-      company_name: "Enel Distribuição São Paulo",
-      company_id: "11111111-1111-1111-1111-111111111111",
-      status: "active",
-      last_login: "2024-03-14T16:45:00Z",
-      created_at: "2024-01-20T14:30:00Z",
-      total_logins: 156,
-    },
-    {
-      id: "4",
-      email: "admin@sabesp.com.br",
-      full_name: "Carlos Oliveira",
-      role: "admin",
-      company_name: "Sabesp - Companhia de Saneamento",
-      company_id: "22222222-2222-2222-2222-222222222222",
-      status: "active",
-      last_login: "2024-03-15T09:30:00Z",
-      created_at: "2024-02-20T14:30:00Z",
-      total_logins: 67,
-    },
-    {
-      id: "5",
-      email: "ana.costa@sabesp.com.br",
-      full_name: "Ana Costa",
-      role: "user",
-      company_name: "Sabesp - Companhia de Saneamento",
-      company_id: "22222222-2222-2222-2222-222222222222",
-      status: "inactive",
-      last_login: "2024-03-10T11:20:00Z",
-      created_at: "2024-02-25T09:15:00Z",
-      total_logins: 23,
-    },
-    {
-      id: "6",
-      email: "admin@cpfl.com.br",
-      full_name: "Roberto Lima",
-      role: "admin",
-      company_name: "CPFL Energia",
-      company_id: "33333333-3333-3333-3333-333333333333",
-      status: "suspended",
-      last_login: "2024-03-05T15:10:00Z",
-      created_at: "2024-03-10T09:15:00Z",
-      total_logins: 12,
-    },
-  ]
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        const { data: profiles, error } = await supabase
+          .from("profiles")
+          .select(`
+            id,
+            email,
+            full_name,
+            role,
+            company_id,
+            created_at,
+            companies (
+              name
+            )
+          `)
+          .order("created_at", { ascending: false })
+
+        if (error) {
+          console.error("[v0] Erro ao buscar profiles:", error)
+          throw error
+        }
+
+        console.log("[v0] Total de usuários carregados:", profiles?.length || 0)
+
+        // Transform to User format
+        const users: User[] = (profiles || []).map((profile: any) => ({
+          id: profile.id,
+          email: profile.email || "",
+          full_name: profile.full_name || "Sem nome",
+          role: profile.role || "user",
+          company_name: profile.companies?.name,
+          company_id: profile.company_id,
+          status: "active",
+          last_login: new Date().toISOString(),
+          created_at: profile.created_at,
+          total_logins: 0,
+        }))
+
+        setAllUsers(users)
+        console.log("[v0] Usuários carregados com sucesso:", users.length)
+      } catch (error) {
+        console.error("[v0] Erro ao carregar usuários:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUsers()
+  }, [])
 
   const handleFiltersChange = (filters: {
     search: string
@@ -130,10 +115,9 @@ export default function UsersPage() {
       filtered = filtered.filter((user) => user.status === filters.status)
     }
 
+    console.log("[v0] Usuários filtrados:", filtered.length, "de", allUsers.length)
     setFilteredUsers(filtered)
     setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null)
-
-    console.log("[v0] Usuários filtrados:", filtered.length, "de", allUsers.length)
   }
 
   const displayUsers = isFiltered ? filteredUsers : allUsers
@@ -146,56 +130,12 @@ export default function UsersPage() {
     regularUsers: allUsers.filter((u) => u.role === "user").length,
   }
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "super_admin":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-300"
-      case "admin":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
-      case "user":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300"
-    }
-  }
-
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case "super_admin":
-        return "Super Admin"
-      case "admin":
-        return "Administrador"
-      case "user":
-        return "Usuário"
-      default:
-        return "Usuário"
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
-      case "inactive":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
-      case "suspended":
-        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300"
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "active":
-        return "Ativo"
-      case "inactive":
-        return "Inativo"
-      case "suspended":
-        return "Suspenso"
-      default:
-        return "Inativo"
-    }
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    )
   }
 
   return (
@@ -321,8 +261,32 @@ export default function UsersPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.full_name}</h3>
-                          <Badge className={getRoleColor(user.role)}>{getRoleLabel(user.role)}</Badge>
-                          <Badge className={getStatusColor(user.status)}>{getStatusLabel(user.status)}</Badge>
+                          <Badge
+                            className={
+                              user.role === "super_admin"
+                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-300"
+                                : user.role === "admin"
+                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                                  : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                            }
+                          >
+                            {user.role === "super_admin"
+                              ? "Super Admin"
+                              : user.role === "admin"
+                                ? "Administrador"
+                                : "Usuário"}
+                          </Badge>
+                          <Badge
+                            className={
+                              user.status === "active"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+                                : user.status === "suspended"
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                  : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+                            }
+                          >
+                            {user.status === "active" ? "Ativo" : user.status === "suspended" ? "Suspenso" : "Inativo"}
+                          </Badge>
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
                           <span>{user.email}</span>
@@ -342,18 +306,6 @@ export default function UsersPage() {
 
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 mt-4 lg:mt-0">
                     <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
-                      <div className="text-center sm:text-right">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{user.total_logins}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Logins</p>
-                      </div>
-
-                      <div className="text-center sm:text-right">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {new Date(user.last_login).toLocaleDateString("pt-BR")}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Último acesso</p>
-                      </div>
-
                       <div className="text-center sm:text-right">
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
                           {new Date(user.created_at).toLocaleDateString("pt-BR")}

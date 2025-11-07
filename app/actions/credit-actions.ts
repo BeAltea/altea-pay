@@ -7,6 +7,7 @@ import {
   runVMAXAutoAnalysis,
   runAssertivaManualAnalysis as runAssertivaManualAnalysisService,
 } from "@/services/creditAnalysisService"
+import { logSecurityEvent } from "@/lib/security-logger"
 
 interface RunCreditAnalysisParams {
   company_id: string
@@ -283,14 +284,55 @@ export async function runAssertivaManualAnalysisWrapper(customerIds: string[], c
   try {
     console.log("[v0] runAssertivaManualAnalysis action - Starting for customers:", customerIds.length)
 
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "high",
+      action: `Iniciou análise Assertiva (paga) para ${customerIds.length} cliente(s)`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: {
+        customer_count: customerIds.length,
+        analysis_type: "assertiva",
+        is_paid: true,
+      },
+      status: "pending",
+    })
+
     const result = await runAssertivaManualAnalysisService(customerIds, companyId)
 
     if (!result.success) {
+      await logSecurityEvent({
+        event_type: "credit_analysis",
+        severity: "high",
+        action: `Análise Assertiva falhou: ${result.error}`,
+        resource_type: "customer",
+        company_id: companyId,
+        metadata: { error: result.error },
+        status: "failed",
+      })
+
       return {
         success: false,
         message: `Erro ao executar análise: ${result.error}`,
       }
     }
+
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "high",
+      action: `Análise Assertiva concluída - ${result.analyzed} analisados, ${result.cached} em cache, ${result.failed} falharam`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: {
+        total: result.total,
+        analyzed: result.analyzed,
+        cached: result.cached,
+        failed: result.failed,
+        duration_ms: result.duration,
+        customers_analyzed: result.customers_analyzed.map((c: any) => c.cpf),
+      },
+      status: "success",
+    })
 
     const message = `
 Análise Assertiva concluída com sucesso!
@@ -321,6 +363,17 @@ ${
     }
   } catch (error: any) {
     console.error("[v0] runAssertivaManualAnalysis action - Error:", error)
+
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "critical",
+      action: `Erro crítico na análise Assertiva: ${error.message}`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: { error: error.message },
+      status: "failed",
+    })
+
     return {
       success: false,
       message: `Erro ao executar análise: ${error.message}`,
@@ -336,6 +389,20 @@ export async function runGovernmentAnalysis(customerIds: string[], companyId: st
   try {
     console.log("[v0] runGovernmentAnalysis action - Starting for customers:", customerIds.length)
 
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "medium",
+      action: `Iniciou análise Gov para ${customerIds.length} cliente(s)`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: {
+        customer_count: customerIds.length,
+        analysis_type: "government",
+        api: "Portal da Transparência",
+      },
+      status: "pending",
+    })
+
     const supabase = createServerClient()
 
     // Fetch customer data from VMAX table
@@ -346,6 +413,14 @@ export async function runGovernmentAnalysis(customerIds: string[], companyId: st
 
     if (vmaxError) throw vmaxError
     if (!vmaxData || vmaxData.length === 0) {
+      await logSecurityEvent({
+        event_type: "credit_analysis",
+        severity: "low",
+        action: `Análise Gov falhou - nenhum cliente encontrado`,
+        resource_type: "customer",
+        company_id: companyId,
+        status: "failed",
+      })
       return {
         success: false,
         error: "Nenhum cliente encontrado na tabela VMAX",
@@ -407,6 +482,23 @@ export async function runGovernmentAnalysis(customerIds: string[], companyId: st
 
     const duration = Date.now() - startTime
 
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "medium",
+      action: `Análise Gov concluída - ${analyzed} analisados, ${cached} em cache, ${failed} falharam`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: {
+        total: vmaxData.length,
+        analyzed,
+        cached,
+        failed,
+        duration_ms: duration,
+        customers_analyzed: customersAnalyzed.map((c) => c.cpf),
+      },
+      status: "success",
+    })
+
     return {
       success: true,
       total: vmaxData.length,
@@ -418,6 +510,17 @@ export async function runGovernmentAnalysis(customerIds: string[], companyId: st
     }
   } catch (error: any) {
     console.error("[v0] runGovernmentAnalysis action - Error:", error)
+
+    await logSecurityEvent({
+      event_type: "credit_analysis",
+      severity: "high",
+      action: `Erro na análise Gov: ${error.message}`,
+      resource_type: "customer",
+      company_id: companyId,
+      metadata: { error: error.message },
+      status: "failed",
+    })
+
     return {
       success: false,
       error: error.message,
