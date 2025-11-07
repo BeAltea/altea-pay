@@ -11,15 +11,16 @@ import { Search, RefreshCw, Sparkles, Loader2, Building2, AlertCircle } from "lu
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
 import { runGovernmentAnalysis } from "@/app/actions/credit-actions"
-import { createBrowserClient } from "@/lib/supabase/client"
+import { getAllCustomers } from "@/app/actions/analyses-actions"
 
 interface Customer {
   id: string
-  "CPF/CNPJ": string
-  Cliente: string
-  Cidade: string
-  Empresa: string
-  id_company: string
+  name: string
+  document: string
+  city: string
+  company_name: string
+  company_id: string
+  source_table: "customers" | "vmax"
 }
 
 export default function ClientesPage() {
@@ -28,7 +29,7 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [analysisType, setAnalysisType] = useState<"gov" | "assertiva">("gov")
+  const [analysisType, setAnalysisType] = useState<"gov" | "assertiva" | "consolidated">("gov")
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
   const { toast } = useToast()
 
@@ -38,17 +39,22 @@ export default function ClientesPage() {
 
   const loadCustomers = async () => {
     try {
+      console.log("[v0] ClientesPage - Loading customers...")
       setLoading(true)
-      const supabase = createBrowserClient()
 
-      const { data, error } = await supabase
-        .from("VMAX")
-        .select('id, "CPF/CNPJ", Cliente, Cidade, Empresa, id_company')
-        .order("Cliente", { ascending: true })
+      const response = await getAllCustomers()
 
-      if (error) throw error
-
-      setCustomers(data || [])
+      if (response.success) {
+        console.log("[v0] ClientesPage - Customers loaded:", response.data.length)
+        setCustomers(response.data)
+      } else {
+        console.error("[v0] ClientesPage - Error:", response.error)
+        toast({
+          title: "Erro ao carregar clientes",
+          description: response.error,
+          variant: "destructive",
+        })
+      }
     } catch (error: any) {
       console.error("[v0] ClientesPage - Error loading customers:", error)
       toast({
@@ -63,9 +69,9 @@ export default function ClientesPage() {
 
   const filteredCustomers = customers.filter(
     (customer) =>
-      customer.Cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer["CPF/CNPJ"]?.includes(searchTerm) ||
-      customer.Cidade?.toLowerCase().includes(searchTerm.toLowerCase()),
+      customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.document?.includes(searchTerm) ||
+      customer.city?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   const toggleCustomerSelection = (customerId: string) => {
@@ -86,7 +92,7 @@ export default function ClientesPage() {
     }
   }
 
-  const handleRunAnalysis = (type: "gov" | "assertiva") => {
+  const handleRunAnalysis = (type: "gov" | "assertiva" | "consolidated") => {
     if (selectedCustomers.size === 0) {
       toast({
         title: "Nenhum cliente selecionado",
@@ -112,20 +118,63 @@ export default function ClientesPage() {
 
       const customerIdsToAnalyze = Array.from(selectedCustomers)
 
-      let result
-      if (analysisType === "assertiva") {
-        result = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.id_company)
+      if (analysisType === "consolidated") {
+        // Run both analyses sequentially
+        const govResult = await runGovernmentAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
+        const assertivaResult = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
+
+        if (govResult.success && assertivaResult.success) {
+          const totalDuration = (govResult.duration || 0) + (assertivaResult.duration || 0)
+          const durationInSeconds = totalDuration ? (totalDuration / 1000).toFixed(2) : "0.00"
+
+          toast({
+            title: "Análise Consolidada concluída!",
+            description: `Perfil consolidado criado com sucesso!
+
+📊 Resumo Geral:
+- Total de clientes: ${selectedCustomers.size}
+
+📋 Análise do Governo:
+- Análises realizadas: ${govResult.analyzed}
+- Cache: ${govResult.cached}
+- Falhas: ${govResult.failed}
+
+💎 Análise Assertiva:
+- Análises realizadas: ${assertivaResult.analyzed}
+- Cache: ${assertivaResult.cached}
+- Falhas: ${assertivaResult.failed}
+
+⏱️ Tempo total: ${durationInSeconds}s`,
+          })
+
+          setSelectedCustomers(new Set())
+        } else {
+          const errors = []
+          if (!govResult.success) errors.push(`Governo: ${govResult.error}`)
+          if (!assertivaResult.success) errors.push(`Assertiva: ${assertivaResult.error}`)
+
+          toast({
+            title: "Erro na análise consolidada",
+            description: errors.join(" | "),
+            variant: "destructive",
+          })
+        }
       } else {
-        result = await runGovernmentAnalysis(customerIdsToAnalyze, firstCustomer.id_company)
-      }
+        // Run single analysis
+        let result
+        if (analysisType === "assertiva") {
+          result = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
+        } else {
+          result = await runGovernmentAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
+        }
 
-      if (result.success) {
-        const durationInSeconds =
-          result.duration && typeof result.duration === "number" ? (result.duration / 1000).toFixed(2) : "0.00"
+        if (result.success) {
+          const durationInSeconds =
+            result.duration && typeof result.duration === "number" ? (result.duration / 1000).toFixed(2) : "0.00"
 
-        toast({
-          title: "Análise concluída!",
-          description: `Análise ${analysisType === "assertiva" ? "Assertiva" : "do Governo"} concluída com sucesso!
+          toast({
+            title: "Análise concluída!",
+            description: `Análise ${analysisType === "assertiva" ? "Assertiva" : "do Governo"} concluída com sucesso!
 
 📊 Resumo:
 - Total de clientes selecionados: ${result.total}
@@ -133,15 +182,16 @@ export default function ClientesPage() {
 - Já tinham análise (cache): ${result.cached}
 - Falhas: ${result.failed}
 - Tempo total: ${durationInSeconds}s`,
-        })
+          })
 
-        setSelectedCustomers(new Set())
-      } else {
-        toast({
-          title: "Erro na análise",
-          description: result.error || "Erro desconhecido",
-          variant: "destructive",
-        })
+          setSelectedCustomers(new Set())
+        } else {
+          toast({
+            title: "Erro na análise",
+            description: result.error || "Erro desconhecido",
+            variant: "destructive",
+          })
+        }
       }
     } catch (error: any) {
       console.error("[v0] ClientesPage - Error running analysis:", error)
@@ -158,8 +208,8 @@ export default function ClientesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Clientes</h1>
-        <p className="text-muted-foreground">Selecione clientes e execute análises de crédito</p>
+        <h1 className="text-3xl font-bold">Análise Gov/Assertiva</h1>
+        <p className="text-muted-foreground">Selecione clientes e execute análises de crédito consolidadas</p>
       </div>
 
       {/* Stats Cards */}
@@ -186,32 +236,33 @@ export default function ClientesPage() {
 
       {/* Action Buttons */}
       {selectedCustomers.size > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-2 border-blue-500">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Building2 className="h-8 w-8 text-blue-600" />
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <Building2 className="h-7 w-7 text-blue-600" />
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">Análise Gratuita (Governo)</h3>
-                    <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
+                    <h3 className="text-base font-semibold text-foreground">Análise Gratuita</h3>
+                    <p className="text-xs text-muted-foreground">Governo</p>
                   </div>
                 </div>
+                <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
                 <Button
-                  size="lg"
+                  size="sm"
                   variant="outline"
                   onClick={() => handleRunAnalysis("gov")}
                   disabled={isRunningAnalysis}
-                  className="gap-2 border-blue-500 text-blue-600 hover:bg-blue-50"
+                  className="w-full gap-2 border-blue-500 text-blue-600 hover:bg-blue-50"
                 >
                   {isRunningAnalysis && analysisType === "gov" ? (
                     <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Processando...
                     </>
                   ) : (
                     <>
-                      <Building2 className="h-5 w-5" />
+                      <Building2 className="h-4 w-4" />
                       Rodar Análise Gratuita
                     </>
                   )}
@@ -222,29 +273,67 @@ export default function ClientesPage() {
 
           <Card className="border-2 border-primary">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Sparkles className="h-8 w-8 text-primary" />
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="h-7 w-7 text-primary" />
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">Análise Paga (Assertiva)</h3>
-                    <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
+                    <h3 className="text-base font-semibold text-foreground">Análise Paga</h3>
+                    <p className="text-xs text-muted-foreground">Assertiva</p>
                   </div>
                 </div>
+                <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
                 <Button
-                  size="lg"
+                  size="sm"
                   onClick={() => handleRunAnalysis("assertiva")}
                   disabled={isRunningAnalysis}
-                  className="gap-2"
+                  className="w-full gap-2"
                 >
                   {isRunningAnalysis && analysisType === "assertiva" ? (
                     <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Processando...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="h-5 w-5" />
+                      <Sparkles className="h-4 w-4" />
                       Rodar Análise Paga
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-purple-500">
+            <CardContent className="pt-6">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Building2 className="absolute h-7 w-7 text-blue-600" />
+                    <Sparkles className="relative left-3 top-3 h-4 w-4 text-primary" />
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-base font-semibold text-foreground">Perfil Consolidado</h3>
+                    <p className="text-xs text-muted-foreground">Governo + Assertiva</p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
+                <Button
+                  size="sm"
+                  onClick={() => handleRunAnalysis("consolidated")}
+                  disabled={isRunningAnalysis}
+                  className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+                >
+                  {isRunningAnalysis && analysisType === "consolidated" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Building2 className="h-3 w-3" />
+                      <Sparkles className="h-3 w-3" />
+                      Rodar Análise Completa
                     </>
                   )}
                 </Button>
@@ -314,10 +403,10 @@ export default function ClientesPage() {
                           onCheckedChange={() => toggleCustomerSelection(customer.id)}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{customer.Cliente}</TableCell>
-                      <TableCell className="text-foreground">{customer["CPF/CNPJ"]}</TableCell>
-                      <TableCell className="text-foreground">{customer.Cidade}</TableCell>
-                      <TableCell className="text-foreground">{customer.Empresa}</TableCell>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell className="text-foreground">{customer.document}</TableCell>
+                      <TableCell className="text-foreground">{customer.city}</TableCell>
+                      <TableCell className="text-foreground">{customer.company_name}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -333,27 +422,50 @@ export default function ClientesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-600" />
-              Confirmar Análise {analysisType === "assertiva" ? "Paga" : "Gratuita"}
+              Confirmar Análise{" "}
+              {analysisType === "assertiva" ? "Paga" : analysisType === "consolidated" ? "Consolidada" : "Gratuita"}
             </DialogTitle>
             <div className="space-y-4 pt-4 text-sm text-muted-foreground">
-              <p>
-                Você está prestes a executar uma análise{" "}
-                {analysisType === "assertiva"
-                  ? "detalhada usando a API da Assertiva Soluções"
-                  : "gratuita usando o Portal da Transparência do Governo Federal"}
-                .
-              </p>
+              {analysisType === "consolidated" ? (
+                <>
+                  <p>
+                    Você está prestes a executar uma <strong>análise completa</strong> que combina dados do Portal da
+                    Transparência do Governo Federal e da API da Assertiva Soluções.
+                  </p>
 
-              {analysisType === "assertiva" && (
-                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:bg-yellow-950/20">
-                  <p className="font-semibold text-yellow-900 dark:text-yellow-100">⚠️ Atenção:</p>
-                  <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-                    <li>Esta ação consome créditos da Assertiva</li>
-                    <li>Não pode ser desfeita</li>
-                    <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
-                    <li>O processo pode levar alguns minutos</li>
-                  </ul>
-                </div>
+                  <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 dark:bg-purple-950/20">
+                    <p className="font-semibold text-purple-900 dark:text-purple-100">✨ Perfil Consolidado:</p>
+                    <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-purple-800 dark:text-purple-200">
+                      <li>Combina análise gratuita do governo com análise paga da Assertiva</li>
+                      <li>Cria um perfil completo do cliente com todas as informações disponíveis</li>
+                      <li>Consome créditos da Assertiva</li>
+                      <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
+                      <li>O processo pode levar alguns minutos (duas análises por cliente)</li>
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Você está prestes a executar uma análise{" "}
+                    {analysisType === "assertiva"
+                      ? "detalhada usando a API da Assertiva Soluções"
+                      : "gratuita usando o Portal da Transparência do Governo Federal"}
+                    .
+                  </p>
+
+                  {analysisType === "assertiva" && (
+                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:bg-yellow-950/20">
+                      <p className="font-semibold text-yellow-900 dark:text-yellow-100">⚠️ Atenção:</p>
+                      <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
+                        <li>Esta ação consome créditos da Assertiva</li>
+                        <li>Não pode ser desfeita</li>
+                        <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
+                        <li>O processo pode levar alguns minutos</li>
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
 
               <p className="text-sm">Deseja continuar?</p>
@@ -363,8 +475,20 @@ export default function ClientesPage() {
             <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
               Cancelar
             </Button>
-            <Button onClick={confirmAndRunAnalysis} className="gap-2">
-              {analysisType === "assertiva" ? <Sparkles className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+            <Button
+              onClick={confirmAndRunAnalysis}
+              className={`gap-2 ${analysisType === "consolidated" ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+            >
+              {analysisType === "assertiva" ? (
+                <Sparkles className="h-4 w-4" />
+              ) : analysisType === "consolidated" ? (
+                <>
+                  <Building2 className="h-3 w-3" />
+                  <Sparkles className="h-3 w-3" />
+                </>
+              ) : (
+                <Building2 className="h-4 w-4" />
+              )}
               Confirmar e Executar
             </Button>
           </DialogFooter>

@@ -317,3 +317,79 @@ export async function getCustomerDetails(companyId: string, document: string) {
     return { success: false, error: error.message }
   }
 }
+
+export async function getAllCustomers() {
+  try {
+    console.log("[SERVER] getAllCustomers - Starting...")
+
+    const supabase = createAdminClient()
+
+    // Fetch from customers table
+    const { data: customersData, error: customersError } = await supabase
+      .from("customers")
+      .select("id, name, document, company_id")
+      .order("name")
+      .limit(200)
+
+    if (customersError) {
+      console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
+      throw customersError
+    }
+
+    console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
+
+    // Fetch from VMAX table
+    const { data: vmaxData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade')
+      .order("Cliente")
+      .limit(200)
+
+    if (vmaxError) {
+      console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
+    }
+
+    console.log("[SERVER] getAllCustomers - VMAX records loaded:", vmaxData?.length || 0)
+
+    // Combine customers from both tables
+    const allCustomers = [
+      ...(customersData || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        document: c.document,
+        company_id: c.company_id,
+        city: "N/A",
+        source_table: "customers" as const,
+      })),
+      ...(vmaxData || []).map((v) => ({
+        id: v.id,
+        name: v.Cliente,
+        document: v["CPF/CNPJ"],
+        company_id: v.id_company,
+        city: v.Cidade || "N/A",
+        source_table: "vmax" as const,
+      })),
+    ]
+
+    console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)
+
+    // Fetch company names
+    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
+    const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
+
+    const companiesMap = new Map(companiesData?.map((c) => [c.id, c.name]) || [])
+
+    // Add company names to customers
+    const customersWithCompanies = allCustomers.map((customer) => ({
+      ...customer,
+      company_name: companiesMap.get(customer.company_id) || "N/A",
+    }))
+
+    console.log("[SERVER] getAllCustomers - Customers with company names:", customersWithCompanies.length)
+
+    return { success: true, data: customersWithCompanies }
+  } catch (error: any) {
+    console.error("[SERVER] getAllCustomers - Error:", error)
+    return { success: false, error: error.message, data: [] }
+  }
+}

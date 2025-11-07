@@ -46,8 +46,8 @@ export async function getAnalysesData() {
         name: v.Cliente,
         document: v["CPF/CNPJ"],
         company_id: v.id_company,
-        source_table: "vmax" as const,
         city: v.Cidade,
+        source_table: "vmax" as const,
       })),
     ]
 
@@ -260,5 +260,90 @@ export async function runAnalysis(customerId: string, document: string) {
       error: error.message,
       message: "Erro ao realizar análise de crédito",
     }
+  }
+}
+
+export async function getAllCustomers() {
+  try {
+    console.log("[SERVER] getAllCustomers - Starting...")
+
+    const supabase = createAdminClient()
+
+    const { data: customersData, error: customersError } = await supabase
+      .from("customers")
+      .select("id, name, document, company_id")
+      .order("name")
+      .limit(200)
+
+    if (customersError) {
+      console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
+      throw customersError
+    }
+
+    console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
+
+    const { data: vmaxData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade')
+      .order("Cliente")
+      .limit(200)
+
+    if (vmaxError) {
+      console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
+    }
+
+    console.log("[SERVER] getAllCustomers - VMAX records loaded:", vmaxData?.length || 0)
+
+    const allCustomers = [
+      ...(customersData || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        document: c.document,
+        company_id: c.company_id,
+        city: "N/A",
+        source_table: "customers" as const,
+      })),
+      ...(vmaxData || []).map((v) => ({
+        id: v.id,
+        name: v.Cliente,
+        document: v["CPF/CNPJ"],
+        company_id: v.id_company,
+        city: v.Cidade || "N/A",
+        source_table: "vmax" as const,
+      })),
+    ]
+
+    console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)
+
+    if (allCustomers.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    // Buscar empresas
+    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
+    const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
+
+    const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
+
+    const formattedCustomers = allCustomers.map((customer) => {
+      const company = companiesMap.get(customer.company_id)
+
+      return {
+        id: customer.id,
+        name: customer.name || "N/A",
+        document: customer.document || "N/A",
+        city: customer.city,
+        company_name: company?.name || "N/A",
+        company_id: customer.company_id,
+        source_table: customer.source_table,
+      }
+    })
+
+    console.log("[SERVER] getAllCustomers - Formatted customers:", formattedCustomers.length)
+
+    return { success: true, data: formattedCustomers }
+  } catch (error: any) {
+    console.error("[SERVER] getAllCustomers - Error:", error)
+    return { success: false, error: error.message, data: [] }
   }
 }

@@ -18,6 +18,7 @@ import {
   Database,
   Target,
   CreditCard,
+  UserCheck,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -66,6 +67,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin/empresas",
       icon: Building2,
       current: pathname.startsWith("/super-admin/empresas"),
+    },
+    {
+      name: "Análise Gov/Assertiva",
+      href: "/super-admin/clientes",
+      icon: UserCheck,
+      current: pathname.startsWith("/super-admin/clientes"),
     },
     {
       name: "Análises de Crédito",
