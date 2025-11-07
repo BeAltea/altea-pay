@@ -331,3 +331,96 @@ ${
 export async function runAssertivaManualAnalysis(customerIds: string[], companyId: string) {
   return runAssertivaManualAnalysisWrapper(customerIds, companyId)
 }
+
+export async function runGovernmentAnalysis(customerIds: string[], companyId: string) {
+  try {
+    console.log("[v0] runGovernmentAnalysis action - Starting for customers:", customerIds.length)
+
+    const supabase = createServerClient()
+
+    // Fetch customer data from VMAX table
+    const { data: vmaxData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
+      .in("id", customerIds)
+
+    if (vmaxError) throw vmaxError
+    if (!vmaxData || vmaxData.length === 0) {
+      return {
+        success: false,
+        error: "Nenhum cliente encontrado na tabela VMAX",
+      }
+    }
+
+    console.log("[v0] runGovernmentAnalysis - Found customers:", vmaxData.length)
+
+    const startTime = Date.now()
+    let analyzed = 0
+    let cached = 0
+    let failed = 0
+    const customersAnalyzed: any[] = []
+
+    // Process each customer
+    for (const customer of vmaxData) {
+      try {
+        const cpf = customer["CPF/CNPJ"]
+        if (!cpf) {
+          console.log("[v0] runGovernmentAnalysis - Skipping customer without CPF:", customer.id)
+          failed++
+          continue
+        }
+
+        // Check if analysis already exists
+        const { data: existingAnalysis } = await supabase
+          .from("credit_profiles")
+          .select("id, score")
+          .eq("cpf", cpf.replace(/\D/g, ""))
+          .eq("company_id", companyId)
+          .eq("source", "gov")
+          .maybeSingle()
+
+        if (existingAnalysis) {
+          console.log("[v0] runGovernmentAnalysis - Analysis already exists for CPF:", cpf)
+          cached++
+          continue
+        }
+
+        // Run free government analysis
+        const result = await analyzeCreditFree(cpf)
+
+        if (result.success) {
+          analyzed++
+          customersAnalyzed.push({
+            name: customer.Cliente,
+            cpf: cpf,
+            score: result.score,
+          })
+        } else {
+          console.error("[v0] runGovernmentAnalysis - Analysis failed for CPF:", cpf, result.error)
+          failed++
+        }
+      } catch (error: any) {
+        console.error("[v0] runGovernmentAnalysis - Error processing customer:", customer.id, error)
+        failed++
+      }
+    }
+
+    const duration = Date.now() - startTime
+
+    return {
+      success: true,
+      total: vmaxData.length,
+      analyzed,
+      cached,
+      failed,
+      duration,
+      customers_analyzed: customersAnalyzed,
+    }
+  } catch (error: any) {
+    console.error("[v0] runGovernmentAnalysis action - Error:", error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}

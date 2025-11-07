@@ -546,7 +546,7 @@ export default function AnalysesPage() {
           </SheetHeader>
 
           {selectedAnalysis && (
-            <div className="space-y-6 mt-6">
+            <div className="space-y-6 mt-6 px-6">
               {/* Source Badge */}
               <div className="flex items-center justify-between">
                 <Badge

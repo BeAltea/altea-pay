@@ -174,3 +174,91 @@ export async function getCustomerDetails(customerId: string) {
     return { success: false, error: error.message }
   }
 }
+
+export async function runAnalysis(customerId: string, document: string) {
+  try {
+    console.log("[SERVER] runAnalysis - Starting for customer:", customerId, "document:", document)
+
+    const supabase = createAdminClient()
+
+    // Verificar se já existe uma análise recente (últimas 24 horas)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: recentProfile } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("customer_id", customerId)
+      .gte("created_at", oneDayAgo)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (recentProfile) {
+      console.log("[SERVER] runAnalysis - Recent analysis found, returning existing data")
+      return {
+        success: true,
+        data: recentProfile,
+        message: "Análise recente encontrada (últimas 24 horas)",
+      }
+    }
+
+    // Chamar API de análise de crédito (exemplo com Assertiva)
+    const assertivaUrl = process.env.ASSERTIVA_BASE_URL
+    const clientId = process.env.ASSERTIVA_CLIENT_ID
+    const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
+
+    if (!assertivaUrl || !clientId || !clientSecret) {
+      throw new Error("Credenciais da API de crédito não configuradas")
+    }
+
+    // Fazer requisição para a API de crédito
+    const response = await fetch(`${assertivaUrl}/credit-analysis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+      },
+      body: JSON.stringify({
+        document: document.replace(/\D/g, ""), // Remove formatação
+        customer_id: customerId,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Erro na API de crédito: ${response.statusText}`)
+    }
+
+    const analysisData = await response.json()
+
+    // Salvar resultado no banco
+    const { data: newProfile, error: insertError } = await supabase
+      .from("credit_profiles")
+      .insert({
+        customer_id: customerId,
+        score: analysisData.score || 0,
+        source: "assertiva",
+        analysis_type: "credit_check",
+        data: analysisData,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      throw insertError
+    }
+
+    console.log("[SERVER] runAnalysis - Analysis completed successfully")
+
+    return {
+      success: true,
+      data: newProfile,
+      message: "Análise de crédito realizada com sucesso",
+    }
+  } catch (error: any) {
+    console.error("[SERVER] runAnalysis - Error:", error)
+    return {
+      success: false,
+      error: error.message,
+      message: "Erro ao realizar análise de crédito",
+    }
+  }
+}

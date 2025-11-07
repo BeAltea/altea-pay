@@ -1,11 +1,87 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
 export async function POST(request: NextRequest) {
   try {
-    const { customer, score, source, analysis_type, data } = await request.json()
+    const { analysisId } = await request.json()
 
-    if (!customer || !data) {
-      return NextResponse.json({ error: "Customer data and analysis data are required" }, { status: 400 })
+    if (!analysisId) {
+      return NextResponse.json({ error: "Analysis ID is required" }, { status: 400 })
+    }
+
+    console.log("[v0] export-analysis-pdf - Fetching analysis:", analysisId)
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+
+    const { data: analysis, error } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("id", analysisId)
+      .maybeSingle()
+
+    if (error) {
+      console.error("[v0] export-analysis-pdf - Error fetching analysis:", error)
+      return NextResponse.json({ error: "Error fetching analysis: " + error.message }, { status: 500 })
+    }
+
+    if (!analysis) {
+      console.error("[v0] export-analysis-pdf - Analysis not found:", analysisId)
+      return NextResponse.json({ error: "Analysis not found" }, { status: 404 })
+    }
+
+    let customerData = null
+    if (analysis.customer_id) {
+      const { data: customer } = await supabase
+        .from("VMAX")
+        .select('id, "CPF/CNPJ", Cliente, Cidade')
+        .eq("id", analysis.customer_id)
+        .maybeSingle()
+
+      if (customer) {
+        customerData = customer
+        console.log("[v0] export-analysis-pdf - Customer data found:", {
+          name: customer.Cliente,
+          city: customer.Cidade,
+        })
+      }
+    }
+
+    let companyData = null
+    if (analysis.company_id) {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id, name")
+        .eq("id", analysis.company_id)
+        .maybeSingle()
+
+      if (company) {
+        companyData = company
+      }
+    }
+
+    console.log("[v0] export-analysis-pdf - Analysis found:", {
+      id: analysis.id,
+      cpf: analysis.cpf,
+      score: analysis.score,
+      source: analysis.source,
+      has_data: !!analysis.data,
+      customer_name: customerData?.Cliente || analysis.customer_name,
+      customer_city: customerData?.Cidade,
+    })
+
+    const customer = {
+      name: customerData?.Cliente || analysis.customer_name || "N/A",
+      document: analysis.cpf,
+      city: customerData?.Cidade || "N/A",
+      email: "N/A",
+      phone: "N/A",
     }
 
     // Gerar HTML do PDF
@@ -15,19 +91,25 @@ export async function POST(request: NextRequest) {
       city: customer.city,
       email: customer.email,
       phone: customer.phone,
-      score,
-      source,
-      analysis_type,
-      data,
-      created_at: new Date().toISOString(),
+      score: analysis.score,
+      source: analysis.source,
+      analysis_type: analysis.analysis_type,
+      data: analysis.data,
+      created_at: analysis.created_at,
+      customers: customerData,
+      companies: companyData,
     })
 
-    // Retornar HTML completo
-    return new NextResponse(html, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
+    console.log("[v0] export-analysis-pdf - PDF HTML generated successfully")
+
+    return NextResponse.json(
+      { html },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    })
+    )
   } catch (error: any) {
     console.error("[v0] export-analysis-pdf - Error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -527,7 +609,7 @@ function generatePDFHTML(analysis: any): string {
         <div class="info-grid">
           <div class="info-item">
             <div class="info-label">Nome Completo</div>
-            <div class="info-value">${analysis.name || "N/A"}</div>
+            <div class="info-value">${analysis.name}</div>
           </div>
           <div class="info-item">
             <div class="info-label">CPF/CNPJ</div>
@@ -535,15 +617,15 @@ function generatePDFHTML(analysis: any): string {
           </div>
           <div class="info-item">
             <div class="info-label">Cidade</div>
-            <div class="info-value">${analysis.city || "N/A"}</div>
+            <div class="info-value">${analysis.city}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Email</div>
-            <div class="info-value">${analysis.email || "N/A"}</div>
+            <div class="info-value">${analysis.email}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Telefone</div>
-            <div class="info-value">${analysis.phone || "N/A"}</div>
+            <div class="info-value">${analysis.phone}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Data da Análise</div>
@@ -566,7 +648,7 @@ function generatePDFHTML(analysis: any): string {
           ? `
       <!-- Assertiva Data Section -->
       ${
-        scoreRecupere
+        analysis.scoreRecupere
           ? `
       <div class="section">
         <div class="section-title">
@@ -574,8 +656,8 @@ function generatePDFHTML(analysis: any): string {
         </div>
         <div class="score-box" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%);">
           <div class="score-label">Índice de Recuperação</div>
-          <div class="score-value">${scoreRecupere}</div>
-          <div class="risk-badge">${analysis.data?.score_recupere?.classe || analysis.data?.recupere?.resposta?.score?.classe || "N/A"}</div>
+          <div class="score-value">${analysis.scoreRecupere}</div>
+          <div class="risk-badge">${analysis.scoreRecupereClass || "N/A"}</div>
         </div>
       </div>
       `
@@ -583,7 +665,7 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        rendaPresumida
+        analysis.rendaPresumida
           ? `
       <div class="section">
         <div class="section-title">
@@ -592,7 +674,7 @@ function generatePDFHTML(analysis: any): string {
         <div class="alert-box alert-info">
           <div class="alert-title">Renda Estimada</div>
           <div class="alert-content" style="font-size: 24px; font-weight: 700;">
-            R$ ${rendaPresumida.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ ${analysis.rendaPresumida.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -601,13 +683,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        debitos.length > 0
+        analysis.debitos.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">⚠️</span> Débitos Registrados (${debitos.length})
+          <span class="section-icon">⚠️</span> Débitos Registrados (${analysis.debitos.length})
         </div>
-        ${debitos
+        ${analysis.debitos
           .map(
             (debito: any, idx: number) => `
           <div class="list-item">
@@ -620,7 +702,7 @@ function generatePDFHTML(analysis: any): string {
         <div class="alert-box alert-warning">
           <div class="alert-title">Total de Débitos</div>
           <div class="alert-content" style="font-size: 20px; font-weight: 700;">
-            R$ ${debitosTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ ${analysis.debitosTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -629,13 +711,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        protestos.length > 0
+        analysis.protestos.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">🚨</span> Protestos (${protestos.length})
+          <span class="section-icon">🚨</span> Protestos (${analysis.protestos.length})
         </div>
-        ${protestos
+        ${analysis.protestos
           .map(
             (protesto: any, idx: number) => `
           <div class="list-item">
@@ -653,13 +735,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        acoesJudiciais.length > 0
+        analysis.acoesJudiciais.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">⚖️</span> Ações Judiciais (${acoesJudiciais.length})
+          <span class="section-icon">⚖️</span> Ações Judiciais (${analysis.acoesJudiciais.length})
         </div>
-        ${acoesJudiciais
+        ${analysis.acoesJudiciais
           .map(
             (acao: any, idx: number) => `
           <div class="list-item">
@@ -797,38 +879,6 @@ function generatePDFHTML(analysis: any): string {
             ${expulsao.data_expulsao ? `<div class="list-item-detail"><strong>Data da Expulsão:</strong> ${new Date(expulsao.data_expulsao).toLocaleDateString("pt-BR")}</div>` : ""}
             ${expulsao.motivo ? `<div class="list-item-detail"><strong>Motivo:</strong> ${expulsao.motivo}</div>` : ""}
             ${expulsao.cargo ? `<div class="list-item-detail"><strong>Cargo:</strong> ${expulsao.cargo}</div>` : ""}
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-      `
-          : ""
-      }
-
-      ${
-        totalVinculos > 0
-          ? `
-      <!-- Vínculos Públicos -->
-      <div class="section">
-        <div class="section-title">
-          <span class="section-icon">🏛️</span> Vínculos com Serviço Público (${totalVinculos})
-        </div>
-        <div class="alert-box alert-info">
-          <div class="alert-title">ℹ️ Informação</div>
-          <div class="alert-content">
-            Este cliente possui vínculos registrados com o serviço público federal. Isso não representa necessariamente uma restrição, mas é uma informação relevante para análise de crédito.
-          </div>
-        </div>
-        ${analysis.data.vinculos_publicos
-          .map(
-            (vinculo: any, idx: number) => `
-          <div class="list-item">
-            <div class="list-item-title">Vínculo #${idx + 1}</div>
-            ${vinculo.orgao ? `<div class="list-item-detail"><strong>Órgão:</strong> ${vinculo.orgao}</div>` : ""}
-            ${vinculo.cargo ? `<div class="list-item-detail"><strong>Cargo:</strong> ${vinculo.cargo}</div>` : ""}
-            ${vinculo.situacao ? `<div class="list-item-detail"><strong>Situação:</strong> ${vinculo.situacao}</div>` : ""}
-            ${vinculo.data_inicio ? `<div class="list-item-detail"><strong>Data de Início:</strong> ${new Date(vinculo.data_inicio).toLocaleDateString("pt-BR")}</div>` : ""}
           </div>
         `,
           )
