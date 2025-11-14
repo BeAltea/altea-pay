@@ -5,18 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Users,
-  CreditCard,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Calendar,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  ArrowUpRight,
-} from "lucide-react"
+import { Users, CreditCard, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, CheckCircle, Clock, ArrowUpRight } from 'lucide-react'
 
 export const dynamic = "force-dynamic"
 
@@ -25,7 +14,6 @@ export default async function DashboardPage() {
 
   console.log("[v0] Dashboard: Iniciando carregamento da página")
 
-  // Get user data
   const {
     data: { user },
     error: userError,
@@ -77,19 +65,46 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
+  const { data: allVmaxRecords, error: vmaxError } = await supabase
+    .from("VMAX")
+    .select("*")
+
+  if (vmaxError) {
+    console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
+  } else {
+    console.log("[v0] 📊 VMAX total records in database:", allVmaxRecords?.length || 0)
+  }
+
+  // Filtrar localmente por company_id (igual ao super-admin)
+  const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
+    (v: any) => String(v.id_company || "").toLowerCase().trim() === String(companyId).toLowerCase().trim()
+  )
+  
+  console.log(`[v0] ✅ VMAX clientes da empresa ${companyData?.name}: ${vmaxCustomersFiltered.length}`)
+
+  // Buscar dados complementares da integration_logs para os IDs dos clientes VMAX
+  let integrationLogsData = []
+  if (vmaxCustomersFiltered.length > 0) {
+    const vmaxIds = vmaxCustomersFiltered.map((v: any) => v.id).filter(Boolean)
+    const { data: logsData } = await supabase
+      .from("integration_logs")
+      .select("*")
+      .in("id", vmaxIds)
+    
+    integrationLogsData = logsData || []
+    console.log(`[v0] 📊 Integration logs encontrados: ${integrationLogsData.length}`)
+  }
+
   const { data: customers, error: customersError } = await supabase
     .from("customers")
     .select("id")
     .eq("company_id", companyId)
 
-  // Buscar clientes da tabela VMAX se existir
-  const { data: vmaxCustomers } = await supabase.from("VMAX").select("id").eq("id_company", companyId)
-
-  const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
+  const totalCustomers = (customers?.length || 0) + vmaxCustomersFiltered.length
 
   console.log("[v0] Dashboard: Clientes obtidos", {
     customersTable: customers?.length,
-    vmaxTable: vmaxCustomers?.length,
+    vmaxTable: vmaxCustomersFiltered.length,
     total: totalCustomers,
     error: customersError,
   })
@@ -99,21 +114,23 @@ export default async function DashboardPage() {
     .select("amount, status")
     .eq("company_id", companyId)
 
-  // Buscar dívidas da tabela VMAX
-  const { data: vmaxDebts } = await supabase.from("VMAX").select("Vencido, DT_Cancelamento").eq("id_company", companyId)
+  const vmaxDebtsFormatted = vmaxCustomersFiltered.map((debt: any) => {
+    const vencidoStr = String(debt.Vencido || "0")
+    const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+    const amount = Number(cleanValue) || 0
 
-  // Converter dívidas VMAX para o formato esperado
-  const vmaxDebtsFormatted =
-    vmaxDebts?.map((debt) => ({
-      amount: Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0"),
+    return {
+      amount,
       status: debt.DT_Cancelamento ? "paid" : "pending",
-    })) || []
+      diasInad: Number(debt.Dias_Inad) || 0,
+    }
+  })
 
   const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
   console.log("[v0] Dashboard: Dívidas obtidas", {
     debtsTable: debts?.length,
-    vmaxTable: vmaxDebts?.length,
+    vmaxTable: vmaxDebtsFormatted.length,
     total: allDebts.length,
     error: debtsError,
   })
@@ -131,39 +148,20 @@ export default async function DashboardPage() {
 
   stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
 
-  console.log("[v0] Dashboard: Estatísticas finais", stats)
+  const criticalDebts = vmaxDebtsFormatted.filter(d => d.diasInad > 90).length
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: "payment",
-      description: "Pagamento recebido de João Silva",
-      amount: 1250.0,
-      time: "2 horas atrás",
-      status: "success",
-    },
-    {
-      id: 2,
-      type: "collection",
-      description: "Email de cobrança enviado para Maria Santos",
-      time: "4 horas atrás",
-      status: "pending",
-    },
-    {
-      id: 3,
-      type: "import",
-      description: "Importação de 152 registros concluída",
-      time: "1 dia atrás",
-      status: "success",
-    },
-    {
-      id: 4,
-      type: "overdue",
-      description: "15 novas dívidas vencidas identificadas",
-      time: "2 dias atrás",
-      status: "warning",
-    },
-  ]
+  // Since we can't filter by company, we'll just count pending scheduled actions from debts
+  const scheduledCount = 0 // Placeholder - would need to join through debt_id to filter by company
+
+  const { data: activeDebts } = await supabase
+    .from("debts")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("status", "in_collection")
+
+  const agreementsCount = activeDebts?.length || 0
+
+  console.log("[v0] Dashboard: Estatísticas finais", stats)
 
   const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
   const companyName = companyData?.name
@@ -184,15 +182,6 @@ export default async function DashboardPage() {
               : "Aqui está um resumo da sua operação de cobrança hoje."}
           </p>
         </div>
-        <div className="flex space-x-2 sm:space-x-3 flex-shrink-0">
-          <Button asChild className="w-full sm:w-auto text-xs sm:text-sm">
-            <Link href="/dashboard/import">
-              <Calendar className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Importar Dados</span>
-              <span className="sm:hidden">Importar</span>
-            </Link>
-          </Button>
-        </div>
       </div>
 
       {/* Stats Cards */}
@@ -205,10 +194,9 @@ export default async function DashboardPage() {
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="text-lg sm:text-2xl font-bold">{stats.totalCustomers.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600 flex items-center">
-                <TrendingUp className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                +12% mês passado
-              </span>
+              <Link href="/dashboard/clientes" className="text-blue-600 hover:underline">
+                Ver todos os clientes
+              </Link>
             </p>
           </CardContent>
         </Card>
@@ -221,10 +209,9 @@ export default async function DashboardPage() {
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="text-lg sm:text-2xl font-bold">{stats.totalDebts.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-red-600 flex items-center">
-                <TrendingDown className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                -5% mês passado
-              </span>
+              <Link href="/dashboard/debts" className="text-blue-600 hover:underline">
+                Gerenciar dívidas
+              </Link>
             </p>
           </CardContent>
         </Card>
@@ -261,52 +248,8 @@ export default async function DashboardPage() {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        {/* Recent Activity */}
-        <Card className="xl:col-span-2">
-          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-base sm:text-lg lg:text-xl">Atividade Recente</CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Últimas ações e eventos do sistema</CardDescription>
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="space-y-3 sm:space-y-4">
-              {recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-center space-x-2 sm:space-x-3 lg:space-x-4">
-                  <div className="flex-shrink-0">
-                    {activity.status === "success" && (
-                      <div className="bg-green-100 dark:bg-green-900/20 p-1.5 sm:p-2 rounded-full">
-                        <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 dark:text-green-400" />
-                      </div>
-                    )}
-                    {activity.status === "pending" && (
-                      <div className="bg-blue-100 dark:bg-blue-900/20 p-1.5 sm:p-2 rounded-full">
-                        <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-400" />
-                      </div>
-                    )}
-                    {activity.status === "warning" && (
-                      <div className="bg-orange-100 dark:bg-orange-900/20 p-1.5 sm:p-2 rounded-full">
-                        <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600 dark:text-orange-400" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
-                      {activity.description}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{activity.time}</p>
-                  </div>
-                  {activity.amount && (
-                    <div className="text-xs sm:text-sm font-medium text-green-600 dark:text-green-400 hidden sm:block">
-                      +R$ {activity.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Quick Actions */}
-        <Card>
+        <Card className="xl:col-span-1">
           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-base sm:text-lg lg:text-xl">Ações Rápidas</CardTitle>
             <CardDescription className="text-xs sm:text-sm">
@@ -314,18 +257,12 @@ export default async function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 sm:space-y-3 px-3 sm:px-6 pb-3 sm:pb-6">
-            <Button asChild className="w-full justify-start text-xs sm:text-sm h-8 sm:h-10">
-              <Link href="/dashboard/import">
-                <Calendar className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Importar Dados
-              </Link>
-            </Button>
             <Button
               asChild
               variant="outline"
               className="w-full justify-start bg-transparent text-xs sm:text-sm h-8 sm:h-10"
             >
-              <Link href="/dashboard/customers">
+              <Link href="/dashboard/clientes">
                 <Users className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                 Gerenciar Clientes
               </Link>
@@ -335,9 +272,9 @@ export default async function DashboardPage() {
               variant="outline"
               className="w-full justify-start bg-transparent text-xs sm:text-sm h-8 sm:h-10"
             >
-              <Link href="/dashboard/collection-rules">
-                <ArrowUpRight className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Configurar Réguas
+              <Link href="/dashboard/debts">
+                <CreditCard className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                Gerenciar Dívidas
               </Link>
             </Button>
             <Button
@@ -350,6 +287,45 @@ export default async function DashboardPage() {
                 Ver Relatórios
               </Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="text-base sm:text-lg lg:text-xl">Visão Geral</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Estatísticas da sua operação</CardDescription>
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Dívidas Críticas</span>
+                  <span className="text-lg font-bold text-orange-600">{criticalDebts}</span>
+                </div>
+                <div className="text-xs text-gray-500">Mais de 90 dias em atraso</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Ações Agendadas</span>
+                  <span className="text-lg font-bold text-blue-600">{scheduledCount}</span>
+                </div>
+                <div className="text-xs text-gray-500">Cobranças programadas</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Acordos Ativos</span>
+                  <span className="text-lg font-bold text-green-600">{agreementsCount}</span>
+                </div>
+                <div className="text-xs text-gray-500">Acompanhar pagamentos</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total de Clientes VMAX</span>
+                  <span className="text-lg font-bold text-purple-600">{vmaxCustomersFiltered.length}</span>
+                </div>
+                <div className="text-xs text-gray-500">Integrados da base VMAX</div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -374,7 +350,7 @@ export default async function DashboardPage() {
                 <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium text-orange-900 dark:text-orange-100 text-xs sm:text-sm lg:text-base">
-                    23 Dívidas Críticas
+                    {criticalDebts} Dívidas Críticas
                   </p>
                   <p className="text-xs text-orange-700 dark:text-orange-300">Mais de 90 dias em atraso</p>
                 </div>
@@ -385,9 +361,9 @@ export default async function DashboardPage() {
                 <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium text-blue-900 dark:text-blue-100 text-xs sm:text-sm lg:text-base">
-                    45 Emails Agendados
+                    {scheduledCount} Ações Agendadas
                   </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-300">Para envio hoje</p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">Cobranças programadas</p>
                 </div>
               </div>
             </div>
@@ -396,7 +372,7 @@ export default async function DashboardPage() {
                 <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium text-green-900 dark:text-green-100 text-xs sm:text-sm lg:text-base">
-                    21 Acordos Ativos
+                    {agreementsCount} Acordos Ativos
                   </p>
                   <p className="text-xs text-green-700 dark:text-green-300">Acompanhar pagamentos</p>
                 </div>

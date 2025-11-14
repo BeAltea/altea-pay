@@ -23,7 +23,7 @@ export async function getAnalysesData() {
 
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
-      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade')
+      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad')
       .order("Cliente")
       .limit(200)
 
@@ -40,14 +40,16 @@ export async function getAnalysesData() {
         document: c.document,
         company_id: c.company_id,
         source_table: "customers" as const,
+        dias_inad: 0, // Added dias_inad field for customers (default 0)
       })),
       ...(vmaxData || []).map((v) => ({
         id: v.id,
         name: v.Cliente,
         document: v["CPF/CNPJ"],
         company_id: v.id_company,
-        city: v.Cidade,
+        city: v.Cidade || "N/A",
         source_table: "vmax" as const,
+        dias_inad: v.Dias_Inad || 0, // Added dias_inad field from VMAX table
       })),
     ]
 
@@ -94,6 +96,7 @@ export async function getAnalysesData() {
         company_name: company?.name || "N/A",
         source_table: customer.source_table,
         data: profile?.data || null, // Include data field (JSONB)
+        dias_inad: customer.dias_inad, // Include dias_inad field
       }
     })
 
@@ -136,6 +139,7 @@ export async function getCustomerDetails(customerId: string) {
         document: vmaxData["CPF/CNPJ"],
         company_id: vmaxData.id_company,
         city: vmaxData.Cidade,
+        dias_inad: vmaxData.Dias_Inad || 0, // Include dias_inad field
       }
       isVMAX = true
     }
@@ -284,7 +288,7 @@ export async function getAllCustomers() {
 
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
-      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade')
+      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad')
       .order("Cliente")
       .limit(200)
 
@@ -302,6 +306,7 @@ export async function getAllCustomers() {
         company_id: c.company_id,
         city: "N/A",
         source_table: "customers" as const,
+        dias_inad: 0, // Added dias_inad field for customers (default 0)
       })),
       ...(vmaxData || []).map((v) => ({
         id: v.id,
@@ -310,6 +315,7 @@ export async function getAllCustomers() {
         company_id: v.id_company,
         city: v.Cidade || "N/A",
         source_table: "vmax" as const,
+        dias_inad: v.Dias_Inad || 0, // Added dias_inad field from VMAX table
       })),
     ]
 
@@ -336,6 +342,7 @@ export async function getAllCustomers() {
         company_name: company?.name || "N/A",
         company_id: customer.company_id,
         source_table: customer.source_table,
+        dias_inad: customer.dias_inad, // Include dias_inad in returned data
       }
     })
 

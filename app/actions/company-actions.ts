@@ -310,7 +310,6 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       console.log("✅ [TESTE] Primeiras dívidas:", JSON.stringify(debtsCheck.slice(0, 2), null, 2))
     }
 
-    revalidatePath("/super-admin/empresas")
     revalidatePath("/super-admin/companies")
 
     console.log("🎉 [TESTE] FINALIZADO COM SUCESSO!")
@@ -449,9 +448,9 @@ export async function importCustomersToCompany(companyId: string, customers: any
       console.log("[v0] ⚠ Nenhum cliente válido para importar")
     }
 
-    revalidatePath("/super-admin/empresas")
-    revalidatePath(`/super-admin/empresas/${companyId}`)
-    revalidatePath(`/super-admin/empresas/${companyId}/base`)
+    revalidatePath("/super-admin/companies")
+    revalidatePath(`/super-admin/companies/${companyId}`)
+    revalidatePath(`/super-admin/companies/${companyId}/customers`)
     revalidatePath("/dashboard/customers")
 
     console.log("[v0] ===== FINALIZADO =====")

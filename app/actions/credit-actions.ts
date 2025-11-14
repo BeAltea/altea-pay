@@ -19,7 +19,7 @@ export async function runCreditAnalysis(params: RunCreditAnalysisParams) {
   try {
     console.log("[v0] runCreditAnalysis - Starting", params)
 
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     let query = supabase.from("customers").select("id, document, name").eq("company_id", params.company_id)
 
@@ -127,7 +127,7 @@ export async function uploadBase(params: UploadBaseParams) {
   try {
     console.log("[v0] uploadBase - Starting", { company_id: params.company_id, file_name: params.file_name })
 
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     const csvContent = Buffer.from(params.file_data, "base64").toString("utf-8")
     const lines = csvContent.split("\n").filter((line) => line.trim())
@@ -171,7 +171,7 @@ export async function exportBase(params: ExportBaseParams) {
   try {
     console.log("[v0] exportBase - Starting", params)
 
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     let query = supabase.from("customers").select("*").eq("company_id", params.company_id)
 
@@ -282,8 +282,6 @@ ${result.cpfs_analyzed.length > 0 ? `\n✅ CPFs analisados:\n${result.cpfs_analy
 // Renamed function to avoid redeclaration
 export async function runAssertivaManualAnalysisWrapper(customerIds: string[], companyId: string) {
   try {
-    console.log("[v0] runAssertivaManualAnalysis action - Starting for customers:", customerIds.length)
-
     await logSecurityEvent({
       event_type: "credit_analysis",
       severity: "high",
@@ -403,7 +401,7 @@ export async function runGovernmentAnalysis(customerIds: string[], companyId: st
       status: "pending",
     })
 
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     // Fetch customer data from VMAX table
     const { data: vmaxData, error: vmaxError } = await supabase

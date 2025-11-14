@@ -4,18 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
-import {
-  Building2,
-  Users,
-  TrendingUp,
-  DollarSign,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  ArrowUpRight,
-  Eye,
-  BarChart3,
-} from "lucide-react"
+import { Building2, Users, TrendingUp, DollarSign, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Eye, BarChart3 } from 'lucide-react'
 
 interface CompanyStats {
   id: string
@@ -41,14 +30,51 @@ export default async function SuperAdminDashboardPage() {
 
   console.log("[v0] 🏢 Empresas encontradas:", companies?.length || 0)
 
+  const { data: allVmaxRecords, error: vmaxError } = await supabase
+    .from("VMAX")
+    .select("*")
+
+  if (vmaxError) {
+    console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
+  } else {
+    console.log("[v0] 📊 VMAX total records in database:", allVmaxRecords?.length || 0)
+    
+    if (allVmaxRecords && allVmaxRecords.length > 0) {
+      console.log("[v0] 🔍 Sample VMAX record:", {
+        id: allVmaxRecords[0].id,
+        id_company: allVmaxRecords[0].id_company,
+        id_company_type: typeof allVmaxRecords[0].id_company,
+        Cliente: allVmaxRecords[0].Cliente,
+        Empresa: allVmaxRecords[0].Empresa,
+      })
+      
+      // Log unique id_company values
+      const uniqueIds = [...new Set(allVmaxRecords.map(v => v.id_company))]
+      console.log("[v0] 🆔 Unique id_company values:", uniqueIds)
+    }
+  }
+
   // Buscar estatísticas reais para cada empresa
   const companiesStats: CompanyStats[] = []
 
   if (companies) {
     for (const company of companies) {
+      console.log(`[v0] 🔍 Processing company: ${company.name} (ID: ${company.id})`)
+      
       const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
 
-      const { data: vmaxCustomers } = await supabase.from("VMAX").select("id").eq("id_company", company.id)
+      const vmaxCustomers = allVmaxRecords?.filter((v) => {
+        const match = String(v.id_company || "").toLowerCase().trim() === String(company.id).toLowerCase().trim()
+        return match
+      }) || []
+      
+      console.log(`[v0] ✅ Company ${company.name}: ${vmaxCustomers.length} VMAX records`)
+      if (vmaxCustomers.length > 0) {
+        console.log(`[v0] 🎯 First match:`, {
+          vmax_id_company: vmaxCustomers[0].id_company,
+          company_id: company.id
+        })
+      }
 
       const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
 
@@ -57,18 +83,20 @@ export default async function SuperAdminDashboardPage() {
         .select("amount, status, due_date")
         .eq("company_id", company.id)
 
-      const { data: vmaxDebts } = await supabase
-        .from("VMAX")
-        .select("Vencido, DT_Cancelamento, Primeira_Vencida")
-        .eq("id_company", company.id)
+      const vmaxOverdueDebts = vmaxCustomers?.filter((v) => Number(v.Dias_Inad || 0) > 0).length || 0
 
-      // Converter dívidas VMAX para o formato esperado
       const vmaxDebtsFormatted =
-        vmaxDebts?.map((debt) => ({
-          amount: Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0"),
-          status: debt.DT_Cancelamento ? "paid" : "pending",
-          due_date: debt.Primeira_Vencida || new Date().toISOString(),
-        })) || []
+        vmaxCustomers?.map((debt) => {
+          const vencidoStr = String(debt.Vencido || "0")
+          const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+          const amount = Number(cleanValue) || 0
+
+          return {
+            amount,
+            status: debt.DT_Cancelamento ? "paid" : "pending",
+            due_date: new Date().toISOString(),
+          }
+        }) || []
 
       const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
@@ -79,15 +107,24 @@ export default async function SuperAdminDashboardPage() {
         .eq("company_id", company.id)
         .eq("role", "admin")
 
-      const totalAmount = allDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+      const totalAmount = allDebts
+        .filter((d) => d.status !== "paid")
+        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+
       const recoveredAmount = allDebts
         .filter((d) => d.status === "paid")
         .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-      const overdueDebts = allDebts.filter((d) => {
-        if (d.status === "paid") return false
-        const dueDate = new Date(d.due_date)
-        return dueDate < new Date()
-      }).length
+
+      const totalAllDebts = allDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+
+      const recoveryRate = totalAllDebts > 0 ? (recoveredAmount / totalAllDebts) * 100 : 0
+
+      const regularOverdueDebts =
+        debts?.filter((d) => {
+          if (d.status === "paid") return false
+          const dueDate = new Date(d.due_date)
+          return dueDate < new Date()
+        }).length || 0
 
       companiesStats.push({
         id: company.id,
@@ -96,8 +133,8 @@ export default async function SuperAdminDashboardPage() {
         totalDebts: allDebts.length,
         totalAmount,
         recoveredAmount,
-        recoveryRate: totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0,
-        overdueDebts,
+        recoveryRate,
+        overdueDebts: regularOverdueDebts + vmaxOverdueDebts, // Somar atrasos de ambas as fontes
         admins: admins?.length || 0,
       })
     }

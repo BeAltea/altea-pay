@@ -100,8 +100,8 @@
   --sidebar-ring: oklch(0.82 0.18 85);
 }
 
-@theme inline {
-  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+/* Simplified @theme inline block to avoid invalid custom property errors */
+@theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

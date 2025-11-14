@@ -10,19 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import {
-  Search,
-  RefreshCw,
-  AlertCircle,
-  Sparkles,
-  Loader2,
-  Eye,
-  Building2,
-  FileText,
-  AlertTriangle,
-  TrendingUp,
-  Download,
-} from "lucide-react"
+import { Search, RefreshCw, AlertCircle, Sparkles, Loader2, Eye, Building2, FileText, AlertTriangle, TrendingUp, Download } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
 import { getAnalysesData } from "@/app/actions/analyses-actions"
@@ -628,6 +616,92 @@ export default function AnalysesPage() {
                 </Card>
               </div>
 
+              {selectedAnalysis.data?.impedimentos_cepim &&
+                Array.isArray(selectedAnalysis.data.impedimentos_cepim) &&
+                selectedAnalysis.data.impedimentos_cepim.length > 0 && (
+                  <Card className="border-l-4 border-purple-500">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                        <AlertTriangle className="h-5 w-5" />
+                        Impedimentos CEPIM ({selectedAnalysis.data.impedimentos_cepim.length})
+                      </CardTitle>
+                      <CardDescription>Cadastro de Entidades Privadas sem Fins Lucrativos Impedidas</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {selectedAnalysis.data.impedimentos_cepim.map((impedimento: any, index: number) => (
+                          <div key={index} className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4 border border-purple-200 dark:border-purple-800">
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-lg text-purple-900 dark:text-purple-100">
+                                    {impedimento.pessoaJuridica?.nome ||
+                                     impedimento.pessoaJuridica?.razaoSocialReceita ||
+                                     impedimento.nome ||
+                                     "Nome não informado"}
+                                  </p>
+                                  {impedimento.pessoaJuridica?.cnpjFormatado && (
+                                    <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                                      CNPJ: {impedimento.pessoaJuridica.cnpjFormatado}
+                                    </p>
+                                  )}
+                                  {impedimento.orgaoSuperior?.nome && (
+                                    <Badge
+                                      variant="outline"
+                                      className="mt-2 border-purple-500 text-purple-700 dark:text-purple-300"
+                                    >
+                                      {impedimento.orgaoSuperior.nome}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {impedimento.dataReferencia && (
+                                  <p className="text-sm text-purple-700 dark:text-purple-300 font-medium">
+                                    {impedimento.dataReferencia}
+                                  </p>
+                                )}
+                              </div>
+
+                              {impedimento.motivo && (
+                                <div className="bg-purple-100 dark:bg-purple-900/30 rounded p-3">
+                                  <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                                    Motivo do Impedimento:
+                                  </p>
+                                  <p className="text-sm text-purple-800 dark:text-purple-200 mt-1">
+                                    {typeof impedimento.motivo === 'string'
+                                      ? impedimento.motivo
+                                      : impedimento.motivo?.descricaoPortal || impedimento.motivo?.descricaoResumida || 'Motivo não especificado'}
+                                  </p>
+                                </div>
+                              )}
+
+                              {impedimento.convenio && (
+                                <div className="space-y-1">
+                                  <p className="text-sm text-purple-800 dark:text-purple-200">
+                                    <span className="font-medium">Convênio:</span> {impedimento.convenio.numero || impedimento.convenio.codigo}
+                                  </p>
+                                  {impedimento.convenio.objeto && (
+                                    <p className="text-sm text-purple-700 dark:text-purple-300 ml-4">
+                                      {typeof impedimento.convenio.objeto === 'string'
+                                        ? impedimento.convenio.objeto
+                                        : impedimento.convenio.objeto?.descricaoPortal || impedimento.convenio.objeto?.descricaoResumida || ''}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {impedimento.pessoaJuridica?.uf && (
+                                <p className="text-sm text-purple-700 dark:text-purple-300">
+                                  <span className="font-medium">Estado:</span> {impedimento.pessoaJuridica.uf}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
               {/* Customer Information Card */}
               <Card className="border-2">
                 <CardHeader>
@@ -989,6 +1063,65 @@ export default function AnalysesPage() {
                                   {punicao.fundamentacaoLegal && (
                                     <p className="text-sm text-orange-800 dark:text-orange-200">
                                       <span className="font-medium">Fundamentação:</span> {punicao.fundamentacaoLegal}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                  {selectedAnalysis.data.impedimentos_cepim &&
+                    Array.isArray(selectedAnalysis.data.impedimentos_cepim) &&
+                    selectedAnalysis.data.impedimentos_cepim.length > 0 && (
+                      <Card className="border-l-4 border-purple-500">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                            <AlertTriangle className="h-5 w-5" />
+                            Impedimentos CEPIM
+                          </CardTitle>
+                          <CardDescription>Cadastro de Entidades Privadas sem Fins Lucrativos Impedidas</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            {selectedAnalysis.data.impedimentos_cepim.map((impedimento: any, index: number) => (
+                              <div key={index} className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4">
+                                <div className="space-y-2">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <p className="font-semibold text-purple-900 dark:text-purple-100">
+                                        {impedimento.pessoaJuridica?.nome || impedimento.nome || "Nome não informado"}
+                                      </p>
+                                      {impedimento.orgaoVinculado?.nomeOrgaoVinculacao && (
+                                        <Badge
+                                          variant="outline"
+                                          className="mt-1 border-purple-500 text-purple-700 dark:text-purple-300"
+                                        >
+                                          {impedimento.orgaoVinculado.nomeOrgaoVinculacao}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {impedimento.dataReferencia && (
+                                      <p className="text-sm text-purple-700 dark:text-purple-300">
+                                        {impedimento.dataReferencia}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {impedimento.motivoImpedimento && (
+                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                      <span className="font-medium">Motivo:</span> {impedimento.motivoImpedimento}
+                                    </p>
+                                  )}
+                                  {impedimento.convenio?.numeroConvenio && (
+                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                      <span className="font-medium">Convênio:</span> {impedimento.convenio.numeroConvenio}
+                                    </p>
+                                  )}
+                                  {impedimento.pessoaJuridica?.uf && (
+                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                      <span className="font-medium">UF:</span> {impedimento.pessoaJuridica.uf}
                                     </p>
                                   )}
                                 </div>

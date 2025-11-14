@@ -63,12 +63,6 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/companies"),
     },
     {
-      name: "Gestão de Empresas",
-      href: "/super-admin/empresas",
-      icon: Building2,
-      current: pathname.startsWith("/super-admin/empresas"),
-    },
-    {
       name: "Análise Gov/Assertiva",
       href: "/super-admin/clientes",
       icon: UserCheck,

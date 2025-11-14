@@ -5,24 +5,9 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
-import { notFound } from "next/navigation"
-import {
-  ArrowLeft,
-  Users,
-  DollarSign,
-  TrendingUp,
-  Edit,
-  Settings,
-  BarChart3,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Phone,
-  Mail,
-  MapPin,
-  Plug,
-  Sparkles,
-} from "lucide-react"
+import { notFound } from 'next/navigation'
+import { ArrowLeft, Users, DollarSign, TrendingUp, Edit, Settings, BarChart3, AlertTriangle, CheckCircle, Clock, Phone, Mail, MapPin, Plug, Sparkles, Upload, Download } from 'lucide-react'
+import { formatCurrency } from "@/lib/format-currency"
 
 interface CompanyDetailsProps {
   params: {
@@ -58,6 +43,8 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
   const { data: vmaxData } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
 
+  console.log("[v0] 📊 VMAX records for company:", vmaxData?.length || 0)
+
   const allCustomers = [...(customersData || []), ...(vmaxData || [])]
   const totalCustomers = allCustomers.length
 
@@ -66,15 +53,16 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
   const vmaxTotalAmount =
     vmaxData?.reduce((sum, v) => {
-      const vencido = String(v.Vencido || v.vencido || "0")
-        .replace(/[^\d,]/g, "")
-        .replace(",", ".")
-      const value = Number(vencido) || 0
-      console.log("[v0] VMAX record:", v.Cliente, "Vencido:", v.Vencido, "Parsed:", value)
+      const vencidoStr = String(v.Vencido || "0")
+      // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
+      const cleanValue = vencidoStr
+        .replace(/R\$/g, "")
+        .replace(/\s/g, "")
+        .replace(/\./g, "") // Remove dots used as thousands separator
+        .replace(",", ".") // Convert comma to dot for decimal
+      const value = Number(cleanValue) || 0
       return sum + value
     }, 0) || 0
-
-  console.log("[v0] VMAX total amount:", vmaxTotalAmount, "Regular debts:", totalAmount)
 
   const combinedTotalAmount = totalAmount + vmaxTotalAmount
   const recoveredAmount = paymentsData?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
@@ -83,12 +71,22 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const overdueDebts = debtsData?.filter((d) => d.status === "overdue").length || 0
   const vmaxOverdueDebts =
     vmaxData?.filter((v) => {
-      const diasInad = Number(v["Dias_Inad."] || v.dias_inad || 0)
+      const diasInadStr = String(v["Dias_Inad."] || v.Dias_Inad || 0)
+      const diasInad = Number(diasInadStr) || 0
       return diasInad > 0
     }).length || 0
   const totalOverdueDebts = overdueDebts + vmaxOverdueDebts
 
   const admins = adminsData?.length || 0
+
+  const daysOverdueData = vmaxData?.map((v) => Number(v.Dias_Inad || 0)) || []
+  const avgDaysOverdue =
+    daysOverdueData.length > 0 ? daysOverdueData.reduce((sum, days) => sum + days, 0) / daysOverdueData.length : 0
+
+  const debts0to30 = daysOverdueData.filter((d) => d >= 0 && d <= 30).length
+  const debts31to60 = daysOverdueData.filter((d) => d > 30 && d <= 60).length
+  const debts61to90 = daysOverdueData.filter((d) => d > 60 && d <= 90).length
+  const debtsOver90 = daysOverdueData.filter((d) => d > 90).length
 
   const { data: recentPayments } = await supabase
     .from("payments")
@@ -207,6 +205,18 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
+            <Link href={`/super-admin/companies/${company.id}/import`}>
+              <Upload className="mr-2 h-4 w-4" />
+              Importar
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/super-admin/companies/${company.id}/export`}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href={`/super-admin/companies/${company.id}/edit`}>
               <Edit className="mr-2 h-4 w-4" />
               Editar
@@ -222,7 +232,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
@@ -251,9 +261,9 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {(company.totalAmount / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
             <p className="text-xs text-muted-foreground">
-              R$ {company.recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
+              R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
             </p>
           </CardContent>
         </Card>
@@ -264,8 +274,31 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{company.recoveryRate.toFixed(1)}%</div>
-            <Progress value={company.recoveryRate} className="mt-2" />
+            <div className="text-2xl font-bold">{recoveryRate.toFixed(1)}%</div>
+            <Progress value={recoveryRate} className="mt-2" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Dias em Atraso</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div
+              className={`text-2xl font-bold ${
+                avgDaysOverdue === 0
+                  ? "text-green-600 dark:text-green-400"
+                  : avgDaysOverdue <= 30
+                    ? "text-yellow-600 dark:text-yellow-400"
+                    : avgDaysOverdue <= 60
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-red-600 dark:text-red-400"
+              }`}
+            >
+              {Math.round(avgDaysOverdue)}
+            </div>
+            <p className="text-xs text-muted-foreground">Média de atraso</p>
           </CardContent>
         </Card>
       </div>
@@ -363,6 +396,45 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição de Atrasos</CardTitle>
+              <CardDescription>Classificação por dias de inadimplência</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className="text-sm">0-30 dias</span>
+                  </div>
+                  <span className="text-sm font-medium">{debts0to30} clientes</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span className="text-sm">31-60 dias</span>
+                  </div>
+                  <span className="text-sm font-medium">{debts31to60} clientes</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                    <span className="text-sm">61-90 dias</span>
+                  </div>
+                  <span className="text-sm font-medium">{debts61to90} clientes</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span className="text-sm">Mais de 90 dias</span>
+                  </div>
+                  <span className="text-sm font-medium">{debtsOver90} clientes</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Sidebar */}
@@ -403,6 +475,18 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               <CardTitle>Ações Rápidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href={`/super-admin/companies/${company.id}/import`}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar Clientes
+                </Link>
+              </Button>
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href={`/super-admin/companies/${company.id}/export`}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar Clientes
+                </Link>
+              </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/vmax-analysis`}>
                   <Sparkles className="mr-2 h-4 w-4" />

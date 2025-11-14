@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Search, RefreshCw, Sparkles, Loader2, Building2, AlertCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Search, RefreshCw, Sparkles, Loader2, Building2, AlertCircle, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
 import { runGovernmentAnalysis } from "@/app/actions/credit-actions"
 import { getAllCustomers } from "@/app/actions/analyses-actions"
+import { createBrowserClient } from "@/supabase/supabase-browser"
 
 interface Customer {
   id: string
@@ -21,6 +23,18 @@ interface Customer {
   company_name: string
   company_id: string
   source_table: "customers" | "vmax"
+  dias_inad?: number
+}
+
+interface CreditProfile {
+  id: string
+  source: "gov" | "assertiva" | "consolidated"
+  score_gov?: number
+  score_assertiva?: number
+  data_gov?: any
+  data_assertiva?: any
+  is_consolidated?: boolean
+  created_at: string
 }
 
 export default function ClientesPage() {
@@ -31,6 +45,12 @@ export default function ClientesPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [analysisType, setAnalysisType] = useState<"gov" | "assertiva" | "consolidated">("gov")
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
+
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [selectedCustomerDetails, setSelectedCustomerDetails] = useState<Customer | null>(null)
+  const [customerProfile, setCustomerProfile] = useState<CreditProfile | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
+
   const { toast } = useToast()
 
   useEffect(() => {
@@ -39,16 +59,13 @@ export default function ClientesPage() {
 
   const loadCustomers = async () => {
     try {
-      console.log("[v0] ClientesPage - Loading customers...")
       setLoading(true)
 
       const response = await getAllCustomers()
 
       if (response.success) {
-        console.log("[v0] ClientesPage - Customers loaded:", response.data.length)
         setCustomers(response.data)
       } else {
-        console.error("[v0] ClientesPage - Error:", response.error)
         toast({
           title: "Erro ao carregar clientes",
           description: response.error,
@@ -56,7 +73,6 @@ export default function ClientesPage() {
         })
       }
     } catch (error: any) {
-      console.error("[v0] ClientesPage - Error loading customers:", error)
       toast({
         title: "Erro ao carregar clientes",
         description: error.message,
@@ -64,6 +80,55 @@ export default function ClientesPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const viewCustomerDetails = async (customer: Customer) => {
+    setSelectedCustomerDetails(customer)
+    setShowDetailsModal(true)
+    setLoadingDetails(true)
+
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      )
+
+      const cleanDocument = customer.document.replace(/\D/g, "")
+
+      const { data: profile, error } = await supabase
+        .from("credit_profiles")
+        .select("*")
+        .eq("cpf", cleanDocument)
+        .eq("company_id", customer.company_id)
+        .maybeSingle()
+
+      if (error) {
+        console.error("Error loading profile:", error)
+        toast({
+          title: "Erro ao carregar análise",
+          description: "Não foi possível carregar os detalhes da análise.",
+          variant: "destructive",
+        })
+      } else if (!profile) {
+        toast({
+          title: "Nenhuma análise encontrada",
+          description: "Este cliente ainda não possui análises de crédito.",
+          variant: "destructive",
+        })
+        setShowDetailsModal(false)
+      } else {
+        setCustomerProfile(profile)
+      }
+    } catch (error: any) {
+      console.error("Error:", error)
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingDetails(false)
     }
   }
 
@@ -119,7 +184,6 @@ export default function ClientesPage() {
       const customerIdsToAnalyze = Array.from(selectedCustomers)
 
       if (analysisType === "consolidated") {
-        // Run both analyses sequentially
         const govResult = await runGovernmentAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
         const assertivaResult = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
 
@@ -160,7 +224,6 @@ export default function ClientesPage() {
           })
         }
       } else {
-        // Run single analysis
         let result
         if (analysisType === "assertiva") {
           result = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
@@ -194,7 +257,6 @@ export default function ClientesPage() {
         }
       }
     } catch (error: any) {
-      console.error("[v0] ClientesPage - Error running analysis:", error)
       toast({
         title: "Erro ao executar análise",
         description: error.message,
@@ -385,12 +447,14 @@ export default function ClientesPage() {
                   <TableHead>CPF/CNPJ</TableHead>
                   <TableHead>Cidade</TableHead>
                   <TableHead>Empresa</TableHead>
+                  <TableHead>Dias em Atraso</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       {loading ? "Carregando..." : "Nenhum cliente encontrado"}
                     </TableCell>
                   </TableRow>
@@ -407,6 +471,45 @@ export default function ClientesPage() {
                       <TableCell className="text-foreground">{customer.document}</TableCell>
                       <TableCell className="text-foreground">{customer.city}</TableCell>
                       <TableCell className="text-foreground">{customer.company_name}</TableCell>
+                      <TableCell>
+                        {customer.dias_inad && customer.dias_inad > 0 ? (
+                          <Badge
+                            variant={
+                              customer.dias_inad <= 30
+                                ? "secondary"
+                                : customer.dias_inad <= 60
+                                  ? "default"
+                                  : customer.dias_inad <= 90
+                                    ? "default"
+                                    : "destructive"
+                            }
+                            className={
+                              customer.dias_inad <= 30
+                                ? "bg-yellow-100 text-yellow-800"
+                                : customer.dias_inad <= 60
+                                  ? "bg-orange-100 text-orange-800"
+                                  : customer.dias_inad <= 90
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-red-600 text-white"
+                            }
+                          >
+                            {customer.dias_inad} dias
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Em dia</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => viewCustomerDetails(customer)}
+                          className="gap-2"
+                        >
+                          <Eye className="h-4 w-4" />
+                          Ver
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -492,6 +595,163 @@ export default function ClientesPage() {
               Confirmar e Executar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Análise de Crédito</DialogTitle>
+          </DialogHeader>
+
+          {loadingDetails ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : customerProfile && selectedCustomerDetails ? (
+            <div className="space-y-6">
+              {/* Customer Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{selectedCustomerDetails.name}</span>
+                    {customerProfile.is_consolidated && <Badge className="bg-purple-600">Perfil Consolidado</Badge>}
+                  </CardTitle>
+                  <CardDescription>
+                    CPF/CNPJ: {selectedCustomerDetails.document} | Cidade: {selectedCustomerDetails.city}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              {/* Scores */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {customerProfile.score_gov !== null && customerProfile.score_gov !== undefined && (
+                  <Card className="border-blue-500">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Building2 className="h-5 w-5 text-blue-600" />
+                        Análise do Governo
+                      </CardTitle>
+                      <CardDescription>Portal da Transparência</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-4xl font-bold text-blue-600">{customerProfile.score_gov}</div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {customerProfile.data_gov?.total_sancoes || 0} sanção(ões) encontrada(s)
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {customerProfile.score_assertiva !== null && customerProfile.score_assertiva !== undefined && (
+                  <Card className="border-primary">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        Análise Assertiva
+                      </CardTitle>
+                      <CardDescription>Assertiva Soluções</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-4xl font-bold text-primary">{customerProfile.score_assertiva}</div>
+                      <p className="text-sm text-muted-foreground mt-2">Score de crédito completo</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Government Data */}
+              {customerProfile.data_gov && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-blue-600">Dados do Governo</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold">Situação CPF/CNPJ:</p>
+                      <Badge variant={customerProfile.data_gov.situacao_cpf === "REGULAR" ? "default" : "destructive"}>
+                        {customerProfile.data_gov.situacao_cpf || "N/A"}
+                      </Badge>
+                    </div>
+
+                    {customerProfile.data_gov.sancoes_ceis?.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">CEIS (Sanções):</p>
+                        <p className="text-sm text-muted-foreground">
+                          {customerProfile.data_gov.sancoes_ceis.length} sanção(ões) encontrada(s)
+                        </p>
+                      </div>
+                    )}
+
+                    {customerProfile.data_gov.punicoes_cnep?.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">CNEP (Punições):</p>
+                        <p className="text-sm text-muted-foreground">
+                          {customerProfile.data_gov.punicoes_cnep.length} punição(ões) encontrada(s)
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedCustomerDetails?.dias_inad && selectedCustomerDetails.dias_inad > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Dias em Atraso:</p>
+                        <Badge
+                          variant="destructive"
+                          className={`text-lg ${
+                            selectedCustomerDetails.dias_inad <= 30
+                              ? "bg-yellow-500"
+                              : selectedCustomerDetails.dias_inad <= 60
+                                ? "bg-orange-500"
+                                : selectedCustomerDetails.dias_inad <= 90
+                                  ? "bg-red-500"
+                                  : "bg-red-700"
+                          }`}
+                        >
+                          ⚠️ {selectedCustomerDetails.dias_inad} dias de inadimplência
+                        </Badge>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Assertiva Data */}
+              {customerProfile.data_assertiva && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-primary">Dados Assertiva</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {customerProfile.data_assertiva.score_recupere && (
+                      <div>
+                        <p className="text-sm font-semibold">Score Recupere:</p>
+                        <p className="text-2xl font-bold">{customerProfile.data_assertiva.score_recupere}</p>
+                      </div>
+                    )}
+
+                    {customerProfile.data_assertiva.renda_presumida && (
+                      <div>
+                        <p className="text-sm font-semibold">Renda Presumida:</p>
+                        <p className="text-lg">R$ {customerProfile.data_assertiva.renda_presumida}</p>
+                      </div>
+                    )}
+
+                    {customerProfile.data_assertiva.credito?.resposta?.registrosDebitos?.list?.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Débitos:</p>
+                        <p className="text-sm text-muted-foreground">
+                          {customerProfile.data_assertiva.credito.resposta.registrosDebitos.list.length} débito(s)
+                          encontrado(s)
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">Nenhuma análise encontrada para este cliente.</div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
-import { Building2, Users, DollarSign, TrendingUp, Plus, Eye, Edit } from "lucide-react"
+import { Building2, Users, DollarSign, TrendingUp, Plus, Eye, Edit, Clock } from 'lucide-react'
 import { CompanyFilters } from "@/components/super-admin/company-filters"
 import { DeleteCompanyButton } from "@/components/super-admin/delete-company-button"
+import { formatCurrency, formatCompactCurrency } from "@/lib/format-currency"
 
 interface Company {
   id: string
@@ -22,11 +23,12 @@ interface Company {
   recoveredAmount: number
   recoveryRate: number
   admins: number
+  avgDaysOverdue: number
 }
 
 export const dynamic = "force-dynamic"
 
-export default async function CompaniesPage() {
+async function fetchCompanies() {
   const supabase = await createClient()
 
   const { data: companiesData, error: companiesError } = await supabase
@@ -38,45 +40,75 @@ export default async function CompaniesPage() {
     console.error("[v0] Error fetching companies:", companiesError)
   }
 
-  // Fetch customers count per company
   const { data: customersData } = await supabase.from("customers").select("company_id")
-
-  // Fetch debts data per company
   const { data: debtsData } = await supabase.from("debts").select("company_id, amount, status")
-
-  // Fetch payments data per company
   const { data: paymentsData } = await supabase.from("payments").select("company_id, amount")
-
-  // Fetch admins count per company
   const { data: adminsData } = await supabase.from("profiles").select("company_id, role").eq("role", "admin")
 
-  const { data: vmaxData } = await supabase.from("VMAX").select("id_company, Vencido")
+  const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*")
 
-  console.log("[v0] VMAX data fetched:", vmaxData?.length || 0, "records")
+  if (vmaxError) {
+    console.error("[v0] ❌ Error fetching VMAX:", vmaxError)
+  }
 
-  // Calculate stats for each company
+  console.log("[v0] 🏢 Empresas encontradas:", companiesData?.length || 0)
+  console.log("[v0] 📊 VMAX total records in database:", vmaxData?.length || 0)
+
   const companies: Company[] = (companiesData || []).map((company) => {
     const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
     const companyDebts = debtsData?.filter((d) => d.company_id === company.id) || []
     const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
     const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
 
-    const companyVmaxData = vmaxData?.filter((v) => v.id_company === company.id) || []
+    const companyVmaxData = vmaxData?.filter((v) => {
+      const vmaxCompanyId = v.id_company?.toString().toLowerCase().trim()
+      const companyIdStr = company.id.toString().toLowerCase().trim()
+      return vmaxCompanyId === companyIdStr
+    }) || []
 
-    const totalAmount = companyDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+    console.log(`[v0] 🏢 Company ${company.name} (${company.id}): ${companyVmaxData.length} VMAX records`)
 
-    const vmaxTotalAmount = companyVmaxData.reduce((sum, v) => {
-      const vencido = String(v.Vencido || "0")
-        .replace(/[^\d,]/g, "")
-        .replace(",", ".")
-      return sum + (Number(vencido) || 0)
-    }, 0)
+    const totalAmount = companyDebts
+      .filter((d) => d.status !== "paid" && d.status !== "cancelled")
+      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
 
-    console.log("[v0] Company:", company.name, "VMAX records:", companyVmaxData.length, "VMAX total:", vmaxTotalAmount)
+    const vmaxTotalAmount = companyVmaxData
+      .filter((v) => !v.DT_Cancelamento)
+      .reduce((sum, v) => {
+        const vencidoStr = String(v.Vencido || "0")
+        const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+        const value = Number(cleanValue) || 0
+        return sum + value
+      }, 0)
+
+    const vmaxWithOverdue = companyVmaxData.filter((v) => {
+      const diasInad = Number(v.Dias_Inad || 0)
+      return diasInad > 0
+    })
+
+    const avgDaysOverdue =
+      vmaxWithOverdue.length > 0
+        ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v.Dias_Inad || 0), 0) / vmaxWithOverdue.length
+        : 0
 
     const combinedTotalAmount = totalAmount + vmaxTotalAmount
-    const recoveredAmount = companyPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-    const recoveryRate = combinedTotalAmount > 0 ? (recoveredAmount / combinedTotalAmount) * 100 : 0
+
+    const paidDebtsAmount = companyDebts
+      .filter((d) => d.status === "paid")
+      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+
+    const vmaxCancelledAmount = companyVmaxData
+      .filter((v) => v.DT_Cancelamento)
+      .reduce((sum, v) => {
+        const vencidoStr = String(v.Vencido || "0")
+        const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+        const value = Number(cleanValue) || 0
+        return sum + value
+      }, 0)
+
+    const recoveredAmount = paidDebtsAmount + vmaxCancelledAmount
+    const totalAllDebts = combinedTotalAmount + recoveredAmount
+    const recoveryRate = totalAllDebts > 0 ? (recoveredAmount / totalAllDebts) * 100 : 0
 
     return {
       id: company.id,
@@ -87,20 +119,35 @@ export default async function CompaniesPage() {
       status: company.status || "active",
       created_at: company.created_at,
       totalCustomers: companyCustomers.length + companyVmaxData.length,
-      totalDebts: companyDebts.length + companyVmaxData.length,
+      totalDebts: companyDebts.filter((d) => d.status !== "paid" && d.status !== "cancelled").length + companyVmaxData.filter((v) => !v.DT_Cancelamento).length,
       totalAmount: combinedTotalAmount,
       recoveredAmount,
       recoveryRate,
       admins: companyAdmins.length,
+      avgDaysOverdue,
     }
   })
+
+  const totalAvgDaysOverdue =
+    companies.length > 0 ? companies.reduce((sum, c) => sum + (c.avgDaysOverdue || 0), 0) / companies.length : 0
 
   const totalStats = {
     totalCompanies: companies.length,
     activeCompanies: companies.filter((c) => c.status === "active").length,
     totalCustomers: companies.reduce((sum, company) => sum + company.totalCustomers, 0),
     totalAmount: companies.reduce((sum, company) => sum + company.totalAmount, 0),
+    averageRecoveryRate:
+      companies.length > 0 ? companies.reduce((sum, c) => sum + c.recoveryRate, 0) / companies.length : 0,
+    avgDaysOverdue: totalAvgDaysOverdue,
   }
+
+  console.log("[v0] 📊 Total stats:", totalStats)
+
+  return { companies, totalStats }
+}
+
+export default async function CompaniesPage() {
+  const { companies, totalStats } = await fetchCompanies()
 
   return (
     <div className="space-y-6">
@@ -124,7 +171,7 @@ export default async function CompaniesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Empresas</CardTitle>
@@ -143,7 +190,7 @@ export default async function CompaniesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalStats.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Todos os clientes</p>
+            <p className="text-xs text-muted-foreground">Todas as empresas</p>
           </CardContent>
         </Card>
 
@@ -153,7 +200,7 @@ export default async function CompaniesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {(totalStats.totalAmount / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalStats.totalAmount)}</div>
             <p className="text-xs text-muted-foreground">Em cobrança</p>
           </CardContent>
         </Card>
@@ -164,13 +211,19 @@ export default async function CompaniesPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {companies.length > 0
-                ? (companies.reduce((sum, c) => sum + c.recoveryRate, 0) / companies.length).toFixed(1)
-                : "0.0"}
-              %
-            </div>
+            <div className="text-2xl font-bold">{totalStats.averageRecoveryRate.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">Recuperação</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Dias em Atraso</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{Math.round(totalStats.avgDaysOverdue)}</div>
+            <p className="text-xs text-muted-foreground">Média geral</p>
           </CardContent>
         </Card>
       </div>
@@ -208,7 +261,7 @@ export default async function CompaniesPage() {
                     <div className="flex items-center space-x-4 mb-3 lg:mb-0">
                       <Avatar className="h-12 w-12">
                         <AvatarImage
-                          src={`/ceholder-svg-key-le8lx.jpg?key=le8lx&height=48&width=48`}
+                          src={`/ceholder-svg-key-1z7vp.jpg?key=1z7vp&height=48&width=48`}
                           alt={company.name}
                         />
                         <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
@@ -260,13 +313,23 @@ export default async function CompaniesPage() {
 
                         <div className="text-center sm:text-right">
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            R$ {(company.totalAmount / 1000).toFixed(0)}k
+                            {formatCompactCurrency(company.totalAmount)}
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Volume</p>
                         </div>
 
                         <div className="text-center sm:text-right">
-                          <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                          <p
+                            className={`text-sm font-medium ${
+                              company.recoveryRate === 0
+                                ? "text-green-600 dark:text-green-400"
+                                : company.recoveryRate <= 30
+                                  ? "text-yellow-600 dark:text-yellow-400"
+                                  : company.recoveryRate <= 60
+                                    ? "text-orange-600 dark:text-orange-400"
+                                    : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
                             {company.recoveryRate.toFixed(1)}%
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
@@ -275,6 +338,23 @@ export default async function CompaniesPage() {
                         <div className="text-center sm:text-right">
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{company.admins}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Admins</p>
+                        </div>
+
+                        <div className="text-center sm:text-right">
+                          <p
+                            className={`text-sm font-medium ${
+                              company.avgDaysOverdue === 0
+                                ? "text-green-600 dark:text-green-400"
+                                : company.avgDaysOverdue <= 30
+                                  ? "text-yellow-600 dark:text-yellow-400"
+                                  : company.avgDaysOverdue <= 60
+                                    ? "text-orange-600 dark:text-orange-400"
+                                    : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {Math.round(company.avgDaysOverdue)} dias
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Atraso Médio</p>
                         </div>
                       </div>
 

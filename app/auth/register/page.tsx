@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { useState } from "react"
-import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from "lucide-react"
+import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from 'lucide-react'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -62,7 +62,7 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
+    
     setIsLoading(true)
     setError(null)
 
@@ -85,84 +85,159 @@ export default function RegisterPage() {
     }
 
     try {
-      console.log("[v0] Starting user registration process")
+      console.log("[v0] 🚀 Iniciando processo de registro")
 
+      const supabase = createClient()
       const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
-      console.log("[v0] Verificando CPF/CNPJ na tabela VMAX:", cleanCpfCnpj)
+      
+      console.log("[v0] 📋 Dados do registro:", {
+        email,
+        cpf_cnpj: cleanCpfCnpj,
+        person_type: personType,
+      })
 
-      const { data: vmaxData, error: vmaxError } = await supabase
-        .from("VMAX")
-        .select("*")
-        .eq('"CPF/CNPJ"', cleanCpfCnpj)
-        .maybeSingle()
+      console.log("[v0] 🔍 PASSO 1: Buscando na tabela companies...")
+      
+      const companiesResponse = await fetch("/api/check-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, cnpj: cleanCpfCnpj }),
+      })
+      
+      const { company: foundCompany, error: companiesError } = await companiesResponse.json()
+      
+      console.log("[v0] 📊 Resultado da busca companies:", {
+        encontrou: !!foundCompany,
+        empresa_nome: foundCompany?.name,
+        tem_erro: !!companiesError,
+      })
 
-      if (vmaxError) {
-        console.error("[v0] Erro ao verificar VMAX:", vmaxError)
+      console.log("[v0] ✅ Empresa encontrada?", !!foundCompany, foundCompany?.name)
+
+      let role = "user"
+      let companyId = null
+      let detectedCompanyName = companyName || "Sem empresa"
+      let requiresEmailVerification = true
+
+      if (foundCompany) {
+        role = "admin"
+        companyId = foundCompany.id
+        detectedCompanyName = foundCompany.name
+        requiresEmailVerification = false // Não precisa verificar email se está na companies
+        
+        console.log("[v0] 🎉 USUÁRIO É ADMIN DA EMPRESA:", {
+          empresa_nome: detectedCompanyName,
+          empresa_id: companyId,
+          precisa_verificar_email: requiresEmailVerification,
+        })
+
+        console.log("[v0] 🔍 PASSO 2: Buscando clientes da empresa na VMAX...")
+        
+        const { data: vmaxClients, error: vmaxError } = await supabase
+          .from("VMAX")
+          .select("*")
+          .eq("id_company", companyId)
+        
+        console.log("[v0] 📊 Clientes VMAX da empresa:", {
+          total_clientes: vmaxClients?.length || 0,
+          tem_erro: !!vmaxError,
+          erro: vmaxError?.message,
+        })
+
+        if (vmaxClients && vmaxClients.length > 0) {
+          console.log("[v0] 👥 Primeiros 3 clientes VMAX:", vmaxClients.slice(0, 3).map((c: any) => ({
+            nome: c.Cliente,
+            cpf_cnpj: c["CPF/CNPJ"],
+            valor: c.Vencido,
+          })))
+        }
+
+        console.log("[v0] 🔍 PASSO 3: Buscando dados na integration_logs...")
+        
+        if (vmaxClients && vmaxClients.length > 0) {
+          const clientIds = vmaxClients.map((c: any) => c.id).filter(Boolean)
+          
+          if (clientIds.length > 0) {
+            const { data: integrationLogs, error: logsError } = await supabase
+              .from("integration_logs")
+              .select("*")
+              .in("client_id", clientIds)
+            
+            console.log("[v0] 📊 Logs de integração encontrados:", {
+              total_logs: integrationLogs?.length || 0,
+              tem_erro: !!logsError,
+              erro: logsError?.message,
+            })
+          }
+        }
       }
 
-      const hasVmaxData = !!vmaxData
-      console.log("[v0] CPF/CNPJ encontrado na VMAX?", hasVmaxData, vmaxData?.Cliente)
-
-      console.log("[v0] Verificando se email pertence a uma empresa...")
-      const { data: company, error: companyError } = await supabase
-        .from("companies")
-        .select("id, name, email")
-        .eq("email", email)
-        .maybeSingle()
-
-      if (companyError) {
-        console.error("[v0] Erro ao verificar empresa:", companyError)
-      }
-
-      const isCompanyEmail = !!company
-      console.log("[v0] Email pertence a empresa?", isCompanyEmail, company?.name)
+      console.log("[v0] 🔐 Criando conta no Supabase Auth:", {
+        email,
+        role,
+        company_id: companyId,
+        company_name: detectedCompanyName,
+        requires_verification: requiresEmailVerification,
+      })
 
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: "https://alteapay.com/auth/callback",
+          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
-            company_name: companyName,
-            company_id: company?.id || vmaxData?.id_company || null,
-            role: isCompanyEmail ? "admin" : "user",
+            company_name: detectedCompanyName,
+            company_id: companyId,
+            role: role,
             cpf_cnpj: cleanCpfCnpj,
             person_type: personType,
+            requires_email_verification: requiresEmailVerification,
           },
         },
       })
 
-      console.log("[v0] Registration response:", { data, error })
-
       if (error) {
-        console.error("[v0] Registration error:", error)
+        console.error("[v0] ❌ Erro ao criar conta:", error)
         throw error
       }
 
-      if (data.user) {
-        console.log("[v0] User created successfully:", data.user.id)
+      console.log("[v0] ✅ Conta criada com sucesso!", {
+        user_id: data.user?.id,
+        email: data.user?.email,
+        role: role,
+        company_id: companyId,
+        requires_verification: requiresEmailVerification,
+      })
 
-        console.log("[v0] User metadata set:", {
-          full_name: fullName,
-          company_name: isCompanyEmail ? company?.name : companyName,
-          role: isCompanyEmail ? "admin" : "user",
-          company_id: company?.id || vmaxData?.id_company || null,
-        })
-
-        if (isCompanyEmail) {
-          console.log("[v0] Usuário associado automaticamente à empresa:", company?.name)
+      if (data.user?.id && companyId) {
+        console.log("[v0] 💾 Salvando company_id no perfil do usuário...")
+        
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            company_id: companyId,
+            role: role,
+          })
+          .eq("id", data.user.id)
+        
+        if (profileError) {
+          console.error("[v0] ❌ Erro ao atualizar perfil:", profileError)
+        } else {
+          console.log("[v0] ✅ company_id salvo no perfil com sucesso")
         }
-        if (hasVmaxData) {
-          console.log("[v0] Usuário associado aos dados da VMAX:", vmaxData?.Cliente)
-        }
-
-        router.push("/auth/register-success")
-      } else {
-        throw new Error("Usuário não foi criado corretamente")
       }
+
+      if (requiresEmailVerification) {
+        console.log("[v0] 📧 Email de verificação enviado para:", email)
+      } else {
+        console.log("[v0] ✅ Email NÃO precisa de verificação (admin de empresa)")
+      }
+
+      router.push("/auth/register-success")
+      
     } catch (error: unknown) {
-      console.error("[v0] Registration failed:", error)
+      console.error("[v0] ❌ Falha no registro:", error)
       if (error instanceof Error) {
         if (error.message.includes("User already registered")) {
           setError("Este email já está cadastrado. Tente fazer login.")

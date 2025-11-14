@@ -35,7 +35,13 @@ interface LogSecurityEventParams {
 
 export async function logSecurityEvent(params: LogSecurityEventParams) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
+
+    if (!supabase) {
+      console.error("[v0] ❌ Failed to create Supabase client for security logging")
+      return
+    }
+
     const headersList = await headers()
 
     // Get current user from session
@@ -78,10 +84,8 @@ export async function logSecurityEvent(params: LogSecurityEventParams) {
 
     if (error) {
       console.error("[v0] ❌ Error logging security event:", error)
-    } else {
-      console.log("[v0] ✅ Security event logged:", params.event_type, params.action)
     }
   } catch (error) {
-    console.error("[v0] ❌ Failed to log security event:", error)
+    console.error("[v0] ❌ Failed to log security event:", error instanceof Error ? error.message : error)
   }
 }

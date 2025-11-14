@@ -23,43 +23,52 @@ export default function AuthCallback() {
         }
 
         const userId = data.session.user.id
+        const userMetadata = data.session.user.user_metadata
         console.log("[v0] Buscando perfil para usuário:", userId)
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role, company_id")
+          .select("role, company_id, cpf_cnpj, email")
           .eq("id", userId)
           .single()
 
         console.log("[v0] Perfil encontrado:", { profile, profileError })
 
         if (profileError || !profile) {
-          console.log("[v0] Perfil não encontrado, criando perfil básico")
+          console.log("[v0] Perfil não encontrado, criando perfil com dados do registro")
+
           const { error: insertError } = await supabase.from("profiles").insert({
             id: userId,
             email: data.session.user.email,
-            role: "user",
-            full_name: data.session.user.user_metadata?.full_name || null,
-            company_id: null, // Will be assigned later by super admin
+            role: userMetadata?.role || "user",
+            full_name: userMetadata?.full_name || null,
+            company_id: userMetadata?.company_id || null,
+            cpf_cnpj: userMetadata?.cpf_cnpj || null,
+            person_type: userMetadata?.person_type || null,
           })
 
           if (insertError) {
             console.error("[v0] Erro ao criar perfil:", insertError)
           }
 
-          console.log("[v0] Redirecionando usuário para dashboard de usuário")
-          router.push("/user-dashboard")
+          if (userMetadata?.role === "admin") {
+            console.log("[v0] Redirecionando ADMIN para dashboard administrativo")
+            router.push("/dashboard")
+          } else {
+            console.log("[v0] Redirecionando USER para dashboard de usuário")
+            router.push("/user-dashboard")
+          }
           return
         }
 
         if (profile.role === "super_admin") {
-          console.log("[v0] Redirecionando super admin para painel Altea")
+          console.log("[v0] Redirecionando SUPER ADMIN para painel Altea")
           router.push("/super-admin")
         } else if (profile.role === "admin") {
-          console.log("[v0] Redirecionando admin para dashboard administrativo")
+          console.log("[v0] Redirecionando ADMIN para dashboard administrativo")
           router.push("/dashboard")
         } else {
-          console.log("[v0] Redirecionando usuário para dashboard de usuário")
+          console.log("[v0] Redirecionando USER para dashboard de usuário")
           router.push("/user-dashboard")
         }
       } catch (error) {

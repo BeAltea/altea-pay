@@ -13,23 +13,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useRouter } from "next/navigation"
+import { usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo, useCallback, memo } from "react"
-import { X } from "lucide-react"
-import {
-  LayoutDashboard,
-  Users,
-  BarChart3,
-  Settings,
-  Upload,
-  Target,
-  CreditCard,
-  LogOut,
-  User,
-  ChevronDown,
-  FileCheck,
-} from "lucide-react"
+import { X } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, Settings, CreditCard, LogOut, User, ChevronDown, FileCheck } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
 
 const navigation = [
@@ -52,16 +40,6 @@ const navigation = [
     name: "Acordos",
     href: "/dashboard/agreements",
     icon: FileCheck,
-  },
-  {
-    name: "Importar Dados",
-    href: "/dashboard/import",
-    icon: Upload,
-  },
-  {
-    name: "Réguas de Cobrança",
-    href: "/dashboard/collection-rules",
-    icon: Target,
   },
   {
     name: "Relatórios",
