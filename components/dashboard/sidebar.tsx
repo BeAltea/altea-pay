@@ -28,7 +28,7 @@ const navigation = [
   },
   {
     name: "Clientes",
-    href: "/dashboard/customers",
+    href: "/dashboard/clientes",
     icon: Users,
   },
   {

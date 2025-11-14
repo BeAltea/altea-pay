@@ -12,7 +12,11 @@ const nextConfig = {
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Don't bundle Twilio on the client side
+      config.externals = config.externals || []
+      config.externals.push({
+        twilio: 'commonjs twilio',
+      })
+      
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -25,10 +29,10 @@ const nextConfig = {
         zlib: false,
         path: false,
         os: false,
-      };
+      }
     }
-    return config;
+    return config
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

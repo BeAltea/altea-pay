@@ -24,21 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  Search,
-  MoreHorizontal,
-  AlertTriangle,
-  Clock,
-  CheckCircle,
-  RefreshCw,
-  Eye,
-  Mail,
-  Phone,
-  MessageSquare,
-  Plus,
-  Edit,
-  Trash2,
-} from "lucide-react"
+import { Search, MoreHorizontal, AlertTriangle, Clock, CheckCircle, RefreshCw, Eye, Mail, Phone, MessageSquare, Plus, Edit, Trash2 } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { sendCollectionNotification } from "@/app/actions/send-notification"
 import { createDebt } from "@/app/actions/create-debt"
@@ -150,52 +136,51 @@ export default function DebtsPage() {
     try {
       console.log("[v0] Fetching debts for company:", profile.company_id)
 
-      const { data: debtsData, error } = await supabase
-        .from("debts")
-        .select(`
-          id,
-          amount,
-          due_date,
-          status,
-          classification,
-          description,
-          customer_id,
-          customers (
-            id,
-            name,
-            email,
-            document
-          )
-        `)
-        .eq("company_id", profile.company_id)
-        .order("due_date", { ascending: false })
+      const { data: vmaxData, error: vmaxError } = await supabase
+        .from("VMAX")
+        .select("*")
+        .eq("id_company", profile.company_id)
+        .order("Dias_Inad", { ascending: false })
 
-      if (error) {
-        console.error("[v0] Error fetching debts:", error)
-        throw error
+      if (vmaxError) {
+        console.error("[v0] Error fetching VMAX debts:", vmaxError)
+        throw vmaxError
       }
 
-      console.log("[v0] Fetched debts:", debtsData?.length || 0)
+      console.log("[v0] Fetched VMAX debts:", vmaxData?.length || 0)
 
+      // Formatar dívidas da VMAX
       const formattedDebts: Debt[] =
-        debtsData?.map((debt) => {
-          const dueDate = new Date(debt.due_date)
-          const today = new Date()
-          const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+        vmaxData?.map((vmax) => {
+          const dueDate = vmax.Primeira_Vencida ? new Date(vmax.Primeira_Vencida) : new Date()
+          const diasInadimplencia = vmax.Dias_Inad ? Number(vmax.Dias_Inad) : 0
+
+          const valorVencido = vmax.Vencido
+            ? Number.parseFloat(String(vmax.Vencido).replace(/[^\d,.-]/g, "").replace(",", "."))
+            : 0
+
+          // Determinar classificação baseada em dias de inadimplência
+          let classification: Debt["classification"] = "low"
+          if (diasInadimplencia > 90) classification = "critical"
+          else if (diasInadimplencia > 60) classification = "high"
+          else if (diasInadimplencia > 30) classification = "medium"
 
           return {
-            id: debt.id,
-            customerId: debt.customer_id,
-            customerName: debt.customers?.name || "Cliente",
-            customerEmail: debt.customers?.email || "",
-            customerDocument: debt.customers?.document || "",
-            originalAmount: Number(debt.amount),
-            currentAmount: Number(debt.amount),
-            dueDate: debt.due_date,
-            daysOverdue: daysOverdue > 0 ? daysOverdue : 0,
-            description: debt.description || "",
-            status: debt.status as Debt["status"],
-            classification: debt.classification as Debt["classification"],
+            id: vmax.id,
+            customerId: vmax.id,
+            customerName: vmax.Cliente || "Cliente VMAX",
+            customerEmail: "",
+            customerDocument: vmax["CPF/CNPJ"] || "",
+            originalAmount: valorVencido,
+            currentAmount: valorVencido,
+            dueDate: vmax.Primeira_Vencida || new Date().toISOString(),
+            daysOverdue: diasInadimplencia,
+            contractNumber: "",
+            description: `Empresa: ${vmax.Empresa || "N/A"} - Cidade: ${vmax.Cidade || "N/A"} - Dias Inad: ${diasInadimplencia}`,
+            status: "in_collection" as const,
+            classification,
+            lastAction: "Importado da base VMAX",
+            nextAction: "Enviar notificação de cobrança",
           }
         }) || []
 

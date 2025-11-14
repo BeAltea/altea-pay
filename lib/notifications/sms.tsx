@@ -1,12 +1,13 @@
 "use server"
 
-import twilio from "twilio"
-
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-
 interface SendSMSParams {
   to: string
   body: string
+}
+
+async function getTwilioClient() {
+  const twilio = (await import("twilio")).default
+  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
 }
 
 export async function sendSMS({ to, body }: SendSMSParams) {
@@ -35,10 +36,12 @@ export async function sendSMS({ to, body }: SendSMSParams) {
     console.log("[Twilio] From:", process.env.TWILIO_PHONE_NUMBER)
     console.log("[Twilio] To:", to)
 
+    const client = await getTwilioClient()
+
     const message = await client.messages.create({
       body,
       from: process.env.TWILIO_PHONE_NUMBER,
-      to: to, // Usar o telefone já formatado
+      to: to,
     })
 
     console.log("[Twilio Response] SID:", message.sid)

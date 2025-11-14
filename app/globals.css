@@ -100,8 +100,8 @@
   --sidebar-ring: oklch(0.82 0.18 85);
 }
 
-/* Simplified @theme inline block to avoid invalid custom property errors */
 @theme {
+  /* Consolidated all theme variables in one block to avoid empty utility errors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
