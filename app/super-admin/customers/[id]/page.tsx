@@ -1,13 +1,13 @@
 "use client"
 
-import { notFound } from "next/navigation"
+import { notFound } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { getCustomerDetails } from "@/app/actions/analyses-actions"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail, FileDown } from "lucide-react"
+import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail, FileDown } from 'lucide-react'
 
 export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
   const { id } = await params
@@ -28,8 +28,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
 
   const getSourceBadge = (source: string) => {
     const variants: Record<string, { variant: any; label: string }> = {
-      gov: { variant: "secondary", label: "Portal da Transparência" },
-      assertiva: { variant: "default", label: "Assertiva" },
+      assertiva: { variant: "default", label: "Análise de Crédito" },
       unknown: { variant: "outline", label: "Desconhecido" },
     }
     const config = variants[source] || variants.unknown

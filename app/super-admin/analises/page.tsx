@@ -92,8 +92,8 @@ export default function AnalysesPage() {
 
   const getSourceBadge = (source: string) => {
     const variants: Record<string, { variant: any; label: string }> = {
-      gov: { variant: "secondary", label: "Governo" },
-      assertiva: { variant: "default", label: "Assertiva" },
+      credit_analysis: { variant: "default", label: "Análise de Crédito" },
+      assertiva: { variant: "default", label: "Análise de Crédito" },
       unknown: { variant: "outline", label: "Desconhecido" },
     }
     const config = variants[source] || variants.unknown
@@ -114,7 +114,7 @@ export default function AnalysesPage() {
     total: analyses.length,
     completed: analyses.filter((a) => a.status === "completed").length,
     pending: analyses.filter((a) => a.status === "pending").length,
-    assertiva: analyses.filter((a) => a.source === "assertiva").length,
+    credit_analysis: analyses.filter((a) => a.source === "assertiva" || a.source === "credit_analysis").length,
   }
 
   const toggleCustomerSelection = (customerId: string) => {
@@ -323,8 +323,8 @@ export default function AnalysesPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground">Assertiva</CardDescription>
-            <CardTitle className="text-3xl text-blue-600 dark:text-blue-400">{stats.assertiva}</CardTitle>
+            <CardDescription className="text-muted-foreground">Análise de Crédito</CardDescription>
+            <CardTitle className="text-3xl text-blue-600 dark:text-blue-400">{stats.credit_analysis}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -337,7 +337,7 @@ export default function AnalysesPage() {
               <div className="flex items-center gap-4">
                 <Sparkles className="h-8 w-8 text-primary" />
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground">Análise Paga (Assertiva)</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Análise de Crédito (Paga)</h3>
                   <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
                 </div>
               </div>
@@ -374,13 +374,12 @@ export default function AnalysesPage() {
                 />
               </div>
               <Select value={filterSource} onValueChange={setFilterSource}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Fonte" />
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filtrar por fonte" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas as Fontes</SelectItem>
-                  <SelectItem value="gov">Governo</SelectItem>
-                  <SelectItem value="assertiva">Assertiva</SelectItem>
+                  <SelectItem value="all">Todas as fontes</SelectItem>
+                  <SelectItem value="credit_analysis">Análise de Crédito</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterType} onValueChange={setFilterType}>
@@ -491,15 +490,15 @@ export default function AnalysesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-600" />
-              Confirmar Análise Paga
+              Confirmar Análise de Crédito
             </DialogTitle>
             <div className="space-y-4 pt-4 text-sm text-muted-foreground">
-              <p>Você está prestes a executar uma análise detalhada usando a API da Assertiva Soluções.</p>
+              <p>Você está prestes a executar uma análise detalhada de crédito.</p>
 
               <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:bg-yellow-950/20">
                 <p className="font-semibold text-yellow-900 dark:text-yellow-100">⚠️ Atenção:</p>
                 <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-                  <li>Esta ação consome créditos da Assertiva</li>
+                  <li>Esta ação consome créditos de análise</li>
                   <li>Não pode ser desfeita</li>
                   <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
                   <li>O processo pode levar alguns minutos</li>
@@ -527,9 +526,7 @@ export default function AnalysesPage() {
           <SheetHeader>
             <SheetTitle className="text-2xl">Análise de Crédito Completa</SheetTitle>
             <SheetDescription>
-              {selectedAnalysis?.source === "assertiva"
-                ? "Dados da Assertiva Soluções"
-                : "Dados do Portal da Transparência do Governo Federal"}
+              Dados completos da análise de crédito do cliente
             </SheetDescription>
           </SheetHeader>
 
@@ -538,20 +535,13 @@ export default function AnalysesPage() {
               {/* Source Badge */}
               <div className="flex items-center justify-between">
                 <Badge
-                  variant={selectedAnalysis.source === "assertiva" ? "default" : "secondary"}
+                  variant="default"
                   className="text-base px-6 py-2"
                 >
-                  {selectedAnalysis.source === "assertiva" ? (
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Análise Detalhada - Assertiva
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Análise Gratuita - Portal da Transparência
-                    </span>
-                  )}
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    Análise de Crédito Detalhada
+                  </span>
                 </Badge>
                 <Button onClick={() => exportToPDF(selectedAnalysis)} className="gap-2" variant="outline">
                   <Download className="h-4 w-4" />
@@ -588,7 +578,7 @@ export default function AnalysesPage() {
                             : "Risco Muito Alto"}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Fonte: {selectedAnalysis.source === "assertiva" ? "Assertiva" : "Portal da Transparência"}
+                      Fonte: Análise de Crédito
                     </p>
                   </CardHeader>
                 </Card>

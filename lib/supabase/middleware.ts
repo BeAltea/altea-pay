@@ -49,17 +49,20 @@ export async function updateSession(request: NextRequest) {
       user = data.user
       userError = error
     } catch (error) {
+      if (isPublicPath) {
+        return supabaseResponse
+      }
       userError = error
+    }
+
+    if ((!user || userError) && isPublicPath) {
+      return supabaseResponse
     }
 
     if ((!user || userError) && !isPublicPath) {
       const url = request.nextUrl.clone()
       url.pathname = "/"
       return NextResponse.redirect(url)
-    }
-
-    if (isPublicPath && (!user || userError)) {
-      return supabaseResponse
     }
 
     if (user && !userError) {

@@ -279,10 +279,10 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               <CardHeader className="pb-3">
                 <CardDescription className="text-xs uppercase tracking-wide">Fonte de Dados</CardDescription>
                 <CardTitle className="text-lg font-bold">
-                  {finalCreditProfile.source === "assertiva" ? "Assertiva" : "Portal da Transparência"}
+                  Análise de Crédito
                 </CardTitle>
                 {finalCreditProfile.data_assertiva && (
-                  <Badge variant="secondary" className="mt-2">Dados Assertiva</Badge>
+                  <Badge variant="secondary" className="mt-2">Dados Disponíveis</Badge>
                 )}
               </CardHeader>
             </Card>

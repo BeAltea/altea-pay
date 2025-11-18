@@ -148,7 +148,7 @@ export default async function ClientesPage() {
                       <span className="text-xs text-purple-600 font-semibold">Score de Crédito</span>
                     </div>
                     <div className="text-3xl font-bold text-purple-600">{cliente.creditProfile.score_assertiva}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Análise Assertiva</p>
+                    <p className="text-xs text-muted-foreground mt-1">Análise de Crédito</p>
                   </div>
                 )}
     

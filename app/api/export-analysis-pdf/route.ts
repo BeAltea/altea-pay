@@ -560,10 +560,10 @@ function generatePDFHTML(analysis: any): string {
         <p>Documento gerado em ${formatDate(analysis.created_at)}</p>
         <div style="margin-top: 15px;">
           <span class="badge badge-gold">
-            ${analysis.source === "assertiva" ? "Análise Assertiva" : "Portal da Transparência"}
+            Análise de Crédito
           </span>
           <span class="badge ${analysis.analysis_type === "free" ? "badge-info" : "badge-success"}">
-            ${analysis.analysis_type === "free" ? "Análise Gratuita" : "Análise Detalhada"}
+            ${analysis.analysis_type === "free" ? "Análise Básica" : "Análise Detalhada"}
           </span>
         </div>
       </div>
@@ -648,7 +648,7 @@ function generatePDFHTML(analysis: any): string {
           ? `
       <!-- Assertiva Data Section -->
       ${
-        analysis.scoreRecupere
+        scoreRecupere !== undefined
           ? `
       <div class="section">
         <div class="section-title">
@@ -656,7 +656,7 @@ function generatePDFHTML(analysis: any): string {
         </div>
         <div class="score-box" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%);">
           <div class="score-label">Índice de Recuperação</div>
-          <div class="score-value">${analysis.scoreRecupere}</div>
+          <div class="score-value">${scoreRecupere}</div>
           <div class="risk-badge">${analysis.scoreRecupereClass || "N/A"}</div>
         </div>
       </div>
@@ -665,7 +665,7 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        analysis.rendaPresumida
+        rendaPresumida !== undefined
           ? `
       <div class="section">
         <div class="section-title">
@@ -674,7 +674,7 @@ function generatePDFHTML(analysis: any): string {
         <div class="alert-box alert-info">
           <div class="alert-title">Renda Estimada</div>
           <div class="alert-content" style="font-size: 24px; font-weight: 700;">
-            R$ ${analysis.rendaPresumida.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ ${rendaPresumida.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -683,13 +683,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        analysis.debitos.length > 0
+        debitos.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">⚠️</span> Débitos Registrados (${analysis.debitos.length})
+          <span class="section-icon">⚠️</span> Débitos Registrados (${debitos.length})
         </div>
-        ${analysis.debitos
+        ${debitos
           .map(
             (debito: any, idx: number) => `
           <div class="list-item">
@@ -702,7 +702,7 @@ function generatePDFHTML(analysis: any): string {
         <div class="alert-box alert-warning">
           <div class="alert-title">Total de Débitos</div>
           <div class="alert-content" style="font-size: 20px; font-weight: 700;">
-            R$ ${analysis.debitosTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            R$ ${debitosTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -711,13 +711,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        analysis.protestos.length > 0
+        protestos.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">🚨</span> Protestos (${analysis.protestos.length})
+          <span class="section-icon">🚨</span> Protestos (${protestos.length})
         </div>
-        ${analysis.protestos
+        ${protestos
           .map(
             (protesto: any, idx: number) => `
           <div class="list-item">
@@ -735,13 +735,13 @@ function generatePDFHTML(analysis: any): string {
       }
 
       ${
-        analysis.acoesJudiciais.length > 0
+        acoesJudiciais.length > 0
           ? `
       <div class="section">
         <div class="section-title">
-          <span class="section-icon">⚖️</span> Ações Judiciais (${analysis.acoesJudiciais.length})
+          <span class="section-icon">⚖️</span> Ações Judiciais (${acoesJudiciais.length})
         </div>
-        ${analysis.acoesJudiciais
+        ${acoesJudiciais
           .map(
             (acao: any, idx: number) => `
           <div class="list-item">
