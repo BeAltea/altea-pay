@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -17,8 +18,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Building2, Check, X } from "lucide-react"
+import { Plus, Edit, Trash2, Building2, Check, X, Users } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { fetchAllCustomers } from "@/app/actions/fetch-customers-action"
 
 interface CollectionRule {
   id: string
@@ -28,6 +30,7 @@ interface CollectionRule {
   created_at: string
   steps: CollectionRuleStep[]
   active_for_companies: string[] | null
+  active_for_customers: string[] | null
 }
 
 interface CollectionRuleStep {
@@ -46,15 +49,21 @@ interface Company {
   cnpj: string
 }
 
+interface Customer {
+  id: string
+  name: string
+  document: string
+  company_id: string
+}
+
 export default function SuperAdminCollectionRulesPage() {
   const [rules, setRules] = useState<CollectionRule[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
-  const [showAssignDialog, setShowAssignDialog] = useState(false)
   const [editingRule, setEditingRule] = useState<CollectionRule | null>(null)
-  const [assigningRule, setAssigningRule] = useState<CollectionRule | null>(null)
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -64,12 +73,28 @@ export default function SuperAdminCollectionRulesPage() {
     description: "",
     is_active: true,
     steps: [{ step_order: 1, days_after_due: 3, channel: "email", template: "" }],
+    assignment_mode: "companies" as "companies" | "customers",
+    assigned_companies: [] as string[],
+    assigned_customers: [] as string[],
   })
 
   useEffect(() => {
     fetchRules()
     fetchCompanies()
+    fetchCustomers()
   }, [])
+
+  useEffect(() => {
+    if (formData.assignment_mode === "customers" && formData.assigned_companies.length > 0) {
+      const filtered = customers.filter((c) => formData.assigned_companies.includes(c.company_id))
+      console.log("[v0] Filtering customers for companies:", formData.assigned_companies)
+      console.log("[v0] Total customers in state:", customers.length)
+      console.log("[v0] Filtered customers:", filtered.length)
+      setFilteredCustomers(filtered)
+    } else {
+      setFilteredCustomers([])
+    }
+  }, [formData.assigned_companies, customers, formData.assignment_mode])
 
   async function fetchRules() {
     try {
@@ -116,6 +141,26 @@ export default function SuperAdminCollectionRulesPage() {
     }
   }
 
+  async function fetchCustomers() {
+    try {
+      const result = await fetchAllCustomers()
+
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+
+      console.log("[v0] Customers fetched via server action:", result.customers.length)
+      setCustomers(result.customers)
+    } catch (error: any) {
+      console.error("Error fetching customers:", error.message || error)
+      toast({
+        title: "Erro ao carregar clientes",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
   async function handleSaveRule() {
     try {
       if (editingRule) {
@@ -126,6 +171,16 @@ export default function SuperAdminCollectionRulesPage() {
             name: formData.name,
             description: formData.description,
             is_active: formData.is_active,
+            active_for_companies:
+              formData.assignment_mode === "companies" && formData.assigned_companies.length > 0
+                ? formData.assigned_companies
+                : formData.assignment_mode === "customers"
+                  ? formData.assigned_companies
+                  : null,
+            active_for_customers:
+              formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
+                ? formData.assigned_customers
+                : null,
           })
           .eq("id", editingRule.id)
 
@@ -156,6 +211,16 @@ export default function SuperAdminCollectionRulesPage() {
             name: formData.name,
             description: formData.description,
             is_active: formData.is_active,
+            active_for_companies:
+              formData.assignment_mode === "companies" && formData.assigned_companies.length > 0
+                ? formData.assigned_companies
+                : formData.assignment_mode === "customers"
+                  ? formData.assigned_companies
+                  : null,
+            active_for_customers:
+              formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
+                ? formData.assigned_customers
+                : null,
           })
           .select()
           .single()
@@ -235,35 +300,6 @@ export default function SuperAdminCollectionRulesPage() {
     }
   }
 
-  async function handleAssignCompanies() {
-    if (!assigningRule) return
-
-    try {
-      const { error } = await supabase
-        .from("collection_rules")
-        .update({ active_for_companies: selectedCompanies })
-        .eq("id", assigningRule.id)
-
-      if (error) throw error
-
-      toast({
-        title: "Empresas atribuídas",
-        description: "A régua foi atribuída às empresas selecionadas.",
-      })
-
-      setShowAssignDialog(false)
-      setAssigningRule(null)
-      setSelectedCompanies([])
-      fetchRules()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao atribuir empresas",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
-  }
-
   function openCreateDialog() {
     resetForm()
     setEditingRule(null)
@@ -281,15 +317,12 @@ export default function SuperAdminCollectionRulesPage() {
         channel: step.channel,
         template: step.template,
       })),
+      assignment_mode: rule.active_for_customers && rule.active_for_customers.length > 0 ? "customers" : "companies",
+      assigned_companies: rule.active_for_companies || [],
+      assigned_customers: rule.active_for_customers || [],
     })
     setEditingRule(rule)
     setShowDialog(true)
-  }
-
-  function openAssignDialog(rule: CollectionRule) {
-    setAssigningRule(rule)
-    setSelectedCompanies(rule.active_for_companies || [])
-    setShowAssignDialog(true)
   }
 
   function resetForm() {
@@ -298,6 +331,9 @@ export default function SuperAdminCollectionRulesPage() {
       description: "",
       is_active: true,
       steps: [{ step_order: 1, days_after_due: 3, channel: "email", template: "" }],
+      assignment_mode: "companies",
+      assigned_companies: [],
+      assigned_customers: [],
     })
   }
 
@@ -331,9 +367,21 @@ export default function SuperAdminCollectionRulesPage() {
   }
 
   function toggleCompanySelection(companyId: string) {
-    setSelectedCompanies((prev) =>
-      prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId],
-    )
+    setFormData((prev) => ({
+      ...prev,
+      assigned_companies: prev.assigned_companies.includes(companyId)
+        ? prev.assigned_companies.filter((id) => id !== companyId)
+        : [...prev.assigned_companies, companyId],
+    }))
+  }
+
+  function toggleCustomerSelection(customerId: string) {
+    setFormData((prev) => ({
+      ...prev,
+      assigned_customers: prev.assigned_customers.includes(customerId)
+        ? prev.assigned_customers.filter((id) => id !== customerId)
+        : [...prev.assigned_customers, customerId],
+    }))
   }
 
   if (loading) {
@@ -372,17 +420,20 @@ export default function SuperAdminCollectionRulesPage() {
                   </Badge>
                 </div>
                 {rule.description && <p className="text-sm text-muted-foreground mb-3">{rule.description}</p>}
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Building2 className="h-4 w-4" />
-                  <span>{rule.active_for_companies?.length || 0} empresa(s) atribuída(s)</span>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    <span>{rule.active_for_companies?.length || 0} empresa(s)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    <span>{rule.active_for_customers?.length || 0} cliente(s)</span>
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => handleToggleActive(rule)}>
                   {rule.is_active ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => openAssignDialog(rule)}>
-                  <Building2 className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => openEditDialog(rule)}>
                   <Edit className="h-4 w-4" />
@@ -458,6 +509,164 @@ export default function SuperAdminCollectionRulesPage() {
               <Label htmlFor="is_active">Régua ativa</Label>
             </div>
 
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+              <h4 className="font-medium">Atribuir Régua</h4>
+              <p className="text-sm text-muted-foreground">
+                Escolha se a régua será aplicada a empresas inteiras ou clientes específicos
+              </p>
+
+              <div className="flex gap-2 p-1 bg-muted/50 rounded-lg border">
+                <Button
+                  type="button"
+                  variant={formData.assignment_mode === "companies" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setFormData({ ...formData, assignment_mode: "companies", assigned_customers: [] })}
+                  className="flex-1"
+                >
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Empresas
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.assignment_mode === "customers" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setFormData({ ...formData, assignment_mode: "customers" })}
+                  className="flex-1"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Clientes Específicos
+                </Button>
+              </div>
+
+              {formData.assignment_mode === "companies" ? (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Selecione as empresas</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      A régua será aplicada a todos os clientes dessas empresas
+                    </p>
+                    <div className="max-h-60 overflow-y-auto space-y-2 p-3 border rounded-lg bg-background">
+                      {companies.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa encontrada</p>
+                      ) : (
+                        companies.map((company) => (
+                          <div
+                            key={company.id}
+                            className="flex items-center gap-3 p-3 hover:bg-muted rounded-lg cursor-pointer transition-colors border border-transparent hover:border-border"
+                            onClick={() => toggleCompanySelection(company.id)}
+                          >
+                            <div
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                formData.assigned_companies.includes(company.id)
+                                  ? "bg-primary border-primary"
+                                  : "border-muted-foreground"
+                              }`}
+                            >
+                              {formData.assigned_companies.includes(company.id) && (
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{company.name}</p>
+                              <p className="text-xs text-muted-foreground">{company.cnpj}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {formData.assigned_companies.length} empresa(s) selecionada(s)
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">1. Selecione as empresas</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Primeiro escolha as empresas para filtrar os clientes
+                    </p>
+                    <div className="max-h-40 overflow-y-auto space-y-2 p-3 border rounded-lg bg-background">
+                      {companies.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa encontrada</p>
+                      ) : (
+                        companies.map((company) => (
+                          <div
+                            key={company.id}
+                            className="flex items-center gap-3 p-2 hover:bg-muted rounded-lg cursor-pointer transition-colors"
+                            onClick={() => toggleCompanySelection(company.id)}
+                          >
+                            <div
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                formData.assigned_companies.includes(company.id)
+                                  ? "bg-primary border-primary"
+                                  : "border-muted-foreground"
+                              }`}
+                            >
+                              {formData.assigned_companies.includes(company.id) && (
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              )}
+                            </div>
+                            <span className="text-sm font-medium">{company.name}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {formData.assigned_companies.length > 0 ? (
+                    <div>
+                      <label className="text-sm font-medium">2. Selecione os clientes</label>
+                      <p className="text-xs text-muted-foreground">
+                        Escolha clientes específicos das empresas selecionadas
+                      </p>
+                      <div className="max-h-[300px] overflow-y-auto rounded-md border p-4">
+                        {filteredCustomers.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Users className="mb-2 h-8 w-8 text-muted-foreground/50" />
+                            <p className="text-sm text-muted-foreground">
+                              {formData.assigned_companies.length === 0
+                                ? "Selecione empresas primeiro"
+                                : "Nenhum cliente encontrado para as empresas selecionadas"}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {filteredCustomers.map((customer) => (
+                              <div key={customer.id} className="flex items-start space-x-2">
+                                <Checkbox
+                                  id={`customer-${customer.id}`}
+                                  checked={formData.assigned_customers.includes(customer.id)}
+                                  onCheckedChange={() => toggleCustomerSelection(customer.id)}
+                                />
+                                <label
+                                  htmlFor={`customer-${customer.id}`}
+                                  className="flex-1 cursor-pointer text-sm leading-tight"
+                                >
+                                  <div className="font-medium">{customer.name}</div>
+                                  <div className="text-xs text-muted-foreground">{customer.document}</div>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.assigned_customers.length} cliente(s) selecionado(s)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-6 border border-dashed rounded-lg bg-muted/30 text-center">
+                      <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        Selecione pelo menos uma empresa para ver os clientes
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">Etapas</h4>
@@ -521,44 +730,6 @@ export default function SuperAdminCollectionRulesPage() {
               Cancelar
             </Button>
             <Button onClick={handleSaveRule}>Salvar Régua</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Assign Companies Dialog */}
-      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Atribuir Empresas</DialogTitle>
-            <DialogDescription>Selecione as empresas que usarão esta régua</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {companies.map((company) => (
-              <div
-                key={company.id}
-                className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted"
-                onClick={() => toggleCompanySelection(company.id)}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedCompanies.includes(company.id)}
-                  onChange={() => toggleCompanySelection(company.id)}
-                  className="rounded"
-                />
-                <div className="flex-1">
-                  <p className="font-medium">{company.name}</p>
-                  <p className="text-sm text-muted-foreground">{company.cnpj}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAssignDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleAssignCompanies}>Atribuir ({selectedCompanies.length})</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

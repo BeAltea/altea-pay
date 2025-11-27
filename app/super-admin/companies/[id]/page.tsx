@@ -5,8 +5,25 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
-import { notFound } from 'next/navigation'
-import { ArrowLeft, Users, DollarSign, TrendingUp, Edit, Settings, BarChart3, AlertTriangle, CheckCircle, Clock, Phone, Mail, MapPin, Plug, Sparkles, Upload, Download } from 'lucide-react'
+import { notFound } from "next/navigation"
+import {
+  ArrowLeft,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Edit,
+  Settings,
+  BarChart3,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Phone,
+  Mail,
+  MapPin,
+  Plug,
+  Upload,
+  Download,
+} from "lucide-react"
 import { formatCurrency } from "@/lib/format-currency"
 
 interface CompanyDetailsProps {
@@ -485,12 +502,6 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                 <Link href={`/super-admin/companies/${company.id}/export`}>
                   <Download className="mr-2 h-4 w-4" />
                   Exportar Clientes
-                </Link>
-              </Button>
-              <Button asChild className="w-full bg-transparent" variant="outline">
-                <Link href={`/super-admin/companies/${company.id}/vmax-analysis`}>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Análise VMAX (Gratuita)
                 </Link>
               </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">

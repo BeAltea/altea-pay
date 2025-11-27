@@ -2,9 +2,18 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
-import { Building2, Users, TrendingUp, DollarSign, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Eye, BarChart3 } from 'lucide-react'
+import {
+  Building2,
+  Users,
+  DollarSign,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  ArrowUpRight,
+  Eye,
+  BarChart3,
+} from "lucide-react"
 
 interface CompanyStats {
   id: string
@@ -30,15 +39,13 @@ export default async function SuperAdminDashboardPage() {
 
   console.log("[v0] 🏢 Empresas encontradas:", companies?.length || 0)
 
-  const { data: allVmaxRecords, error: vmaxError } = await supabase
-    .from("VMAX")
-    .select("*")
+  const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
 
   if (vmaxError) {
     console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
   } else {
     console.log("[v0] 📊 VMAX total records in database:", allVmaxRecords?.length || 0)
-    
+
     if (allVmaxRecords && allVmaxRecords.length > 0) {
       console.log("[v0] 🔍 Sample VMAX record:", {
         id: allVmaxRecords[0].id,
@@ -47,9 +54,9 @@ export default async function SuperAdminDashboardPage() {
         Cliente: allVmaxRecords[0].Cliente,
         Empresa: allVmaxRecords[0].Empresa,
       })
-      
+
       // Log unique id_company values
-      const uniqueIds = [...new Set(allVmaxRecords.map(v => v.id_company))]
+      const uniqueIds = [...new Set(allVmaxRecords.map((v) => v.id_company))]
       console.log("[v0] 🆔 Unique id_company values:", uniqueIds)
     }
   }
@@ -60,19 +67,23 @@ export default async function SuperAdminDashboardPage() {
   if (companies) {
     for (const company of companies) {
       console.log(`[v0] 🔍 Processing company: ${company.name} (ID: ${company.id})`)
-      
+
       const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
 
-      const vmaxCustomers = allVmaxRecords?.filter((v) => {
-        const match = String(v.id_company || "").toLowerCase().trim() === String(company.id).toLowerCase().trim()
-        return match
-      }) || []
-      
+      const vmaxCustomers =
+        allVmaxRecords?.filter((v) => {
+          const match =
+            String(v.id_company || "")
+              .toLowerCase()
+              .trim() === String(company.id).toLowerCase().trim()
+          return match
+        }) || []
+
       console.log(`[v0] ✅ Company ${company.name}: ${vmaxCustomers.length} VMAX records`)
       if (vmaxCustomers.length > 0) {
         console.log(`[v0] 🎯 First match:`, {
           vmax_id_company: vmaxCustomers[0].id_company,
-          company_id: company.id
+          company_id: company.id,
         })
       }
 
@@ -85,18 +96,28 @@ export default async function SuperAdminDashboardPage() {
 
       const vmaxOverdueDebts = vmaxCustomers?.filter((v) => Number(v.Dias_Inad || 0) > 0).length || 0
 
-      const vmaxDebtsFormatted =
-        vmaxCustomers?.map((debt) => {
-          const vencidoStr = String(debt.Vencido || "0")
-          const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-          const amount = Number(cleanValue) || 0
+      const vmaxTotalAmount =
+        vmaxCustomers?.reduce((sum, v) => {
+          const vencidoStr = String(v.Vencido || "0")
+          // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
+          const cleanValue = vencidoStr
+            .replace(/R\$/g, "")
+            .replace(/\s/g, "")
+            .replace(/\./g, "") // Remove dots used as thousands separator
+            .replace(",", ".") // Convert comma to dot for decimal
+          const value = Number(cleanValue) || 0
+          console.log(`[v0] 💰 VMAX parsing: "${vencidoStr}" -> "${cleanValue}" -> ${value}`)
+          return sum + value
+        }, 0) || 0
 
-          return {
-            amount,
-            status: debt.DT_Cancelamento ? "paid" : "pending",
-            due_date: new Date().toISOString(),
-          }
-        }) || []
+      console.log(`[v0] 💵 Company ${company.name} VMAX total: R$ ${vmaxTotalAmount}`)
+
+      const vmaxDebtsFormatted =
+        vmaxCustomers?.map((debt) => ({
+          amount: 0, // Already counted in vmaxTotalAmount
+          status: debt.DT_Cancelamento ? "paid" : "pending",
+          due_date: new Date().toISOString(),
+        })) || []
 
       const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
@@ -107,17 +128,11 @@ export default async function SuperAdminDashboardPage() {
         .eq("company_id", company.id)
         .eq("role", "admin")
 
-      const totalAmount = allDebts
+      const regularDebtsAmount = (debts || [])
         .filter((d) => d.status !== "paid")
         .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
 
-      const recoveredAmount = allDebts
-        .filter((d) => d.status === "paid")
-        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-
-      const totalAllDebts = allDebts.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-
-      const recoveryRate = totalAllDebts > 0 ? (recoveredAmount / totalAllDebts) * 100 : 0
+      const totalAmount = regularDebtsAmount + vmaxTotalAmount
 
       const regularOverdueDebts =
         debts?.filter((d) => {
@@ -132,9 +147,9 @@ export default async function SuperAdminDashboardPage() {
         totalCustomers,
         totalDebts: allDebts.length,
         totalAmount,
-        recoveredAmount,
-        recoveryRate,
-        overdueDebts: regularOverdueDebts + vmaxOverdueDebts, // Somar atrasos de ambas as fontes
+        recoveredAmount: 0,
+        recoveryRate: 0,
+        overdueDebts: regularOverdueDebts + vmaxOverdueDebts,
         admins: admins?.length || 0,
       })
     }
@@ -146,13 +161,9 @@ export default async function SuperAdminDashboardPage() {
     totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
     totalDebts: companiesStats.reduce((sum, company) => sum + company.totalDebts, 0),
     totalAmount: companiesStats.reduce((sum, company) => sum + company.totalAmount, 0),
-    totalRecovered: companiesStats.reduce((sum, company) => sum + company.recoveredAmount, 0),
     totalOverdue: companiesStats.reduce((sum, company) => sum + company.overdueDebts, 0),
     totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
   }
-
-  const overallRecoveryRate =
-    totalStats.totalAmount > 0 ? (totalStats.totalRecovered / totalStats.totalAmount) * 100 : 0
 
   // Atividade recente real (últimas ações do sistema)
   const { data: recentPayments } = await supabase
@@ -171,7 +182,7 @@ export default async function SuperAdminDashboardPage() {
     recentAnalyses?.map((analysis) => ({
       id: analysis.id,
       type: "analysis",
-      description: `Análise de crédito ${analysis.analysis_type === "free" ? "Gov" : "Assertiva"} realizada - Score: ${analysis.score || "N/A"}`,
+      description: `Análise de crédito realizada - Score: ${analysis.score || "N/A"}`,
       company: analysis.companies?.name || "Empresa",
       amount: null,
       time: new Date(analysis.created_at).toLocaleDateString("pt-BR"),
@@ -215,7 +226,7 @@ export default async function SuperAdminDashboardPage() {
       </div>
 
       {/* Global Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-xs sm:text-sm font-medium">Total de Empresas</CardTitle>
@@ -223,12 +234,7 @@ export default async function SuperAdminDashboardPage() {
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="text-lg sm:text-2xl font-bold">{totalStats.totalCompanies}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600 flex items-center">
-                <TrendingUp className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                Clientes ativos
-              </span>
-            </p>
+            <p className="text-xs text-muted-foreground">Clientes ativos</p>
           </CardContent>
         </Card>
 
@@ -249,21 +255,8 @@ export default async function SuperAdminDashboardPage() {
             <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000000).toFixed(1)}M</div>
-            <p className="text-xs text-muted-foreground">
-              R$ {totalStats.totalRecovered.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Taxa de Recuperação Geral</CardTitle>
-            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{overallRecoveryRate.toFixed(1)}%</div>
-            <Progress value={overallRecoveryRate} className="mt-2" />
+            <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000).toFixed(2)}k</div>
+            <p className="text-xs text-muted-foreground">{totalStats.totalDebts.toLocaleString()} dívidas ativas</p>
           </CardContent>
         </Card>
       </div>
@@ -309,16 +302,9 @@ export default async function SuperAdminDashboardPage() {
                 <div className="flex flex-row sm:flex-row sm:items-center gap-3 sm:gap-6 mt-3 sm:mt-0">
                   <div className="text-center sm:text-right">
                     <p className="text-xs sm:text-sm font-medium text-foreground">
-                      R$ {(company.totalAmount / 1000).toFixed(0)}k
+                      R$ {(company.totalAmount / 1000).toFixed(2)}k
                     </p>
-                    <p className="text-xs text-muted-foreground">Total</p>
-                  </div>
-
-                  <div className="text-center sm:text-right">
-                    <p className="text-xs sm:text-sm font-medium text-green-600 dark:text-green-400">
-                      {company.recoveryRate.toFixed(1)}%
-                    </p>
-                    <p className="text-xs text-muted-foreground">Recuperação</p>
+                    <p className="text-xs text-muted-foreground">Em cobrança</p>
                   </div>
 
                   {company.overdueDebts > 0 && (

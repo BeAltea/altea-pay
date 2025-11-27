@@ -50,40 +50,40 @@ export interface AnalysisTrigger {
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
-const PORTAL_API_KEY = process.env.PORTAL_TRANSPARENCIA_API_KEY || ''
-// MAX_PAGES_TO_SEARCH was removed and replaced by a practically infinite value in searchPaginatedAPI
+// const PORTAL_API_KEY = process.env.PORTAL_TRANSPARENCIA_API_KEY || ''
 
 async function searchPaginatedAPI(
   baseUrl: string,
   targetDoc: string,
   extractDocFn: (item: any) => string,
-  maxPages: number = 999999 // Effectively unlimited - will stop when API returns empty
+  maxPages = 999999, // Effectively unlimited - will stop when API returns empty
 ): Promise<any[]> {
   const headers: Record<string, string> = { Accept: "application/json" }
-  if (PORTAL_API_KEY) {
-    headers["chave-api-dados"] = PORTAL_API_KEY
-  }
+  // Removed API key usage as it's no longer supported
+  // if (PORTAL_API_KEY) {
+  //   headers["chave-api-dados"] = PORTAL_API_KEY
+  // }
 
   const cleanTarget = targetDoc.replace(/\D/g, "")
-  let foundRecords: any[] = []
+  const foundRecords: any[] = []
   let pagesSearched = 0
 
   console.log(`[v0] 🔍 Starting UNLIMITED paginated search for document: ${cleanTarget} on ${baseUrl}`)
 
   for (let page = 1; page <= maxPages; page++) {
     pagesSearched++
-    const url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}pagina=${page}`
-    
+    const url = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}pagina=${page}`
+
     try {
       const response = await fetch(url, { headers })
-      
+
       if (!response.ok) {
         console.log(`[v0] ⚠️ Page ${page} returned status ${response.status}, stopping`)
         break
       }
 
       const data = await response.json()
-      
+
       if (!Array.isArray(data) || data.length === 0) {
         console.log(`[v0] 📭 Page ${page} is empty - reached end of results, stopping pagination`)
         break
@@ -99,7 +99,7 @@ async function searchPaginatedAPI(
           console.log(`[v0] ✅ FOUND MATCH on page ${page}:`, {
             target: cleanTarget,
             found: itemDoc,
-            name: item.sancionado?.nome || item.pessoa?.nome || item.pessoaJuridica?.nome || 'N/A'
+            name: item.sancionado?.nome || item.pessoa?.nome || item.pessoaJuridica?.nome || "N/A",
           })
         }
       }
@@ -108,18 +108,18 @@ async function searchPaginatedAPI(
       console.log(`[v0] 🔄 Found ${foundRecords.length} matches so far, continuing to next page...`)
 
       // Small delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100))
-
+      await new Promise((resolve) => setTimeout(resolve, 100))
     } catch (error: any) {
       console.error(`[v0] ❌ Error fetching page ${page}:`, error.message)
       break
     }
   }
 
-  console.log(`[v0] 🏁 Pagination complete: ${foundRecords.length} matches found after searching ${pagesSearched} pages`)
+  console.log(
+    `[v0] 🏁 Pagination complete: ${foundRecords.length} matches found after searching ${pagesSearched} pages`,
+  )
   return foundRecords
 }
-
 
 // Análise gratuita usando APIs públicas do governo
 export async function analyzeFree(
@@ -145,32 +145,36 @@ export async function analyzeFree(
       try {
         // CEIS - Empresas Inidôneas (with pagination)
         const ceisData = await searchPaginatedAPI(
-          'https://api.portaldatransparencia.gov.br/api-de-dados/ceis',
+          "https://api.portaldatransparencia.gov.br/api-de-dados/ceis",
           cleanCpf,
-          (item) => item.sancionado?.codigoFormatado?.replace(/\D/g, "") || 
-                   item.pessoa?.cnpjFormatado?.replace(/\D/g, "") || ""
+          (item) =>
+            item.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+            item.pessoa?.cnpjFormatado?.replace(/\D/g, "") ||
+            "",
         )
 
         // CNEP - Empresas Punidas (with pagination)
         const cnepData = await searchPaginatedAPI(
-          'https://api.portaldatransparencia.gov.br/api-de-dados/cnep',
+          "https://api.portaldatransparencia.gov.br/api-de-dados/cnep",
           cleanCpf,
-          (item) => item.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
-                   item.pessoa?.cnpjFormatado?.replace(/\D/g, "") || ""
+          (item) =>
+            item.sancionado?.codigoFormatado?.replace(/\D/g, "") ||
+            item.pessoa?.cnpjFormatado?.replace(/\D/g, "") ||
+            "",
         )
 
         // CEPIM - Entidades Impedidas (with pagination)
         const cepimData = await searchPaginatedAPI(
-          'https://api.portaldatransparencia.gov.br/api-de-dados/cepim',
+          "https://api.portaldatransparencia.gov.br/api-de-dados/cepim",
           cleanCpf,
-          (item) => item.pessoaJuridica?.cnpjFormatado?.replace(/\D/g, "") || ""
+          (item) => item.pessoaJuridica?.cnpjFormatado?.replace(/\D/g, "") || "",
         )
 
         // CEAF - Acordo de Leniência (with pagination)
         const ceafData = await searchPaginatedAPI(
-          'https://api.portaldatransparencia.gov.br/api-de-dados/ceaf',
+          "https://api.portaldatransparencia.gov.br/api-de-dados/ceaf",
           cleanCpf,
-          (item) => item.pessoa?.cnpjFormatado?.replace(/\D/g, "") || ""
+          (item) => item.pessoa?.cnpjFormatado?.replace(/\D/g, "") || "",
         )
 
         const duration = Date.now() - logStartTime
@@ -181,16 +185,11 @@ export async function analyzeFree(
           cepim_found: cepimData.length,
           ceaf_found: ceafData.length,
           total_sanctions: ceisData.length + cnepData.length + cepimData.length + ceafData.length,
-          duration_ms: duration
+          duration_ms: duration,
         })
 
         let score = 700 // Base score for clean records
-        const sanctions = [
-          ...ceisData,
-          ...cnepData,
-          ...cepimData,
-          ...ceafData,
-        ]
+        const sanctions = [...ceisData, ...cnepData, ...cepimData, ...ceafData]
 
         console.log("[v0] analyzeFree - Total sanctions/impediments:", {
           cnpj: cleanCpf,
@@ -204,22 +203,22 @@ export async function analyzeFree(
         if (sanctions.length > 0) {
           // Calculate score based on severity and recency of sanctions
           const now = new Date()
-          
+
           // Count active/recent sanctions (last 24 months)
           const recentSanctions = sanctions.filter((s: any) => {
             const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento || s.dataReferencia
-            if (!sanctionDate || sanctionDate === 'Sem informação') return false
-            
+            if (!sanctionDate || sanctionDate === "Sem informação") return false
+
             try {
               // Handle different date formats
               let date: Date
-              if (sanctionDate.includes('/')) {
-                const parts = sanctionDate.split('/')
+              if (sanctionDate.includes("/")) {
+                const parts = sanctionDate.split("/")
                 date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
               } else {
                 date = new Date(sanctionDate)
               }
-              
+
               const monthsAgo = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
               return monthsAgo <= 24
             } catch {
@@ -227,20 +226,20 @@ export async function analyzeFree(
             }
           })
 
-          // Count very recent sanctions (last 12 months) 
+          // Count very recent sanctions (last 12 months)
           const veryRecentSanctions = sanctions.filter((s: any) => {
             const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento || s.dataReferencia
-            if (!sanctionDate || sanctionDate === 'Sem informação') return false
-            
+            if (!sanctionDate || sanctionDate === "Sem informação") return false
+
             try {
               let date: Date
-              if (sanctionDate.includes('/')) {
-                const parts = sanctionDate.split('/')
+              if (sanctionDate.includes("/")) {
+                const parts = sanctionDate.split("/")
                 date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
               } else {
                 date = new Date(sanctionDate)
               }
-              
+
               const monthsAgo = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
               return monthsAgo <= 12
             } catch {
@@ -268,7 +267,11 @@ export async function analyzeFree(
             calculated_score: score,
           })
         } else {
-          console.log("[v0] analyzeFree - No sanctions found for this CNPJ after paginated search, score:", cleanCpf, score)
+          console.log(
+            "[v0] analyzeFree - No sanctions found for this CNPJ after paginated search, score:",
+            cleanCpf,
+            score,
+          )
         }
 
         const cnpjData = {
@@ -300,7 +303,7 @@ export async function analyzeFree(
             cepim_count: cepimData.length,
             ceaf_count: ceafData.length,
             score: score,
-            used_pagination: true
+            used_pagination: true,
           },
           duration_ms: duration,
         })
@@ -334,22 +337,24 @@ export async function analyzeFree(
 
     console.log("[v0] analyzeFree - CPF detected, querying Portal da Transparência APIs")
 
-    const apiKey = process.env.PORTAL_TRANSPARENCIA_API_KEY
+    // Removed API key retrieval as it's no longer supported
+    // const apiKey = process.env.PORTAL_TRANSPARENCIA_API_KEY
     const logStartTime = Date.now()
 
     const headers: Record<string, string> = {
       Accept: "application/json",
     }
 
-    if (apiKey) {
-      headers["chave-api-dados"] = apiKey
-      console.log(
-        "[v0] analyzeFree - API Key configured:",
-        `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
-      )
-    } else {
-      console.log("[v0] analyzeFree - API Key NOT configured")
-    }
+    // Removed API key usage
+    // if (apiKey) {
+    //   headers["chave-api-dados"] = apiKey
+    //   console.log(
+    //     "[v0] analyzeFree - API Key configured:",
+    //     `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`,
+    //   )
+    // } else {
+    //   console.log("[v0] analyzeFree - API Key NOT configured")
+    // }
 
     try {
       const [ceisResponse, cnepResponse, cepimResponse, ceafResponse] = await Promise.all([

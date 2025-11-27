@@ -28,6 +28,15 @@ import { useMobileSuperAdminSidebar } from "./super-admin-sidebar"
 import { cn } from "@/lib/utils"
 import { Building2, Users, BarChart3, FileText, TrendingUp, Database } from "lucide-react"
 
+interface Notification {
+  id: string
+  title: string
+  description: string
+  created_at: string
+  read: boolean
+  type: string
+}
+
 interface SuperAdminHeaderProps {
   user?: {
     id: string
@@ -43,26 +52,37 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
   const [mounted, setMounted] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const router = useRouter()
   const { toast } = useToast()
   const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileSuperAdminSidebar()
 
   useEffect(() => {
     setMounted(true)
+    fetchNotifications()
   }, [])
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element
-      if (!target.closest("[data-dropdown]")) {
-        setShowNotifications(false)
-        setShowUserMenu(false)
+  async function fetchNotifications() {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(10)
+
+      if (error) {
+        console.error("[v0] Error fetching notifications:", error)
+        return
       }
-    }
 
-    document.addEventListener("click", handleClickOutside)
-    return () => document.removeEventListener("click", handleClickOutside)
-  }, [])
+      setNotifications(data || [])
+      setUnreadCount(data?.filter((n) => !n.read).length || 0)
+    } catch (error) {
+      console.error("[v0] Exception fetching notifications:", error)
+    }
+  }
 
   const handleSignOut = async () => {
     console.log("[v0] SuperAdminHeader - Sign out initiated")
@@ -108,12 +128,18 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
     })
   }
 
-  const handleNotificationClick = (notification: string) => {
-    console.log("[v0] SuperAdminHeader - Notification clicked:", notification)
-    toast({
-      title: "Notificação",
-      description: notification,
-    })
+  const handleNotificationClick = async (notificationId: string) => {
+    console.log("[v0] SuperAdminHeader - Notification clicked:", notificationId)
+
+    try {
+      const supabase = createClient()
+      await supabase.from("notifications").update({ read: true }).eq("id", notificationId)
+
+      await fetchNotifications()
+    } catch (error) {
+      console.error("[v0] Error marking notification as read:", error)
+    }
+
     setShowNotifications(false)
   }
 
@@ -201,9 +227,11 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
               }}
             >
               <Bell className="h-4 w-4" />
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs bg-altea-gold text-altea-navy hover:bg-altea-gold">
-                5
-              </Badge>
+              {unreadCount > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs bg-altea-gold text-altea-navy hover:bg-altea-gold">
+                  {unreadCount}
+                </Badge>
+              )}
               <span className="sr-only">Notificações</span>
             </Button>
 
@@ -212,37 +240,48 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
                 <div className="p-3 border-b border-gray-200 dark:border-gray-700">
                   <h3 className="font-medium text-sm">Notificações do Sistema</h3>
                 </div>
-                <div className="py-1">
-                  <button
-                    onClick={() => handleNotificationClick("Nova empresa CPFL adicionada")}
-                    className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm border-b border-gray-100 dark:border-gray-700"
-                  >
-                    <p className="font-medium">Nova empresa adicionada</p>
-                    <p className="text-xs text-gray-500 mt-1">CPFL Energia foi integrada ao sistema</p>
-                  </button>
-                  <button
-                    onClick={() => handleNotificationClick("Alto volume de inadimplência detectado")}
-                    className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm border-b border-gray-100 dark:border-gray-700"
-                  >
-                    <p className="font-medium">Alerta de inadimplência</p>
-                    <p className="text-xs text-gray-500 mt-1">Cemig com 87 casos críticos</p>
-                  </button>
-                  <button
-                    onClick={() => handleNotificationClick("Relatório mensal disponível")}
-                    className="w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
-                  >
-                    <p className="font-medium">Relatório mensal pronto</p>
-                    <p className="text-xs text-gray-500 mt-1">Análise consolidada de todas as empresas</p>
-                  </button>
-                </div>
-                <div className="border-t border-gray-200 dark:border-gray-700 p-2">
-                  <button
-                    onClick={() => handleNotificationClick("Ver todas as notificações")}
-                    className="w-full px-2 py-2 text-sm text-altea-navy dark:text-altea-gold hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
-                  >
-                    Ver todas as notificações
-                  </button>
-                </div>
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Bell className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma notificação</p>
+                  </div>
+                ) : (
+                  <div className="py-1">
+                    {notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        onClick={() => handleNotificationClick(notification.id)}
+                        className={`w-full px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 text-sm border-b border-gray-100 dark:border-gray-700 ${
+                          !notification.read ? "bg-blue-50 dark:bg-blue-900/10" : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium">{notification.title}</p>
+                            <p className="text-xs text-gray-500 mt-1">{notification.description}</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {new Date(notification.created_at).toLocaleDateString("pt-BR")}
+                            </p>
+                          </div>
+                          {!notification.read && (
+                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-1 ml-2 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {notifications.length > 0 && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-2">
+                    <Link
+                      href="/super-admin/notifications"
+                      className="block w-full px-2 py-2 text-sm text-center text-altea-navy dark:text-altea-gold hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
+                      onClick={() => setShowNotifications(false)}
+                    >
+                      Ver todas as notificações
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>

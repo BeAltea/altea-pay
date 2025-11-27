@@ -2,10 +2,9 @@ import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, CreditCard, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, CheckCircle, Clock, ArrowUpRight } from 'lucide-react'
+import { Users, CreditCard, TrendingUp, DollarSign, AlertTriangle, CheckCircle, Clock } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -65,9 +64,7 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
-  const { data: allVmaxRecords, error: vmaxError } = await supabase
-    .from("VMAX")
-    .select("*")
+  const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
 
   if (vmaxError) {
     console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
@@ -77,20 +74,20 @@ export default async function DashboardPage() {
 
   // Filtrar localmente por company_id (igual ao super-admin)
   const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
-    (v: any) => String(v.id_company || "").toLowerCase().trim() === String(companyId).toLowerCase().trim()
+    (v: any) =>
+      String(v.id_company || "")
+        .toLowerCase()
+        .trim() === String(companyId).toLowerCase().trim(),
   )
-  
+
   console.log(`[v0] ✅ VMAX clientes da empresa ${companyData?.name}: ${vmaxCustomersFiltered.length}`)
 
   // Buscar dados complementares da integration_logs para os IDs dos clientes VMAX
   let integrationLogsData = []
   if (vmaxCustomersFiltered.length > 0) {
     const vmaxIds = vmaxCustomersFiltered.map((v: any) => v.id).filter(Boolean)
-    const { data: logsData } = await supabase
-      .from("integration_logs")
-      .select("*")
-      .in("id", vmaxIds)
-    
+    const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
+
     integrationLogsData = logsData || []
     console.log(`[v0] 📊 Integration logs encontrados: ${integrationLogsData.length}`)
   }
@@ -139,16 +136,10 @@ export default async function DashboardPage() {
     totalCustomers,
     totalDebts: allDebts.length,
     totalAmount: allDebts.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
-    recoveredAmount: allDebts
-      .filter((d) => d.status === "paid")
-      .reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
-    recoveryRate: 0,
     pendingActions: allDebts.filter((d) => d.status === "pending" || d.status === "in_collection").length,
   }
 
-  stats.recoveryRate = stats.totalAmount > 0 ? (stats.recoveredAmount / stats.totalAmount) * 100 : 0
-
-  const criticalDebts = vmaxDebtsFormatted.filter(d => d.diasInad > 90).length
+  const criticalDebts = vmaxDebtsFormatted.filter((d) => d.diasInad > 90).length
 
   // Since we can't filter by company, we'll just count pending scheduled actions from debts
   const scheduledCount = 0 // Placeholder - would need to join through debt_id to filter by company
@@ -185,7 +176,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-xs sm:text-sm font-medium">Total de Clientes</CardTitle>
@@ -218,7 +209,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Valor Total</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">Valor Total em Cobrança</CardTitle>
             <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
@@ -228,20 +219,7 @@ export default async function DashboardPage() {
                 ? (stats.totalAmount / 1000000).toFixed(1) + "M"
                 : (stats.totalAmount / 1000).toFixed(0) + "K"}
             </div>
-            <p className="text-xs text-muted-foreground">
-              R$ {stats.recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Taxa de Recuperação</CardTitle>
-            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{stats.recoveryRate.toFixed(1)}%</div>
-            <Progress value={stats.recoveryRate} className="mt-2" />
+            <p className="text-xs text-muted-foreground">{stats.totalDebts} dívidas pendentes</p>
           </CardContent>
         </Card>
       </div>

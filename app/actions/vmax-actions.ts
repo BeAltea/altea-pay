@@ -48,62 +48,42 @@ export async function getCustomerDetails(vmaxId: string) {
       document: vmaxData["CPF/CNPJ"],
     })
 
-    // Buscar análise da Assertiva primeiro
-    const { data: assertivaProfile, error: assertivaError } = await supabase
+    const { data: creditProfile, error: creditError } = await supabase
       .from("credit_profiles")
       .select("*")
       .eq("customer_id", vmaxId)
-      .eq("source", "assertiva")
+      .in("source", ["assertiva", "credit_analysis"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    if (assertivaError) {
-      console.error("[SERVER][v0] getCustomerDetails - Error fetching Assertiva profile:", assertivaError)
-    }
-
-    // Buscar análise gratuita (gov) como fallback
-    const { data: govProfile, error: govError } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", vmaxId)
-      .eq("source", "gov")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (govError) {
-      console.error("[SERVER][v0] getCustomerDetails - Error fetching Gov profile:", govError)
+    if (creditError) {
+      console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profile:", creditError)
     }
 
     // Buscar histórico completo de análises
-    const { data: creditProfiles, error: creditError } = await supabase
+    const { data: creditProfiles, error: profilesError } = await supabase
       .from("credit_profiles")
       .select("*")
       .eq("customer_id", vmaxId)
       .order("created_at", { ascending: false })
 
-    if (creditError) {
-      console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profiles:", creditError)
+    if (profilesError) {
+      console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profiles:", profilesError)
     }
 
-    // Priorizar Assertiva, depois Gov
-    const latestProfile = assertivaProfile || govProfile
-
     console.log("[SERVER][v0] getCustomerDetails - Analysis summary:", {
-      has_assertiva: !!assertivaProfile,
-      has_gov: !!govProfile,
-      using_source: latestProfile?.source || "none",
+      has_credit_analysis: !!creditProfile,
       total_analyses: creditProfiles?.length || 0,
     })
 
-    if (latestProfile) {
+    if (creditProfile) {
       console.log("[SERVER][v0] getCustomerDetails - Latest analysis:", {
-        source: latestProfile.source,
-        score: latestProfile.score,
-        created_at: latestProfile.created_at,
-        has_data: !!latestProfile.data,
-        data_keys: latestProfile.data ? Object.keys(latestProfile.data) : [],
+        source: creditProfile.source,
+        score: creditProfile.score,
+        created_at: creditProfile.created_at,
+        has_data: !!creditProfile.data,
+        data_keys: creditProfile.data ? Object.keys(creditProfile.data) : [],
       })
     } else {
       console.log("[SERVER][v0] getCustomerDetails - No credit profiles found for customer_id:", vmaxId)
@@ -124,16 +104,10 @@ export async function getCustomerDetails(vmaxId: string) {
         email: null,
         phone: null,
         created_at: vmaxData.Primeira_Vencida || new Date().toISOString(),
-        score: latestProfile?.score || null,
-        analysis_data: latestProfile?.data || null,
-        analysis_status: latestProfile?.status || null,
-        analysis_source: latestProfile?.source || null,
-        assertiva_analysis: assertivaProfile?.data || null,
-        assertiva_score: assertivaProfile?.score || null,
-        assertiva_date: assertivaProfile?.created_at || null,
-        gov_analysis: govProfile?.data || null,
-        gov_score: govProfile?.score || null,
-        gov_date: govProfile?.created_at || null,
+        score: creditProfile?.score || null,
+        analysis_data: creditProfile?.data || null,
+        analysis_status: creditProfile?.status || null,
+        analysis_source: creditProfile?.source || null,
         analysis_history: creditProfiles || [],
       },
     }
