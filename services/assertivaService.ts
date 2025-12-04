@@ -170,7 +170,7 @@ async function postAssertivaComportamental(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify([payload]), // Changed from payload to [payload]
+      body: JSON.stringify([payload]),
     })
 
     console.log("[v0] postAssertivaComportamental - Response status:", response.status)

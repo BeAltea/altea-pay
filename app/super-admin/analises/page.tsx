@@ -10,9 +10,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Search, RefreshCw, AlertCircle, Sparkles, Loader2, Eye, Building2, FileText, AlertTriangle, TrendingUp, Download } from 'lucide-react'
+import {
+  Search,
+  RefreshCw,
+  AlertCircle,
+  Sparkles,
+  Loader2,
+  Eye,
+  Building2,
+  FileText,
+  AlertTriangle,
+  TrendingUp,
+  Download,
+  Target,
+  BarChart3,
+  DollarSign,
+  CreditCard,
+  Clock,
+  Award,
+  CheckCircle,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { runAssertivaManualAnalysis } from "@/app/actions/credit-actions"
+import { runAssertivaManualAnalysis, getAllCompanies } from "@/app/actions/credit-actions"
+import { analyzeCustomerCredit } from "@/app/actions/analyze-customer-credit"
 import { getAnalysesData } from "@/app/actions/analyses-actions"
 import Link from "next/link"
 
@@ -33,10 +53,12 @@ interface CreditAnalysis {
 
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<CreditAnalysis[]>([])
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterSource, setFilterSource] = useState<string>("all")
   const [filterType, setFilterType] = useState<string>("all")
+  const [filterCompany, setFilterCompany] = useState<string>("all")
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
@@ -46,7 +68,19 @@ export default function AnalysesPage() {
 
   useEffect(() => {
     loadAnalyses()
+    loadCompanies()
   }, [])
+
+  const loadCompanies = async () => {
+    try {
+      const response = await getAllCompanies()
+      if (response.success) {
+        setCompanies(response.data)
+      }
+    } catch (error) {
+      console.error("[CLIENT][v0] Error loading companies:", error)
+    }
+  }
 
   const loadAnalyses = async () => {
     try {
@@ -86,8 +120,9 @@ export default function AnalysesPage() {
 
     const matchesSource = filterSource === "all" || analysis.source === filterSource
     const matchesType = filterType === "all" || analysis.analysis_type === filterType
+    const matchesCompany = filterCompany === "all" || analysis.company_id === filterCompany
 
-    return matchesSearch && matchesSource && matchesType
+    return matchesSearch && matchesSource && matchesType && matchesCompany
   })
 
   const getSourceBadge = (source: string) => {
@@ -181,6 +216,27 @@ export default function AnalysesPage() {
       console.log("[v0] AnalysesPage - Analysis result:", result)
 
       if (result.success) {
+        console.log("[v0] Running credit analysis to determine approval status for each customer...")
+        let approvedCount = 0
+        let rejectedCount = 0
+
+        for (const customerId of customerIdsToAnalyze) {
+          const customer = analyses.find((a) => a.customer_id === customerId)
+          if (customer?.cpf) {
+            const creditResult = await analyzeCustomerCredit(customerId, customer.cpf, 0)
+            if (creditResult.success) {
+              if (
+                creditResult.resultado?.decisao === "ACEITA" ||
+                creditResult.resultado?.decisao === "ACEITA_ESPECIAL"
+              ) {
+                approvedCount++
+              } else {
+                rejectedCount++
+              }
+            }
+          }
+        }
+
         const durationInSeconds =
           result.duration && typeof result.duration === "number" ? (result.duration / 1000).toFixed(2) : "0.00"
 
@@ -193,6 +249,8 @@ export default function AnalysesPage() {
 - Análises realizadas: ${result.analyzed}
 - Já tinham análise (cache): ${result.cached}
 - Falhas: ${result.failed}
+- ✅ Aprovados: ${approvedCount}
+- ❌ Rejeitados: ${rejectedCount}
 - Tempo total: ${durationInSeconds}s`,
         })
 
@@ -228,6 +286,7 @@ export default function AnalysesPage() {
       analysis_type: analysis.analysis_type,
       has_data: !!analysis.data,
       data_keys: analysis.data ? Object.keys(analysis.data) : [],
+      assertiva_data: analysis.data?.assertiva_data,
     })
     setSelectedAnalysis(analysis)
     setShowDetailsDrawer(true)
@@ -295,7 +354,7 @@ export default function AnalysesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-bold">Análises de Crédito</h1>
         <p className="text-muted-foreground">Visualize e gerencie todas as análises de crédito realizadas</p>
@@ -362,15 +421,17 @@ export default function AnalysesPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-1 gap-2">
+          <CardTitle>Análises de Crédito</CardTitle>
+          <CardDescription>Visualize todas as análises realizadas no sistema</CardDescription>
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-1 items-center gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por cliente, CPF ou empresa..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
+                  className="pl-9"
                 />
               </div>
               <Select value={filterSource} onValueChange={setFilterSource}>
@@ -390,6 +451,20 @@ export default function AnalysesPage() {
                   <SelectItem value="all">Todos os Tipos</SelectItem>
                   <SelectItem value="free">Gratuita</SelectItem>
                   <SelectItem value="detailed">Detalhada</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterCompany} onValueChange={setFilterCompany}>
+                <SelectTrigger className="w-[200px]">
+                  <Building2 className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Filtrar por empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as empresas</SelectItem>
+                  {companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -525,19 +600,14 @@ export default function AnalysesPage() {
         <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background">
           <SheetHeader>
             <SheetTitle className="text-2xl">Análise de Crédito Completa</SheetTitle>
-            <SheetDescription>
-              Dados completos da análise de crédito do cliente
-            </SheetDescription>
+            <SheetDescription>Dados completos da análise de crédito do cliente</SheetDescription>
           </SheetHeader>
 
           {selectedAnalysis && (
             <div className="space-y-6 mt-6 px-6">
               {/* Source Badge */}
               <div className="flex items-center justify-between">
-                <Badge
-                  variant="default"
-                  className="text-base px-6 py-2"
-                >
+                <Badge variant="default" className="text-base px-6 py-2">
                   <span className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4" />
                     Análise de Crédito Detalhada
@@ -577,9 +647,7 @@ export default function AnalysesPage() {
                             ? "Risco Alto"
                             : "Risco Muito Alto"}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Fonte: Análise de Crédito
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Fonte: Análise de Crédito</p>
                   </CardHeader>
                 </Card>
 
@@ -620,15 +688,18 @@ export default function AnalysesPage() {
                     <CardContent>
                       <div className="space-y-3">
                         {selectedAnalysis.data.impedimentos_cepim.map((impedimento: any, index: number) => (
-                          <div key={index} className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4 border border-purple-200 dark:border-purple-800">
+                          <div
+                            key={index}
+                            className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4 border border-purple-200 dark:border-purple-800"
+                          >
                             <div className="space-y-3">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <p className="font-semibold text-lg text-purple-900 dark:text-purple-100">
                                     {impedimento.pessoaJuridica?.nome ||
-                                     impedimento.pessoaJuridica?.razaoSocialReceita ||
-                                     impedimento.nome ||
-                                     "Nome não informado"}
+                                      impedimento.pessoaJuridica?.razaoSocialReceita ||
+                                      impedimento.nome ||
+                                      "Nome não informado"}
                                   </p>
                                   {impedimento.pessoaJuridica?.cnpjFormatado && (
                                     <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
@@ -657,9 +728,11 @@ export default function AnalysesPage() {
                                     Motivo do Impedimento:
                                   </p>
                                   <p className="text-sm text-purple-800 dark:text-purple-200 mt-1">
-                                    {typeof impedimento.motivo === 'string'
+                                    {typeof impedimento.motivo === "string"
                                       ? impedimento.motivo
-                                      : impedimento.motivo?.descricaoPortal || impedimento.motivo?.descricaoResumida || 'Motivo não especificado'}
+                                      : impedimento.motivo?.descricaoPortal ||
+                                        impedimento.motivo?.descricaoResumida ||
+                                        "Motivo não especificado"}
                                   </p>
                                 </div>
                               )}
@@ -667,13 +740,16 @@ export default function AnalysesPage() {
                               {impedimento.convenio && (
                                 <div className="space-y-1">
                                   <p className="text-sm text-purple-800 dark:text-purple-200">
-                                    <span className="font-medium">Convênio:</span> {impedimento.convenio.numero || impedimento.convenio.codigo}
+                                    <span className="font-medium">Convênio:</span>{" "}
+                                    {impedimento.convenio.numero || impedimento.convenio.codigo}
                                   </p>
                                   {impedimento.convenio.objeto && (
                                     <p className="text-sm text-purple-700 dark:text-purple-300 ml-4">
-                                      {typeof impedimento.convenio.objeto === 'string'
+                                      {typeof impedimento.convenio.objeto === "string"
                                         ? impedimento.convenio.objeto
-                                        : impedimento.convenio.objeto?.descricaoPortal || impedimento.convenio.objeto?.descricaoResumida || ''}
+                                        : impedimento.convenio.objeto?.descricaoPortal ||
+                                          impedimento.convenio.objeto?.descricaoResumida ||
+                                          ""}
                                     </p>
                                   )}
                                 </div>
@@ -717,6 +793,92 @@ export default function AnalysesPage() {
               {/* Assertiva Specific Sections */}
               {selectedAnalysis.source === "assertiva" && selectedAnalysis.data && (
                 <>
+                  {/* Score de Crédito com Gauge Visual */}
+                  {(selectedAnalysis.data.score_credito || selectedAnalysis.data.credito?.resposta?.score) && (
+                    <Card className="border-l-4 border-cyan-500">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400">
+                          <Target className="h-5 w-5" />
+                          Score de Crédito Detalhado
+                        </CardTitle>
+                        <CardDescription>Classificação e análise de risco de crédito</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-2">
+                              <p className="text-6xl font-bold text-cyan-600 dark:text-cyan-400">
+                                {selectedAnalysis.data.score_credito?.pontos ||
+                                  selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                  0}
+                              </p>
+                              <p className="text-sm text-muted-foreground">/1000</p>
+                            </div>
+                            <div className="text-right">
+                              <Badge
+                                variant="outline"
+                                className={`text-lg px-4 py-2 ${
+                                  (
+                                    selectedAnalysis.data.score_credito?.pontos ||
+                                      selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                      0
+                                  ) >= 700
+                                    ? "border-green-500 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/20"
+                                    : (selectedAnalysis.data.score_credito?.pontos ||
+                                          selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                          0) >= 500
+                                      ? "border-yellow-500 text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950/20"
+                                      : (selectedAnalysis.data.score_credito?.pontos ||
+                                            selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                            0) >= 300
+                                        ? "border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/20"
+                                        : "border-red-500 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/20"
+                                }`}
+                              >
+                                {(selectedAnalysis.data.score_credito?.pontos ||
+                                  selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                  0) >= 700
+                                  ? "Risco Baixo"
+                                  : (selectedAnalysis.data.score_credito?.pontos ||
+                                        selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                        0) >= 500
+                                    ? "Risco Moderado"
+                                    : (selectedAnalysis.data.score_credito?.pontos ||
+                                          selectedAnalysis.data.credito?.resposta?.score?.pontos ||
+                                          0) >= 300
+                                      ? "Risco Alto"
+                                      : "Risco Muito Alto"}
+                              </Badge>
+                              <p className="text-sm text-muted-foreground mt-2">
+                                Classificação:{" "}
+                                {selectedAnalysis.data.score_credito?.classe ||
+                                  selectedAnalysis.data.credito?.resposta?.score?.classe ||
+                                  "E"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {(selectedAnalysis.data.score_credito?.faixa ||
+                            selectedAnalysis.data.credito?.resposta?.score?.faixa) && (
+                            <div className="rounded-lg bg-cyan-50 dark:bg-cyan-950/20 p-4">
+                              <p className="text-sm font-medium text-cyan-900 dark:text-cyan-100">
+                                {selectedAnalysis.data.score_credito?.faixa?.titulo ||
+                                  selectedAnalysis.data.credito?.resposta?.score?.faixa?.titulo}
+                              </p>
+                              {(selectedAnalysis.data.score_credito?.faixa?.descricao ||
+                                selectedAnalysis.data.credito?.resposta?.score?.faixa?.descricao) && (
+                                <p className="text-sm text-cyan-800 dark:text-cyan-200 mt-1">
+                                  {selectedAnalysis.data.score_credito?.faixa?.descricao ||
+                                    selectedAnalysis.data.credito?.resposta?.score?.faixa?.descricao}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Score Recupere */}
                   {(selectedAnalysis.data.score_recupere || selectedAnalysis.data.recupere?.resposta?.score) && (
                     <Card className="border-l-4 border-green-500">
@@ -725,11 +887,12 @@ export default function AnalysesPage() {
                           <TrendingUp className="h-5 w-5" />
                           Score Recupere
                         </CardTitle>
+                        <CardDescription>Índice de probabilidade de recuperação de crédito</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-4xl font-bold text-green-600 dark:text-green-400">
+                            <p className="text-5xl font-bold text-green-600 dark:text-green-400">
                               {selectedAnalysis.data.score_recupere?.pontos ||
                                 selectedAnalysis.data.recupere?.resposta?.score?.pontos}
                             </p>
@@ -749,25 +912,249 @@ export default function AnalysesPage() {
                     </Card>
                   )}
 
-                  {/* Renda Presumida */}
-                  {(selectedAnalysis.data.renda_presumida ||
-                    selectedAnalysis.data.credito?.resposta?.rendaPresumida) && (
-                    <Card className="border-l-4 border-blue-500">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                          <TrendingUp className="h-5 w-5" />
-                          Renda Presumida
+                  {/* Indicadores Comportamentais */}
+                  {selectedAnalysis.data.credito?.resposta && (
+                    <Card className="border-2 border-indigo-200 dark:border-indigo-800">
+                      <CardHeader className="bg-indigo-50 dark:bg-indigo-950/30">
+                        <CardTitle className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                          <BarChart3 className="h-6 w-6" />
+                          Indicadores Comportamentais
                         </CardTitle>
+                        <CardDescription>Análise de comportamento financeiro nos últimos 12 meses</CardDescription>
+                      </CardHeader>
+                      <CardContent className="pt-6">
+                        <div className="space-y-6">
+                          {/* Saldo Total de Operações Financeiras */}
+                          {selectedAnalysis.data.credito.resposta.saldoTotalOperacoesFinanceiras && (
+                            <div className="rounded-lg border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-5">
+                              <div className="flex items-start gap-3">
+                                <div className="p-3 rounded-lg bg-blue-500 text-white">
+                                  <DollarSign className="h-6 w-6" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm text-blue-700 dark:text-blue-300 mb-1">
+                                    Saldo total de <strong>todas as operações financeiras</strong> abertas nos últimos
+                                    12 meses
+                                  </p>
+                                  <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                                    {selectedAnalysis.data.credito.resposta.saldoTotalOperacoesFinanceiras.faixa ||
+                                      "Entre R$ 0,00 a R$ 500,00"}
+                                  </p>
+                                  <div className="mt-3 h-2 bg-blue-200 dark:bg-blue-900 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500" style={{ width: "15%" }} />
+                                  </div>
+                                  <div className="flex justify-between text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                    <span>R$ 0,00</span>
+                                    <span>Acima de R$ 119.000,00</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Saldo Total de Operações Parceladas */}
+                          {selectedAnalysis.data.credito.resposta.saldoTotalOperacoesParceladas && (
+                            <div className="rounded-lg border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 p-5">
+                              <div className="flex items-start gap-3">
+                                <div className="p-3 rounded-lg bg-purple-500 text-white">
+                                  <CreditCard className="h-6 w-6" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm text-purple-700 dark:text-purple-300 mb-1">
+                                    Saldo total de <strong>todas as operações parceladas</strong> abertas nos últimos 12
+                                    meses
+                                  </p>
+                                  <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                                    {selectedAnalysis.data.credito.resposta.saldoTotalOperacoesParceladas.faixa ||
+                                      "Entre R$ 0,00 a R$ 500,00"}
+                                  </p>
+                                  <div className="mt-3 h-2 bg-purple-200 dark:bg-purple-900 rounded-full overflow-hidden">
+                                    <div className="h-full bg-purple-500" style={{ width: "10%" }} />
+                                  </div>
+                                  <div className="flex justify-between text-xs text-purple-600 dark:text-purple-400 mt-1">
+                                    <span>R$ 0,00</span>
+                                    <span>Acima de R$ 119.000,00</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Frequência de Atrasos */}
+                          {selectedAnalysis.data.credito.resposta.frequenciaAtrasosOperacoesFinanceiras && (
+                            <div className="rounded-lg border-2 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20 p-5">
+                              <div className="flex items-start gap-3">
+                                <div className="p-3 rounded-lg bg-orange-500 text-white">
+                                  <Clock className="h-6 w-6" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">
+                                    Frequência de <strong>atrasos em operações financeiras</strong> nos últimos 12 meses
+                                  </p>
+                                  <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+                                    {selectedAnalysis.data.credito.resposta.frequenciaAtrasosOperacoesFinanceiras
+                                      .faixa || "0 vezes"}
+                                  </p>
+                                  <div className="mt-3 h-2 bg-orange-200 dark:bg-orange-900 rounded-full overflow-hidden">
+                                    <div className="h-full bg-orange-500" style={{ width: "0%" }} />
+                                  </div>
+                                  <div className="flex justify-between text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                    <span>0 vezes</span>
+                                    <span>Acima de 40 vezes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Quantidade de Cartões de Crédito em Atraso */}
+                          {selectedAnalysis.data.credito.resposta.quantidadeCartoesAbertosAtraso24Meses && (
+                            <div className="rounded-lg border-2 border-pink-200 dark:border-pink-800 bg-pink-50 dark:bg-pink-950/20 p-5">
+                              <div className="flex items-start gap-3">
+                                <div className="p-3 rounded-lg bg-pink-500 text-white">
+                                  <CreditCard className="h-6 w-6" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm text-pink-700 dark:text-pink-300 mb-1">
+                                    Quantidade de operações de <strong>cartões de crédito</strong> abertas em atraso nos
+                                    últimos 24 meses
+                                  </p>
+                                  <p className="text-3xl font-bold text-pink-600 dark:text-pink-400">
+                                    {selectedAnalysis.data.credito.resposta.quantidadeCartoesAbertosAtraso24Meses
+                                      .faixa || "Entre 1 a 2 vezes"}
+                                  </p>
+                                  <div className="mt-3 h-2 bg-pink-200 dark:bg-pink-900 rounded-full overflow-hidden">
+                                    <div className="h-full bg-pink-500" style={{ width: "5%" }} />
+                                  </div>
+                                  <div className="flex justify-between text-xs text-pink-600 dark:text-pink-400 mt-1">
+                                    <span>0 vezes</span>
+                                    <span>Acima de 40 vezes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Renda Presumida e Limite de Crédito */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {/* Renda Presumida */}
+                    {(selectedAnalysis.data.renda_presumida ||
+                      selectedAnalysis.data.credito?.resposta?.rendaPresumida) && (
+                      <Card className="border-l-4 border-teal-500">
+                        <CardHeader>
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 rounded-lg bg-teal-500 text-white">
+                              <TrendingUp className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-teal-600 dark:text-teal-400">Renda Presumida</CardTitle>
+                              <CardDescription>(Mensal)</CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-4xl font-bold text-teal-600 dark:text-teal-400">
+                            R${" "}
+                            {(
+                              selectedAnalysis.data.renda_presumida?.valor ||
+                              selectedAnalysis.data.credito?.resposta?.rendaPresumida?.valor ||
+                              0
+                            ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </p>
+                          {(selectedAnalysis.data.renda_presumida?.faixa ||
+                            selectedAnalysis.data.credito?.resposta?.rendaPresumida?.faixa) && (
+                            <p className="text-sm text-teal-700 dark:text-teal-300 mt-2">
+                              Faixa:{" "}
+                              {selectedAnalysis.data.renda_presumida?.faixa ||
+                                selectedAnalysis.data.credito?.resposta?.rendaPresumida?.faixa}
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Limite de Crédito Presumido */}
+                    {(selectedAnalysis.data.limite_presumido ||
+                      selectedAnalysis.data.credito?.resposta?.limitePresumido) && (
+                      <Card className="border-l-4 border-cyan-500">
+                        <CardHeader>
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 rounded-lg bg-cyan-500 text-white">
+                              <DollarSign className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-cyan-600 dark:text-cyan-400">
+                                Limite de Crédito Presumido
+                              </CardTitle>
+                              <CardDescription>(Mensal)</CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-4xl font-bold text-cyan-600 dark:text-cyan-400">
+                            R${" "}
+                            {(
+                              selectedAnalysis.data.limite_presumido?.valor ||
+                              selectedAnalysis.data.credito?.resposta?.limitePresumido?.valor ||
+                              0
+                            ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </p>
+                          {(selectedAnalysis.data.limite_presumido?.faixa ||
+                            selectedAnalysis.data.credito?.resposta?.limitePresumido?.faixa) && (
+                            <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-2">
+                              Faixa:{" "}
+                              {selectedAnalysis.data.limite_presumido?.faixa ||
+                                selectedAnalysis.data.credito?.resposta?.limitePresumido?.faixa}
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* Benefícios */}
+                  {selectedAnalysis.data.credito?.resposta?.beneficios && (
+                    <Card className="border-l-4 border-green-500">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                          <Award className="h-5 w-5" />
+                          Benefícios
+                        </CardTitle>
+                        <CardDescription>Benefícios sociais identificados</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                          R${" "}
-                          {(
-                            selectedAnalysis.data.renda_presumida?.valor ||
-                            selectedAnalysis.data.credito?.resposta?.rendaPresumida?.valor ||
-                            0
-                          ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </p>
+                        {selectedAnalysis.data.credito.resposta.beneficios?.list?.length > 0 ? (
+                          <div className="space-y-3">
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              {selectedAnalysis.data.credito.resposta.beneficios.list.length} benefício(s) encontrado(s)
+                            </p>
+                            {selectedAnalysis.data.credito.resposta.beneficios.list.map(
+                              (beneficio: any, index: number) => (
+                                <div key={index} className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-green-900 dark:text-green-100">
+                                      {beneficio.tipo || "Benefício Identificado"}
+                                    </p>
+                                    {beneficio.valor && (
+                                      <p className="text-sm text-green-800 dark:text-green-200">
+                                        Valor: R${" "}
+                                        {beneficio.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-gray-50 dark:bg-gray-950/20 p-4">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Nenhum benefício encontrado</p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )}
@@ -788,6 +1175,7 @@ export default function AnalysesPage() {
                           }
                           )
                         </CardTitle>
+                        <CardDescription>Registros de débitos em aberto</CardDescription>
                       </CardHeader>
                       <CardContent>
                         {(
@@ -827,7 +1215,9 @@ export default function AnalysesPage() {
                           </div>
                         ) : (
                           <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
-                            <p className="text-sm text-green-800 dark:text-green-200">✅ Nenhum débito encontrado</p>
+                            <p className="text-sm text-green-800 dark:text-green-200 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" /> Nenhum débito encontrado
+                            </p>
                           </div>
                         )}
                       </CardContent>
@@ -835,7 +1225,9 @@ export default function AnalysesPage() {
                   )}
 
                   {/* Protestos */}
-                  {(selectedAnalysis.data.protestos || selectedAnalysis.data.credito?.resposta?.protestosPublicos) && (
+                  {(selectedAnalysis.data.protestos ||
+                    selectedAnalysis.data.credito?.resposta?.protestosPublicos ||
+                    selectedAnalysis.data.acoes?.resposta?.protestos) && (
                     <Card className="border-l-4 border-red-500">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -845,48 +1237,81 @@ export default function AnalysesPage() {
                             (
                               selectedAnalysis.data.protestos?.list ||
                               selectedAnalysis.data.credito?.resposta?.protestosPublicos?.list ||
+                              selectedAnalysis.data.acoes?.resposta?.protestos?.list ||
                               []
                             ).length
                           }
                           )
                         </CardTitle>
+                        <CardDescription>Protestos públicos registrados em cartório</CardDescription>
                       </CardHeader>
                       <CardContent>
                         {(
                           selectedAnalysis.data.protestos?.list ||
                           selectedAnalysis.data.credito?.resposta?.protestosPublicos?.list ||
+                          selectedAnalysis.data.acoes?.resposta?.protestos?.list ||
                           []
                         ).length > 0 ? (
                           <div className="space-y-3">
                             {(
                               selectedAnalysis.data.protestos?.list ||
                               selectedAnalysis.data.credito?.resposta?.protestosPublicos?.list ||
+                              selectedAnalysis.data.acoes?.resposta?.protestos?.list ||
                               []
                             ).map((protesto: any, index: number) => (
-                              <div key={index} className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4">
+                              <div
+                                key={index}
+                                className="rounded-lg border-2 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20 p-4"
+                              >
                                 <div className="space-y-2">
-                                  <p className="font-semibold text-red-900 dark:text-red-100">
-                                    {protesto.cartorio || "Cartório não informado"}
-                                  </p>
-                                  <p className="text-sm text-red-800 dark:text-red-200">
-                                    Valor: R${" "}
-                                    {(protesto.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                  </p>
-                                  {protesto.data && (
-                                    <p className="text-sm text-red-700 dark:text-red-300">
-                                      Data: {new Date(protesto.data).toLocaleDateString("pt-BR")}
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <p className="font-semibold text-red-900 dark:text-red-100">
+                                        {protesto.cartorio || "Cartório não informado"}
+                                      </p>
+                                      {protesto.cidade && (
+                                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                          {protesto.cidade}/{protesto.uf || "SP"}
+                                        </p>
+                                      )}
+                                    </div>
+                                    {protesto.data && (
+                                      <Badge variant="destructive" className="font-mono">
+                                        {new Date(protesto.data).toLocaleDateString("pt-BR")}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="rounded bg-red-100 dark:bg-red-900/30 p-3">
+                                    <p className="text-sm text-red-900 dark:text-red-100">
+                                      <span className="font-semibold">Valor:</span> R${" "}
+                                      {(protesto.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                                     </p>
-                                  )}
-                                  {protesto.cidade && (
-                                    <p className="text-sm text-red-700 dark:text-red-300">Cidade: {protesto.cidade}</p>
+                                  </div>
+                                  {protesto.cartorio && (
+                                    <p className="text-xs text-red-700 dark:text-red-300">{protesto.cartorio}</p>
                                   )}
                                 </div>
                               </div>
                             ))}
+                            {(selectedAnalysis.data.protestos?.valorTotal ||
+                              selectedAnalysis.data.acoes?.resposta?.protestos?.valorTotal) && (
+                              <div className="rounded-lg border-2 border-red-500 bg-red-100 dark:bg-red-900/30 p-4">
+                                <p className="text-lg font-bold text-red-900 dark:text-red-100">
+                                  Valor Total de Protestos: R${" "}
+                                  {(
+                                    selectedAnalysis.data.protestos?.valorTotal ||
+                                    selectedAnalysis.data.acoes?.resposta?.protestos?.valorTotal ||
+                                    0
+                                  ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
-                            <p className="text-sm text-green-800 dark:text-green-200">✅ Nenhum protesto encontrado</p>
+                            <p className="text-sm text-green-800 dark:text-green-200 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" /> Sem pendências
+                            </p>
                           </div>
                         )}
                       </CardContent>
@@ -903,23 +1328,24 @@ export default function AnalysesPage() {
                           {
                             (
                               selectedAnalysis.data.acoes_judiciais?.list ||
-                              selectedAnalysis.data.acoes?.resposta?.acoes ||
+                              selectedAnalysis.data.acoes?.resposta?.acoes?.list ||
                               []
                             ).length
                           }
                           )
                         </CardTitle>
+                        <CardDescription>Processos judiciais em andamento</CardDescription>
                       </CardHeader>
                       <CardContent>
                         {(
                           selectedAnalysis.data.acoes_judiciais?.list ||
-                          selectedAnalysis.data.acoes?.resposta?.acoes ||
+                          selectedAnalysis.data.acoes?.resposta?.acoes?.list ||
                           []
                         ).length > 0 ? (
                           <div className="space-y-3">
                             {(
                               selectedAnalysis.data.acoes_judiciais?.list ||
-                              selectedAnalysis.data.acoes?.resposta?.acoes ||
+                              selectedAnalysis.data.acoes?.resposta?.acoes?.list ||
                               []
                             ).map((acao: any, index: number) => (
                               <div key={index} className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4">
@@ -928,14 +1354,55 @@ export default function AnalysesPage() {
                                     {acao.tribunal || "Tribunal não informado"}
                                   </p>
                                   {acao.processo && (
-                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                    <p className="text-sm text-purple-800 dark:text-purple-200 font-mono">
                                       Processo: {acao.processo}
                                     </p>
                                   )}
                                   {acao.valorCausa && (
-                                    <p className="text-sm text-purple-800 dark:text-purple-200">
-                                      Valor da Causa: R${" "}
-                                      {acao.valorCausa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                    <div className="rounded bg-purple-100 dark:bg-purple-900/30 p-2">
+                                      <p className="text-sm text-purple-900 dark:text-purple-100">
+                                        <span className="font-semibold">Valor da Causa:</span> R${" "}
+                                        {acao.valorCausa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
+                            <p className="text-sm text-green-800 dark:text-green-200 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" /> Sem pendências
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Cheques */}
+                  {selectedAnalysis.data.credito?.resposta?.cheques && (
+                    <Card className="border-l-4 border-cyan-500">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400">
+                          <FileText className="h-5 w-5" />
+                          Cheques
+                        </CardTitle>
+                        <CardDescription>Histórico de cheques sem fundo</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {selectedAnalysis.data.credito.resposta.cheques?.list?.length > 0 ? (
+                          <div className="space-y-3">
+                            {selectedAnalysis.data.credito.resposta.cheques.list.map((cheque: any, index: number) => (
+                              <div key={index} className="rounded-lg bg-cyan-50 dark:bg-cyan-950/20 p-4">
+                                <div className="space-y-2">
+                                  <p className="font-semibold text-cyan-900 dark:text-cyan-100">
+                                    {cheque.banco || "Banco não informado"}
+                                  </p>
+                                  {cheque.valor && (
+                                    <p className="text-sm text-cyan-800 dark:text-cyan-200">
+                                      Valor: R$ {cheque.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                                     </p>
                                   )}
                                 </div>
@@ -944,11 +1411,92 @@ export default function AnalysesPage() {
                           </div>
                         ) : (
                           <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
-                            <p className="text-sm text-green-800 dark:text-green-200">
-                              ✅ Nenhuma ação judicial encontrada
+                            <p className="text-sm text-green-800 dark:text-green-200 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" /> Sem pendências
                             </p>
                           </div>
                         )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Dívidas Ativas da União */}
+                  {selectedAnalysis.data.credito?.resposta?.dividasAtivasUniao && (
+                    <Card className="border-l-4 border-yellow-500">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                          <AlertCircle className="h-5 w-5" />
+                          Dívidas Ativas da União
+                        </CardTitle>
+                        <CardDescription>Débitos inscritos em dívida ativa</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {selectedAnalysis.data.credito.resposta.dividasAtivasUniao?.list?.length > 0 ? (
+                          <div className="space-y-3">
+                            {selectedAnalysis.data.credito.resposta.dividasAtivasUniao.list.map(
+                              (divida: any, index: number) => (
+                                <div key={index} className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 p-4">
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-yellow-900 dark:text-yellow-100">
+                                      {divida.orgao || "Órgão não informado"}
+                                    </p>
+                                    {divida.valor && (
+                                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                        Valor: R$ {divida.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4">
+                            <p className="text-sm text-green-800 dark:text-green-200 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" /> Sem pendências
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Análise Comportamental */}
+                  {selectedAnalysis.data.analise_comportamental && (
+                    <Card className="border-l-4 border-violet-500">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-violet-600 dark:text-violet-400">
+                          <BarChart3 className="h-5 w-5" />
+                          Análise Comportamental
+                        </CardTitle>
+                        <CardDescription>Análise comportamental de crédito</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {selectedAnalysis.data.analise_comportamental.idConsulta && (
+                            <div className="rounded-lg bg-violet-50 dark:bg-violet-950/20 p-4">
+                              <p className="text-sm text-violet-700 dark:text-violet-300">
+                                <span className="font-semibold">ID da Consulta:</span>{" "}
+                                <code className="font-mono">
+                                  {selectedAnalysis.data.analise_comportamental.idConsulta}
+                                </code>
+                              </p>
+                            </div>
+                          )}
+                          {selectedAnalysis.data.analise_comportamental.status && (
+                            <div className="rounded-lg bg-violet-50 dark:bg-violet-950/20 p-4">
+                              <p className="text-sm text-violet-700 dark:text-violet-300">
+                                <span className="font-semibold">Status:</span>{" "}
+                                <Badge
+                                  variant="outline"
+                                  className="border-violet-500 text-violet-700 dark:text-violet-300"
+                                >
+                                  {selectedAnalysis.data.analise_comportamental.status}
+                                </Badge>
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   )}
@@ -1072,7 +1620,9 @@ export default function AnalysesPage() {
                             <AlertTriangle className="h-5 w-5" />
                             Impedimentos CEPIM
                           </CardTitle>
-                          <CardDescription>Cadastro de Entidades Privadas sem Fins Lucrativos Impedidas</CardDescription>
+                          <CardDescription>
+                            Cadastro de Entidades Privadas sem Fins Lucrativos Impedidas
+                          </CardDescription>
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-3">
@@ -1106,7 +1656,8 @@ export default function AnalysesPage() {
                                   )}
                                   {impedimento.convenio?.numeroConvenio && (
                                     <p className="text-sm text-purple-800 dark:text-purple-200">
-                                      <span className="font-medium">Convênio:</span> {impedimento.convenio.numeroConvenio}
+                                      <span className="font-medium">Convênio:</span>{" "}
+                                      {impedimento.convenio.numeroConvenio}
                                     </p>
                                   )}
                                   {impedimento.pessoaJuridica?.uf && (

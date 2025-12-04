@@ -26,93 +26,148 @@ export async function sendCollectionNotification({
   try {
     const supabase = await createClient()
 
-    // Get debt details with customer and company info
-    const { data: debt, error: debtError } = await supabase
-      .from("debts")
-      .select(`
-        *,
-        customer:customers(id, name, email, phone),
-        company:companies(id, name)
-      `)
-      .eq("id", debtId)
-      .single()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-    if (debtError || !debt) {
+    if (!user) {
       return {
         success: false,
-        message: "Dívida não encontrada",
-        error: debtError?.message,
+        message: "Usuário não autenticado",
       }
     }
 
-    // Validate customer contact info
-    if (type === "email" && !debt.customer?.email) {
+    const { data: vmaxRecord, error: vmaxError } = await supabase.from("VMAX").select("*").eq("id", debtId).single()
+
+    if (vmaxError || !vmaxRecord) {
+      console.error("[v0] VMAX record not found:", vmaxError)
       return {
         success: false,
-        message: "Cliente não possui e-mail cadastrado",
+        message: "Registro de dívida não encontrado",
+        error: vmaxError?.message,
       }
     }
 
-    if (type === "sms" && !debt.customer?.phone) {
-      return {
-        success: false,
-        message: "Cliente não possui telefone cadastrado",
+    console.log("[v0] VMAX record found:", {
+      id: vmaxRecord.id,
+      cliente: vmaxRecord.Cliente,
+      empresa: vmaxRecord.Empresa,
+      vencido: vmaxRecord.Vencido,
+      email: vmaxRecord.Email,
+      telefone: vmaxRecord.Telefone,
+    })
+
+    const customerName = vmaxRecord.Cliente || "Cliente"
+    const companyName = vmaxRecord.Empresa || "Empresa"
+    const debtAmount = vmaxRecord.Vencido || "0"
+    const customerEmail = vmaxRecord.Email
+    const customerPhone = vmaxRecord.Telefone
+
+    if (type === "email") {
+      if (!customerEmail) {
+        return {
+          success: false,
+          message: `Cliente ${customerName} não possui e-mail cadastrado na VMAX. Adicione o e-mail primeiro.`,
+        }
       }
     }
 
-    // Send notification based on type
+    if (type === "sms" || type === "whatsapp") {
+      if (!customerPhone) {
+        return {
+          success: false,
+          message: `Cliente ${customerName} não possui telefone cadastrado na VMAX. Adicione o telefone primeiro.`,
+        }
+      }
+    }
+
+    const parsedAmount =
+      typeof debtAmount === "string"
+        ? Number.parseFloat(debtAmount.replace(/[R$\s.]/g, "").replace(",", "."))
+        : debtAmount
+
     let result: { success: boolean; messageId?: string; error?: string }
+    let messageContent = ""
 
     if (type === "email") {
       const html = await generateDebtCollectionEmail({
-        customerName: debt.customer.name,
-        debtAmount: debt.amount,
-        dueDate: new Date(debt.due_date).toLocaleDateString("pt-BR"),
-        companyName: debt.company.name,
-        paymentLink: `https://alteapay.com/user-dashboard/debts/${debtId}`,
+        customerName,
+        debtAmount: parsedAmount,
+        dueDate: vmaxRecord.Primeira_Vencida
+          ? new Date(vmaxRecord.Primeira_Vencida).toLocaleDateString("pt-BR")
+          : "Vencida",
+        companyName,
+        paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || "https://alteapay.com"}/user-dashboard/debts/${debtId}`,
       })
+
+      messageContent = `Email de cobrança enviado para ${customerEmail}`
 
       result = await sendEmail({
-        to: debt.customer.email,
-        subject: `Cobrança Pendente - ${debt.company.name}`,
+        to: customerEmail,
+        subject: `Cobrança Pendente - ${companyName}`,
         html,
       })
-    } else if (type === "sms") {
+    } else if (type === "sms" || type === "whatsapp") {
       const body = await generateDebtCollectionSMS({
-        customerName: debt.customer.name,
-        debtAmount: debt.amount,
-        companyName: debt.company.name,
-        paymentLink: `https://alteapay.com/user-dashboard`,
+        customerName,
+        debtAmount: parsedAmount,
+        companyName,
+        paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || "https://alteapay.com"}/user-dashboard`,
       })
 
+      messageContent = body
+
       result = await sendSMS({
-        to: debt.customer.phone,
+        to: customerPhone,
         body,
       })
     } else {
-      // WhatsApp not implemented yet
       return {
         success: false,
-        message: "WhatsApp ainda não implementado",
+        message: "Tipo de notificação inválido",
       }
     }
 
-    // Log the notification action
     if (result.success) {
-      await supabase.from("collection_actions").insert({
-        debt_id: debtId,
-        action_type: type,
-        status: "sent",
-        message_id: result.messageId,
-        company_id: debt.company_id,
+      try {
+        const { error: insertError } = await supabase.from("collection_actions").insert({
+          company_id: vmaxRecord.id_company,
+          customer_id: null, // VMAX doesn't have customer UUIDs, only names
+          debt_id: debtId,
+          action_type: type,
+          status: "sent",
+          message: messageContent,
+          sent_by: user.id,
+          metadata: {
+            customer_name: customerName,
+            contact: type === "email" ? customerEmail : customerPhone,
+            amount: parsedAmount,
+            message_id: result.messageId,
+          },
+        })
+
+        if (insertError) {
+          console.warn("[v0] Failed to log collection action:", insertError.message)
+        } else {
+          console.log("[v0] Collection action logged successfully")
+        }
+      } catch (insertError) {
+        console.warn("[v0] Failed to log collection action (schema may need refresh):", insertError)
+      }
+
+      console.log("[v0] Notification sent successfully:", {
+        type,
+        customer: customerName,
+        contact: type === "email" ? customerEmail : customerPhone,
+        messageId: result.messageId,
       })
     }
 
     return {
       success: result.success,
       message: result.success
-        ? `Notificação enviada com sucesso via ${type.toUpperCase()}`
-        : `Erro ao enviar notificação: ${result.error}`,
+        ? `Cobrança enviada com sucesso via ${type.toUpperCase()} para ${customerName}`
+        : `Erro ao enviar: ${result.error}`,
       error: result.error,
     }
   } catch (error) {

@@ -72,7 +72,10 @@ export default function NewUserPage() {
 
     setIsLoading(true)
 
-    console.log("[v0] Criando novo usuário:", formData)
+    console.log("[v0] Criando novo usuário:", {
+      ...formData,
+      phone: formData.phone,
+    })
 
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1000))

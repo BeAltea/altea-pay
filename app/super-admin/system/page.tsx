@@ -51,6 +51,8 @@ export default function SystemPage() {
           { count: customersCount },
           { count: vmaxCount },
           { count: creditProfilesCount },
+          { count: messagesCount },
+          { count: actionsCount },
         ] = await Promise.all([
           supabase.from("companies").select("*", { count: "exact", head: true }),
           supabase.from("profiles").select("*", { count: "exact", head: true }),
@@ -58,6 +60,8 @@ export default function SystemPage() {
           supabase.from("customers").select("*", { count: "exact", head: true }),
           supabase.from("VMAX").select("*", { count: "exact", head: true }),
           supabase.from("credit_profiles").select("*", { count: "exact", head: true }),
+          supabase.from("messages").select("*", { count: "exact", head: true }),
+          supabase.from("collection_actions").select("*", { count: "exact", head: true }),
         ])
 
         const stats = {
@@ -66,6 +70,17 @@ export default function SystemPage() {
           debts: debtsCount || 0,
           customers: (customersCount || 0) + (vmaxCount || 0),
           creditProfiles: creditProfilesCount || 0,
+          messages: messagesCount || 0,
+          actions: actionsCount || 0,
+          totalRecords:
+            (companiesCount || 0) +
+            (profilesCount || 0) +
+            (debtsCount || 0) +
+            (customersCount || 0) +
+            (vmaxCount || 0) +
+            (creditProfilesCount || 0) +
+            (messagesCount || 0) +
+            (actionsCount || 0),
         }
 
         console.log("[v0] ✅ Estatísticas reais do banco:", stats)
@@ -391,6 +406,7 @@ export default function SystemPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Tabelas Principais</CardTitle>
+                <CardDescription>Registros reais no banco de dados</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -413,6 +429,18 @@ export default function SystemPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm">credit_profiles</span>
                     <Badge variant="outline">{dbStats?.creditProfiles || 0} registros</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">messages</span>
+                    <Badge variant="outline">{dbStats?.messages || 0} registros</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">collection_actions</span>
+                    <Badge variant="outline">{dbStats?.actions || 0} registros</Badge>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-3 mt-3">
+                    <span className="text-sm font-semibold">Total de Registros</span>
+                    <Badge className="bg-primary">{dbStats?.totalRecords || 0}</Badge>
                   </div>
                 </div>
               </CardContent>

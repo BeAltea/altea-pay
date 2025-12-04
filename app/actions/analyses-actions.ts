@@ -23,7 +23,9 @@ export async function getAnalysesData() {
 
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
-      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad')
+      .select(
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad, credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
+      )
       .order("Cliente")
       .limit(200)
 
@@ -40,7 +42,12 @@ export async function getAnalysesData() {
         document: c.document,
         company_id: c.company_id,
         source_table: "customers" as const,
-        dias_inad: 0, // Added dias_inad field for customers (default 0)
+        dias_inad: 0,
+        credit_score: null,
+        risk_level: null,
+        approval_status: null,
+        analysis_metadata: null,
+        last_analysis_date: null,
       })),
       ...(vmaxData || []).map((v) => ({
         id: v.id,
@@ -49,7 +56,12 @@ export async function getAnalysesData() {
         company_id: v.id_company,
         city: v.Cidade || "N/A",
         source_table: "vmax" as const,
-        dias_inad: v.Dias_Inad || 0, // Added dias_inad field from VMAX table
+        dias_inad: v.Dias_Inad || 0,
+        credit_score: v.credit_score,
+        risk_level: v.risk_level,
+        approval_status: v.approval_status,
+        analysis_metadata: v.analysis_metadata,
+        last_analysis_date: v.last_analysis_date,
       })),
     ]
 
@@ -70,11 +82,9 @@ export async function getAnalysesData() {
 
     console.log("[SERVER] getAnalysesData - Profiles loaded:", profilesData?.length || 0)
 
-    // Buscar empresas
     const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
     const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
 
-    // Montar dados formatados
     const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
     const profilesMap = new Map(profilesData?.map((p) => [p.customer_id, p]) || [])
 
@@ -82,21 +92,25 @@ export async function getAnalysesData() {
       const profile = profilesMap.get(customer.id)
       const company = companiesMap.get(customer.company_id)
 
+      const hasVmaxData = customer.source_table === "vmax" && customer.analysis_metadata
+
       return {
         id: profile?.id || customer.id,
         customer_id: customer.id,
         company_id: customer.company_id,
         cpf: customer.document || "N/A",
-        score: profile?.score ?? null, // Use nullish coalescing to preserve 0
-        source: profile?.source || "none",
-        analysis_type: profile?.analysis_type || "none",
-        status: profile ? "completed" : "pending",
-        created_at: profile?.created_at || new Date().toISOString(),
+        score: hasVmaxData ? customer.credit_score : (profile?.score ?? null),
+        source: hasVmaxData ? "assertiva" : profile?.source || "none",
+        analysis_type: hasVmaxData ? "detailed" : profile?.analysis_type || "none",
+        status: hasVmaxData ? "completed" : profile ? "completed" : "pending",
+        created_at: hasVmaxData ? customer.last_analysis_date : profile?.created_at || new Date().toISOString(),
         customer_name: customer.name || "N/A",
         company_name: company?.name || "N/A",
         source_table: customer.source_table,
-        data: profile?.data || null, // Include data field (JSONB)
-        dias_inad: customer.dias_inad, // Include dias_inad field
+        data: hasVmaxData ? customer.analysis_metadata : profile?.data || null,
+        dias_inad: customer.dias_inad,
+        risk_level: hasVmaxData ? customer.risk_level : null,
+        approval_status: hasVmaxData ? customer.approval_status : null,
       }
     })
 
@@ -115,14 +129,12 @@ export async function getCustomerDetails(customerId: string) {
 
     const supabase = createAdminClient()
 
-    // Buscar cliente
     const { data: customerData, error: customerError } = await supabase
       .from("customers")
       .select("*")
       .eq("id", customerId)
       .single()
 
-    // Se não encontrar na tabela customers, buscar na VMAX
     let customer = customerData
     let isVMAX = false
 
@@ -139,12 +151,11 @@ export async function getCustomerDetails(customerId: string) {
         document: vmaxData["CPF/CNPJ"],
         company_id: vmaxData.id_company,
         city: vmaxData.Cidade,
-        dias_inad: vmaxData.Dias_Inad || 0, // Include dias_inad field
+        dias_inad: vmaxData.Dias_Inad || 0,
       }
       isVMAX = true
     }
 
-    // Buscar perfil de crédito
     const { data: profileData } = await supabase
       .from("credit_profiles")
       .select("*")
@@ -153,10 +164,8 @@ export async function getCustomerDetails(customerId: string) {
       .limit(1)
       .single()
 
-    // Buscar empresa
     const { data: companyData } = await supabase.from("companies").select("*").eq("id", customer.company_id).single()
 
-    // Buscar histórico de análises
     const { data: analysisHistory } = await supabase
       .from("credit_profiles")
       .select("*")
@@ -185,7 +194,6 @@ export async function runAnalysis(customerId: string, document: string) {
 
     const supabase = createAdminClient()
 
-    // Verificar se já existe uma análise recente (últimas 24 horas)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { data: recentProfile } = await supabase
       .from("credit_profiles")
@@ -205,7 +213,6 @@ export async function runAnalysis(customerId: string, document: string) {
       }
     }
 
-    // Chamar API de análise de crédito (exemplo com Assertiva)
     const assertivaUrl = process.env.ASSERTIVA_BASE_URL
     const clientId = process.env.ASSERTIVA_CLIENT_ID
     const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
@@ -214,7 +221,6 @@ export async function runAnalysis(customerId: string, document: string) {
       throw new Error("Credenciais da API de crédito não configuradas")
     }
 
-    // Fazer requisição para a API de crédito
     const response = await fetch(`${assertivaUrl}/credit-analysis`, {
       method: "POST",
       headers: {
@@ -222,7 +228,7 @@ export async function runAnalysis(customerId: string, document: string) {
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
       },
       body: JSON.stringify({
-        document: document.replace(/\D/g, ""), // Remove formatação
+        document: document.replace(/\D/g, ""),
         customer_id: customerId,
       }),
     })
@@ -233,7 +239,6 @@ export async function runAnalysis(customerId: string, document: string) {
 
     const analysisData = await response.json()
 
-    // Salvar resultado no banco
     const { data: newProfile, error: insertError } = await supabase
       .from("credit_profiles")
       .insert({
@@ -288,7 +293,9 @@ export async function getAllCustomers() {
 
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
-      .select('id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad')
+      .select(
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad, credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
+      )
       .order("Cliente")
       .limit(200)
 
@@ -306,7 +313,12 @@ export async function getAllCustomers() {
         company_id: c.company_id,
         city: "N/A",
         source_table: "customers" as const,
-        dias_inad: 0, // Added dias_inad field for customers (default 0)
+        dias_inad: 0,
+        credit_score: null,
+        risk_level: null,
+        approval_status: null,
+        analysis_metadata: null,
+        last_analysis_date: null,
       })),
       ...(vmaxData || []).map((v) => ({
         id: v.id,
@@ -315,7 +327,12 @@ export async function getAllCustomers() {
         company_id: v.id_company,
         city: v.Cidade || "N/A",
         source_table: "vmax" as const,
-        dias_inad: v.Dias_Inad || 0, // Added dias_inad field from VMAX table
+        dias_inad: v.Dias_Inad || 0,
+        credit_score: v.credit_score,
+        risk_level: v.risk_level,
+        approval_status: v.approval_status,
+        analysis_metadata: v.analysis_metadata,
+        last_analysis_date: v.last_analysis_date,
       })),
     ]
 
@@ -325,7 +342,6 @@ export async function getAllCustomers() {
       return { success: true, data: [] }
     }
 
-    // Buscar empresas
     const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
     const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
 
@@ -342,7 +358,12 @@ export async function getAllCustomers() {
         company_name: company?.name || "N/A",
         company_id: customer.company_id,
         source_table: customer.source_table,
-        dias_inad: customer.dias_inad, // Include dias_inad in returned data
+        dias_inad: customer.dias_inad,
+        credit_score: customer.credit_score,
+        risk_level: customer.risk_level,
+        approval_status: customer.approval_status,
+        analysis_metadata: customer.analysis_metadata,
+        last_analysis_date: customer.last_analysis_date,
       }
     })
 
@@ -352,5 +373,105 @@ export async function getAllCustomers() {
   } catch (error: any) {
     console.error("[SERVER] getAllCustomers - Error:", error)
     return { success: false, error: error.message, data: [] }
+  }
+}
+
+export async function getAllCompanies() {
+  try {
+    console.log("[SERVER] getAllCompanies - Starting...")
+
+    const supabase = createAdminClient()
+
+    const { data: companiesData, error: companiesError } = await supabase
+      .from("companies")
+      .select("id, name")
+      .order("name")
+
+    if (companiesError) {
+      console.error("[SERVER] getAllCompanies - Error loading companies:", companiesError)
+      throw companiesError
+    }
+
+    console.log("[SERVER] getAllCompanies - Companies loaded:", companiesData?.length || 0)
+
+    return { success: true, data: companiesData || [] }
+  } catch (error: any) {
+    console.error("[SERVER] getAllCompanies - Error:", error)
+    return { success: false, error: error.message, data: [] }
+  }
+}
+
+export async function getAutomaticCollectionStats() {
+  const supabase = createAdminClient()
+
+  try {
+    console.log("[v0] getAutomaticCollectionStats - Starting...")
+
+    const { data: allVmax, error: allVmaxError } = await supabase
+      .from("VMAX")
+      .select("id, Cliente, approval_status, auto_collection_enabled, collection_processed_at")
+
+    if (allVmaxError) throw allVmaxError
+
+    console.log("[v0] Total VMAX records:", allVmax?.length || 0)
+    console.log("[v0] VMAX with ACEITA status:", allVmax?.filter((v) => v.approval_status === "ACEITA").length || 0)
+    console.log(
+      "[v0] VMAX with auto_collection_enabled:",
+      allVmax?.filter((v) => v.auto_collection_enabled).length || 0,
+    )
+
+    // Buscar clientes elegíveis para régua automática (ACEITA + auto_collection_enabled)
+    const { data: eligible, error: eligibleError } = await supabase
+      .from("VMAX")
+      .select("id, Cliente, Vencido, collection_count, last_collection_attempt, collection_processed_at")
+      .eq("approval_status", "ACEITA")
+      .eq("auto_collection_enabled", true)
+
+    if (eligibleError) throw eligibleError
+
+    console.log("[v0] Eligible for auto collection:", eligible?.length || 0)
+
+    // Buscar últimas ações de cobrança automática
+    const { data: recentActions, error: actionsError } = await supabase
+      .from("collection_actions")
+      .select("*")
+      .eq("action_type", "auto_collection")
+      .order("created_at", { ascending: false })
+      .limit(10)
+
+    if (actionsError) throw actionsError
+
+    console.log("[v0] Recent auto collection actions:", recentActions?.length || 0)
+
+    // Calcular estatísticas
+    const notProcessed = eligible?.filter((d) => !d.collection_processed_at) || []
+    const alreadyProcessed = eligible?.filter((d) => d.collection_processed_at) || []
+    const lastExecution = recentActions?.[0]?.created_at || null
+
+    console.log(
+      "[v0] Stats - eligible:",
+      eligible?.length || 0,
+      "notProcessed:",
+      notProcessed.length,
+      "alreadyProcessed:",
+      alreadyProcessed.length,
+    )
+
+    return {
+      eligible: eligible?.length || 0,
+      notProcessed: notProcessed.length,
+      alreadyProcessed: alreadyProcessed.length,
+      recentActions: recentActions || [],
+      lastExecution,
+    }
+  } catch (error) {
+    console.error("[v0] Error fetching automatic collection stats:", error)
+    return {
+      eligible: 0,
+      notProcessed: 0,
+      alreadyProcessed: 0,
+      recentActions: [],
+      lastExecution: null,
+    }
   }
 }

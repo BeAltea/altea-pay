@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,9 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Building2, Check, X, Users } from "lucide-react"
+import { Plus, Edit, Trash2, Building2, Check, X, Users, AlertCircle, Timer, Clock, Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { fetchAllCustomers } from "@/app/actions/fetch-customers-action"
+import { getAutomaticCollectionStats } from "@/app/actions/analyses-actions"
 
 interface CollectionRule {
   id: string
@@ -31,6 +32,11 @@ interface CollectionRule {
   steps: CollectionRuleStep[]
   active_for_companies: string[] | null
   active_for_customers: string[] | null
+  min_score: number
+  max_score: number
+  process_type: string
+  priority: string
+  rule_type: string
 }
 
 interface CollectionRuleStep {
@@ -57,6 +63,7 @@ interface Customer {
 }
 
 export default function SuperAdminCollectionRulesPage() {
+  const [automaticStats, setAutomaticStats] = useState<any>(null)
   const [rules, setRules] = useState<CollectionRule[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -68,33 +75,36 @@ export default function SuperAdminCollectionRulesPage() {
   const supabase = createClient()
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     name: "",
     description: "",
     is_active: true,
-    steps: [{ step_order: 1, days_after_due: 3, channel: "email", template: "" }],
-    assignment_mode: "companies" as "companies" | "customers",
-    assigned_companies: [] as string[],
-    assigned_customers: [] as string[],
+    steps: [],
+    assignment_mode: "companies",
+    assigned_companies: [],
+    assigned_customers: [],
+    min_score: 0,
+    max_score: 1000,
+    process_type: "automatic",
+    priority: "medium",
+    rule_type: "custom",
   })
 
   useEffect(() => {
     fetchRules()
     fetchCompanies()
     fetchCustomers()
+    fetchAutomaticStats()
   }, [])
 
-  useEffect(() => {
-    if (formData.assignment_mode === "customers" && formData.assigned_companies.length > 0) {
-      const filtered = customers.filter((c) => formData.assigned_companies.includes(c.company_id))
-      console.log("[v0] Filtering customers for companies:", formData.assigned_companies)
-      console.log("[v0] Total customers in state:", customers.length)
-      console.log("[v0] Filtered customers:", filtered.length)
-      setFilteredCustomers(filtered)
-    } else {
-      setFilteredCustomers([])
+  const fetchAutomaticStats = async () => {
+    try {
+      const stats = await getAutomaticCollectionStats()
+      setAutomaticStats(stats)
+    } catch (error) {
+      console.error("[v0] Error fetching automatic stats:", error)
     }
-  }, [formData.assigned_companies, customers, formData.assignment_mode])
+  }
 
   async function fetchRules() {
     try {
@@ -181,6 +191,11 @@ export default function SuperAdminCollectionRulesPage() {
               formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
                 ? formData.assigned_customers
                 : null,
+            min_score: formData.min_score,
+            max_score: formData.max_score,
+            process_type: formData.process_type,
+            priority: formData.priority,
+            rule_type: formData.rule_type,
           })
           .eq("id", editingRule.id)
 
@@ -221,6 +236,11 @@ export default function SuperAdminCollectionRulesPage() {
               formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
                 ? formData.assigned_customers
                 : null,
+            min_score: formData.min_score,
+            max_score: formData.max_score,
+            process_type: formData.process_type,
+            priority: formData.priority,
+            rule_type: formData.rule_type,
           })
           .select()
           .single()
@@ -320,6 +340,11 @@ export default function SuperAdminCollectionRulesPage() {
       assignment_mode: rule.active_for_customers && rule.active_for_customers.length > 0 ? "customers" : "companies",
       assigned_companies: rule.active_for_companies || [],
       assigned_customers: rule.active_for_customers || [],
+      min_score: rule.min_score || 0,
+      max_score: rule.max_score || 1000,
+      process_type: rule.process_type || "automatic",
+      priority: rule.priority || "medium",
+      rule_type: rule.rule_type || "custom",
     })
     setEditingRule(rule)
     setShowDialog(true)
@@ -330,10 +355,15 @@ export default function SuperAdminCollectionRulesPage() {
       name: "",
       description: "",
       is_active: true,
-      steps: [{ step_order: 1, days_after_due: 3, channel: "email", template: "" }],
+      steps: [],
       assignment_mode: "companies",
       assigned_companies: [],
       assigned_customers: [],
+      min_score: 0,
+      max_score: 1000,
+      process_type: "automatic",
+      priority: "medium",
+      rule_type: "custom",
     })
   }
 
@@ -404,9 +434,115 @@ export default function SuperAdminCollectionRulesPage() {
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" />
-          Nova Régua
+          Nova Régua Customizada
         </Button>
       </div>
+
+      {/* Automatic Collection Status Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Timer className="h-5 w-5 text-primary" />
+              <CardTitle>Régua Automática</CardTitle>
+            </div>
+            <Badge variant={automaticStats?.eligible > 0 ? "default" : "secondary"}>
+              {automaticStats?.eligible > 0 ? "Ativa" : "Sem clientes"}
+            </Badge>
+          </div>
+          <CardDescription>Sistema de cobrança automática que roda a cada hora</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Status Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Clientes Elegíveis</CardDescription>
+                <CardTitle className="text-2xl">{automaticStats?.eligible}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">
+                  Total de clientes com status ACEITA e régua automática ativada
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Aguardando Processamento</CardDescription>
+                <CardTitle className="text-2xl text-orange-600">{automaticStats?.notProcessed}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Serão processados na próxima execução automática</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Já Processados</CardDescription>
+                <CardTitle className="text-2xl text-green-600">{automaticStats?.alreadyProcessed}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Cobranças já enviadas automaticamente</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Last Execution */}
+          {automaticStats?.lastExecution && (
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm font-medium">Última Execução</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {new Date(automaticStats.lastExecution).toLocaleString("pt-BR")}
+              </p>
+            </div>
+          )}
+
+          {/* Recent Actions */}
+          {automaticStats?.recentActions.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Últimas Ações Automáticas</h4>
+              <div className="space-y-2">
+                {automaticStats.recentActions.slice(0, 5).map((action: any) => (
+                  <div key={action.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{action.message || "Cobrança automática enviada"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(action.created_at).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                    <Badge variant={action.status === "sent" ? "default" : "secondary"}>
+                      {action.status === "sent" ? "Enviado" : action.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="rounded-lg bg-muted p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  <strong>Como funciona:</strong> A régua automática roda a cada hora processando todos os clientes com
+                  status ACEITA e régua automática ativada.
+                </p>
+                <p>
+                  <strong>Ações:</strong> Envia email e SMS de cobrança automaticamente para os clientes elegíveis.
+                </p>
+                <p>
+                  <strong>Próxima execução:</strong> No início da próxima hora (às XX:00)
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
         {rules.map((rule) => (
@@ -463,7 +599,7 @@ export default function SuperAdminCollectionRulesPage() {
             <p className="text-muted-foreground mb-4">Nenhuma régua de cobrança cadastrada</p>
             <Button onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" />
-              Criar Primeira Régua
+              Criar Primeira Régua Customizada
             </Button>
           </Card>
         )}
@@ -471,49 +607,207 @@ export default function SuperAdminCollectionRulesPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingRule ? "Editar Régua" : "Nova Régua"}</DialogTitle>
-            <DialogDescription>Configure as etapas de cobrança automática</DialogDescription>
+            <DialogTitle>{editingRule ? "Editar Régua" : "Nova Régua Customizada"}</DialogTitle>
+            <DialogDescription>
+              Configure uma régua de cobrança personalizada com score e critérios específicos
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="name">Nome da Régua</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: Régua Padrão"
-              />
-            </div>
+          <div className="space-y-6">
+            {/* Informações Básicas */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-sm">Informações Básicas</h4>
 
-            <div>
-              <Label htmlFor="description">Descrição</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Descreva o objetivo desta régua"
-              />
-            </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">Nome da Régua *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Ex: Régua Premium Score 600+"
+                  />
+                </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="is_active"
-                checked={formData.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="rounded"
-              />
-              <Label htmlFor="is_active">Régua ativa</Label>
+                <div>
+                  <Label htmlFor="priority">Prioridade *</Label>
+                  <Select
+                    value={formData.priority}
+                    onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a prioridade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Baixa</SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
+                      <SelectItem value="urgent">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Descrição</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Descreva o objetivo desta régua customizada"
+                  rows={2}
+                />
+              </div>
             </div>
 
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-              <h4 className="font-medium">Atribuir Régua</h4>
-              <p className="text-sm text-muted-foreground">
-                Escolha se a régua será aplicada a empresas inteiras ou clientes específicos
+              <h4 className="font-semibold text-sm">Critérios de Score</h4>
+              <p className="text-xs text-muted-foreground">
+                Defina a faixa de score para aplicar esta régua (diferente da régua padrão 350/490)
               </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="min_score">Score Mínimo</Label>
+                  <Input
+                    id="min_score"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={formData.min_score}
+                    onChange={(e) => setFormData({ ...formData, min_score: Number.parseInt(e.target.value) || 0 })}
+                    placeholder="Ex: 600"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Padrão sistema: 350 (médio), 490 (alto)</p>
+                </div>
+
+                <div>
+                  <Label htmlFor="max_score">Score Máximo</Label>
+                  <Input
+                    id="max_score"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={formData.max_score}
+                    onChange={(e) => setFormData({ ...formData, max_score: Number.parseInt(e.target.value) || 1000 })}
+                    placeholder="Ex: 1000"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Máximo: 1000</p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="process_type">Tipo de Processo *</Label>
+                <Select
+                  value={formData.process_type}
+                  onValueChange={(value) => setFormData({ ...formData, process_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo de processo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="automatic">
+                      <div className="space-y-1">
+                        <div className="font-medium">Automático</div>
+                        <div className="text-xs text-muted-foreground">
+                          Dispara mensagens automaticamente (Email + SMS)
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="semi_automatic">
+                      <div className="space-y-1">
+                        <div className="font-medium">Semi-Automático</div>
+                        <div className="text-xs text-muted-foreground">
+                          Cria tarefa para operador (WhatsApp assistido)
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="manual">
+                      <div className="space-y-1">
+                        <div className="font-medium">Manual</div>
+                        <div className="text-xs text-muted-foreground">Cobrança 100% manual, bloqueia automação</div>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Esta régua customizada será aplicada apenas aos clientes selecionados. Os demais clientes continuarão
+                  usando a régua padrão do sistema.
+                </p>
+              </div>
+            </div>
+
+            {/* Etapas de Cobrança */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-sm">Etapas de Cobrança</h4>
+                  <p className="text-xs text-muted-foreground">Configure as mensagens e canais para cada etapa</p>
+                </div>
+                <Button type="button" size="sm" onClick={addStep}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Etapa
+                </Button>
+              </div>
+
+              {formData.steps.map((step, index) => (
+                <Card key={index} className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label>Dias após vencimento</Label>
+                          <Input
+                            type="number"
+                            value={step.days_after_due}
+                            onChange={(e) => updateStep(index, "days_after_due", Number.parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div>
+                          <Label>Canal</Label>
+                          <Select value={step.channel} onValueChange={(value) => updateStep(index, "channel", value)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="sms">SMS</SelectItem>
+                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                              <SelectItem value="phone">Ligação</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Template da Mensagem</Label>
+                        <Textarea
+                          value={step.template}
+                          onChange={(e) => updateStep(index, "template", e.target.value)}
+                          placeholder="Digite o template da mensagem..."
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                    {formData.steps.length > 1 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Atribuição de Clientes */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+              <h4 className="font-semibold text-sm">Atribuir Régua a Clientes Específicos</h4>
+              <p className="text-xs text-muted-foreground">Selecione os clientes que usarão esta régua customizada</p>
 
               <div className="flex gap-2 p-1 bg-muted/50 rounded-lg border">
                 <Button
@@ -667,69 +961,25 @@ export default function SuperAdminCollectionRulesPage() {
               )}
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">Etapas</h4>
-                <Button type="button" variant="outline" size="sm" onClick={addStep}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar Etapa
-                </Button>
-              </div>
-
-              {formData.steps.map((step, index) => (
-                <Card key={index} className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label>Dias após vencimento</Label>
-                          <Input
-                            type="number"
-                            value={step.days_after_due}
-                            onChange={(e) => updateStep(index, "days_after_due", Number.parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                        <div>
-                          <Label>Canal</Label>
-                          <Select value={step.channel} onValueChange={(value) => updateStep(index, "channel", value)}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="email">Email</SelectItem>
-                              <SelectItem value="sms">SMS</SelectItem>
-                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                              <SelectItem value="phone">Ligação</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div>
-                        <Label>Template da Mensagem</Label>
-                        <Textarea
-                          value={step.template}
-                          onChange={(e) => updateStep(index, "template", e.target.value)}
-                          placeholder="Digite o template da mensagem..."
-                          rows={3}
-                        />
-                      </div>
-                    </div>
-                    {formData.steps.length > 1 && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeStep(index)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              ))}
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                className="rounded"
+              />
+              <Label htmlFor="is_active">Régua ativa</Label>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>
+            <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveRule}>Salvar Régua</Button>
+            <Button type="button" onClick={handleSaveRule}>
+              {editingRule ? "Salvar Alterações" : "Criar Régua"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

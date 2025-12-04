@@ -382,3 +382,28 @@ ${
 export async function runAssertivaManualAnalysis(customerIds: string[], companyId: string) {
   return runAssertivaManualAnalysisWrapper(customerIds, companyId)
 }
+
+export async function getAllCompanies() {
+  try {
+    console.log("[SERVER] getAllCompanies - Starting...")
+
+    const supabase = await createServerClient()
+
+    const { data: companiesData, error: companiesError } = await supabase
+      .from("companies")
+      .select("id, name")
+      .order("name")
+
+    if (companiesError) {
+      console.error("[SERVER] getAllCompanies - Error loading companies:", companiesError)
+      throw companiesError
+    }
+
+    console.log("[SERVER] getAllCompanies - Companies loaded:", companiesData?.length || 0)
+
+    return { success: true, data: companiesData || [] }
+  } catch (error: any) {
+    console.error("[SERVER] getAllCompanies - Error:", error)
+    return { success: false, error: error.message, data: [] }
+  }
+}

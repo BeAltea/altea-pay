@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import Link from "next/link"
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from 'lucide-react'
+import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from "lucide-react"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -19,6 +19,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [fullName, setFullName] = useState("")
   const [companyName, setCompanyName] = useState("")
+  const [phone, setPhone] = useState("")
   const [personType, setPersonType] = useState<"PF" | "PJ">("PF")
   const [cpfCnpj, setCpfCnpj] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +63,7 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     setIsLoading(true)
     setError(null)
 
@@ -89,23 +90,24 @@ export default function RegisterPage() {
 
       const supabase = createClient()
       const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
-      
+
       console.log("[v0] 📋 Dados do registro:", {
         email,
         cpf_cnpj: cleanCpfCnpj,
         person_type: personType,
+        phone,
       })
 
       console.log("[v0] 🔍 PASSO 1: Buscando na tabela companies...")
-      
+
       const companiesResponse = await fetch("/api/check-company", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, cnpj: cleanCpfCnpj }),
       })
-      
+
       const { company: foundCompany, error: companiesError } = await companiesResponse.json()
-      
+
       console.log("[v0] 📊 Resultado da busca companies:", {
         encontrou: !!foundCompany,
         empresa_nome: foundCompany?.name,
@@ -124,7 +126,7 @@ export default function RegisterPage() {
         companyId = foundCompany.id
         detectedCompanyName = foundCompany.name
         requiresEmailVerification = false // Não precisa verificar email se está na companies
-        
+
         console.log("[v0] 🎉 USUÁRIO É ADMIN DA EMPRESA:", {
           empresa_nome: detectedCompanyName,
           empresa_id: companyId,
@@ -132,12 +134,12 @@ export default function RegisterPage() {
         })
 
         console.log("[v0] 🔍 PASSO 2: Buscando clientes da empresa na VMAX...")
-        
+
         const { data: vmaxClients, error: vmaxError } = await supabase
           .from("VMAX")
           .select("*")
           .eq("id_company", companyId)
-        
+
         console.log("[v0] 📊 Clientes VMAX da empresa:", {
           total_clientes: vmaxClients?.length || 0,
           tem_erro: !!vmaxError,
@@ -145,24 +147,27 @@ export default function RegisterPage() {
         })
 
         if (vmaxClients && vmaxClients.length > 0) {
-          console.log("[v0] 👥 Primeiros 3 clientes VMAX:", vmaxClients.slice(0, 3).map((c: any) => ({
-            nome: c.Cliente,
-            cpf_cnpj: c["CPF/CNPJ"],
-            valor: c.Vencido,
-          })))
+          console.log(
+            "[v0] 👥 Primeiros 3 clientes VMAX:",
+            vmaxClients.slice(0, 3).map((c: any) => ({
+              nome: c.Cliente,
+              cpf_cnpj: c["CPF/CNPJ"],
+              valor: c.Vencido,
+            })),
+          )
         }
 
         console.log("[v0] 🔍 PASSO 3: Buscando dados na integration_logs...")
-        
+
         if (vmaxClients && vmaxClients.length > 0) {
           const clientIds = vmaxClients.map((c: any) => c.id).filter(Boolean)
-          
+
           if (clientIds.length > 0) {
             const { data: integrationLogs, error: logsError } = await supabase
               .from("integration_logs")
               .select("*")
               .in("client_id", clientIds)
-            
+
             console.log("[v0] 📊 Logs de integração encontrados:", {
               total_logs: integrationLogs?.length || 0,
               tem_erro: !!logsError,
@@ -178,13 +183,15 @@ export default function RegisterPage() {
         company_id: companyId,
         company_name: detectedCompanyName,
         requires_verification: requiresEmailVerification,
+        phone,
       })
 
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
+          emailRedirectTo:
+            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
           data: {
             full_name: fullName,
             company_name: detectedCompanyName,
@@ -193,6 +200,7 @@ export default function RegisterPage() {
             cpf_cnpj: cleanCpfCnpj,
             person_type: personType,
             requires_email_verification: requiresEmailVerification,
+            phone: phone,
           },
         },
       })
@@ -212,15 +220,16 @@ export default function RegisterPage() {
 
       if (data.user?.id && companyId) {
         console.log("[v0] 💾 Salvando company_id no perfil do usuário...")
-        
+
         const { error: profileError } = await supabase
           .from("profiles")
           .update({
             company_id: companyId,
             role: role,
+            phone: phone,
           })
           .eq("id", data.user.id)
-        
+
         if (profileError) {
           console.error("[v0] ❌ Erro ao atualizar perfil:", profileError)
         } else {
@@ -235,7 +244,6 @@ export default function RegisterPage() {
       }
 
       router.push("/auth/register-success")
-      
     } catch (error: unknown) {
       console.error("[v0] ❌ Falha no registro:", error)
       if (error instanceof Error) {
@@ -369,6 +377,34 @@ export default function RegisterPage() {
                     </div>
                   </div>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-sm font-medium">
+                  Telefone
+                </Label>
+                <div className="relative">
+                  <svg
+                    className="absolute left-3 top-3 h-4 w-4 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                    />
+                  </svg>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="(11) 99999-9999"
+                    className="pl-10 border-gray-300 focus:border-altea-navy focus:ring-altea-navy h-10 sm:h-11 text-sm sm:text-base"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium">

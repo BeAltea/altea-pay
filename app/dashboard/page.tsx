@@ -159,6 +159,17 @@ export default async function DashboardPage() {
 
   console.log("[v0] Dashboard: Renderizando página", { displayName, companyName })
 
+  const { data: collectionStats } = await supabase
+    .from("VMAX")
+    .select("approval_status, auto_collection_enabled, collection_processed_at")
+    .eq("id_company", companyId)
+
+  const autoCollectedCount = (collectionStats || []).filter((c) => c.collection_processed_at).length
+  const pendingManualCount = (collectionStats || []).filter(
+    (c) => c.approval_status === "ACEITA" && !c.auto_collection_enabled && !c.collection_processed_at,
+  ).length
+  const rejectedCount = (collectionStats || []).filter((c) => c.approval_status === "REJEITA").length
+
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
       {/* Welcome Section */}
@@ -223,6 +234,57 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Collection Automation Status Card */}
+      <Card>
+        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+          <CardTitle className="text-base sm:text-lg lg:text-xl">Status de Cobrança Automática</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
+            Visão de clientes cobrados automaticamente vs manual
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-green-600">{autoCollectedCount}</p>
+                  <p className="text-sm text-green-700 dark:text-green-300 mt-1">Cobrados Automaticamente</p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Por régua de cobrança automática</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-500" />
+              </div>
+            </div>
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-orange-600">{pendingManualCount}</p>
+                  <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">Pendentes Cobrança Manual</p>
+                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                    Não se encaixam na régua automática
+                  </p>
+                </div>
+                <Clock className="h-8 w-8 text-orange-500" />
+              </div>
+              {pendingManualCount > 0 && (
+                <Button asChild size="sm" variant="outline" className="w-full mt-3 bg-transparent">
+                  <Link href="/dashboard/debts?filter=pending_manual">Ver Clientes Pendentes</Link>
+                </Button>
+              )}
+            </div>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-red-600">{rejectedCount}</p>
+                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">Rejeitados por Análise</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">Score baixo ou risco alto</p>
+                </div>
+                <AlertTriangle className="h-8 w-8 text-red-500" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">

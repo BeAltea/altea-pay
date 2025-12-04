@@ -6,13 +6,11 @@ export interface CreditProfile {
   company_id: string
   cpf: string
   analysis_type: "free" | "detailed"
-  source: "gov" | "assertiva" | "consolidated"
+  source: "assertiva" // Removido 'gov' e 'consolidated'
   data: any
-  data_gov?: any
-  data_assertiva?: any
+  data_assertiva: any // Apenas Assertiva
   score?: number
-  score_gov?: number
-  score_assertiva?: number
+  score_assertiva: number // Apenas Assertiva
   created_at: string
   updated_at: string
   customer_id?: string
@@ -28,7 +26,6 @@ export interface CreditProfile {
   public_bonds_count: number
   document_type: "CPF" | "CNPJ"
   last_analysis_date: string
-  is_consolidated?: boolean
 }
 
 export interface AnalysisTrigger {
@@ -709,7 +706,7 @@ export async function analyzeDetailed(
 export async function storeAnalysisResult(
   cpf: string,
   data: any,
-  source: "gov" | "assertiva",
+  source: "assertiva" | "gov", // Apenas assertiva ou gov
   type: "free" | "detailed",
   companyId: string,
   userId?: string,
@@ -737,11 +734,8 @@ export async function storeAnalysisResult(
 
     if (!vmaxRecords || vmaxRecords.length === 0) {
       console.log("[v0] storeAnalysisResult - No records found in VMAX table")
-      // Allow storage even if VMAX is not found, but log it
-      // return { success: false, error: "No VMAX records found" }
     }
 
-    // Encontrar o registro que corresponde ao CPF limpo
     const vmaxRecord = vmaxRecords?.find((record) => {
       const recordCpf = record["CPF/CNPJ"]?.replace(/\D/g, "")
       return recordCpf === cleanCpf
@@ -753,7 +747,6 @@ export async function storeAnalysisResult(
       customerCity = vmaxRecord.Cidade
       console.log("[v0] storeAnalysisResult - ✅ Found customer_id from VMAX:", customerId, "for CPF:", cleanCpf)
     } else {
-      // Try to find in customers table
       const { data: customerRecord } = await supabase
         .from("customers")
         .select("id, name, city, email, phone")
@@ -773,30 +766,40 @@ export async function storeAnalysisResult(
       }
     }
 
-    let score = 0
+    const score =
+      data.credito?.resposta?.score?.pontos || // From Assertiva detailed analysis (CORRECT PATH)
+      data.score_credito?.pontos || // From Assertiva detailed analysis (alternative path)
+      data.score_assertiva || // From Assertiva detailed analysis
+      data.score_serasa || // From Assertiva detailed analysis (Serasa score)
+      data.score_calculado || // From Gov analysis (free)
+      data.score || // Generic fallback score
+      0 // Default to 0 if no score is found
 
-    if (source === "assertiva") {
-      // Try multiple possible score locations in Assertiva data
-      score =
-        data.score_credito?.pontos || // Main score from credito endpoint
-        data.credito?.resposta?.score?.pontos || // Alternative structure
-        data.score_assertiva || // Legacy field
-        data.score_serasa || // Legacy field
-        0
+    console.log("[v0] storeAnalysisResult - Extracted score:", {
+      score,
+      credito_resposta_score_pontos: data.credito?.resposta?.score?.pontos,
+      score_credito_pontos: data.score_credito?.pontos,
+      score_assertiva: data.score_assertiva,
+      has_credito_resposta: !!data.credito?.resposta?.score,
+      score_serasa: data.score_serasa,
+      score_calculado: data.score_calculado,
+    })
 
-      console.log("[v0] storeAnalysisResult - Extracted Assertiva score:", {
-        score,
-        score_credito: data.score_credito,
-        has_credito_resposta: !!data.credito?.resposta?.score,
-      })
+    let approvalStatus: "ACEITA" | "ACEITA_ESPECIAL" | "REJEITA" | "PENDENTE" = "PENDENTE"
+    let autoCollectionEnabled = false
+
+    if (score >= 400) {
+      approvalStatus = "ACEITA"
+      autoCollectionEnabled = true
+      console.log("[v0] storeAnalysisResult - Score >= 400: ACEITA with auto_collection")
+    } else if (score >= 300) {
+      approvalStatus = "ACEITA_ESPECIAL"
+      autoCollectionEnabled = false
+      console.log("[v0] storeAnalysisResult - Score 300-399: ACEITA_ESPECIAL without auto_collection")
     } else {
-      // Portal da Transparência
-      score = data.score_calculado || 0
-
-      console.log("[v0] storeAnalysisResult - Extracted Gov score:", {
-        score,
-        score_calculado: data.score_calculado,
-      })
+      approvalStatus = "REJEITA"
+      autoCollectionEnabled = false
+      console.log("[v0] storeAnalysisResult - Score < 300: REJEITA")
     }
 
     let riskLevel: "low" | "medium" | "high" | "very_high" = "medium"
@@ -816,7 +819,7 @@ export async function storeAnalysisResult(
       (data.punicoes_cnep?.length || 0) +
       (data.impedimentos_cepim?.length || 0) +
       (data.expulsoes_ceaf?.length || 0) +
-      (data.total_sancoes || 0)
+      (data.total_sancoes || 0) // From Gov analysis
 
     const hasPublicBonds =
       data.vinculos_publicos && Array.isArray(data.vinculos_publicos) && data.vinculos_publicos.length > 0
@@ -827,16 +830,16 @@ export async function storeAnalysisResult(
 
     const { data: existingRecord } = await supabase
       .from("credit_profiles")
-      .select("id, source, data_gov, data_assertiva, score_gov, score_assertiva")
+      .select("id, source, score_assertiva, score, data_assertiva, created_at")
       .eq("cpf", cleanCpf)
       .eq("company_id", companyId)
       .maybeSingle()
 
-    const profileData: any = {
+    const profileData: Partial<CreditProfile> = {
       company_id: companyId,
       cpf: cleanCpf,
       analysis_type: type,
-      source, // Initial source
+      source: source, // Use the provided source
       status: "completed",
       risk_level: riskLevel,
       has_sanctions: hasSanctions,
@@ -848,43 +851,16 @@ export async function storeAnalysisResult(
       updated_at: new Date().toISOString(),
     }
 
-    if (source === "gov") {
-      profileData.data_gov = data
-      profileData.score_gov = score
-      profileData.data = data // Keep for backward compatibility
-      profileData.score = score
-    } else {
-      profileData.data_assertiva = data
-      profileData.score_assertiva = score
-      profileData.data = data // Keep for backward compatibility
-      profileData.score = score
-    }
-
-    if (existingRecord) {
-      const hasGovData = existingRecord.data_gov || (existingRecord.source === "gov" && source === "assertiva")
-      const hasAssertivaData =
-        existingRecord.data_assertiva || (existingRecord.source === "assertiva" && source === "gov")
-
-      // Check if the new data is from a different source than the existing record
-      const isConsolidating =
-        (source === "assertiva" && existingRecord.source === "gov") ||
-        (source === "gov" && existingRecord.source === "assertiva")
-
-      if (isConsolidating) {
-        profileData.is_consolidated = true
-        profileData.source = "consolidated"
-
-        // Preserve existing data from other source
-        if (source === "gov") {
-          profileData.data_assertiva = existingRecord.data_assertiva
-          profileData.score_assertiva = existingRecord.score_assertiva
-        } else {
-          profileData.data_gov = existingRecord.data_gov
-          profileData.score_gov = existingRecord.score_gov
-        }
-
-        console.log("[v0] storeAnalysisResult - Creating consolidated profile")
-      }
+    if (source === "assertiva") {
+      profileData.data_assertiva = data // Specific Assertiva data
+      profileData.score_assertiva = score // Assertiva's score
+      profileData.data = data // Generic data for Assertiva
+      profileData.score = score // Generic score for Assertiva
+    } else if (source === "gov") {
+      profileData.data = data // Generic data from Gov API
+      profileData.score = data.score_calculado || score // Use Gov score if available, else fallback
+      // Ensure score_assertiva and data_assertiva are not set if source is gov
+      // This will be handled by not including them in the update/insert if they are not provided
     }
 
     if (customerId) profileData.customer_id = customerId
@@ -893,14 +869,38 @@ export async function storeAnalysisResult(
     if (customerEmail) profileData.email = customerEmail
     if (customerPhone) profileData.phone = customerPhone
 
-    let result
+    // Conditionally add created_at only for new records
+    if (!existingRecord) {
+      profileData.created_at = new Date().toISOString()
+    }
 
+    let result
     if (existingRecord) {
       console.log("[v0] storeAnalysisResult - Updating existing record:", existingRecord.id)
+      // Ensure we don't overwrite existing assertiva data with gov data if source changes unexpectedly
+      if (source === "assertiva" && existingRecord.source === "gov") {
+        // If existing is gov and new is assertiva, merge carefully
+        // For now, we assume if it's assertiva, it should overwrite or merge as needed.
+        // If the logic needs to be more complex (e.g., prefer Assertiva data), it should be handled here.
+        console.log("[v0] storeAnalysisResult - Merging Assertiva data into existing Gov record.")
+        // We'll update with the new Assertiva data, potentially overwriting some gov fields if they are generic
+      } else if (source === "gov" && existingRecord.source === "assertiva") {
+        console.log(
+          "[v0] storeAnalysisResult - Overwriting Assertiva data with Gov data (preserving score if possible).",
+        )
+        // When updating with 'gov' source, we might want to keep Assertiva specific fields if they exist and are valuable
+        // For now, simply updating with the provided 'data' and 'score' from gov.
+        // If existingRecord.score_assertiva exists and is not being explicitly overridden by a gov score, it would remain.
+        // However, the current logic overwrites score and data with the new source's information.
+      }
+
       result = await supabase.from("credit_profiles").update(profileData).eq("id", existingRecord.id).select()
     } else {
       console.log("[v0] storeAnalysisResult - Inserting new record")
-      result = await supabase.from("credit_profiles").insert(profileData).select()
+      result = await supabase
+        .from("credit_profiles")
+        .insert(profileData as CreditProfile)
+        .select() // Cast to CreditProfile for insert
     }
 
     const { data: insertedData, error } = result
@@ -910,15 +910,42 @@ export async function storeAnalysisResult(
       return { success: false, error: error.message }
     }
 
+    if (vmaxRecord && customerId) {
+      console.log("[v0] storeAnalysisResult - Updating VMAX with approval status", {
+        customerId,
+        approvalStatus,
+        autoCollectionEnabled,
+        score,
+      })
+
+      const { error: vmaxError } = await supabase
+        .from("VMAX")
+        .update({
+          approval_status: approvalStatus,
+          auto_collection_enabled: autoCollectionEnabled,
+          credit_score: score,
+          risk_level: riskLevel,
+          analysis_metadata: data,
+        })
+        .eq("id", customerId)
+
+      if (vmaxError) {
+        console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError)
+      } else {
+        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX with approval status")
+      }
+    }
+
     console.log("[v0] storeAnalysisResult - ✅ Success", {
       cpf: cleanCpf,
-      source: profileData.source, // Use the potentially updated source
+      source: profileData.source,
       type,
-      score: profileData.score, // Use the potentially updated score
+      score: profileData.score,
       risk_level: riskLevel,
-      is_consolidated: profileData.is_consolidated,
+      approval_status: approvalStatus,
+      auto_collection_enabled: autoCollectionEnabled,
       record_id: insertedData?.[0]?.id,
-      operation: existingRecord ? "UPDATE" : "INSERT", // Log which operation was performed
+      operation: existingRecord ? "UPDATE" : "INSERT",
     })
 
     return { success: true }
@@ -1055,10 +1082,12 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
 
             // Armazenar resultado
             if (result.success && result.data) {
+              // Determine source based on analysis type
+              const source = trigger.analysis_type === "free" ? "gov" : "assertiva"
               await storeAnalysisResult(
                 customer.document,
                 result.data,
-                trigger.analysis_type === "free" ? "gov" : "assertiva",
+                source,
                 trigger.analysis_type,
                 trigger.company_id,
                 userId,
@@ -1125,8 +1154,9 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
 
 export async function analyzeCreditFree(
   document: string,
+  companyId?: string, // Added companyId parameter for logging
 ): Promise<{ success: boolean; score?: number; risk_level?: string; details?: any; error?: string }> {
-  const result = await analyzeFree(document)
+  const result = await analyzeFree(document, companyId) // Pass companyId
 
   if (!result.success) {
     return { success: false, error: result.error }
@@ -1288,7 +1318,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
       })
 
       try {
-        const analysisResult = await analyzeFree(item.cpf, companyId)
+        const analysisResult = await analyzeFree(item.cpf, companyId) // Pass companyId
 
         if (!analysisResult.success) {
           console.error(
@@ -1315,11 +1345,11 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           situacao: analysisResult.data?.situacao_cpf,
           vinculos_count: analysisResult.data?.vinculos_publicos?.length || 0,
           sancoes_count: analysisResult.data?.total_sancoes || 0,
-          api_status: analysisResult.data?.api_status || "SUCCESS",
+          api_status: analysisResult.data?.api_consulted, // Changed from api_status to api_consulted
         })
 
         // Store result, potentially consolidating if an Assertiva profile already exists
-        await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId)
+        await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId) // Source is 'gov' for analyzeFree
 
         analyzedCount++
         cpfsAnalyzed.push(item.cpf)
@@ -1469,7 +1499,6 @@ export async function runAssertivaManualAnalysis(
       console.error("[v0] runAssertivaManualAnalysis - Error fetching from VMAX:", vmaxError)
       await supabase.from("integration_logs").insert({
         company_id: companyId,
-        cpf: null, // Changed from customerIds[0] to null for batch error
         operation: "ASSERTIVA_MANUAL_ANALYSIS",
         status: "error",
         details: { error: vmaxError.message, customer_ids: customerIds },
@@ -1514,9 +1543,7 @@ export async function runAssertivaManualAnalysis(
       customers.map((c) => ({ id: c.id, name: c.name, document: c.document, city: c.city, company_id: c.company_id })),
     )
 
-    // 2. Verificar quais já têm análise Assertiva em cache
     const customersToAnalyze: Array<{ id: string; cpf: string; name: string; city: string; company_id: string }> = []
-    let cachedCount = 0
 
     for (const customer of customers) {
       const cpf = customer.document
@@ -1526,47 +1553,20 @@ export async function runAssertivaManualAnalysis(
         continue
       }
 
-      // Check for existing consolidated profile OR an Assertiva-only profile
-      const { data: existingAnalysis } = await supabase
-        .from("credit_profiles")
-        .select("id, source, score_assertiva, score, created_at")
-        .eq("cpf", cpf)
-        .eq("company_id", customer.company_id)
-        // Check for existing Assertiva data, or a consolidated profile where Assertiva data might have been merged
-        .in("source", ["assertiva", "consolidated"])
-        .maybeSingle()
-
-      if (existingAnalysis) {
-        // Even if source is consolidated, it means Assertiva data was involved.
-        // We only want to re-analyze if the existing data is NOT from Assertiva OR if it's from Assertiva but old.
-        // For now, we assume if any Assertiva data (or consolidated with Assertiva) exists, we skip re-analysis.
-        // A more complex logic could check the timestamp and re-analyze if data is stale.
-        console.log(
-          "[v0] runAssertivaManualAnalysis - 📋 Customer already has Assertiva data (cached or consolidated):",
-          {
-            id: customer.id,
-            name: customer.name,
-            cpf,
-            source: existingAnalysis.source,
-            cached_at: existingAnalysis.created_at,
-          },
-        )
-        cachedCount++
-      } else {
-        customersToAnalyze.push({
-          id: customer.id,
-          cpf,
-          name: customer.name,
-          city: customer.city,
-          company_id: customer.company_id,
-        })
-      }
+      // Always add to analysis queue - manual analysis always runs fresh
+      customersToAnalyze.push({
+        id: customer.id,
+        cpf,
+        name: customer.name,
+        city: customer.city,
+        company_id: customer.company_id,
+      })
     }
 
     console.log("[v0] runAssertivaManualAnalysis - 📊 Analysis summary:", {
       total: customers.length,
       to_analyze: customersToAnalyze.length,
-      already_cached: cachedCount,
+      already_cached: 0, // Always 0 since we're forcing fresh analysis
     })
 
     // 3. Processar em lotes de 5 (controle de concorrência)
@@ -1640,8 +1640,8 @@ export async function runAssertivaManualAnalysis(
             const storeResult = await storeAnalysisResult(
               customer.cpf,
               analysisResult.data,
-              "assertiva",
-              "detailed",
+              "assertiva", // Source is 'assertiva'
+              "detailed", // Analysis type is 'detailed'
               customer.company_id,
               customer.id,
             )
@@ -1744,7 +1744,7 @@ export async function runAssertivaManualAnalysis(
     console.log("[v0] runAssertivaManualAnalysis - 🎉 COMPLETED:", {
       total: customers.length,
       analyzed: analyzedCount,
-      cached: cachedCount,
+      cached: 0,
       failed: failedCount,
       duration_ms: duration,
       duration_seconds: (duration / 1000).toFixed(2),
@@ -1760,7 +1760,7 @@ export async function runAssertivaManualAnalysis(
         total_customers: customers.length,
         customers_to_analyze: customersToAnalyze.length,
         analyzed: analyzedCount,
-        cached: cachedCount,
+        cached: 0,
         failed: failedCount,
         customers_analyzed: customersAnalyzed.map((c) => ({ id: c.id, cpf: c.cpf, score: c.score })),
       },
@@ -1771,7 +1771,7 @@ export async function runAssertivaManualAnalysis(
       success: true,
       total: customers.length,
       analyzed: analyzedCount,
-      cached: cachedCount,
+      cached: 0,
       failed: failedCount,
       duration,
       customers_analyzed: customersAnalyzed,

@@ -45,19 +45,8 @@ export async function processCollectionByScore(params: {
     // 2. Motor de Regras interpreta o tier e executa ação
     let actionResult: any
 
-    if (risk_tier === "LOW") {
-      // RISCO BAIXO (Score > 490) - Bom pagador
-      // Dispara mensagem automática com link de pagamento
-      actionResult = await dispatchAutoMessage(params)
-    } else if (risk_tier === "MEDIUM") {
-      // RISCO MÉDIO (Score 350-490)
-      // Cria tarefa de cobrança assistida (operador humano via WhatsApp)
-      actionResult = await createAssistedCollectionTask(params)
-    } else if (risk_tier === "HIGH") {
-      // RISCO ALTO (Score < 350)
-      // Cria tarefa manual e bloqueia disparos automáticos
-      actionResult = await createManualCollectionTask(params)
-    }
+    // Processa réguas de cobrança (padrão + customizadas)
+    actionResult = await processCollectionRules(params.debtId, params.customerId, score)
 
     // 3. Registrar log de auditoria
     await supabase.from("integration_logs").insert({
@@ -104,6 +93,86 @@ export async function processCollectionByScore(params: {
 }
 
 /**
+ * Processa réguas de cobrança (padrão + customizadas)
+ */
+export async function processCollectionRules(debtId: string, customerId: string, score: number) {
+  const supabase = createAdminClient()
+
+  try {
+    // 1. Verificar se existe régua customizada para este cliente
+    const { data: customRules } = await supabase
+      .from("collection_rules")
+      .select("*")
+      .eq("is_active", true)
+      .eq("rule_type", "custom")
+      .contains("active_for_customers", [customerId])
+      .gte("max_score", score)
+      .lte("min_score", score)
+      .order("priority", { ascending: false })
+      .limit(1)
+
+    if (customRules && customRules.length > 0) {
+      // Usar régua customizada
+      console.log(`[v0] Using custom rule for customer ${customerId}:`, customRules[0].name)
+      return await applyCustomRule(debtId, customerId, customRules[0], score)
+    }
+
+    // 2. Se não houver régua customizada, usar régua padrão baseada em score
+    console.log(`[v0] Using default rule for customer ${customerId}`)
+    return await applyDefaultRule(debtId, customerId, score)
+  } catch (error) {
+    console.error("[v0] Error processing collection rules:", error)
+    throw error
+  }
+}
+
+/**
+ * Aplica régua customizada
+ */
+async function applyCustomRule(debtId: string, customerId: string, rule: any, score: number) {
+  const supabase = createAdminClient()
+
+  console.log(`[v0] Applying custom rule: ${rule.name} (${rule.process_type})`)
+
+  if (rule.process_type === "automatic") {
+    // Disparo automático
+    return await dispatchAutoMessage({ debtId, customerId })
+  } else if (rule.process_type === "semi_automatic") {
+    // Tarefa assistida
+    return await createAssistedCollectionTask({
+      debtId,
+      customerId,
+      priority: rule.priority,
+      description: `Régua customizada: ${rule.name} - Score: ${score}`,
+    })
+  } else {
+    // Manual
+    return await createManualCollectionTask({
+      debtId,
+      customerId,
+      priority: rule.priority,
+      description: `Régua customizada (manual): ${rule.name} - Score: ${score}`,
+    })
+  }
+}
+
+/**
+ * Aplica régua padrão do sistema
+ */
+async function applyDefaultRule(debtId: string, customerId: string, score: number) {
+  if (score > 490) {
+    // RISCO BAIXO
+    return await dispatchAutoMessage({ debtId, customerId })
+  } else if (score >= 350) {
+    // RISCO MÉDIO
+    return await createAssistedCollectionTask({ debtId, customerId, priority: "medium" })
+  } else {
+    // RISCO ALTO
+    return await createManualCollectionTask({ debtId, customerId, priority: "high" })
+  }
+}
+
+/**
  * RISCO BAIXO - Dispara mensagem automática
  */
 async function dispatchAutoMessage(params: any) {
@@ -130,8 +199,8 @@ async function dispatchAutoMessage(params: any) {
   if (debt.customer.email) {
     const emailHtml = await generateDebtCollectionEmail({
       customerName: debt.customer.name,
-      debtAmount: params.amount,
-      dueDate: new Date(params.dueDate).toLocaleDateString("pt-BR"),
+      debtAmount: debt.amount,
+      dueDate: new Date(debt.due_date).toLocaleDateString("pt-BR"),
       companyName: debt.company.name,
       paymentLink,
     })
@@ -147,7 +216,7 @@ async function dispatchAutoMessage(params: any) {
   if (debt.customer.phone) {
     const smsBody = await generateDebtCollectionSMS({
       customerName: debt.customer.name,
-      debtAmount: params.amount,
+      debtAmount: debt.amount,
       companyName: debt.company.name,
       paymentLink,
     })
@@ -185,8 +254,8 @@ async function createAssistedCollectionTask(params: any) {
       customer_id: params.customerId,
       task_type: "ASSISTED_COLLECTION",
       status: "pending",
-      priority: "medium",
-      description: `Cobrança assistida via WhatsApp - Cliente com risco médio (Score 350-490)`,
+      priority: params.priority || "medium",
+      description: params.description || `Cobrança assistida via WhatsApp - Cliente com risco médio (Score 350-490)`,
       amount: params.amount,
       due_date: params.dueDate,
     })
@@ -213,8 +282,10 @@ async function createManualCollectionTask(params: any) {
       customer_id: params.customerId,
       task_type: "MANUAL_COLLECTION",
       status: "pending",
-      priority: "high",
-      description: `Cobrança 100% manual - Cliente com alto risco (Score < 350). Disparos automáticos bloqueados.`,
+      priority: params.priority || "high",
+      description:
+        params.description ||
+        `Cobrança 100% manual - Cliente com alto risco (Score < 350). Disparos automáticos bloqueados.`,
       amount: params.amount,
       due_date: params.dueDate,
       auto_dispatch_blocked: true,

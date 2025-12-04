@@ -32,36 +32,62 @@ export async function sendSMS({ to, body }: SendSMSParams) {
     console.log("[Twilio] Phone digits:", phoneDigits.length)
     console.log("[Twilio] Formatted phone:", to)
 
-    console.log("[Twilio] Calling Twilio API...")
-    console.log("[Twilio] From:", process.env.TWILIO_PHONE_NUMBER)
+    const accountSid = process.env.TWILIO_ACCOUNT_SID
+    const authToken = process.env.TWILIO_AUTH_TOKEN
+    const fromPhone = process.env.TWILIO_PHONE_NUMBER
+
+    if (!accountSid || !authToken || !fromPhone) {
+      console.error("[Twilio] ERROR: Missing credentials")
+      return { success: false, error: "Credenciais do Twilio não configuradas" }
+    }
+
+    console.log("[Twilio] Calling Twilio REST API...")
+    console.log("[Twilio] From:", fromPhone)
     console.log("[Twilio] To:", to)
 
-    const client = await getTwilioClient()
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64")
 
-    const message = await client.messages.create({
-      body,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: to,
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        From: fromPhone,
+        To: to,
+        Body: body,
+      }),
     })
 
-    console.log("[Twilio Response] SID:", message.sid)
-    console.log("[Twilio Response] Status:", message.status)
-    console.log("[Twilio Response] To:", message.to)
-    console.log("[Twilio Response] From:", message.from)
-    console.log("[Twilio Response] Date sent:", message.dateSent)
-    console.log("[Twilio Response] Full response:", JSON.stringify(message, null, 2))
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("[Twilio] API Error:", data)
+      return {
+        success: false,
+        error: data.message || `Erro Twilio: ${response.status}`,
+      }
+    }
+
+    console.log("[Twilio Response] SID:", data.sid)
+    console.log("[Twilio Response] Status:", data.status)
+    console.log("[Twilio Response] To:", data.to)
+    console.log("[Twilio Response] From:", data.from)
     console.log("[Twilio] SMS sent successfully!")
     console.log("=".repeat(50))
 
-    return { success: true, messageId: message.sid, message: `SMS enviado com sucesso (SID: ${message.sid})` }
+    return {
+      success: true,
+      messageId: data.sid,
+      message: `SMS enviado com sucesso (SID: ${data.sid})`,
+    }
   } catch (error: any) {
     console.error("=".repeat(50))
     console.error("[Twilio] ERROR occurred")
     console.error("[Twilio] Error message:", error.message)
-    console.error("[Twilio] Error code:", error.code)
-    console.error("[Twilio] Error status:", error.status)
     console.error("[Twilio] Error stack:", error.stack)
-    console.error("[Twilio] Full error:", JSON.stringify(error, null, 2))
     console.error("=".repeat(50))
     return { success: false, error: error.message || "Falha ao enviar SMS" }
   }
@@ -78,5 +104,22 @@ export async function generateDebtCollectionSMS({
   companyName: string
   paymentLink: string
 }): Promise<string> {
-  return `Olá ${customerName}, você possui uma cobrança pendente de R$ ${debtAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} com ${companyName}. Acesse ${paymentLink} para pagar. Atenciosamente, ${companyName}`
+  const formattedAmount = debtAmount.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  })
+
+  return `${companyName} - Cobrança Pendente
+
+Olá ${customerName},
+
+Identificamos uma pendência de ${formattedAmount} em seu nome.
+
+Para regularizar sua situação, acesse:
+${paymentLink}
+
+Dúvidas? Entre em contato conosco.
+
+Atenciosamente,
+${companyName}`
 }

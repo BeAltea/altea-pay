@@ -160,6 +160,9 @@ function generatePDFHTML(analysis: any): string {
     analysis.data?.debitos?.valorTotal || analysis.data?.credito?.resposta?.registrosDebitos?.valorTotal || 0
   const protestos = analysis.data?.protestos?.list || analysis.data?.credito?.resposta?.protestosPublicos?.list || []
   const acoesJudiciais = analysis.data?.acoes_judiciais?.list || analysis.data?.acoes?.resposta?.acoes || []
+  const chequesSemFundo = analysis.data?.cheques_sem_fundo || analysis.data?.credito?.resposta?.cheques || []
+  const dividasAtivas = analysis.data?.dividas_ativas || analysis.data?.credito?.resposta?.dividasUniao || []
+  const analiseComportamental = analysis.data?.analise_comportamental || analysis.data?.comportamental
 
   return `
 <!DOCTYPE html>
@@ -643,12 +646,9 @@ function generatePDFHTML(analysis: any): string {
         </div>
       </div>
 
-      ${
-        analysis.source === "assertiva"
-          ? `
       <!-- Assertiva Data Section -->
       ${
-        scoreRecupere !== undefined
+        analysis.source === "assertiva"
           ? `
       <div class="section">
         <div class="section-title">
@@ -756,13 +756,77 @@ function generatePDFHTML(analysis: any): string {
       `
           : ""
       }
+
+      ${
+        chequesSemFundo.length > 0
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">💳</span> Cheques Sem Fundo (${chequesSemFundo.length})
+        </div>
+        ${chequesSemFundo
+          .map(
+            (cheque: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Cheque #${idx + 1}</div>
+            ${cheque.banco ? `<div class="list-item-detail"><strong>Banco:</strong> ${cheque.banco}</div>` : ""}
+            ${cheque.agencia ? `<div class="list-item-detail"><strong>Agência:</strong> ${cheque.agencia}</div>` : ""}
+            ${cheque.quantidade ? `<div class="list-item-detail"><strong>Quantidade:</strong> ${cheque.quantidade}</div>` : ""}
+            ${cheque.valor ? `<div class="list-item-detail"><strong>Valor:</strong> R$ ${cheque.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>` : ""}
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
       `
           : ""
       }
 
       ${
-        analysis.data?.situacao_cpf
+        dividasAtivas.length > 0
           ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">🏛️</span> Dívidas Ativas da União (${dividasAtivas.length})
+        </div>
+        ${dividasAtivas
+          .map(
+            (divida: any, idx: number) => `
+          <div class="list-item">
+            <div class="list-item-title">Dívida #${idx + 1}</div>
+            ${divida.tipo ? `<div class="list-item-detail"><strong>Tipo:</strong> ${divida.tipo}</div>` : ""}
+            ${divida.numero ? `<div class="list-item-detail"><strong>Número:</strong> ${divida.numero}</div>` : ""}
+            ${divida.valor ? `<div class="list-item-detail"><strong>Valor:</strong> R$ ${divida.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>` : ""}
+            ${divida.situacao ? `<div class="list-item-detail"><strong>Situação:</strong> ${divida.situacao}</div>` : ""}
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+      `
+          : ""
+      }
+
+      ${
+        analiseComportamental
+          ? `
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">📊</span> Análise Comportamental
+        </div>
+        <div class="alert-box alert-info">
+          <div class="alert-title">Status da Consulta</div>
+          <div class="alert-content">
+            ${analiseComportamental.uuid ? `<div class="list-item-detail"><strong>ID da Consulta:</strong> ${analiseComportamental.uuid}</div>` : ""}
+            ${analiseComportamental.mensagem ? `<div class="list-item-detail"><strong>Mensagem:</strong> ${analiseComportamental.mensagem}</div>` : ""}
+            ${analiseComportamental.status ? `<div class="list-item-detail"><strong>Status:</strong> ${analiseComportamental.status}</div>` : ""}
+          </div>
+        </div>
+      </div>
+      `
+          : ""
+      }
+
       <!-- Situação do CPF/CNPJ -->
       <div class="section">
         <div class="section-title">
@@ -775,13 +839,7 @@ function generatePDFHTML(analysis: any): string {
           </div>
         </div>
       </div>
-      `
-          : ""
-      }
 
-      ${
-        totalCEIS > 0
-          ? `
       <!-- Sanções CEIS -->
       <div class="section">
         <div class="section-title">
@@ -802,13 +860,7 @@ function generatePDFHTML(analysis: any): string {
           )
           .join("")}
       </div>
-      `
-          : ""
-      }
 
-      ${
-        totalCNEP > 0
-          ? `
       <!-- Punições CNEP -->
       <div class="section">
         <div class="section-title">
@@ -830,13 +882,7 @@ function generatePDFHTML(analysis: any): string {
           )
           .join("")}
       </div>
-      `
-          : ""
-      }
 
-      ${
-        totalCEPIM > 0
-          ? `
       <!-- Impedimentos CEPIM -->
       <div class="section">
         <div class="section-title">
@@ -857,13 +903,7 @@ function generatePDFHTML(analysis: any): string {
           )
           .join("")}
       </div>
-      `
-          : ""
-      }
 
-      ${
-        totalCEAF > 0
-          ? `
       <!-- Expulsões CEAF -->
       <div class="section">
         <div class="section-title">
@@ -884,14 +924,11 @@ function generatePDFHTML(analysis: any): string {
           )
           .join("")}
       </div>
-      `
-          : ""
-      }
 
+      <!-- Estado Limpo -->
       ${
         totalRestrictions === 0 && totalVinculos === 0
           ? `
-      <!-- Estado Limpo -->
       <div class="section">
         <div class="empty-state">
           <div class="empty-state-icon">✅</div>
@@ -906,11 +943,9 @@ function generatePDFHTML(analysis: any): string {
       }
 
       <div class="footer">
-        <div class="footer-logo">Altea<span>Pay</span></div>
-        <p><strong>Relatório Confidencial de Análise de Crédito</strong></p>
-        <p>Este documento é confidencial e destinado exclusivamente para fins de análise de crédito e gestão de risco.</p>
-        <p>Os dados foram obtidos através do Portal da Transparência do Governo Federal.</p>
-        <p style="margin-top: 15px; color: #0D1B2A; font-weight: 600;">Gerado automaticamente pelo sistema AlteaPay em ${formatDate(analysis.created_at)}</p>
+        <div class="footer-logo">Cobrança<span>Auto</span></div>
+        <p>Relatório de Análise de Crédito Completo</p>
+        <p>Gerado em ${formatDate(analysis.created_at)}</p>
       </div>
     </div>
   </div>
