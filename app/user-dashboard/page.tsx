@@ -103,47 +103,80 @@ export default async function UserDashboardPage() {
 
     console.log("[v0] UserDashboard - Real debts fetched:", debts?.length || 0, "Error:", debtsError)
 
-    let vmaxDebts: any[] = []
+    const vmaxDebts: any[] = []
     if (profile?.cpf_cnpj) {
-      console.log("[v0] UserDashboard - Fetching VMAX debts for CPF/CNPJ:", profile.cpf_cnpj)
-      const { data: vmaxData, error: vmaxError } = await supabase
-        .from("VMAX")
-        .select("*")
-        .eq("CPF/CNPJ", profile.cpf_cnpj)
+      console.log("[v0] UserDashboard - Fetching debts from all company tables for CPF/CNPJ:", profile.cpf_cnpj)
 
-      if (vmaxError) {
-        console.error("[v0] UserDashboard - Error fetching VMAX debts:", vmaxError)
+      // Buscar todas as empresas e suas tabelas
+      const { data: companies, error: companiesError } = await supabase
+        .from("companies")
+        .select("id, name, customer_table_name")
+        .not("customer_table_name", "is", null)
+
+      if (companiesError) {
+        console.error("[v0] UserDashboard - Error fetching companies:", companiesError)
       } else {
-        console.log("[v0] UserDashboard - VMAX debts fetched:", vmaxData?.length || 0)
+        console.log("[v0] UserDashboard - Found companies with tables:", companies?.length || 0)
 
-        vmaxDebts = (vmaxData || []).map((vmax) => {
-          const amount = Number.parseFloat(vmax.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
-          const dueDate = vmax.Primeira_Vencida
-          const daysOverdue = Number.parseInt(vmax["Dias_Inad."] || "0")
+        // Buscar em cada tabela de empresa
+        for (const company of companies || []) {
+          if (!company.customer_table_name) continue
 
-          return {
-            id: vmax.id,
-            user_id: user.id,
-            customer_id: null,
-            amount: amount,
-            due_date: dueDate,
-            status: daysOverdue > 0 ? "overdue" : "open",
-            description: `Fatura - ${vmax.Cliente}`,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            propensity_payment_score: 0,
-            propensity_loan_score: 0,
-            classification: daysOverdue > 90 ? "high_risk" : daysOverdue > 30 ? "medium_risk" : "low_risk",
-            source_system: "VMAX",
-            external_id: vmax.id,
-            company_id: vmax.id_company,
+          try {
+            console.log("[v0] UserDashboard - Searching in table:", company.customer_table_name)
+            const { data: companyDebts, error: companyDebtsError } = await supabase
+              .from(company.customer_table_name)
+              .select("*")
+              .eq("CPF/CNPJ", profile.cpf_cnpj)
+
+            if (companyDebtsError) {
+              console.error(
+                `[v0] UserDashboard - Error fetching from ${company.customer_table_name}:`,
+                companyDebtsError,
+              )
+              continue
+            }
+
+            console.log(
+              `[v0] UserDashboard - Found ${companyDebts?.length || 0} debts in ${company.customer_table_name}`,
+            )
+
+            // Converter dívidas da empresa para o formato padrão
+            const formattedDebts = (companyDebts || []).map((debt) => {
+              const amount = Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
+              const dueDate = debt.Primeira_Vencida
+              const daysOverdue = Number.parseInt(debt["Dias_Inad."] || "0")
+
+              return {
+                id: debt.id,
+                user_id: user.id,
+                customer_id: null,
+                amount: amount,
+                due_date: dueDate,
+                status: daysOverdue > 0 ? "overdue" : "open",
+                description: `Fatura - ${debt.Cliente}`,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                propensity_payment_score: 0,
+                propensity_loan_score: 0,
+                classification: daysOverdue > 90 ? "high_risk" : daysOverdue > 30 ? "medium_risk" : "low_risk",
+                source_system: company.customer_table_name,
+                external_id: debt.id,
+                company_id: company.id,
+                company_name: company.name,
+              }
+            })
+
+            vmaxDebts.push(...formattedDebts)
+          } catch (error) {
+            console.error(`[v0] UserDashboard - Exception fetching from ${company.customer_table_name}:`, error)
           }
-        })
+        }
       }
     }
 
     const allDebts = [...(debts || []), ...vmaxDebts]
-    console.log("[v0] UserDashboard - Total debts (debts + VMAX):", allDebts.length)
+    console.log("[v0] UserDashboard - Total debts (all sources):", allDebts.length)
 
     const { data: payments, error: paymentsError } = await supabase
       .from("payments")

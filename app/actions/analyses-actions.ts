@@ -26,31 +26,31 @@ export async function getAnalysesData() {
       .select(
         'id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad, credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
       )
-      .order("Cliente")
+      .not("analysis_metadata", "is", null) // Apenas com análise
+      .order("last_analysis_date", { ascending: false })
       .limit(200)
 
     if (vmaxError) {
-      console.error("[SERVER] getAnalysesData - Error loading VMAX:", vmaxError)
+      console.error("[SERVER] Error loading VMAX:", vmaxError)
     }
 
     console.log("[SERVER] getAnalysesData - VMAX records loaded:", vmaxData?.length || 0)
 
-    const allCustomers = [
-      ...(customersData || []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        document: c.document,
-        company_id: c.company_id,
-        source_table: "customers" as const,
-        dias_inad: 0,
-        credit_score: null,
-        risk_level: null,
-        approval_status: null,
-        analysis_metadata: null,
-        last_analysis_date: null,
-      })),
+    const { data: profilesData, error: profilesError } = await supabase
+      .from("credit_profiles")
+      .select("*")
+      .eq("source", "assertiva")
+      .order("created_at", { ascending: false })
+      .limit(200)
+
+    if (profilesError) {
+      console.error("[SERVER] Error loading profiles:", profilesError)
+    }
+
+    const allAnalyses = [
       ...(vmaxData || []).map((v) => ({
         id: v.id,
+        customer_id: v.id,
         name: v.Cliente,
         document: v["CPF/CNPJ"],
         company_id: v.id_company,
@@ -63,54 +63,55 @@ export async function getAnalysesData() {
         analysis_metadata: v.analysis_metadata,
         last_analysis_date: v.last_analysis_date,
       })),
+      ...(profilesData || []).map((p) => ({
+        id: p.id,
+        customer_id: p.customer_id,
+        name: p.name || "N/A",
+        document: "N/A",
+        company_id: p.company_id,
+        city: p.city || "N/A",
+        source_table: "credit_profiles" as const,
+        dias_inad: 0,
+        credit_score: p.score,
+        risk_level: p.risk_level,
+        approval_status: null,
+        analysis_metadata: p.assertiva_data,
+        last_analysis_date: p.created_at,
+      })),
     ]
 
-    console.log("[SERVER] getAnalysesData - Total customers (customers + VMAX):", allCustomers.length)
+    console.log("[SERVER] getAnalysesData - Total analyses (VMAX + profiles):", allAnalyses.length)
 
-    if (allCustomers.length === 0) {
+    if (allAnalyses.length === 0) {
       return { success: true, data: [] }
     }
 
-    const customerIds = allCustomers.filter((c) => c.source_table === "customers").map((c) => c.id)
-    const vmaxIds = allCustomers.filter((c) => c.source_table === "vmax").map((c) => c.id)
-
-    const { data: profilesData } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .in("customer_id", [...customerIds, ...vmaxIds])
-      .order("created_at", { ascending: false })
-
-    console.log("[SERVER] getAnalysesData - Profiles loaded:", profilesData?.length || 0)
-
-    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
+    const companyIds = [...new Set(allAnalyses.map((c) => c.company_id).filter(Boolean))]
     const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
 
     const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
-    const profilesMap = new Map(profilesData?.map((p) => [p.customer_id, p]) || [])
 
-    const formattedAnalyses = allCustomers.map((customer) => {
-      const profile = profilesMap.get(customer.id)
-      const company = companiesMap.get(customer.company_id)
-
-      const hasVmaxData = customer.source_table === "vmax" && customer.analysis_metadata
+    const formattedAnalyses = allAnalyses.map((analysis) => {
+      const company = companiesMap.get(analysis.company_id)
 
       return {
-        id: profile?.id || customer.id,
-        customer_id: customer.id,
-        company_id: customer.company_id,
-        cpf: customer.document || "N/A",
-        score: hasVmaxData ? customer.credit_score : (profile?.score ?? null),
-        source: hasVmaxData ? "assertiva" : profile?.source || "none",
-        analysis_type: hasVmaxData ? "detailed" : profile?.analysis_type || "none",
-        status: hasVmaxData ? "completed" : profile ? "completed" : "pending",
-        created_at: hasVmaxData ? customer.last_analysis_date : profile?.created_at || new Date().toISOString(),
-        customer_name: customer.name || "N/A",
+        id: analysis.id,
+        customer_id: analysis.customer_id,
+        company_id: analysis.company_id,
+        cpf: analysis.document || "N/A",
+        score: analysis.credit_score || 0,
+        source: "assertiva",
+        analysis_type: "detailed",
+        status: "completed",
+        created_at: analysis.last_analysis_date || new Date().toISOString(),
+        customer_name: analysis.name || "N/A",
         company_name: company?.name || "N/A",
-        source_table: customer.source_table,
-        data: hasVmaxData ? customer.analysis_metadata : profile?.data || null,
-        dias_inad: customer.dias_inad,
-        risk_level: hasVmaxData ? customer.risk_level : null,
-        approval_status: hasVmaxData ? customer.approval_status : null,
+        source_table: analysis.source_table,
+        data: analysis.analysis_metadata,
+        assertiva_data: analysis.analysis_metadata?.assertiva_data || analysis.analysis_metadata,
+        dias_inad: analysis.dias_inad,
+        risk_level: analysis.risk_level,
+        approval_status: analysis.approval_status,
       }
     })
 

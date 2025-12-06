@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/hooks/use-auth"
 import { Suspense } from "react"
 import "./globals.css"
@@ -57,6 +58,7 @@ export default function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
             <AuthProvider>{children}</AuthProvider>
             <Toaster />
+            <SonnerToaster position="top-right" />
           </ThemeProvider>
         </Suspense>
       </body>

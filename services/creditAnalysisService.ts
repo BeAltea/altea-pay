@@ -775,8 +775,11 @@ export async function storeAnalysisResult(
       data.score || // Generic fallback score
       0 // Default to 0 if no score is found
 
+    const finalScore = score === 0 ? 5 : score
+
     console.log("[v0] storeAnalysisResult - Extracted score:", {
-      score,
+      originalScore: score,
+      finalScore,
       credito_resposta_score_pontos: data.credito?.resposta?.score?.pontos,
       score_credito_pontos: data.score_credito?.pontos,
       score_assertiva: data.score_assertiva,
@@ -788,11 +791,11 @@ export async function storeAnalysisResult(
     let approvalStatus: "ACEITA" | "ACEITA_ESPECIAL" | "REJEITA" | "PENDENTE" = "PENDENTE"
     let autoCollectionEnabled = false
 
-    if (score >= 400) {
+    if (finalScore >= 400) {
       approvalStatus = "ACEITA"
       autoCollectionEnabled = true
       console.log("[v0] storeAnalysisResult - Score >= 400: ACEITA with auto_collection")
-    } else if (score >= 300) {
+    } else if (finalScore >= 300) {
       approvalStatus = "ACEITA_ESPECIAL"
       autoCollectionEnabled = false
       console.log("[v0] storeAnalysisResult - Score 300-399: ACEITA_ESPECIAL without auto_collection")
@@ -802,11 +805,11 @@ export async function storeAnalysisResult(
       console.log("[v0] storeAnalysisResult - Score < 300: REJEITA")
     }
 
-    let riskLevel: "low" | "medium" | "high" | "very_high" = "medium"
-    if (score >= 700) riskLevel = "low"
-    else if (score >= 500) riskLevel = "medium"
-    else if (score >= 300) riskLevel = "high"
-    else riskLevel = "very_high"
+    let riskLevel: "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH" = "MEDIUM"
+    if (finalScore >= 700) riskLevel = "LOW"
+    else if (finalScore >= 500) riskLevel = "MEDIUM"
+    else if (finalScore >= 300) riskLevel = "HIGH"
+    else riskLevel = "VERY_HIGH"
 
     const hasSanctions =
       (data.sancoes_ceis && Array.isArray(data.sancoes_ceis) && data.sancoes_ceis.length > 0) ||
@@ -841,7 +844,7 @@ export async function storeAnalysisResult(
       analysis_type: type,
       source: source, // Use the provided source
       status: "completed",
-      risk_level: riskLevel,
+      risk_level: riskLevel.toLowerCase() as "low" | "medium" | "high" | "very_high", // Convert to lowercase for credit_profiles table
       has_sanctions: hasSanctions,
       has_public_bonds: hasPublicBonds,
       sanctions_count: sanctionsCount,
@@ -853,12 +856,12 @@ export async function storeAnalysisResult(
 
     if (source === "assertiva") {
       profileData.data_assertiva = data // Specific Assertiva data
-      profileData.score_assertiva = score // Assertiva's score
+      profileData.score_assertiva = finalScore // Use finalScore instead of score
       profileData.data = data // Generic data for Assertiva
-      profileData.score = score // Generic score for Assertiva
+      profileData.score = finalScore // Use finalScore instead of score
     } else if (source === "gov") {
       profileData.data = data // Generic data from Gov API
-      profileData.score = data.score_calculado || score // Use Gov score if available, else fallback
+      profileData.score = data.score_calculado || finalScore // Use finalScore
       // Ensure score_assertiva and data_assertiva are not set if source is gov
       // This will be handled by not including them in the update/insert if they are not provided
     }
@@ -915,7 +918,7 @@ export async function storeAnalysisResult(
         customerId,
         approvalStatus,
         autoCollectionEnabled,
-        score,
+        score: finalScore,
       })
 
       const { error: vmaxError } = await supabase
@@ -923,16 +926,17 @@ export async function storeAnalysisResult(
         .update({
           approval_status: approvalStatus,
           auto_collection_enabled: autoCollectionEnabled,
-          credit_score: score,
+          credit_score: finalScore,
           risk_level: riskLevel,
           analysis_metadata: data,
+          last_analysis_date: new Date().toISOString(), // Track analysis date
         })
         .eq("id", customerId)
 
       if (vmaxError) {
-        console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError)
+        console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError.message)
       } else {
-        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX with approval status")
+        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX with approval status and analysis date")
       }
     }
 
@@ -940,7 +944,7 @@ export async function storeAnalysisResult(
       cpf: cleanCpf,
       source: profileData.source,
       type,
-      score: profileData.score,
+      score: finalScore,
       risk_level: riskLevel,
       approval_status: approvalStatus,
       auto_collection_enabled: autoCollectionEnabled,
@@ -950,7 +954,7 @@ export async function storeAnalysisResult(
 
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] storeAnalysisResult - Error:", error)
+    console.error("[v0] storeAnalysisResult - Fatal error:", error)
     return { success: false, error: error.message }
   }
 }
@@ -1162,17 +1166,20 @@ export async function analyzeCreditFree(
     return { success: false, error: result.error }
   }
 
-  const score = result.data?.score_calculado || 0
+  // Use finalScore for risk_level calculation as it's the one used for decisions
+  const finalScore = result.data?.score_calculado || result.data?.score || 0
+  const scoreForDisplay = finalScore === 5 ? 0 : finalScore // Display 0 if it was the special case 5
+
   let risk_level = "medium"
 
-  if (score >= 700) risk_level = "low"
-  else if (score >= 500) risk_level = "medium"
-  else if (score >= 300) risk_level = "high"
+  if (finalScore >= 700) risk_level = "low"
+  else if (finalScore >= 500) risk_level = "medium"
+  else if (finalScore >= 300) risk_level = "high"
   else risk_level = "very_high"
 
   return {
     success: true,
-    score,
+    score: scoreForDisplay, // Return the original score for display purposes
     risk_level,
     details: result.data,
   }
@@ -1191,17 +1198,20 @@ export async function analyzeCreditAssertiva(
   }
 
   // Prioritize score_assertiva, then score_serasa, then a fallback score if available
-  const score = result.data?.score_assertiva || result.data?.score_serasa || result.data?.score || 0
+  // Use finalScore for risk_level calculation as it's the one used for decisions
+  const finalScore = result.data?.score_assertiva || result.data?.score_serasa || result.data?.score || 0
+  const scoreForDisplay = finalScore === 5 ? 0 : finalScore // Display 0 if it was the special case 5
+
   let risk_level = "medium"
 
-  if (score >= 700) risk_level = "low"
-  else if (score >= 500) risk_level = "medium"
-  else if (score >= 300) risk_level = "high"
+  if (finalScore >= 700) risk_level = "low"
+  else if (finalScore >= 500) risk_level = "medium"
+  else if (finalScore >= 300) risk_level = "high"
   else risk_level = "very_high"
 
   return {
     success: true,
-    score,
+    score: scoreForDisplay, // Return the original score for display purposes
     risk_level,
     details: result.data,
   }
@@ -1225,7 +1235,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
 
     const supabase = createAdminClient()
 
-    console.log("[SERVER][v0] runVMAXAutoAnalysis - Querying VMAX table with id_company:", companyId)
+    console.log("[SERVER][v0] runVMAXAutoAnalysis - Querying VMAX table with company_id:", companyId)
 
     const { data: vmaxRecords, error: vmaxError } = await supabase
       .from("VMAX")
@@ -1334,6 +1344,16 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           continue
         }
 
+        // Use finalScore for risk_level and display logic
+        const finalScore = analysisResult.data?.score_calculado || analysisResult.data?.score || 0
+        const scoreForDisplay = finalScore === 5 ? 0 : finalScore // Display 0 if it was the special case 5
+
+        let risk_level = "medium"
+        if (finalScore >= 700) risk_level = "low"
+        else if (finalScore >= 500) risk_level = "medium"
+        else if (finalScore >= 300) risk_level = "high"
+        else risk_level = "very_high"
+
         console.log("[SERVER][v0] runVMAXAutoAnalysis - 📋 CUSTOMER ANALYSIS RESULT:", {
           index: i + 1,
           total: cpfsToAnalyze.length,
@@ -1341,14 +1361,15 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           customer_city: item.city,
           cpf: item.cpf,
           type: item.isCnpj ? "CNPJ" : "CPF",
-          score: analysisResult.data?.score_calculado,
+          score: scoreForDisplay, // Display the original score
+          risk_level: risk_level,
           situacao: analysisResult.data?.situacao_cpf,
           vinculos_count: analysisResult.data?.vinculos_publicos?.length || 0,
           sancoes_count: analysisResult.data?.total_sancoes || 0,
           api_status: analysisResult.data?.api_consulted, // Changed from api_status to api_consulted
         })
 
-        // Store result, potentially consolidating if an Assertiva profile already exists
+        // Store the result, which might consolidate with existing Assertiva data
         await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId) // Source is 'gov' for analyzeFree
 
         analyzedCount++
@@ -1357,7 +1378,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
         if (!sampleResult && analysisResult.data) {
           sampleResult = {
             cpf: item.cpf,
-            score: analysisResult.data.score_calculado,
+            score: scoreForDisplay, // Use the score for display
+            risk_level: risk_level,
             vinculos_count: analysisResult.data.vinculos_publicos?.length || 0,
             sancoes_count: analysisResult.data.total_sancoes || 0,
             situacao: analysisResult.data.situacao_cpf,
@@ -1366,7 +1388,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
         }
 
         console.log("[SERVER][v0] runVMAXAutoAnalysis - Successfully analyzed and stored document:", item.cpf, {
-          score: analysisResult.data?.score_calculado,
+          score: scoreForDisplay,
+          risk_level: risk_level,
           vinculos: analysisResult.data?.vinculos_publicos?.length || 0,
           sancoes: analysisResult.data?.total_sancoes || 0,
         })
@@ -1669,12 +1692,25 @@ export async function runAssertivaManualAnalysis(
             }
 
             // Calculate score based on Assertiva's fields, prioritizing score_assertiva
-            const score = analysisResult.data?.score_assertiva || analysisResult.data?.score_serasa || 0
+            // Use finalScore for risk_level calculation
+            const finalScore =
+              analysisResult.data?.score_assertiva ||
+              analysisResult.data?.score_serasa ||
+              analysisResult.data?.score ||
+              0
+            const scoreForDisplay = finalScore === 5 ? 0 : finalScore // Display 0 if it was the special case 5
+
+            let risk_level = "medium"
+            if (finalScore >= 700) risk_level = "low"
+            else if (finalScore >= 500) risk_level = "medium"
+            else if (finalScore >= 300) risk_level = "high"
+            else risk_level = "very_high"
 
             console.log("[v0] runAssertivaManualAnalysis - ✅ Successfully analyzed and stored customer:", {
               id: customer.id,
               name: customer.name,
-              score,
+              score: scoreForDisplay, // Display the original score
+              risk_level: risk_level,
             })
 
             return {
@@ -1682,7 +1718,8 @@ export async function runAssertivaManualAnalysis(
               customerId: customer.id,
               cpf: customer.cpf,
               name: customer.name,
-              score,
+              score: scoreForDisplay, // Return the original score for display
+              risk_level: risk_level,
               data: analysisResult.data, // Include data for potential logging or summary
             }
           } catch (error: any) {
@@ -1720,7 +1757,7 @@ export async function runAssertivaManualAnalysis(
               id: result.value.customerId,
               cpf: result.value.cpf,
               name: result.value.name,
-              score: result.value.score,
+              score: result.value.score, // Store the score for display
             })
           } else {
             failedCount++

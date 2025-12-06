@@ -116,3 +116,100 @@ export async function getCustomerDetails(vmaxId: string) {
     return { success: false, error: error.message }
   }
 }
+
+export async function getVmaxColumns() {
+  try {
+    const supabase = createAdminClient()
+
+    const { data, error } = await supabase.from("VMAX").select("*").limit(1)
+
+    if (error) {
+      console.error("[v0] getVmaxColumns - Error:", error)
+      return { success: false, columns: [] }
+    }
+
+    // Get all column names from the first row
+    const columns = data && data.length > 0 ? Object.keys(data[0]) : []
+
+    // Filter out system columns
+    const userColumns = columns.filter(
+      (col) =>
+        ![
+          "id",
+          "id_company",
+          "created_at",
+          "updated_at",
+          "analysis_metadata",
+          "last_analysis_date",
+          "collection_processed_at",
+          "last_collection_attempt",
+        ].includes(col),
+    )
+
+    console.log("[v0] getVmaxColumns - Found columns:", userColumns.length)
+
+    return { success: true, columns: userColumns }
+  } catch (error) {
+    console.error("[v0] getVmaxColumns - Error:", error)
+    return { success: false, columns: [] }
+  }
+}
+
+export async function createVmaxClient(data: {
+  company_id: string
+  [key: string]: any
+}) {
+  try {
+    const supabase = createAdminClient()
+
+    console.log("[v0] createVmaxClient - Creating client for company:", data.company_id)
+
+    // Extract company_id and prepare insert data
+    const { company_id, ...clientData } = data
+
+    // Check if customer already exists
+    const cpfCnpj = clientData["CPF/CNPJ"] || clientData.cpf_cnpj
+    if (cpfCnpj) {
+      const { data: existingCustomer } = await supabase
+        .from("VMAX")
+        .select("id")
+        .eq("CPF/CNPJ", cpfCnpj)
+        .eq("id_company", company_id)
+        .single()
+
+      if (existingCustomer) {
+        return { success: false, message: "Cliente já cadastrado nesta empresa" }
+      }
+    }
+
+    // Prepare insert object with company_id and default values
+    const insertData: any = {
+      ...clientData,
+      id_company: company_id,
+      auto_collection_enabled: false,
+      approval_status: "PENDENTE",
+    }
+
+    // Insert customer into VMAX table
+    const { data: newCustomer, error: insertError } = await supabase.from("VMAX").insert(insertData).select().single()
+
+    if (insertError) {
+      console.error("[v0] createVmaxClient - Error inserting customer:", insertError)
+      return { success: false, message: "Erro ao cadastrar cliente no banco de dados" }
+    }
+
+    console.log("[v0] createVmaxClient - Cliente criado com sucesso:", newCustomer.id)
+
+    return {
+      success: true,
+      message: "Cliente cadastrado com sucesso!",
+      customer: newCustomer,
+    }
+  } catch (error) {
+    console.error("[v0] createVmaxClient - Error:", error)
+    return {
+      success: false,
+      message: "Erro inesperado ao cadastrar cliente",
+    }
+  }
+}

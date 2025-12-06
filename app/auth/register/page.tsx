@@ -114,66 +114,73 @@ export default function RegisterPage() {
         tem_erro: !!companiesError,
       })
 
-      console.log("[v0] ✅ Empresa encontrada?", !!foundCompany, foundCompany?.name)
-
       let role = "user"
       let companyId = null
       let detectedCompanyName = companyName || "Sem empresa"
       let requiresEmailVerification = true
+      let foundInCustomerTable = null
 
       if (foundCompany) {
+        // É um admin de empresa
         role = "admin"
         companyId = foundCompany.id
         detectedCompanyName = foundCompany.name
-        requiresEmailVerification = false // Não precisa verificar email se está na companies
+        requiresEmailVerification = false
 
         console.log("[v0] 🎉 USUÁRIO É ADMIN DA EMPRESA:", {
           empresa_nome: detectedCompanyName,
           empresa_id: companyId,
-          precisa_verificar_email: requiresEmailVerification,
         })
+      } else {
+        // Não é admin, vamos buscar nas tabelas de clientes
+        console.log("[v0] 🔍 PASSO 2: Buscando cliente nas tabelas de empresas...")
 
-        console.log("[v0] 🔍 PASSO 2: Buscando clientes da empresa na VMAX...")
+        // Buscar todas as empresas
+        const { data: allCompanies, error: companiesListError } = await supabase
+          .from("companies")
+          .select("id, name, customer_table_name")
+          .not("customer_table_name", "is", null)
 
-        const { data: vmaxClients, error: vmaxError } = await supabase
-          .from("VMAX")
-          .select("*")
-          .eq("id_company", companyId)
+        console.log("[v0] 📋 Empresas encontradas:", allCompanies?.length || 0)
 
-        console.log("[v0] 📊 Clientes VMAX da empresa:", {
-          total_clientes: vmaxClients?.length || 0,
-          tem_erro: !!vmaxError,
-          erro: vmaxError?.message,
-        })
+        if (allCompanies && allCompanies.length > 0) {
+          // Buscar o cliente em cada tabela de empresa
+          for (const company of allCompanies) {
+            if (!company.customer_table_name) continue
 
-        if (vmaxClients && vmaxClients.length > 0) {
-          console.log(
-            "[v0] 👥 Primeiros 3 clientes VMAX:",
-            vmaxClients.slice(0, 3).map((c: any) => ({
-              nome: c.Cliente,
-              cpf_cnpj: c["CPF/CNPJ"],
-              valor: c.Vencido,
-            })),
-          )
+            console.log(`[v0] 🔍 Buscando em ${company.customer_table_name}...`)
+
+            const { data: customerData, error: customerError } = await supabase
+              .from(company.customer_table_name)
+              .select("*")
+              .or(`CPF/CNPJ.eq.${cleanCpfCnpj},Email.eq.${email}`)
+              .single()
+
+            if (customerData && !customerError) {
+              foundInCustomerTable = {
+                company_id: company.id,
+                company_name: company.name,
+                table_name: company.customer_table_name,
+                customer_data: customerData,
+              }
+
+              console.log("[v0] ✅ Cliente encontrado!", {
+                empresa: company.name,
+                tabela: company.customer_table_name,
+                nome_cliente: customerData.Cliente,
+              })
+
+              break
+            }
+          }
         }
 
-        console.log("[v0] 🔍 PASSO 3: Buscando dados na integration_logs...")
+        if (foundInCustomerTable) {
+          // Cliente encontrado em alguma empresa
+          companyId = foundInCustomerTable.company_id
+          detectedCompanyName = foundInCustomerTable.company_name
 
-        if (vmaxClients && vmaxClients.length > 0) {
-          const clientIds = vmaxClients.map((c: any) => c.id).filter(Boolean)
-
-          if (clientIds.length > 0) {
-            const { data: integrationLogs, error: logsError } = await supabase
-              .from("integration_logs")
-              .select("*")
-              .in("client_id", clientIds)
-
-            console.log("[v0] 📊 Logs de integração encontrados:", {
-              total_logs: integrationLogs?.length || 0,
-              tem_erro: !!logsError,
-              erro: logsError?.message,
-            })
-          }
+          console.log("[v0] 🎉 CLIENTE ENCONTRADO NA EMPRESA:", detectedCompanyName)
         }
       }
 
@@ -183,7 +190,7 @@ export default function RegisterPage() {
         company_id: companyId,
         company_name: detectedCompanyName,
         requires_verification: requiresEmailVerification,
-        phone,
+        found_in_customer_table: !!foundInCustomerTable,
       })
 
       const { data, error } = await supabase.auth.signUp({
@@ -201,6 +208,7 @@ export default function RegisterPage() {
             person_type: personType,
             requires_email_verification: requiresEmailVerification,
             phone: phone,
+            customer_table_name: foundInCustomerTable?.table_name || null,
           },
         },
       })
@@ -215,11 +223,10 @@ export default function RegisterPage() {
         email: data.user?.email,
         role: role,
         company_id: companyId,
-        requires_verification: requiresEmailVerification,
       })
 
-      if (data.user?.id && companyId) {
-        console.log("[v0] 💾 Salvando company_id no perfil do usuário...")
+      if (data.user?.id) {
+        console.log("[v0] 💾 Salvando dados no perfil do usuário...")
 
         const { error: profileError } = await supabase
           .from("profiles")
@@ -227,20 +234,15 @@ export default function RegisterPage() {
             company_id: companyId,
             role: role,
             phone: phone,
+            cpf_cnpj: cleanCpfCnpj,
           })
           .eq("id", data.user.id)
 
         if (profileError) {
           console.error("[v0] ❌ Erro ao atualizar perfil:", profileError)
         } else {
-          console.log("[v0] ✅ company_id salvo no perfil com sucesso")
+          console.log("[v0] ✅ Perfil atualizado com sucesso")
         }
-      }
-
-      if (requiresEmailVerification) {
-        console.log("[v0] 📧 Email de verificação enviado para:", email)
-      } else {
-        console.log("[v0] ✅ Email NÃO precisa de verificação (admin de empresa)")
       }
 
       router.push("/auth/register-success")

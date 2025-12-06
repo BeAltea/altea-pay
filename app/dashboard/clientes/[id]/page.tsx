@@ -8,6 +8,10 @@ import { ArrowLeft, Sparkles, AlertCircle, AlertTriangle, TrendingUp, FileText }
 import { AssertivaAnalysisDisplay } from "@/components/assertiva-analysis-display"
 
 export default async function ClienteDetalhesPage({ params }: { params: { id: string } }) {
+  if (params.id === "novo") {
+    redirect("/dashboard/clientes/novo")
+  }
+
   const supabase = await createServerClient()
   const adminSupabase = createAdminClient()
 

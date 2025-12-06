@@ -516,6 +516,13 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                   Gerenciar Clientes
                 </Link>
               </Button>
+              <Button asChild className="w-full" variant="default">
+                <Link href={`/super-admin/companies/${company.id}/customers/new`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Cadastrar Cliente
+                </Link>
+              </Button>
+              {/* </CHANGE> */}
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/erp-integration`}>
                   <Plug className="mr-2 h-4 w-4" />

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, CreditCard, TrendingUp, DollarSign, AlertTriangle, CheckCircle, Clock } from "lucide-react"
+import { NewCustomerModal } from "@/components/dashboard/new-customer-modal"
 
 export const dynamic = "force-dynamic"
 
@@ -183,6 +184,9 @@ export default async function DashboardPage() {
               ? `Resumo da operação de cobrança da ${companyName} hoje.`
               : "Aqui está um resumo da sua operação de cobrança hoje."}
           </p>
+        </div>
+        <div className="flex space-x-2 sm:space-x-3 flex-shrink-0">
+          <NewCustomerModal companyId={companyId} />
         </div>
       </div>
 

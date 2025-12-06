@@ -13,7 +13,26 @@ export default async function DashboardLayout({
 
   const supabase = await createClient()
 
-  const { data, error } = await supabase.auth.getUser()
+  let data, error
+  let retries = 3
+
+  while (retries > 0) {
+    const result = await supabase.auth.getUser()
+    data = result.data
+    error = result.error
+
+    if (!error || error.message !== "Failed to fetch") {
+      break
+    }
+
+    console.log(`[v0] Dashboard Layout - Retry getUser (${retries} attempts left)`)
+    retries--
+
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
   console.log("[v0] Dashboard Layout - Resultado getUser:", { hasUser: !!data?.user, error: error?.message })
 
   if (error || !data?.user) {

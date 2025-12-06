@@ -22,6 +22,7 @@ import { Plus, Edit, Trash2, Building2, Check, X, Users, AlertCircle, Timer, Clo
 import { useToast } from "@/hooks/use-toast"
 import { fetchAllCustomers } from "@/app/actions/fetch-customers-action"
 import { getAutomaticCollectionStats } from "@/app/actions/analyses-actions"
+import { getCollectionRulerStats } from "@/app/actions/ruler-actions" // Import getCollectionRulerStats
 
 interface CollectionRule {
   id: string
@@ -64,6 +65,7 @@ interface Customer {
 
 export default function SuperAdminCollectionRulesPage() {
   const [automaticStats, setAutomaticStats] = useState<any>(null)
+  const [rulerStats, setRulerStats] = useState<any>(null)
   const [rules, setRules] = useState<CollectionRule[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -95,6 +97,7 @@ export default function SuperAdminCollectionRulesPage() {
     fetchCompanies()
     fetchCustomers()
     fetchAutomaticStats()
+    fetchRulerStats()
   }, [])
 
   const fetchAutomaticStats = async () => {
@@ -103,6 +106,15 @@ export default function SuperAdminCollectionRulesPage() {
       setAutomaticStats(stats)
     } catch (error) {
       console.error("[v0] Error fetching automatic stats:", error)
+    }
+  }
+
+  const fetchRulerStats = async () => {
+    try {
+      const stats = await getCollectionRulerStats()
+      setRulerStats(stats)
+    } catch (error) {
+      console.error("[v0] Error fetching ruler stats:", error)
     }
   }
 
@@ -267,6 +279,7 @@ export default function SuperAdminCollectionRulesPage() {
       setEditingRule(null)
       resetForm()
       fetchRules()
+      fetchRulerStats() // Refresh ruler stats after saving
     } catch (error: any) {
       toast({
         title: "Erro ao salvar régua",
@@ -290,6 +303,7 @@ export default function SuperAdminCollectionRulesPage() {
       })
 
       fetchRules()
+      fetchRulerStats() // Refresh ruler stats after deleting
     } catch (error: any) {
       toast({
         title: "Erro ao excluir régua",
@@ -311,6 +325,7 @@ export default function SuperAdminCollectionRulesPage() {
       })
 
       fetchRules()
+      fetchRulerStats() // Refresh ruler stats after toggling active
     } catch (error: any) {
       toast({
         title: "Erro ao alterar status",
@@ -414,6 +429,15 @@ export default function SuperAdminCollectionRulesPage() {
     }))
   }
 
+  // Filter customers based on selected companies
+  useEffect(() => {
+    if (formData.assigned_companies.length > 0) {
+      setFilteredCustomers(customers.filter((customer) => formData.assigned_companies.includes(customer.company_id)))
+    } else {
+      setFilteredCustomers(customers)
+    }
+  }, [formData.assigned_companies, customers])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -438,19 +462,20 @@ export default function SuperAdminCollectionRulesPage() {
         </Button>
       </div>
 
-      {/* Automatic Collection Status Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Timer className="h-5 w-5 text-primary" />
-              <CardTitle>Régua Automática</CardTitle>
+              <Timer className="h-5 w-5 text-blue-600" />
+              <CardTitle>Régua 1 - Análise de Score (Assertiva)</CardTitle>
             </div>
             <Badge variant={automaticStats?.eligible > 0 ? "default" : "secondary"}>
-              {automaticStats?.eligible > 0 ? "Ativa" : "Sem clientes"}
+              {automaticStats?.eligible > 0 ? "Funcionando" : "Sem clientes"}
             </Badge>
           </div>
-          <CardDescription>Sistema de cobrança automática que roda a cada hora</CardDescription>
+          <CardDescription>
+            Régua automática que analisa clientes via Assertiva e define aprovação baseado no score
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Status Cards */}
@@ -458,7 +483,7 @@ export default function SuperAdminCollectionRulesPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardDescription>Clientes Elegíveis</CardDescription>
-                <CardTitle className="text-2xl">{automaticStats?.eligible}</CardTitle>
+                <CardTitle className="text-2xl text-blue-600">{automaticStats?.eligible || 0}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">
@@ -470,7 +495,7 @@ export default function SuperAdminCollectionRulesPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardDescription>Aguardando Processamento</CardDescription>
-                <CardTitle className="text-2xl text-orange-600">{automaticStats?.notProcessed}</CardTitle>
+                <CardTitle className="text-2xl text-orange-600">{automaticStats?.notProcessed || 0}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">Serão processados na próxima execução automática</p>
@@ -480,7 +505,7 @@ export default function SuperAdminCollectionRulesPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardDescription>Já Processados</CardDescription>
-                <CardTitle className="text-2xl text-green-600">{automaticStats?.alreadyProcessed}</CardTitle>
+                <CardTitle className="text-2xl text-green-600">{automaticStats?.alreadyProcessed || 0}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">Cobranças já enviadas automaticamente</p>
@@ -488,34 +513,106 @@ export default function SuperAdminCollectionRulesPage() {
             </Card>
           </div>
 
-          {/* Last Execution */}
-          {automaticStats?.lastExecution && (
-            <div className="rounded-lg border p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <p className="text-sm font-medium">Última Execução</p>
+          {/* Info */}
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+              <div className="space-y-1 text-sm text-blue-900 dark:text-blue-100">
+                <p>
+                  <strong>Como funciona:</strong> Quando você clica em "Analisar" em /super-admin/analises, o sistema
+                  busca dados da Assertiva e calcula o approval_status automaticamente.
+                </p>
+                <p>
+                  <strong>Critérios:</strong> Score ≥ 400 → ACEITA | Score 300-399 → ACEITA_ESPECIAL | Score &lt; 300 →
+                  REJEITA
+                </p>
+                <p>
+                  <strong>Status:</strong> 100% Funcional e salvando dados na tabela VMAX
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {new Date(automaticStats.lastExecution).toLocaleString("pt-BR")}
-              </p>
             </div>
-          )}
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* Recent Actions */}
-          {automaticStats?.recentActions.length > 0 && (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-purple-600" />
+              <CardTitle>Régua 2 - Cobrança Customizável</CardTitle>
+            </div>
+            <Badge variant={rulerStats?.activeRulers > 0 ? "default" : "secondary"}>
+              {rulerStats?.activeRulers > 0 ? "Funcionando" : "Aguardando configuração"}
+            </Badge>
+          </div>
+          <CardDescription>
+            Régua customizável onde cada empresa pode configurar seus próprios dias e canais de cobrança
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Status Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Réguas Ativas</CardDescription>
+                <CardTitle className="text-2xl text-purple-600">{rulerStats?.activeRulers || 0}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Réguas customizadas criadas e ativas no sistema</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Clientes Elegíveis</CardDescription>
+                <CardTitle className="text-2xl text-blue-600">{rulerStats?.eligibleClients || 0}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Clientes que podem receber cobrança customizada</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Execuções Hoje</CardDescription>
+                <CardTitle className="text-2xl text-green-600">{rulerStats?.successfulToday || 0}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Cobranças enviadas com sucesso hoje</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Última Execução</CardDescription>
+                <CardTitle className="text-sm">
+                  {rulerStats?.lastExecution ? new Date(rulerStats.lastExecution).toLocaleTimeString("pt-BR") : "Nunca"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Horário da última execução automática</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Executions */}
+          {rulerStats?.recentExecutions?.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">Últimas Ações Automáticas</h4>
+              <h4 className="text-sm font-medium">Últimas Execuções Automáticas</h4>
               <div className="space-y-2">
-                {automaticStats.recentActions.slice(0, 5).map((action: any) => (
-                  <div key={action.id} className="flex items-center justify-between rounded-lg border p-3">
+                {rulerStats.recentExecutions.slice(0, 5).map((execution: any) => (
+                  <div key={execution.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">{action.message || "Cobrança automática enviada"}</p>
+                      <p className="text-sm font-medium">
+                        Régua: {execution.ruler_name} - {execution.actions_taken} ações enviadas
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(action.created_at).toLocaleString("pt-BR")}
+                        {new Date(execution.executed_at).toLocaleString("pt-BR")}
                       </p>
                     </div>
-                    <Badge variant={action.status === "sent" ? "default" : "secondary"}>
-                      {action.status === "sent" ? "Enviado" : action.status}
+                    <Badge variant={execution.status === "success" ? "default" : "destructive"}>
+                      {execution.status === "success" ? "Sucesso" : "Erro"}
                     </Badge>
                   </div>
                 ))}
@@ -524,19 +621,24 @@ export default function SuperAdminCollectionRulesPage() {
           )}
 
           {/* Info */}
-          <div className="rounded-lg bg-muted p-4 space-y-2">
+          <div className="rounded-lg bg-purple-50 dark:bg-purple-950 p-4 space-y-2">
             <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-              <div className="space-y-1 text-sm text-muted-foreground">
+              <Info className="h-4 w-4 text-purple-600 mt-0.5" />
+              <div className="space-y-1 text-sm text-purple-900 dark:text-purple-100">
                 <p>
-                  <strong>Como funciona:</strong> A régua automática roda a cada hora processando todos os clientes com
-                  status ACEITA e régua automática ativada.
+                  <strong>Como funciona:</strong> A régua customizável executa automaticamente a cada hora via Vercel
+                  Cron Job processando clientes baseado em days_after_due.
                 </p>
                 <p>
-                  <strong>Ações:</strong> Envia email e SMS de cobrança automaticamente para os clientes elegíveis.
+                  <strong>Configuração:</strong> Cada empresa pode criar réguas com dias específicos (D0, D2, D5, D7) e
+                  múltiplos canais (Email, SMS, WhatsApp, Ligação).
                 </p>
                 <p>
                   <strong>Próxima execução:</strong> No início da próxima hora (às XX:00)
+                </p>
+                <p>
+                  <strong>Status:</strong> 100% Funcional - Sistema pronto para uso. Clique em "Nova Régua Customizada"
+                  acima para criar.
                 </p>
               </div>
             </div>
