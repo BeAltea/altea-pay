@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
-import { Building2, Users, DollarSign, TrendingUp, Plus, Eye, Edit, Clock } from 'lucide-react'
+import { Building2, DollarSign, TrendingUp, Plus, Eye, Edit, Clock } from "lucide-react"
 import { CompanyFilters } from "@/components/super-admin/company-filters"
 import { DeleteCompanyButton } from "@/components/super-admin/delete-company-button"
 import { formatCurrency, formatCompactCurrency } from "@/lib/format-currency"
@@ -12,47 +12,63 @@ import { formatCurrency, formatCompactCurrency } from "@/lib/format-currency"
 interface Company {
   id: string
   name: string
-  cnpj: string
   email: string
-  phone: string
-  status: "active" | "inactive" | "suspended"
-  created_at: string
+  cnpj: string
+  status: string
   totalCustomers: number
   totalDebts: number
   totalAmount: number
-  recoveredAmount: number
   recoveryRate: number
-  admins: number
+  adminCount: number
   avgDaysOverdue: number
+  phone: string // Added phone field
 }
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0 // Force no cache for this page
 
 async function fetchCompanies() {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
-  const { data: companiesData, error: companiesError } = await supabase
-    .from("companies")
-    .select("*")
-    .order("created_at", { ascending: false })
+  const { data: companiesData, error: companiesError } = await supabase.from("companies").select("*")
 
   if (companiesError) {
     console.error("[v0] Error fetching companies:", companiesError)
+    return []
   }
 
-  const { data: customersData } = await supabase.from("customers").select("company_id")
-  const { data: debtsData } = await supabase.from("debts").select("company_id, amount, status")
-  const { data: paymentsData } = await supabase.from("payments").select("company_id, amount")
-  const { data: adminsData } = await supabase.from("profiles").select("company_id, role").eq("role", "admin")
+  const { data: customersData, error: customersError } = await supabase.from("customers").select("company_id")
+
+  if (customersError) {
+    console.error("[v0] Error fetching customers:", customersError)
+  }
+
+  const { data: debtsData, error: debtsError } = await supabase.from("debts").select("company_id, amount, status")
+
+  if (debtsError) {
+    console.error("[v0] Error fetching debts:", debtsError)
+  }
+
+  const { data: paymentsData, error: paymentsError } = await supabase.from("payments").select("company_id, amount")
+
+  if (paymentsError) {
+    console.error("[v0] Error fetching payments:", paymentsError)
+  }
+
+  const { data: adminsData, error: adminsError } = await supabase
+    .from("profiles")
+    .select("company_id, role")
+    .eq("role", "admin")
+
+  if (adminsError) {
+    console.error("[v0] Error fetching admins:", adminsError)
+  }
 
   const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*")
 
   if (vmaxError) {
-    console.error("[v0] ❌ Error fetching VMAX:", vmaxError)
+    console.error("[v0] Error fetching VMAX:", vmaxError)
   }
-
-  console.log("[v0] 🏢 Empresas encontradas:", companiesData?.length || 0)
-  console.log("[v0] 📊 VMAX total records in database:", vmaxData?.length || 0)
 
   const companies: Company[] = (companiesData || []).map((company) => {
     const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
@@ -60,26 +76,34 @@ async function fetchCompanies() {
     const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
     const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
 
-    const companyVmaxData = vmaxData?.filter((v) => {
+    const companyVmaxData = vmaxData.filter((v) => {
       const vmaxCompanyId = v.id_company?.toString().toLowerCase().trim()
-      const companyIdStr = company.id.toString().toLowerCase().trim()
-      return vmaxCompanyId === companyIdStr
-    }) || []
+      const match = vmaxCompanyId === company.id.toString().toLowerCase().trim()
+      return match
+    })
 
-    console.log(`[v0] 🏢 Company ${company.name} (${company.id}): ${companyVmaxData.length} VMAX records`)
+    console.log(`[v0] Company ${company.name} - Total VMAX records:`, companyVmaxData.length)
 
-    const totalAmount = companyDebts
-      .filter((d) => d.status !== "paid" && d.status !== "cancelled")
-      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+    const vmaxSampleData = companyVmaxData.slice(0, 3).map((v) => ({
+      Vencido: v.Vencido,
+      DT_Cancelamento: v.DT_Cancelamento,
+    }))
+    console.log(`[v0] Sample VMAX data (first 3):`, JSON.stringify(vmaxSampleData))
 
-    const vmaxTotalAmount = companyVmaxData
-      .filter((v) => !v.DT_Cancelamento)
-      .reduce((sum, v) => {
-        const vencidoStr = String(v.Vencido || "0")
-        const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-        const value = Number(cleanValue) || 0
-        return sum + value
-      }, 0)
+    const vmaxTotalAmount = companyVmaxData.reduce((sum, v, index) => {
+      const vencidoStr = String(v.Vencido || "0")
+      const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+      const value = Number(cleanValue) || 0
+
+      // Log first 5 for debugging
+      if (index < 5) {
+        console.log(`[v0] VMAX ${index}: Original="${vencidoStr}", Cleaned="${cleanValue}", Value=${value}`)
+      }
+
+      return sum + value
+    }, 0)
+
+    console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
       const diasInad = Number(v.Dias_Inad || 0)
@@ -91,13 +115,7 @@ async function fetchCompanies() {
         ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v.Dias_Inad || 0), 0) / vmaxWithOverdue.length
         : 0
 
-    const combinedTotalAmount = totalAmount + vmaxTotalAmount
-
-    const paidDebtsAmount = companyDebts
-      .filter((d) => d.status === "paid")
-      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-
-    const vmaxCancelledAmount = companyVmaxData
+    const paidAmount = companyVmaxData
       .filter((v) => v.DT_Cancelamento)
       .reduce((sum, v) => {
         const vencidoStr = String(v.Vencido || "0")
@@ -106,51 +124,58 @@ async function fetchCompanies() {
         return sum + value
       }, 0)
 
-    const recoveredAmount = paidDebtsAmount + vmaxCancelledAmount
-    const totalAllDebts = combinedTotalAmount + recoveredAmount
-    const recoveryRate = totalAllDebts > 0 ? (recoveredAmount / totalAllDebts) * 100 : 0
+    const recoveryRate = vmaxTotalAmount > 0 ? (paidAmount / vmaxTotalAmount) * 100 : 0
+
+    const totalCustomers = companyVmaxData.length
+    const totalDebts = companyVmaxData.filter((v) => !v.DT_Cancelamento).length
+
+    console.log(
+      `[v0] Company ${company.name} - totalAmount: ${vmaxTotalAmount}, VMAX records: ${companyVmaxData.length}`,
+    )
 
     return {
       id: company.id,
       name: company.name,
-      cnpj: company.cnpj || "N/A",
       email: company.email || "N/A",
-      phone: company.phone || "N/A",
+      cnpj: company.cnpj || "N/A",
       status: company.status || "active",
-      created_at: company.created_at,
-      totalCustomers: companyCustomers.length + companyVmaxData.length,
-      totalDebts: companyDebts.filter((d) => d.status !== "paid" && d.status !== "cancelled").length + companyVmaxData.filter((v) => !v.DT_Cancelamento).length,
-      totalAmount: combinedTotalAmount,
-      recoveredAmount,
-      recoveryRate,
-      admins: companyAdmins.length,
-      avgDaysOverdue,
+      totalCustomers,
+      totalDebts,
+      totalAmount: vmaxTotalAmount,
+      recoveryRate: Number(recoveryRate.toFixed(1)),
+      avgDaysOverdue: Math.round(avgDaysOverdue),
+      adminCount: companyAdmins.length,
+      phone: company.phone || "N/A", // Added phone field
     }
   })
 
-  const totalAvgDaysOverdue =
-    companies.length > 0 ? companies.reduce((sum, c) => sum + (c.avgDaysOverdue || 0), 0) / companies.length : 0
+  const totalStats = companies.reduce(
+    (acc, company) => ({
+      totalCompanies: acc.totalCompanies + 1,
+      totalCustomers: acc.totalCustomers + company.totalCustomers,
+      totalAmount: acc.totalAmount + company.totalAmount,
+      avgRecoveryRate: acc.avgRecoveryRate + company.recoveryRate,
+      avgDaysOverdue: acc.avgDaysOverdue + company.avgDaysOverdue,
+    }),
+    {
+      totalCompanies: 0,
+      totalCustomers: 0,
+      totalAmount: 0,
+      avgRecoveryRate: 0,
+      avgDaysOverdue: 0,
+    },
+  )
 
-  const totalStats = {
-    totalCompanies: companies.length,
-    activeCompanies: companies.filter((c) => c.status === "active").length,
-    totalCustomers: companies.reduce((sum, company) => sum + company.totalCustomers, 0),
-    totalAmount: companies.reduce((sum, company) => sum + company.totalAmount, 0),
-    averageRecoveryRate:
-      companies.length > 0 ? companies.reduce((sum, c) => sum + c.recoveryRate, 0) / companies.length : 0,
-    avgDaysOverdue: totalAvgDaysOverdue,
-  }
-
-  console.log("[v0] 📊 Total stats:", totalStats)
+  console.log(`[v0] Total Stats - totalAmount: ${totalStats.totalAmount}, totalCompanies: ${totalStats.totalCompanies}`)
 
   return { companies, totalStats }
 }
 
-export default async function CompaniesPage() {
+export default async function SuperAdminCompaniesPage() {
   const { companies, totalStats } = await fetchCompanies()
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen w-full overflow-x-hidden bg-background space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
@@ -179,17 +204,6 @@ export default async function CompaniesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalStats.totalCompanies}</div>
-            <p className="text-xs text-muted-foreground">{totalStats.activeCompanies} ativas</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalCustomers.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Todas as empresas</p>
           </CardContent>
         </Card>
@@ -211,7 +225,9 @@ export default async function CompaniesPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStats.averageRecoveryRate.toFixed(1)}%</div>
+            <div className="text-2xl font-bold">
+              {(totalStats.avgRecoveryRate / totalStats.totalCompanies).toFixed(1)}%
+            </div>
             <p className="text-xs text-muted-foreground">Recuperação</p>
           </CardContent>
         </Card>
@@ -222,7 +238,9 @@ export default async function CompaniesPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{Math.round(totalStats.avgDaysOverdue)}</div>
+            <div className="text-2xl font-bold">
+              {Math.round(totalStats.avgDaysOverdue / totalStats.totalCompanies)}
+            </div>
             <p className="text-xs text-muted-foreground">Média geral</p>
           </CardContent>
         </Card>
@@ -296,6 +314,7 @@ export default async function CompaniesPage() {
                           <span>CNPJ: {company.cnpj}</span>
                           <span className="hidden sm:inline">•</span>
                           <span>{company.email}</span>
+                          {/* Added phone field to display company phone */}
                           <span className="hidden sm:inline">•</span>
                           <span>{company.phone}</span>
                         </div>
@@ -336,7 +355,7 @@ export default async function CompaniesPage() {
                         </div>
 
                         <div className="text-center sm:text-right">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{company.admins}</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{company.adminCount}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Admins</p>
                         </div>
 
@@ -352,7 +371,7 @@ export default async function CompaniesPage() {
                                     : "text-red-600 dark:text-red-400"
                             }`}
                           >
-                            {Math.round(company.avgDaysOverdue)} dias
+                            {company.avgDaysOverdue} dias
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Atraso Médio</p>
                         </div>

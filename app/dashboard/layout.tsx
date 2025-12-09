@@ -9,8 +9,6 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  console.log("[v0] Dashboard Layout - Iniciando verificação de autenticação")
-
   const supabase = await createClient()
 
   let data, error
@@ -25,7 +23,6 @@ export default async function DashboardLayout({
       break
     }
 
-    console.log(`[v0] Dashboard Layout - Retry getUser (${retries} attempts left)`)
     retries--
 
     if (retries > 0) {
@@ -33,10 +30,7 @@ export default async function DashboardLayout({
     }
   }
 
-  console.log("[v0] Dashboard Layout - Resultado getUser:", { hasUser: !!data?.user, error: error?.message })
-
   if (error || !data?.user) {
-    console.log("[v0] Dashboard Layout - Usuário não autenticado, redirecionando para login")
     redirect("/auth/login")
   }
 
@@ -46,14 +40,10 @@ export default async function DashboardLayout({
     .eq("id", data.user.id)
     .single()
 
-  console.log("[v0] Dashboard Layout - Resultado busca perfil:", { profile, error: profileError?.message })
-
   if (profileError || !profile) {
     console.error("[v0] Dashboard Layout - Profile not found:", profileError)
     if (profileError?.code === "PGRST116") {
       // No rows returned
-      console.log("[v0] Dashboard Layout - Criando perfil para usuário:", data.user.id)
-
       const { data: newProfile, error: createError } = await supabase
         .from("profiles")
         .insert({
@@ -70,7 +60,6 @@ export default async function DashboardLayout({
         redirect("/auth/login")
       }
 
-      console.log("[v0] Dashboard Layout - Perfil criado com sucesso:", newProfile)
       // Usar o perfil recém-criado
       profile.role = newProfile?.role || "user"
       profile.company_id = newProfile?.company_id
@@ -82,7 +71,6 @@ export default async function DashboardLayout({
   }
 
   if (profile.role === "super_admin") {
-    console.log("[v0] Dashboard Layout - Super admin detectado, redirecionando")
     redirect("/super-admin")
   }
 
@@ -106,8 +94,6 @@ export default async function DashboardLayout({
       company: company,
     },
   }
-
-  console.log("[v0] Dashboard Layout - Usuário autenticado com sucesso:", enhancedUser.profile.role)
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">

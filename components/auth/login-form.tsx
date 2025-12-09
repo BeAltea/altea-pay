@@ -24,8 +24,6 @@ export function LoginForm() {
     setError(null)
 
     try {
-      console.log("[v0] Tentando fazer login com:", email)
-
       const supabase = createClient()
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -39,8 +37,6 @@ export function LoginForm() {
       }
 
       if (data.user) {
-        console.log("[v0] Login bem-sucedido para usuário:", data.user.email)
-
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         const { data: profile, error: profileError } = await supabase
@@ -49,10 +45,7 @@ export function LoginForm() {
           .eq("id", data.user.id)
           .single()
 
-        console.log("[v0] Resultado da busca do perfil:", { profile, profileError })
-
         if (profileError || !profile) {
-          console.log("[v0] Perfil não encontrado, criando perfil básico")
           const { error: insertError } = await supabase.from("profiles").insert({
             id: data.user.id,
             email: data.user.email,
@@ -67,22 +60,18 @@ export function LoginForm() {
             return
           }
 
-          console.log("[v0] Perfil criado, redirecionando para dashboard de usuário")
           router.push("/user-dashboard")
           router.refresh()
           return
         }
 
         if (profile.role === "super_admin") {
-          console.log("[v0] Redirecionando super admin para painel Altea")
           router.push("/super-admin")
           router.refresh()
         } else if (profile.role === "admin") {
-          console.log("[v0] Redirecionando admin para dashboard administrativo")
           router.push("/dashboard")
           router.refresh()
         } else {
-          console.log("[v0] Redirecionando usuário para dashboard de usuário")
           router.push("/user-dashboard")
           router.refresh()
         }

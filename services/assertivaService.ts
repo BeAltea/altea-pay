@@ -4,9 +4,11 @@
 const tokenCache: {
   token: string | null
   expiresAt: number | null
+  refreshing: Promise<string> | null
 } = {
   token: null,
   expiresAt: null,
+  refreshing: null,
 }
 
 // Interfaces
@@ -35,11 +37,8 @@ async function getAssertivaToken(): Promise<string> {
     // Verificar se token em cache ainda é válido (renovar 60s antes do expiry)
     const now = Date.now()
     if (tokenCache.token && tokenCache.expiresAt && tokenCache.expiresAt - 60000 > now) {
-      console.log("[v0] getAssertivaToken - Using cached token")
       return tokenCache.token
     }
-
-    console.log("[v0] getAssertivaToken - Fetching new token")
 
     const clientId = process.env.ASSERTIVA_CLIENT_ID
     const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
@@ -53,7 +52,6 @@ async function getAssertivaToken(): Promise<string> {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
     const tokenUrl = `${baseUrl}/oauth2/v3/token`
-    console.log("[v0] getAssertivaToken - Calling:", tokenUrl)
 
     const response = await fetch(tokenUrl, {
       method: "POST",
@@ -63,8 +61,6 @@ async function getAssertivaToken(): Promise<string> {
       },
       body: "grant_type=client_credentials",
     })
-
-    console.log("[v0] getAssertivaToken - Response status:", response.status)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -86,13 +82,45 @@ async function getAssertivaToken(): Promise<string> {
     tokenCache.token = data.access_token
     tokenCache.expiresAt = now + data.expires_in * 1000
 
-    console.log("[v0] getAssertivaToken - ✅ Token obtained, expires in:", data.expires_in, "seconds")
-
     return data.access_token
   } catch (error: any) {
     console.error("[v0] getAssertivaToken - Error:", error)
     throw error
   }
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let lastError: Error | null = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options)
+
+      if (response.status === 401 && attempt < maxRetries) {
+        tokenCache.token = null
+        tokenCache.expiresAt = null
+
+        // Wait before retry with exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+
+        // Get fresh token for next attempt
+        const newToken = await getAssertivaToken()
+        if (options.headers) {
+          ;(options.headers as any).Authorization = `Bearer ${newToken}`
+        }
+        continue
+      }
+
+      return response
+    } catch (error: any) {
+      lastError = error
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+      }
+    }
+  }
+
+  throw lastError || new Error("Max retries exceeded")
 }
 
 async function getAssertivaData(
@@ -107,17 +135,13 @@ async function getAssertivaData(
 
     const url = `${baseUrl}/score/v3/${tipo}/${endpoint}/${cleanDoc}?idFinalidade=2`
 
-    console.log("[v0] getAssertivaData - Calling:", { tipo, endpoint, documento: cleanDoc })
-
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
       },
     })
-
-    console.log("[v0] getAssertivaData - Response status:", response.status)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -132,7 +156,7 @@ async function getAssertivaData(
 
     const data: AssertivaScoreResponse = await response.json()
 
-    console.log("[v0] getAssertivaData - ✅ Success:", { tipo, endpoint, has_data: !!data })
+    await new Promise((resolve) => setTimeout(resolve, 200))
 
     return data
   } catch (error: any) {
@@ -161,9 +185,7 @@ async function postAssertivaComportamental(
       idFinalidade: 2,
     }
 
-    console.log("[v0] postAssertivaComportamental - Calling:", { tipo, documento: cleanDoc, payload })
-
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -172,8 +194,6 @@ async function postAssertivaComportamental(
       },
       body: JSON.stringify([payload]),
     })
-
-    console.log("[v0] postAssertivaComportamental - Response status:", response.status)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -188,7 +208,7 @@ async function postAssertivaComportamental(
 
     const data: AssertivaAnaliseComportamentalResponse = await response.json()
 
-    console.log("[v0] postAssertivaComportamental - ✅ Success:", { tipo, idConsulta: data.idConsulta })
+    await new Promise((resolve) => setTimeout(resolve, 200))
 
     return data
   } catch (error: any) {
@@ -208,77 +228,55 @@ export async function analyzeDetailedWithCache(
   userId?: string,
 ): Promise<{ success: boolean; data?: any; cached?: boolean; error?: string }> {
   try {
-    console.log("[v0] analyzeDetailedWithCache - Starting for document:", cpf)
-
     const cleanDoc = cpf.replace(/\D/g, "")
     const tipo = detectDocumentType(cleanDoc)
 
-    console.log("[v0] analyzeDetailedWithCache - Document type:", tipo === "pf" ? "CPF" : "CNPJ")
-
-    // Buscar todas as informações em paralelo
-    const [acoes, credito, recupere, analiseComportamental] = await Promise.allSettled([
-      getAssertivaData(tipo, cleanDoc, "acoes"),
-      getAssertivaData(tipo, cleanDoc, "credito"),
-      getAssertivaData(tipo, cleanDoc, "recupere"),
-      postAssertivaComportamental(tipo, cleanDoc),
-    ])
-
-    // Consolidar resultados
     const result: any = {
       documento: cleanDoc,
       tipo: tipo === "pf" ? "CPF" : "CNPJ",
       timestamp: new Date().toISOString(),
     }
 
-    if (acoes.status === "fulfilled") {
-      result.acoes = acoes.value
-      console.log("[v0] analyzeDetailedWithCache - ✅ Ações:", acoes.value)
-    } else {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Ações failed:", acoes.reason)
-      result.acoes_error = acoes.reason?.message
+    // Call endpoints sequentially with 500ms delay between each
+    try {
+      result.acoes = await getAssertivaData(tipo, cleanDoc, "acoes")
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error: any) {
+      console.error("[v0] analyzeDetailedWithCache - ❌ Ações failed:", error.message)
+      result.acoes_error = error.message
     }
 
-    if (credito.status === "fulfilled") {
-      result.credito = credito.value
-      result.score_credito = credito.value.score
-      console.log("[v0] analyzeDetailedWithCache - ✅ Crédito:", credito.value)
-    } else {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Crédito failed:", credito.reason)
-      result.credito_error = credito.reason?.message
+    try {
+      result.credito = await getAssertivaData(tipo, cleanDoc, "credito")
+      result.score_credito = result.credito.score
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error: any) {
+      console.error("[v0] analyzeDetailedWithCache - ❌ Crédito failed:", error.message)
+      result.credito_error = error.message
     }
 
-    if (recupere.status === "fulfilled") {
-      result.recupere = recupere.value
-      result.score_recupere = recupere.value.score
-      console.log("[v0] analyzeDetailedWithCache - ✅ Recupere:", recupere.value)
-    } else {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Recupere failed:", recupere.reason)
-      result.recupere_error = recupere.reason?.message
+    try {
+      result.recupere = await getAssertivaData(tipo, cleanDoc, "recupere")
+      result.score_recupere = typeof result.recupere.score === "number" ? result.recupere.score : null
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error: any) {
+      console.error("[v0] analyzeDetailedWithCache - ❌ Recupere failed:", error.message)
+      result.recupere_error = error.message
     }
 
-    if (analiseComportamental.status === "fulfilled") {
-      result.analise_comportamental = analiseComportamental.value
-      result.id_consulta = analiseComportamental.value.idConsulta
-      console.log("[v0] analyzeDetailedWithCache - ✅ Análise Comportamental:", analiseComportamental.value)
-    } else {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Análise Comportamental failed:", analiseComportamental.reason)
-      result.analise_comportamental_error = analiseComportamental.reason?.message
+    try {
+      result.analise_comportamental = await postAssertivaComportamental(tipo, cleanDoc)
+      result.id_consulta = result.analise_comportamental.idConsulta
+    } catch (error: any) {
+      console.error("[v0] analyzeDetailedWithCache - ❌ Análise Comportamental failed:", error.message)
+      result.analise_comportamental_error = error.message
     }
 
-    const scores = [result.credito?.score, result.recupere?.score].filter((s) => s !== undefined && s !== null)
+    const scores = [result.credito?.score, result.recupere?.score].filter((s) => typeof s === "number")
 
     if (scores.length > 0) {
       result.score_geral = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
     }
-
-    console.log("[v0] analyzeDetailedWithCache - ✅ Analysis complete:", {
-      documento: cleanDoc,
-      tipo: result.tipo,
-      score_geral: result.score_geral,
-      endpoints_success: [acoes, credito, recupere, analiseComportamental].filter((r) => r.status === "fulfilled")
-        .length,
-      endpoints_failed: [acoes, credito, recupere, analiseComportamental].filter((r) => r.status === "rejected").length,
-    })
 
     return {
       success: true,
@@ -298,13 +296,8 @@ export async function processBatchAnalysis(
   cpfs: string[],
   companyId: string,
   triggerId: string,
-  concurrency = 5,
+  concurrency = 2,
 ): Promise<{ success: number; failed: number; cached: number }> {
-  console.log("[v0] processBatchAnalysis - Starting batch:", {
-    total: cpfs.length,
-    concurrency,
-  })
-
   let success = 0
   let failed = 0
   let cached = 0
@@ -312,12 +305,6 @@ export async function processBatchAnalysis(
   // Processar em lotes
   for (let i = 0; i < cpfs.length; i += concurrency) {
     const batch = cpfs.slice(i, i + concurrency)
-
-    console.log("[v0] processBatchAnalysis - Processing batch:", {
-      start: i + 1,
-      end: Math.min(i + concurrency, cpfs.length),
-      total: cpfs.length,
-    })
 
     const results = await Promise.allSettled(batch.map((cpf) => analyzeDetailedWithCache(cpf, companyId)))
 
@@ -337,14 +324,12 @@ export async function processBatchAnalysis(
       }
     })
 
-    // Delay entre lotes para evitar rate limiting
     if (i + concurrency < cpfs.length) {
-      console.log("[v0] processBatchAnalysis - Waiting 2s before next batch...")
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
     }
   }
 
-  console.log("[v0] processBatchAnalysis - ✅ Batch complete:", {
+  console.log("[v0] processBatchAnalysis - Complete:", {
     success,
     failed,
     cached,

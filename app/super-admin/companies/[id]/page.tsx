@@ -186,63 +186,62 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center space-x-3 mb-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/super-admin/companies">
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Voltar
-              </Link>
-            </Button>
-          </div>
-          <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center">
+          <Button variant="ghost" size="sm" asChild className="mr-4">
+            <Link href="/super-admin/companies">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar
+            </Link>
+          </Button>
+          <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={`/generic-placeholder-icon.png`} alt={company.name} />
-              <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
-                {company.name
+              <AvatarImage src={companyData.logo_url || ""} alt={companyData.name} />
+              <AvatarFallback className="text-lg font-bold">
+                {companyData.name
                   .split(" ")
                   .map((n) => n[0])
                   .join("")
-                  .slice(0, 2)}
+                  .slice(0, 2)
+                  .toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-2 mb-1">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{company.name}</h1>
-                <Badge variant={company.status === "active" ? "default" : "destructive"} className="text-xs">
-                  {company.status === "active" ? "Ativa" : "Suspensa"}
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold">{companyData.name}</h1>
+                <Badge variant={companyData.status === "active" ? "default" : "secondary"}>
+                  {companyData.status === "active" ? "Ativa" : "Inativa"}
                 </Badge>
               </div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-                {company.segment} • CNPJ: {company.cnpj}
+              <p className="text-sm text-muted-foreground">
+                {companyData.tax_id ? `N/A` : "N/A"} • CNPJ: {companyData.tax_id || "N/A"}
               </p>
             </div>
           </div>
         </div>
-        <div className="flex space-x-3 flex-shrink-0">
-          <Button asChild variant="outline">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
             <Link href={`/super-admin/companies/${company.id}/import`}>
-              <Upload className="mr-2 h-4 w-4" />
-              Importar
+              <Upload className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">Importar</span>
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
             <Link href={`/super-admin/companies/${company.id}/export`}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar
+              <Download className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">Exportar</span>
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
             <Link href={`/super-admin/companies/${company.id}/edit`}>
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
+              <Edit className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">Editar</span>
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
             <Link href={`/super-admin/companies/${company.id}/settings`}>
-              <Settings className="mr-2 h-4 w-4" />
-              Configurações
+              <Settings className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">Config</span>
             </Link>
           </Button>
         </div>
@@ -250,40 +249,46 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{company.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">{company.admins} administradores</p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{company.totalCustomers.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{company.admins} administradores</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Dívidas</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{company.totalDebts.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">{company.overdueDebts} em atraso</p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Dívidas</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{company.totalDebts.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{company.overdueDebts} em atraso</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
-            <p className="text-xs text-muted-foreground">
-              R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
-            </p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
+              <p className="text-xs text-muted-foreground">
+                R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

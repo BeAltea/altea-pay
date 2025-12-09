@@ -18,8 +18,6 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import {
-  Search,
-  RefreshCw,
   AlertCircle,
   Sparkles,
   Loader2,
@@ -35,10 +33,11 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  BarChart3,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Square,
+  CheckSquare,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis, getAllCompanies } from "@/app/actions/credit-actions"
@@ -68,7 +67,7 @@ export default function AnalysesPage() {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterCompany, setFilterCompany] = useState<string>("all")
+  const [filterCompany, setFilterCompany] = useState<string>("all") // Renamed from filterCompany to filterCompany
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false)
@@ -400,203 +399,211 @@ export default function AnalysesPage() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-full overflow-x-hidden">
-      <div className="flex flex-col gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30">
-              <BarChart3 className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                Análises de Crédito
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                Visualize e gerencie todas as análises de crédito realizadas
-              </p>
-            </div>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Análises de Crédito</h1>
+            <p className="text-muted-foreground mt-1">
+              Visualize e gerencie todas as análises realizadas pela API Assertiva
+            </p>
           </div>
         </div>
 
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome ou CPF/CNPJ..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={filterCompany} onValueChange={setFilterCompany}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Todas empresas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas empresas</SelectItem>
-                  {companies.map((company) => (
-                    <SelectItem key={company.id} value={company.id}>
-                      {company.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button onClick={loadAnalyses} variant="outline" size="icon" className="shrink-0 bg-transparent">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+          <div className="flex-1">
+            <Input
+              placeholder="Buscar por nome ou CPF..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
 
-            <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 items-center">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={toggleSelectAll}
+              className="gap-2 border-2 hover:border-primary bg-transparent"
+            >
+              {selectedCustomers.size === filteredAnalyses.length && filteredAnalyses.length > 0 ? (
+                <>
+                  <CheckSquare className="h-4 w-4" />
+                  Desmarcar Todos
+                </>
+              ) : (
+                <>
+                  <Square className="h-4 w-4" />
+                  Selecionar Todos ({filteredAnalyses.length})
+                </>
+              )}
+            </Button>
+
+            <Select value={filterCompany} onValueChange={setFilterCompany}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Todas as empresas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as empresas</SelectItem>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={sortField === "name" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleSort("name")}
+            className="text-xs"
+          >
+            Nome {getSortIcon("name")}
+          </Button>
+          <Button
+            variant={sortField === "score" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleSort("score")}
+            className="text-xs"
+          >
+            Score {getSortIcon("score")}
+          </Button>
+          <Button
+            variant={sortField === "status" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleSort("status")}
+            className="text-xs"
+          >
+            Status {getSortIcon("status")}
+          </Button>
+          <Button
+            variant={sortField === "date" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleSort("date")}
+            className="text-xs"
+          >
+            Data {getSortIcon("date")}
+          </Button>
+        </div>
+      </div>
+
+      {selectedCustomers.size > 0 && (
+        <Card className="border-2 border-yellow-300 dark:border-yellow-700 bg-gradient-to-br from-yellow-50 to-white dark:from-yellow-950/20 dark:to-gray-900 shadow-xl">
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg">
+                  <Sparkles className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-foreground">Análise de Crédito com Assertiva</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCustomers.size} cliente{selectedCustomers.size > 1 ? "s" : ""} selecionado
+                    {selectedCustomers.size > 1 ? "s" : ""}
+                  </p>
+                </div>
+              </div>
               <Button
-                variant={sortField === "name" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSort("name")}
-                className="text-xs"
+                size="lg"
+                onClick={() => setShowConfirmModal(true)}
+                disabled={isRunningAnalysis}
+                className="gap-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-lg hover:shadow-xl transition-all"
               >
-                Nome {getSortIcon("name")}
-              </Button>
-              <Button
-                variant={sortField === "score" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSort("score")}
-                className="text-xs"
-              >
-                Score {getSortIcon("score")}
-              </Button>
-              <Button
-                variant={sortField === "status" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSort("status")}
-                className="text-xs"
-              >
-                Status {getSortIcon("status")}
-              </Button>
-              <Button
-                variant={sortField === "date" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleSort("date")}
-                className="text-xs"
-              >
-                Data {getSortIcon("date")}
+                {isRunningAnalysis ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-5 w-5" />
+                    Executar Análise ({selectedCustomers.size})
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {selectedCustomers.size > 0 && (
-          <Card className="border-2 border-yellow-300 dark:border-yellow-700 bg-gradient-to-br from-yellow-50 to-white dark:from-yellow-950/20 dark:to-gray-900 shadow-xl">
-            <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg">
-                    <Sparkles className="h-8 w-8 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-foreground">Análise de Crédito com Assertiva</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedCustomers.size} cliente{selectedCustomers.size > 1 ? "s" : ""} selecionado
-                      {selectedCustomers.size > 1 ? "s" : ""}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="lg"
-                  onClick={() => setShowConfirmModal(true)}
-                  disabled={isRunningAnalysis}
-                  className="gap-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-lg hover:shadow-xl transition-all"
-                >
-                  {isRunningAnalysis ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-5 w-5" />
-                      Executar Análise ({selectedCustomers.size})
-                    </>
-                  )}
-                </Button>
-              </div>
+      <div className="space-y-3">
+        {loading ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Carregando análises...</p>
             </CardContent>
           </Card>
-        )}
-
-        <div className="space-y-3">
-          {loading ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-                <p className="text-muted-foreground">Carregando análises...</p>
-              </CardContent>
-            </Card>
-          ) : filteredAnalyses.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-lg font-medium mb-2">Nenhuma análise encontrada</p>
-                <p className="text-sm text-muted-foreground">Tente ajustar os filtros ou fazer uma nova busca</p>
-              </CardContent>
-            </Card>
-          ) : (
-            filteredAnalyses.map((analysis) => (
-              <Card key={analysis.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={selectedCustomers.has(analysis.customer_id)}
-                          onCheckedChange={(checked) => {
-                            const newSet = new Set(selectedCustomers)
-                            if (checked) {
-                              newSet.add(analysis.customer_id)
-                            } else {
-                              newSet.delete(analysis.customer_id)
-                            }
-                            setSelectedCustomers(newSet)
-                          }}
-                          className="mt-1"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-base truncate">{analysis.customer_name}</h3>
-                          <p className="text-sm text-muted-foreground truncate">{analysis.cpf}</p>
-                          {analysis.company_name && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                              <Building2 className="h-3 w-3" />
-                              {analysis.company_name}
-                            </p>
-                          )}
-                        </div>
+        ) : filteredAnalyses.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-lg font-medium mb-2">Nenhuma análise encontrada</p>
+              <p className="text-sm text-muted-foreground">Tente ajustar os filtros ou fazer uma nova busca</p>
+            </CardContent>
+          </Card>
+        ) : (
+          filteredAnalyses.map((analysis) => (
+            <Card key={analysis.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={selectedCustomers.has(analysis.customer_id)}
+                        onCheckedChange={(checked) => {
+                          const newSet = new Set(selectedCustomers)
+                          if (checked) {
+                            newSet.add(analysis.customer_id)
+                          } else {
+                            newSet.delete(analysis.customer_id)
+                          }
+                          setSelectedCustomers(newSet)
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-base truncate">{analysis.customer_name}</h3>
+                        <p className="text-sm text-muted-foreground truncate">{analysis.cpf}</p>
+                        {analysis.company_name && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                            <Building2 className="h-3 w-3" />
+                            {analysis.company_name}
+                          </p>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {analysis.score !== null && (
-                        <Badge className={`${getScoreBadgeColor(analysis.score)} text-white font-bold`}>
-                          Score: {analysis.score}
-                        </Badge>
-                      )}
-                      {getStatusBadge(analysis.status)}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedAnalysis(analysis)
-                          setShowDetailsDrawer(true)
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver Detalhes
-                      </Button>
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {analysis.score !== null && (
+                      <Badge className={`${getScoreBadgeColor(analysis.score)} text-white font-bold`}>
+                        Score: {analysis.score}
+                      </Badge>
+                    )}
+                    {getStatusBadge(analysis.status)}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedAnalysis(analysis)
+                        setShowDetailsDrawer(true)
+                      }}
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Ver Detalhes
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>

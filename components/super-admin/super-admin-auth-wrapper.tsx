@@ -24,7 +24,6 @@ export function SuperAdminAuthWrapper({
     let supabase
     try {
       supabase = createBrowserClient()
-      console.log("[v0] Supabase client created in auth wrapper")
     } catch (err) {
       console.error("[v0] Failed to create Supabase client:", err)
       setError("Failed to initialize authentication. Please check your configuration.")
@@ -34,7 +33,6 @@ export function SuperAdminAuthWrapper({
 
     const checkAuth = async () => {
       try {
-        console.log("[v0] Checking authentication...")
         const {
           data: { user },
           error,
@@ -52,12 +50,9 @@ export function SuperAdminAuthWrapper({
         }
 
         if (!user) {
-          console.log("[v0] No user found, redirecting to login")
           router.push("/auth/login")
           return
         }
-
-        console.log("[v0] User authenticated:", user.id)
 
         // Check if user has 'super_admin' role
         const { data: profile, error: profileError } = await supabase
@@ -73,7 +68,6 @@ export function SuperAdminAuthWrapper({
         }
 
         if (profile?.role !== "super_admin") {
-          console.log("[v0] User role:", profile?.role)
           // Redirect based on role
           if (profile?.role === "admin") {
             router.push("/dashboard")
@@ -85,7 +79,6 @@ export function SuperAdminAuthWrapper({
           return
         }
 
-        console.log("[v0] Super admin authenticated successfully")
         setUser(user)
       } catch (error) {
         console.error("[v0] Auth check error:", error)
