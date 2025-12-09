@@ -3,47 +3,13 @@
 // Motor de Análise de Crédito baseado nas regras de negócio AlteaPay
 // Implementa o fluxo completo de validação, classificação e decisão
 
-export type Comportamento = "BOM" | "RUIM"
-export type Decisao = "ACEITA" | "ACEITA_ESPECIAL" | "REJEITA"
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH"
-
-export interface ClienteCredito {
-  creditScore: number // 0–1000 (score da Assertiva)
-  atrasos12m: number // nº de atrasos em operações financeiras (12 meses)
-  temAcaoJudicial: boolean
-  temProtesto: boolean
-  temDividaAtiva: boolean
-  atrasosCartao24m: number // nº de atrasos em cartão (24 meses)
-  limitePresumido: number // R$/mês
-  rendaPresumida: number // R$/mês
-  valorDivida: number // R$
-}
-
-export interface ResultadoRegra {
-  decisao: Decisao
-  motivo: string
-  riskLevel: RiskLevel
-  comportamento: Comportamento
-  autoCollectionEnabled: boolean
-}
-
-// Configuração de parâmetros baseada no PDF AlteaPay
-export const RegrasConfig = {
-  SCORE_ALTO_MIN: 400, // Score >= 400 = Baixo Risco
-  SCORE_MEDIO_MIN: 300, // Score 300-399 = Médio Risco
-  SCORE_BAIXO_MAX: 300, // Score < 300 = Alto Risco
-  LIMITE_MIN_OK: 300, // R$ / mês
-  RENDA_MIN_OK: 2500, // R$ / mês
-  RENDA_MIN_CRITICA: 1500, // R$ / mês
-  DIVIDA_BAIXA_MAX: 250, // R$
-  TICKET_MINIMO_PF: 82, // Viabilidade econômica PF
-  TICKET_MINIMO_PJ: 102, // Viabilidade econômica PJ
-} as const
+import type { Comportamento, RiskLevel, ClienteCredito, ResultadoRegra } from "./credit-analysis-types"
+import { RegrasConfig } from "./credit-analysis-types"
 
 /**
  * Classifica o comportamento do cliente baseado em histórico
  */
-export function classificarComportamento(cli: ClienteCredito): Comportamento {
+export async function classificarComportamento(cli: ClienteCredito): Promise<Comportamento> {
   const comportamentoBom =
     cli.atrasos12m === 0 && !cli.temAcaoJudicial && !cli.temProtesto && !cli.temDividaAtiva && cli.atrasosCartao24m <= 2
 
@@ -53,7 +19,7 @@ export function classificarComportamento(cli: ClienteCredito): Comportamento {
 /**
  * Determina o nível de risco baseado no score
  */
-export function determinarRiskLevel(score: number): RiskLevel {
+export async function determinarRiskLevel(score: number): Promise<RiskLevel> {
   if (score >= RegrasConfig.SCORE_ALTO_MIN) return "LOW" // Bom pagador
   if (score >= RegrasConfig.SCORE_MEDIO_MIN) return "MEDIUM" // Risco médio
   return "HIGH" // Alto risco
@@ -63,10 +29,10 @@ export function determinarRiskLevel(score: number): RiskLevel {
  * Motor de decisão: decide se o cliente entra na régua de cobrança
  * Implementa as 7 regras de negócio do AlteaPay
  */
-export function decidirEntradaRegua(cli: ClienteCredito): ResultadoRegra {
+export async function decidirEntradaRegua(cli: ClienteCredito): Promise<ResultadoRegra> {
   const c = RegrasConfig
-  const comportamento = classificarComportamento(cli)
-  const riskLevel = determinarRiskLevel(cli.creditScore)
+  const comportamento = await classificarComportamento(cli)
+  const riskLevel = await determinarRiskLevel(cli.creditScore)
 
   // R5 – Renda muito baixa (viabilidade econômica)
   if (cli.rendaPresumida < c.RENDA_MIN_CRITICA) {
@@ -158,7 +124,10 @@ export function decidirEntradaRegua(cli: ClienteCredito): ResultadoRegra {
 /**
  * Extrai dados da análise da Assertiva para montar o objeto ClienteCredito
  */
-export function extrairDadosAssertivaParaAnalise(assertivaData: any, valorDivida: number): ClienteCredito {
+export async function extrairDadosAssertivaParaAnalise(
+  assertivaData: any,
+  valorDivida: number,
+): Promise<ClienteCredito> {
   // Extrair dados do JSON retornado pela Assertiva
   const credito = assertivaData?.credito || {}
   const acoes = assertivaData?.acoes || {}

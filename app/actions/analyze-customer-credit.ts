@@ -1,11 +1,8 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import {
-  decidirEntradaRegua,
-  extrairDadosAssertivaParaAnalise,
-  type ResultadoRegra,
-} from "@/lib/credit-analysis-engine"
+import { decidirEntradaRegua, extrairDadosAssertivaParaAnalise } from "@/lib/credit-analysis-engine"
+import type { ResultadoRegra } from "@/lib/credit-analysis-types"
 import { analyzeDetailedWithCache } from "@/services/assertivaService"
 
 export interface AnalyzeCustomerResult {
@@ -46,10 +43,10 @@ export async function analyzeCustomerCredit(
     })
 
     // 2. Extrair dados para análise
-    const clienteData = extrairDadosAssertivaParaAnalise(assertivaResult.data, valorDivida)
+    const clienteData = await extrairDadosAssertivaParaAnalise(assertivaResult.data, valorDivida)
 
     // 3. Aplicar motor de decisão
-    const resultado = decidirEntradaRegua(clienteData)
+    const resultado = await decidirEntradaRegua(clienteData)
 
     console.log(`[v0] Decisão para cliente ${customerId}:`, resultado)
 
