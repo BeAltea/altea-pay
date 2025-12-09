@@ -113,9 +113,7 @@ export default function SuperAdminCollectionRulesPage() {
     try {
       const stats = await getCollectionRulerStats()
       setRulerStats(stats)
-    } catch (error) {
-      console.error("[v0] Error fetching ruler stats:", error)
-    }
+    } catch (error) {}
   }
 
   async function fetchRules() {

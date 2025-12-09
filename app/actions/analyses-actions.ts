@@ -321,20 +321,40 @@ export async function getAllCustomers() {
         analysis_metadata: null,
         last_analysis_date: null,
       })),
-      ...(vmaxData || []).map((v) => ({
-        id: v.id,
-        name: v.Cliente,
-        document: v["CPF/CNPJ"],
-        company_id: v.id_company,
-        city: v.Cidade || "N/A",
-        source_table: "vmax" as const,
-        dias_inad: v.Dias_Inad || 0,
-        credit_score: v.credit_score,
-        risk_level: v.risk_level,
-        approval_status: v.approval_status,
-        analysis_metadata: v.analysis_metadata,
-        last_analysis_date: v.last_analysis_date,
-      })),
+      ...(vmaxData || []).map((v) => {
+        let score = v.credit_score
+
+        if (!score && v.analysis_metadata) {
+          try {
+            const metadata = v.analysis_metadata as any
+            score =
+              metadata?.assertiva_data?.credito?.resposta?.score?.pontos ||
+              metadata?.credito?.resposta?.score?.pontos ||
+              null
+          } catch (e) {
+            console.error("[SERVER] Error extracting score from metadata:", e)
+          }
+        }
+
+        if (score === 0) {
+          score = 5
+        }
+
+        return {
+          id: v.id,
+          name: v.Cliente,
+          document: v["CPF/CNPJ"],
+          company_id: v.id_company,
+          city: v.Cidade || "N/A",
+          source_table: "vmax" as const,
+          dias_inad: v.Dias_Inad || 0,
+          credit_score: score,
+          risk_level: v.risk_level,
+          approval_status: v.approval_status,
+          analysis_metadata: v.analysis_metadata,
+          last_analysis_date: v.last_analysis_date,
+        }
+      }),
     ]
 
     console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)

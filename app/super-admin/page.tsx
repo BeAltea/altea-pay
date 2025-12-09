@@ -33,41 +33,14 @@ export const revalidate = 0
 export default async function SuperAdminDashboardPage() {
   const supabase = createAdminClient()
 
-  console.log("[v0] 📊 Carregando dashboard do super-admin...")
-
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
 
-  console.log("[v0] 🏢 Empresas encontradas:", companies?.length || 0)
+  const { data: allVmaxRecords } = await supabase.from("VMAX").select("*")
 
-  const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
-
-  if (vmaxError) {
-    console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
-  } else {
-    console.log("[v0] 📊 VMAX total records in database:", allVmaxRecords?.length || 0)
-
-    if (allVmaxRecords && allVmaxRecords.length > 0) {
-      console.log("[v0] 🔍 Sample VMAX record:", {
-        id: allVmaxRecords[0].id,
-        id_company: allVmaxRecords[0].id_company,
-        id_company_type: typeof allVmaxRecords[0].id_company,
-        Cliente: allVmaxRecords[0].Cliente,
-        Empresa: allVmaxRecords[0].Empresa,
-      })
-
-      // Log unique id_company values
-      const uniqueIds = [...new Set(allVmaxRecords.map((v) => v.id_company))]
-      console.log("[v0] 🆔 Unique id_company values:", uniqueIds)
-    }
-  }
-
-  // Buscar estatísticas reais para cada empresa
   const companiesStats: CompanyStats[] = []
 
   if (companies) {
     for (const company of companies) {
-      console.log(`[v0] 🔍 Processing company: ${company.name} (ID: ${company.id})`)
-
       const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
 
       const vmaxCustomers =
@@ -78,14 +51,6 @@ export default async function SuperAdminDashboardPage() {
               .trim() === String(company.id).toLowerCase().trim()
           return match
         }) || []
-
-      console.log(`[v0] ✅ Company ${company.name}: ${vmaxCustomers.length} VMAX records`)
-      if (vmaxCustomers.length > 0) {
-        console.log(`[v0] 🎯 First match:`, {
-          vmax_id_company: vmaxCustomers[0].id_company,
-          company_id: company.id,
-        })
-      }
 
       const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
 
@@ -99,29 +64,20 @@ export default async function SuperAdminDashboardPage() {
       const vmaxTotalAmount =
         vmaxCustomers?.reduce((sum, v) => {
           const vencidoStr = String(v.Vencido || "0")
-          // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
-          const cleanValue = vencidoStr
-            .replace(/R\$/g, "")
-            .replace(/\s/g, "")
-            .replace(/\./g, "") // Remove dots used as thousands separator
-            .replace(",", ".") // Convert comma to dot for decimal
+          const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
           const value = Number(cleanValue) || 0
-          console.log(`[v0] 💰 VMAX parsing: "${vencidoStr}" -> "${cleanValue}" -> ${value}`)
           return sum + value
         }, 0) || 0
 
-      console.log(`[v0] 💵 Company ${company.name} VMAX total: R$ ${vmaxTotalAmount}`)
-
       const vmaxDebtsFormatted =
         vmaxCustomers?.map((debt) => ({
-          amount: 0, // Already counted in vmaxTotalAmount
+          amount: 0,
           status: debt.DT_Cancelamento ? "paid" : "pending",
           due_date: new Date().toISOString(),
         })) || []
 
       const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
-      // Buscar admins da empresa
       const { data: admins } = await supabase
         .from("profiles")
         .select("id")
@@ -155,7 +111,6 @@ export default async function SuperAdminDashboardPage() {
     }
   }
 
-  // Calcular totais globais
   const totalStats = {
     totalCompanies: companiesStats.length,
     totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
@@ -165,7 +120,6 @@ export default async function SuperAdminDashboardPage() {
     totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
   }
 
-  // Atividade recente real (últimas ações do sistema)
   const { data: recentPayments } = await supabase
     .from("payments")
     .select("id, amount, created_at, debt_id, debts(company_id, companies(name))")

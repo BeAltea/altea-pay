@@ -8,8 +8,16 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Separator } from "@/components/ui/separator"
 import {
   Search,
   RefreshCw,
@@ -22,15 +30,18 @@ import {
   AlertTriangle,
   TrendingUp,
   Download,
-  Target,
   DollarSign,
   CreditCard,
+  Shield,
+  Check,
+  CheckCircle2,
+  Clock,
+  BarChart3,
+  EyeOff,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { runAssertivaManualAnalysis, getAllCompanies } from "@/app/actions/credit-actions"
-import { analyzeCustomerCredit } from "@/app/actions/analyze-customer-credit"
 import { getAllCustomers } from "@/app/actions/analyses-actions"
-import Link from "next/link"
 
 interface CreditAnalysis {
   id: string
@@ -53,8 +64,6 @@ export default function AnalysesPage() {
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterSource, setFilterSource] = useState<string>("all")
-  const [filterType, setFilterType] = useState<string>("all")
   const [filterCompany, setFilterCompany] = useState<string>("all")
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -78,38 +87,47 @@ export default function AnalysesPage() {
         setCompanies(response.data)
       }
     } catch (error) {
-      console.error("[CLIENT][v0] Error loading companies:", error)
+      console.error("Error loading companies:", error)
     }
   }
 
   const loadAnalyses = async () => {
     try {
-      console.log("[CLIENT][v0] AnalysesPage - Loading analyses...")
       setLoading(true)
 
       const response = await getAllCustomers()
 
       if (response.success) {
-        const mappedData = response.data.map((customer: any) => ({
-          id: customer.id,
-          customer_id: customer.id,
-          company_id: customer.company_id,
-          cpf: customer.document || "N/A",
-          score: customer.credit_score || null,
-          source: customer.analysis_metadata ? "assertiva" : "pending",
-          analysis_type: customer.analysis_metadata ? "detailed" : "pending",
-          status: customer.analysis_metadata ? "completed" : "pending",
-          created_at: customer.last_analysis_date || new Date().toISOString(),
-          customer_name: customer.name,
-          company_name: customer.company_name,
-          data: customer.analysis_metadata,
-          assertiva_data: customer.analysis_metadata?.assertiva_data || customer.analysis_metadata,
-        }))
+        const mappedData = response.data.map((customer: any) => {
+          const assertiva_data = customer.analysis_metadata || null
+
+          let displayScore = customer.credit_score
+
+          if (displayScore === 0) {
+            displayScore = 5
+          }
+
+          const hasAnalysis = customer.analysis_metadata && customer.last_analysis_date
+          const status = hasAnalysis ? "completed" : "pending"
+
+          return {
+            id: customer.id,
+            customer_id: customer.id,
+            company_id: customer.company_id,
+            cpf: customer.document,
+            score: displayScore, // Main score only (converted 0 → 5)
+            source: customer.source_table,
+            analysis_type: hasAnalysis ? "detailed" : "pending",
+            status, // Set status based on analysis completion
+            created_at: customer.last_analysis_date || customer.created_at,
+            customer_name: customer.name,
+            company_name: customer.company_name,
+            assertiva_data, // Pass assertiva_data directly (not nested)
+          }
+        })
 
         setAnalyses(mappedData)
-        console.log("[CLIENT][v0] AnalysesPage - Loaded all customers:", mappedData.length)
       } else {
-        console.error("[CLIENT][v0] AnalysesPage - Error:", response.error)
         toast({
           title: "Erro ao carregar clientes",
           description: response.error,
@@ -117,7 +135,6 @@ export default function AnalysesPage() {
         })
       }
     } catch (error: any) {
-      console.error("[CLIENT][v0] AnalysesPage - Error loading customers:", error)
       toast({
         title: "Erro ao carregar clientes",
         description: error.message,
@@ -131,24 +148,16 @@ export default function AnalysesPage() {
   const filteredAnalyses = analyses.filter((analysis) => {
     const matchesSearch =
       analysis.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      analysis.cpf.includes(searchTerm) ||
+      analysis.cpf?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       analysis.company_name?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesSource = filterSource === "all" || analysis.source === filterSource
-    const matchesType = filterType === "all" || analysis.analysis_type === filterType
     const matchesCompany = filterCompany === "all" || analysis.company_id === filterCompany
 
-    return matchesSearch && matchesSource && matchesType && matchesCompany
+    return matchesSearch && matchesCompany
   })
 
   const getSourceBadge = (source: string) => {
-    const variants: Record<string, { variant: any; label: string }> = {
-      credit_analysis: { variant: "default", label: "Análise de Crédito" },
-      assertiva: { variant: "default", label: "Análise de Crédito" },
-      unknown: { variant: "outline", label: "Desconhecido" },
-    }
-    const config = variants[source] || variants.unknown
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    return <Badge variant="default">Análise de Crédito</Badge>
   }
 
   const getStatusBadge = (status: string) => {
@@ -165,125 +174,60 @@ export default function AnalysesPage() {
     total: analyses.length,
     completed: analyses.filter((a) => a.status === "completed").length,
     pending: analyses.filter((a) => a.status === "pending").length,
-    credit_analysis: analyses.filter((a) => a.source === "assertiva" || a.source === "credit_analysis").length,
   }
 
-  const toggleCustomerSelection = (customerId: string) => {
-    const newSelection = new Set(selectedCustomers)
-    if (newSelection.has(customerId)) {
-      newSelection.delete(customerId)
+  // Renamed from toggleCustomerSelection to toggleSelection
+  const toggleSelection = (customerId: string) => {
+    const newSet = new Set(selectedCustomers)
+    if (newSet.has(customerId)) {
+      newSet.delete(customerId)
     } else {
-      newSelection.add(customerId)
+      newSet.add(customerId)
     }
-    setSelectedCustomers(newSelection)
-    console.log("[v0] AnalysesPage - Selected customers:", newSelection.size)
+    setSelectedCustomers(newSet)
   }
 
+  // Renamed from toggleSelectAll to toggleSelectAll
   const toggleSelectAll = () => {
     if (selectedCustomers.size === filteredAnalyses.length) {
       setSelectedCustomers(new Set())
     } else {
-      setSelectedCustomers(new Set(filteredAnalyses.map((a) => a.customer_id)))
+      setSelectedCustomers(new Set(filteredAnalyses.map((a) => a.id)))
     }
   }
 
-  const handleRunAssertivaAnalysis = async () => {
+  // Renamed from handleRunAssertivaAnalysis to handleRunAnalysis
+  const handleRunAnalysis = async () => {
     if (selectedCustomers.size === 0) {
       toast({
         title: "Nenhum cliente selecionado",
-        description: "Selecione pelo menos um cliente para executar a análise.",
+        description: "Selecione pelo menos um cliente para análise",
         variant: "destructive",
       })
       return
     }
 
-    console.log("[v0] AnalysesPage - Opening confirmation modal for", selectedCustomers.size, "customers")
-    setShowConfirmModal(true)
-  }
-
-  const confirmAndRunAnalysis = async () => {
     setShowConfirmModal(false)
     setIsRunningAnalysis(true)
 
     try {
-      console.log("[v0] AnalysesPage - Starting Assertiva analysis for", selectedCustomers.size, "customers")
-
-      const firstCustomer = analyses.find((a) => selectedCustomers.has(a.customer_id))
-      if (!firstCustomer) {
-        throw new Error("Cliente não encontrado")
-      }
-
-      console.log("[v0] AnalysesPage - Company ID:", firstCustomer.company_id)
-
-      const customerIdsToAnalyze = analyses
-        .filter((a) => selectedCustomers.has(a.customer_id))
-        .map((a) => a.customer_id)
-
-      console.log("[v0] AnalysesPage - Customer IDs to analyze:", customerIdsToAnalyze)
-      console.log("[v0] AnalysesPage - IDs type check:", {
-        is_array: Array.isArray(customerIdsToAnalyze),
-        length: customerIdsToAnalyze.length,
-        first_id: customerIdsToAnalyze[0],
-        first_id_type: typeof customerIdsToAnalyze[0],
-      })
-
-      const result = await runAssertivaManualAnalysis(customerIdsToAnalyze, firstCustomer.company_id)
-
-      console.log("[v0] AnalysesPage - Analysis result:", result)
+      const customerIds = Array.from(selectedCustomers)
+      const result = await runAssertivaManualAnalysis(customerIds)
 
       if (result.success) {
-        console.log("[v0] Running credit analysis to determine approval status for each customer...")
-        let approvedCount = 0
-        let rejectedCount = 0
-
-        for (const customerId of customerIdsToAnalyze) {
-          const customer = analyses.find((a) => a.customer_id === customerId)
-          if (customer?.cpf) {
-            const creditResult = await analyzeCustomerCredit(customerId, customer.cpf, 0)
-            if (creditResult.success) {
-              if (
-                creditResult.resultado?.decisao === "ACEITA" ||
-                creditResult.resultado?.decisao === "ACEITA_ESPECIAL"
-              ) {
-                approvedCount++
-              } else {
-                rejectedCount++
-              }
-            }
-          }
-        }
-
-        const durationInSeconds =
-          result.duration && typeof result.duration === "number" ? (result.duration / 1000).toFixed(2) : "0.00"
-
         toast({
-          title: "Análise concluída!",
-          description: `Análise Assertiva concluída com sucesso!
-
-📊 Resumo:
-- Total de clientes selecionados: ${result.total}
-- Análises realizadas: ${result.analyzed}
-- Já tinham análise (cache): ${result.cached}
-- Falhas: ${result.failed}
-- ✅ Aprovados: ${approvedCount}
-- ❌ Rejeitados: ${rejectedCount}
-- Tempo total: ${durationInSeconds}s`,
+          title: "Análise Concluída",
+          description: `${result.analyzed} cliente(s) analisado(s) com sucesso`,
         })
-
         await loadAnalyses()
         setSelectedCustomers(new Set())
       } else {
-        toast({
-          title: "Erro na análise",
-          description: result.error || "Erro desconhecido",
-          variant: "destructive",
-        })
+        throw new Error(result.error || "Erro desconhecido")
       }
     } catch (error: any) {
-      console.error("[v0] AnalysesPage - Error running Assertiva analysis:", error)
       toast({
-        title: "Erro ao executar análise",
-        description: error.message,
+        title: "Erro",
+        description: error.message || "Falha ao executar análises",
         variant: "destructive",
       })
     } finally {
@@ -291,33 +235,14 @@ export default function AnalysesPage() {
     }
   }
 
-  const viewAnalysis = async (analysis: any) => {
-    console.log("[v0] AnalysesPage - Viewing analysis details:", analysis.id)
-    console.log("[v0] AnalysesPage - Analysis data:", {
-      id: analysis.id,
-      customer_name: analysis.customer_name,
-      cpf: analysis.cpf,
-      score: analysis.score,
-      source: analysis.source,
-      analysis_type: analysis.analysis_type,
-      has_data: !!analysis.data,
-      data_keys: analysis.data ? Object.keys(analysis.data) : [],
-    })
-
-    if (analysis.assertiva_data) {
-      console.log("[v0] AnalysesPage - Full assertiva data:", analysis.assertiva_data)
-      const extractedScore = analysis.assertiva_data?.credito?.resposta?.score?.pontos
-      console.log("[v0] AnalysesPage - Extracted score from assertiva_data:", extractedScore)
-    }
-
+  // Renamed from handleRowClick to handleViewDetails
+  const handleViewDetails = (analysis: CreditAnalysis) => {
     setSelectedAnalysis(analysis)
     setShowDetailsDrawer(true)
   }
 
   const exportToPDF = async (analysis: CreditAnalysis) => {
     try {
-      console.log("[v0] exportToPDF - Starting export for analysis:", analysis.id)
-
       const response = await fetch("/api/export-analysis-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -360,8 +285,9 @@ export default function AnalysesPage() {
 
   const getScoreColor = (score: number | null) => {
     if (!score) return "text-gray-500"
-    if (score >= 700) return "text-green-600 dark:text-green-400"
-    if (score >= 500) return "text-yellow-600 dark:text-yellow-400"
+    const adjustedScore = score === 0 ? 5 : score // Adjust score 0 to 5
+    if (adjustedScore >= 700) return "text-green-600 dark:text-green-400"
+    if (adjustedScore >= 500) return "text-yellow-600 dark:text-yellow-400"
     return "text-red-600 dark:text-red-400"
   }
 
@@ -375,889 +301,762 @@ export default function AnalysesPage() {
     })
   }
 
+  // Helper to get the displayed score, converting 0 to 5
+  const getDisplayedScore = (score: number | null | undefined): number | string => {
+    if (score === null || score === undefined) return "N/A"
+    return score === 0 ? 5 : score
+  }
+
+  // Placeholder for the missing viewAnalysis function
+  const viewAnalysis = (analysisId: string) => {
+    const analysis = analyses.find((a) => a.id === analysisId)
+    if (analysis) {
+      setSelectedAnalysis(analysis)
+      setShowDetailsDrawer(true)
+    } else {
+      toast({
+        title: "Erro ao visualizar análise",
+        description: "Análise não encontrada.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
-    <div className="container mx-auto space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Análises de Crédito</h1>
-        <p className="text-muted-foreground">Visualize e gerencie todas as análises de crédito realizadas</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+      <div className="container mx-auto space-y-8 p-8">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30">
+              <BarChart3 className="h-8 w-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                Análises de Crédito
+              </h1>
+              <p className="text-muted-foreground text-lg">
+                Visualize e gerencie todas as análises de crédito realizadas
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground">Total de Análises</CardDescription>
-            <CardTitle className="text-3xl text-foreground">{stats.total}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground">Concluídas</CardDescription>
-            <CardTitle className="text-3xl text-green-600 dark:text-green-400">{stats.completed}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground">Pendentes</CardDescription>
-            <CardTitle className="text-3xl text-yellow-600 dark:text-yellow-400">{stats.pending}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-muted-foreground">Análise de Crédito</CardDescription>
-            <CardTitle className="text-3xl text-blue-600 dark:text-blue-400">{stats.credit_analysis}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      {/* Fixed button for Assertiva analysis */}
-      {selectedCustomers.size > 0 && (
-        <Card className="border-2 border-primary">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Sparkles className="h-8 w-8 text-primary" />
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Análise de Crédito (Paga)</h3>
-                  <p className="text-sm text-muted-foreground">{selectedCustomers.size} cliente(s) selecionado(s)</p>
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="relative overflow-hidden border-2 hover:shadow-xl transition-all duration-300">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-2xl" />
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardDescription className="text-sm font-medium">Total de Análises</CardDescription>
+                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
-              <Button size="lg" onClick={handleRunAssertivaAnalysis} disabled={isRunningAnalysis} className="gap-2">
-                {isRunningAnalysis ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    Rodar Análise Paga ({selectedCustomers.size})
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-4xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">Total de registros</p>
+            </CardContent>
+          </Card>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Análises de Crédito</CardTitle>
-          <CardDescription>Visualize todas as análises realizadas no sistema</CardDescription>
-          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center gap-2">
+          <Card className="relative overflow-hidden border-2 hover:shadow-xl transition-all duration-300 border-green-200 dark:border-green-900">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-2xl" />
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardDescription className="text-sm font-medium">Concluídas</CardDescription>
+                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-4xl font-bold text-green-600 dark:text-green-400">{stats.completed}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}% do total
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-2 hover:shadow-xl transition-all duration-300 border-yellow-200 dark:border-yellow-900">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-yellow-500/10 to-transparent rounded-full blur-2xl" />
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardDescription className="text-sm font-medium">Pendentes</CardDescription>
+                <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
+                  <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-4xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">Aguardando análise</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {selectedCustomers.size > 0 && (
+          <Card className="border-2 border-yellow-300 dark:border-yellow-700 bg-gradient-to-br from-yellow-50 to-white dark:from-yellow-950/20 dark:to-gray-900 shadow-xl">
+            <CardContent className="pt-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg">
+                    <Sparkles className="h-8 w-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-foreground">Análise de Crédito com Assertiva</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedCustomers.size} cliente{selectedCustomers.size > 1 ? "s" : ""} selecionado
+                      {selectedCustomers.size > 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="lg"
+                  onClick={() => setShowConfirmModal(true)}
+                  disabled={isRunningAnalysis}
+                  className="gap-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-lg hover:shadow-xl transition-all"
+                >
+                  {isRunningAnalysis ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5" />
+                      Executar Análise ({selectedCustomers.size})
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="border-2 shadow-xl">
+          <CardHeader className="space-y-4">
+            <div>
+              <CardTitle className="text-2xl flex items-center gap-2">
+                <FileText className="h-6 w-6 text-blue-600" />
+                Análises de Crédito
+              </CardTitle>
+              <CardDescription className="text-base mt-2">
+                Visualize todas as análises realizadas no sistema
+              </CardDescription>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-4">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por cliente, CPF ou empresa..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
+                  className="pl-10 h-11 text-base"
                 />
               </div>
-              <Select value={filterSource} onValueChange={setFilterSource}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filtrar por fonte" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as fontes</SelectItem>
-                  <SelectItem value="credit_analysis">Análise de Crédito</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Tipos</SelectItem>
-                  <SelectItem value="free">Gratuita</SelectItem>
-                  <SelectItem value="detailed">Detalhada</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterCompany} onValueChange={setFilterCompany}>
-                <SelectTrigger className="w-[200px]">
-                  <Building2 className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Filtrar por empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as empresas</SelectItem>
-                  {companies.map((company) => (
-                    <SelectItem key={company.id} value={company.id}>
-                      {company.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={loadAnalyses}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Atualizar
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedCustomers.size === filteredAnalyses.length && filteredAnalyses.length > 0}
-                      onCheckedChange={toggleSelectAll}
-                    />
-                  </TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>CPF</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Fonte</TableHead>
-                  <TableHead>Status da Análise</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAnalyses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                      {loading ? "Carregando..." : "Nenhuma análise encontrada"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAnalyses.map((analysis) => (
-                    <TableRow key={analysis.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedCustomers.has(analysis.customer_id)}
-                          onCheckedChange={() => toggleCustomerSelection(analysis.customer_id)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <Link
-                          href={`/super-admin/customers/${analysis.customer_id}`}
-                          className="hover:underline text-primary hover:text-primary/80 transition-colors"
-                        >
-                          {analysis.customer_name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-foreground">{analysis.cpf}</TableCell>
-                      <TableCell className="text-foreground">{analysis.company_name}</TableCell>
-                      <TableCell className={analysis.score ? getScoreColor(analysis.score) : "text-muted-foreground"}>
-                        {analysis.score ? `${analysis.score} pts` : "N/A"}
-                      </TableCell>
-                      <TableCell>{getSourceBadge(analysis.source)}</TableCell>
-                      <TableCell>
-                        {analysis.status === "completed" ? (
-                          <Badge variant="default">Analisado</Badge>
-                        ) : (
-                          <Badge variant="secondary">Pendente</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {analysis.analysis_type === "detailed" ? "Detalhada" : "Pendente"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(analysis.status)}</TableCell>
-                      <TableCell>
-                        {analysis.status === "completed" ? formatDate(analysis.created_at) : "Não realizada"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {analysis.status === "completed" && (
-                          <Button variant="ghost" size="sm" onClick={() => viewAnalysis(analysis)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Confirmation modal */}
-      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-600" />
-              Confirmar Análise de Crédito
-            </DialogTitle>
-            <div className="space-y-4 pt-4 text-sm text-muted-foreground">
-              <p>Você está prestes a executar uma análise detalhada de crédito.</p>
-
-              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:bg-yellow-950/20">
-                <p className="font-semibold text-yellow-900 dark:text-yellow-100">⚠️ Atenção:</p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-yellow-800 dark:text-yellow-200">
-                  <li>Esta ação consome créditos de análise</li>
-                  <li>Não pode ser desfeita</li>
-                  <li>{selectedCustomers.size} cliente(s) será(ão) analisado(s)</li>
-                  <li>O processo pode levar alguns minutos</li>
-                </ul>
-              </div>
-
-              <p className="text-sm">Deseja continuar?</p>
-            </div>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={confirmAndRunAnalysis} className="gap-2">
-              <Sparkles className="h-4 w-4" />
-              Confirmar e Executar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Details Drawer - ONLY THIS ONE */}
-      <Sheet open={showDetailsDrawer} onOpenChange={setShowDetailsDrawer}>
-        <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background">
-          <SheetHeader>
-            <SheetTitle className="text-2xl">Análise de Crédito Completa</SheetTitle>
-            <SheetDescription>Dados completos da análise de crédito do cliente</SheetDescription>
-          </SheetHeader>
-
-          {selectedAnalysis && (
-            <div className="space-y-6 mt-6 px-6">
-              {console.log("[v0] Sheet - Rendering with selectedAnalysis:", {
-                score: selectedAnalysis.score,
-                assertiva_score: selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos,
-                has_assertiva_data: !!selectedAnalysis.assertiva_data,
-              })}
-
-              {/* Source Badge */}
-              <div className="flex items-center justify-between">
-                <Badge variant="default" className="text-base px-6 py-2">
-                  <span className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    Análise de Crédito Detalhada
-                  </span>
-                </Badge>
-                <Button onClick={() => exportToPDF(selectedAnalysis)} className="gap-2" variant="outline">
-                  <Download className="h-4 w-4" />
-                  Exportar PDF
+              <div className="flex gap-3">
+                <Select value={filterCompany} onValueChange={setFilterCompany}>
+                  <SelectTrigger className="w-[220px] h-11">
+                    <Building2 className="mr-2 h-5 w-5 text-muted-foreground" />
+                    <SelectValue placeholder="Filtrar por empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as empresas</SelectItem>
+                    {companies.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="lg" onClick={loadAnalyses} className="gap-2 bg-transparent">
+                  <RefreshCw className="h-5 w-5" />
+                  Atualizar
                 </Button>
               </div>
+            </div>
+          </CardHeader>
 
-              {/* Summary Cards Grid */}
-              <div className="grid gap-4 md:grid-cols-3">
-                {/* Score Card */}
-                <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
-                  <CardHeader className="pb-3">
-                    <CardDescription className="text-xs uppercase tracking-wide">Score de Crédito</CardDescription>
-                    <CardTitle
-                      className={`text-5xl font-bold ${getScoreColor(
-                        selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos ||
-                          selectedAnalysis.score ||
-                          null,
-                      )}`}
-                    >
-                      {(() => {
-                        const score =
-                          selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos ||
-                          selectedAnalysis.score ||
-                          "N/A"
-                        console.log("[v0] Sheet - Rendering score:", score)
-                        return score
-                      })()}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {(() => {
-                        const actualScore =
-                          selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos ||
-                          selectedAnalysis.score ||
-                          0
-                        if (actualScore >= 700) return "Risco Baixo"
-                        if (actualScore >= 500) return "Risco Moderado"
-                        if (actualScore >= 300) return "Risco Alto"
-                        return "Risco Muito Alto"
-                      })()}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedAnalysis.assertiva_data?.credito?.resposta?.score?.faixa?.titulo || "Análise de Crédito"}
-                    </p>
-                  </CardHeader>
-                </Card>
-
-                {/* Sanctions Card */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardDescription className="text-xs uppercase tracking-wide">Sanções CEIS</CardDescription>
-                    <CardTitle className="text-5xl font-bold text-red-600 dark:text-red-400">
-                      {selectedAnalysis.assertiva_data?.acoes?.resposta?.sancoesCEIS?.list?.length || 0}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">Empresas Inidôneas</p>
-                  </CardHeader>
-                </Card>
-
-                {/* Punishments Card */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardDescription className="text-xs uppercase tracking-wide">Punições CNEP</CardDescription>
-                    <CardTitle className="text-5xl font-bold text-orange-600 dark:text-orange-400">
-                      {selectedAnalysis.assertiva_data?.acoes?.resposta?.punicoesCNEP?.list?.length || 0}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">Empresas Punidas</p>
-                  </CardHeader>
-                </Card>
+          <CardContent>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
+                <p className="text-muted-foreground">Carregando análises...</p>
               </div>
-
-              {/* Customer Information Card */}
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" />
-                    Informações do Cliente
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">NOME COMPLETO</p>
-                      <p className="text-lg font-semibold">{selectedAnalysis.customer_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">CPF/CNPJ</p>
-                      <p className="text-lg font-semibold">{selectedAnalysis.cpf || "N/A"}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {selectedAnalysis.assertiva_data && (
-                <>
-                  {/* Score de Crédito Detalhado */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.score && (
-                    <Card className="border-l-4 border-cyan-500">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400">
-                          <Target className="h-5 w-5" />
-                          Score de Crédito Detalhado
-                        </CardTitle>
-                        <CardDescription>
-                          {selectedAnalysis.assertiva_data.credito.resposta.score.faixa?.descricao ||
-                            "Classificação de risco"}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-2">
-                              <p className="text-6xl font-bold text-cyan-600 dark:text-cyan-400">
-                                {selectedAnalysis.assertiva_data.credito.resposta.score.pontos}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Classe {selectedAnalysis.assertiva_data.credito.resposta.score.classe}
-                              </p>
+            ) : (
+              <div className="rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={selectedCustomers.size === filteredAnalyses.length && filteredAnalyses.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead className="font-semibold min-w-[250px]">Cliente</TableHead>
+                      <TableHead className="font-semibold text-center w-[120px]">Score</TableHead>
+                      <TableHead className="font-semibold text-center w-[130px]">Status</TableHead>
+                      <TableHead className="font-semibold hidden md:table-cell text-center w-[150px]">Data</TableHead>
+                      <TableHead className="text-center font-semibold w-[130px]">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAnalyses.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-16">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="p-4 rounded-full bg-muted">
+                              <Search className="h-8 w-8 text-muted-foreground" />
                             </div>
-                            <div className="text-right">
-                              <Badge
-                                variant="outline"
-                                className={`text-lg px-4 py-2 ${
-                                  selectedAnalysis.assertiva_data.credito.resposta.score.pontos >= 700
-                                    ? "border-green-500 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/20"
-                                    : selectedAnalysis.assertiva_data.credito.resposta.score.pontos >= 500
-                                      ? "border-yellow-500 text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950/20"
-                                      : selectedAnalysis.assertiva_data.credito.resposta.score.pontos >= 300
-                                        ? "border-orange-500 text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/20"
-                                        : "border-red-500 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/20"
-                                }`}
-                              >
-                                {selectedAnalysis.assertiva_data.credito.resposta.score.faixa?.titulo}
-                              </Badge>
-                            </div>
+                            <p className="text-lg font-medium text-muted-foreground">Nenhuma análise encontrada</p>
+                            <p className="text-sm text-muted-foreground">Tente ajustar os filtros de busca</p>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredAnalyses.map((analysis) => {
+                        const rawScore = analysis.score
+                        const displayScore = rawScore === 0 ? 5 : rawScore
+                        const isPending = analysis.status === "pending"
 
-                  {/* Renda Presumida */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.rendaPresumida?.valor && (
-                    <Card className="border-l-4 border-emerald-500">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                          <DollarSign className="h-5 w-5" />
-                          Renda Presumida
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-4xl font-bold text-emerald-600 dark:text-emerald-400">
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          }).format(selectedAnalysis.assertiva_data.credito.resposta.rendaPresumida.valor || 0)}
-                        </p>
-                        {selectedAnalysis.assertiva_data.credito.resposta.rendaPresumida.faixa && (
-                          <p className="text-sm text-muted-foreground mt-2">
-                            Faixa: {selectedAnalysis.assertiva_data.credito.resposta.rendaPresumida.faixa}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Últimas Consultas */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.ultimasConsultas?.list &&
-                    selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.list.length > 0 && (
-                      <Card className="border-l-4 border-blue-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                            <Search className="h-5 w-5" />
-                            Últimas Consultas (
-                            {selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
-                          </CardTitle>
-                          <CardDescription>
-                            Consultas realizadas entre{" "}
-                            {selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.primeiraOcorrencia} e{" "}
-                            {selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.ultimaOcorrencia}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.list.map(
-                              (consulta: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center border-b pb-2">
-                                  <span className="font-medium">{consulta.consultante}</span>
-                                  <span className="text-sm text-muted-foreground">{consulta.dataOcorrencia}</span>
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {/* Débitos */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.registrosDebitos?.list &&
-                    selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.list.length > 0 && (
-                      <Card className="border-l-4 border-red-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                            <AlertTriangle className="h-5 w-5" />
-                            Débitos ({selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.qtdDebitos || 0}
-                            )
-                          </CardTitle>
-                          <CardDescription>
-                            Total:{" "}
-                            {new Intl.NumberFormat("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            }).format(
-                              selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.valorTotal || 0,
-                            )}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.list.map(
-                              (debito: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="border rounded-lg p-4 space-y-2 bg-red-50/50 dark:bg-red-950/20"
+                        return (
+                          <TableRow key={analysis.id} className="hover:bg-muted/50 transition-colors">
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedCustomers.has(analysis.id)}
+                                onCheckedChange={() => toggleSelection(analysis.id)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <span className="font-semibold text-base">{analysis.customer_name || "N/A"}</span>
+                                <span className="text-sm text-muted-foreground font-mono">{analysis.cpf}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`font-bold text-xl ${getScoreColor(displayScore as number)}`}>
+                                {displayScore !== null && displayScore !== undefined ? `${displayScore}` : "N/A"}
+                              </span>
+                              {displayScore !== null && displayScore !== undefined && (
+                                <span className="text-xs text-muted-foreground ml-1">pts</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">{getStatusBadge(analysis.status)}</TableCell>
+                            <TableCell className="hidden md:table-cell text-center text-sm text-muted-foreground">
+                              {analysis.status === "completed" ? formatDate(analysis.created_at) : "Não realizada"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {isPending ? (
+                                <Button variant="ghost" size="sm" disabled className="gap-2">
+                                  <EyeOff className="h-4 w-4" />
+                                  <span className="hidden sm:inline">Pendente</span>
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => viewAnalysis(analysis.id)}
+                                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                                 >
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <p className="font-semibold text-red-900 dark:text-red-100">{debito.credor}</p>
-                                      <p className="text-sm text-muted-foreground">Contrato: {debito.contrato}</p>
-                                      {debito.tipoDebito && (
-                                        <Badge variant="outline" className="mt-1">
-                                          {debito.tipoDebito}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                                      {new Intl.NumberFormat("pt-BR", {
-                                        style: "currency",
-                                        currency: "BRL",
-                                      }).format(debito.valor || 0)}
+                                  <Eye className="h-4 w-4" />
+                                  <span className="hidden sm:inline">Detalhes</span>
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600" />
+                Confirmar Análise de Crédito
+              </DialogTitle>
+              <DialogDescription>
+                Você está prestes a executar a análise de crédito para {selectedCustomers.size} cliente
+                {selectedCustomers.size > 1 ? "s" : ""}. Esta ação irá consumir créditos da API Assertiva.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleRunAnalysis} className="bg-yellow-600 hover:bg-yellow-700">
+                Confirmar Análise
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Sheet open={showDetailsDrawer} onOpenChange={setShowDetailsDrawer}>
+          <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background">
+            <SheetHeader>
+              <SheetTitle className="text-2xl">Análise de Crédito Completa</SheetTitle>
+              <SheetDescription>Dados completos da análise de crédito do cliente</SheetDescription>
+            </SheetHeader>
+
+            {selectedAnalysis && (
+              <div className="mt-6 space-y-6">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto bg-transparent"
+                  onClick={() => exportToPDF(selectedAnalysis)}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Análise de Crédito Detalhada
+                </Button>
+
+                <Button variant="outline" className="ml-2 bg-transparent" onClick={() => exportToPDF(selectedAnalysis)}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar PDF
+                </Button>
+
+                {/* Score Cards */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                        <TrendingUp className="h-4 w-4" />
+                        SCORE DE CRÉDITO
+                      </CardTitle>
+                      <CardDescription>Análise de Crédito</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {(() => {
+                          const creditoScore = selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos
+                          const displayScore = creditoScore === 0 ? 5 : creditoScore || selectedAnalysis.score || 0
+                          const scoreClass = selectedAnalysis.assertiva_data?.credito?.resposta?.score?.classe || "N/A"
+                          const scoreFaixa =
+                            selectedAnalysis.assertiva_data?.credito?.resposta?.score?.faixa?.titulo || "N/A"
+                          const scoreFaixaDescricao =
+                            selectedAnalysis.assertiva_data?.credito?.resposta?.score?.faixa?.descricao || ""
+
+                          return (
+                            <>
+                              <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">
+                                {displayScore}
+                              </div>
+                              <p className="text-sm font-medium text-foreground">Classe {scoreClass}</p>
+                              <p className="text-sm font-medium text-purple-600 dark:text-purple-400">{scoreFaixa}</p>
+                              {scoreFaixaDescricao && (
+                                <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                                  {scoreFaixaDescricao}
+                                </p>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Sanções CEIS
+                      </CardTitle>
+                      <CardDescription>Empresas Inidôneas</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-5xl font-bold text-red-600 dark:text-red-400">
+                        {selectedAnalysis.assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Punições CNEP
+                      </CardTitle>
+                      <CardDescription>Empresas Punidas</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-5xl font-bold text-orange-600 dark:text-orange-400">
+                        {selectedAnalysis.assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      Informações do Cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">NOME COMPLETO</p>
+                      <p className="font-medium text-foreground">{selectedAnalysis.customer_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">CPF/CNPJ</p>
+                      <p className="font-medium text-foreground">{selectedAnalysis.cpf}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {selectedAnalysis.assertiva_data?.recupere?.resposta?.score && (
+                  <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                        <TrendingUp className="h-5 w-5" />
+                        Score Recupere
+                      </CardTitle>
+                      <CardDescription>Probabilidade de negociação e recuperação</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">
+                            {selectedAnalysis.assertiva_data.recupere.resposta.score.pontos}
+                          </div>
+                          <p className="text-sm font-medium text-foreground mt-2">
+                            Classe {selectedAnalysis.assertiva_data.recupere.resposta.score.classe}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="text-base px-4 py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700"
+                        >
+                          {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.titulo || "Índice de acordo"}
+                        </Badge>
+                      </div>
+                      {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.descricao && (
+                        <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                          <p className="text-sm text-foreground leading-relaxed">
+                            {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa.descricao}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {selectedAnalysis.assertiva_data?.credito?.resposta?.faturamentoEstimado !== undefined && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Faturamento Estimado
+                      </CardTitle>
+                      <CardDescription>Estimativa de faturamento anual</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                        {newIntl &&
+                        typeof selectedAnalysis.assertiva_data.credito.resposta.faturamentoEstimado.valor ===
+                          "number" &&
+                        selectedAnalysis.assertiva_data.credito.resposta.faturamentoEstimado.valor > 0
+                          ? new newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                              selectedAnalysis.assertiva_data.credito.resposta.faturamentoEstimado.valor,
+                            )
+                          : "Não informado"}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {selectedAnalysis.assertiva_data?.credito?.resposta?.rendaPresumida?.valor && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Renda Presumida
+                      </CardTitle>
+                      <CardDescription>Estimativa de renda mensal</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                        {newIntl
+                          ? new newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                              selectedAnalysis.assertiva_data.credito.resposta.rendaPresumida.valor,
+                            )
+                          : "N/A"}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Faixa: {selectedAnalysis.assertiva_data.credito.resposta.rendaPresumida.faixa || "N/A"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" />
+                      Protestos Públicos
+                    </CardTitle>
+                    <CardDescription>Protestos registrados em cartório</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAnalysis.assertiva_data?.acoes?.resposta?.protestos?.list &&
+                    selectedAnalysis.assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Total de Protestos:</span>
+                          <Badge variant="destructive" className="text-base">
+                            {selectedAnalysis.assertiva_data.acoes.resposta.protestos.qtdProtestos}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Valor Total:</span>
+                          <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                            {newIntl
+                              ? new newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                  selectedAnalysis.assertiva_data.acoes.resposta.protestos.valorTotal,
+                                )
+                              : `R$ ${selectedAnalysis.assertiva_data.acoes.resposta.protestos.valorTotal}`}
+                          </span>
+                        </div>
+                        <Separator />
+                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                          {selectedAnalysis.assertiva_data.acoes.resposta.protestos.list.map(
+                            (protesto: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <p className="font-medium text-sm">{protesto.cartorio}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {protesto.cidade} - {protesto.uf}
                                     </p>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-2 text-sm">
-                                    <div>
-                                      <span className="text-muted-foreground">Vencimento:</span>
-                                      <span className="ml-2 font-medium">{debito.dataVencimento}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-muted-foreground">Inclusão:</span>
-                                      <span className="ml-2 font-medium">{debito.dataInclusao}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-muted-foreground">Cidade:</span>
-                                      <span className="ml-2 font-medium">
-                                        {debito.cidade}/{debito.uf}
-                                      </span>
-                                    </div>
-                                    {debito.tipoDevedor && (
-                                      <div className="col-span-2">
-                                        <span className="text-muted-foreground">Tipo:</span>
-                                        <span className="ml-2 font-medium">{debito.tipoDevedor.titulo}</span>
-                                        {debito.tipoDevedor.descricao && (
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            {debito.tipoDevedor.descricao}
-                                          </p>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                  <Badge variant="destructive" className="ml-2">
+                                    {newIntl
+                                      ? new newIntl.NumberFormat("pt-BR", {
+                                          style: "currency",
+                                          currency: "BRL",
+                                        }).format(protesto.valor)
+                                      : `R$ ${protesto.valor}`}
+                                  </Badge>
                                 </div>
-                              ),
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {/* Score Recupere */}
-                  {selectedAnalysis.assertiva_data.recupere?.resposta?.score && (
-                    <Card className="border-l-4 border-purple-500">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
-                          <TrendingUp className="h-5 w-5" />
-                          Score Recupere
-                        </CardTitle>
-                        <CardDescription>Probabilidade de negociação e recuperação</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-5xl font-bold text-purple-600 dark:text-purple-400">
-                                {selectedAnalysis.assertiva_data.recupere.resposta.score.pontos}
-                              </p>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Classe {selectedAnalysis.assertiva_data.recupere.resposta.score.classe}
-                              </p>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className="text-base px-4 py-2 border-purple-500 text-purple-700 dark:text-purple-300"
-                            >
-                              {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.titulo}
-                            </Badge>
-                          </div>
-                          {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.descricao && (
-                            <p className="text-sm text-muted-foreground border-l-2 border-purple-300 pl-3">
-                              {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa.descricao}
-                            </p>
+                              </div>
+                            ),
                           )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Informação não disponível</p>
+                    )}
+                  </CardContent>
+                </Card>
 
-                  {/* Protestos */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.protestosPublicos && (
-                    <Card className="border-l-4 border-orange-500">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                          <FileText className="h-5 w-5" />
-                          Protestos Públicos (
-                          {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.qtdProtestos || 0})
-                        </CardTitle>
-                        {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.qtdProtestos > 0 && (
-                          <CardDescription>
-                            Total:{" "}
-                            {new Intl.NumberFormat("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            }).format(
-                              Number.parseFloat(
-                                selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.valorTotal,
-                              ) || 0,
-                            )}
-                          </CardDescription>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Últimas Consultas
+                    </CardTitle>
+                    <CardDescription>Empresas que consultaram este documento</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAnalysis.assertiva_data?.credito?.resposta?.ultimasConsultas?.list &&
+                    selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.list.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedAnalysis.assertiva_data.credito.resposta.ultimasConsultas.list
+                          .slice(0, 10)
+                          .map((consulta: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center border-b pb-2 last:border-0">
+                              <div>
+                                <p className="font-medium text-sm">{consulta.consultante}</p>
+                                <p className="text-xs text-muted-foreground">{consulta.dataOcorrencia}</p>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                        <Check className="h-4 w-4" />
+                        <p className="text-sm font-medium">Nenhuma consulta recente registrada</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5" />
+                      Débitos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAnalysis.assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
+                    selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <p className="text-sm font-medium">
+                            Total: {selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.qtdDebitos}{" "}
+                            débito(s)
+                          </p>
+                          <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                            {newIntl &&
+                            typeof selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.valorTotal ===
+                              "number"
+                              ? new newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                  selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.valorTotal,
+                                )
+                              : "N/A"}
+                          </p>
+                        </div>
+                        {selectedAnalysis.assertiva_data.credito.resposta.registrosDebitos.list.map(
+                          (debito: any, idx: number) => (
+                            <div key={idx} className="border rounded-lg p-4 space-y-2">
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                  <p className="font-medium text-foreground">{debito.credor || "N/A"}</p>
+                                  <p className="text-sm text-muted-foreground">{debito.tipoDevedor?.titulo || ""}</p>
+                                </div>
+                                <Badge variant="destructive">
+                                  {newIntl && typeof debito.valor === "number"
+                                    ? new newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                        debito.valor,
+                                      )
+                                    : "N/A"}
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <p className="text-muted-foreground">Vencimento</p>
+                                  <p className="text-foreground">{debito.dataVencimento || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Cidade/UF</p>
+                                  <p className="text-foreground">
+                                    {debito.cidade || "N/A"}/{debito.uf || "N/A"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ),
                         )}
-                      </CardHeader>
-                      <CardContent>
-                        {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.list &&
-                        selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.list.length > 0 ? (
-                          <div className="space-y-3">
-                            {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.list.map(
-                              (protesto: any, idx: number) => (
-                                <div key={idx} className="border rounded-lg p-4 space-y-2">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <p className="font-semibold">{protesto.cartorio}</p>
-                                      <p className="text-sm text-muted-foreground">
-                                        {protesto.cidade}/{protesto.uf}
-                                      </p>
-                                    </div>
-                                    <p className="text-lg font-bold text-orange-600">
-                                      {new Intl.NumberFormat("pt-BR", {
-                                        style: "currency",
-                                        currency: "BRL",
-                                      }).format(protesto.valor || 0)}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">Nenhum débito encontrado</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" />
+                      Protestos Públicos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAnalysis.assertiva_data?.credito?.resposta?.protestosPublicos ? (
+                      selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.qtdProtestos > 0 ? (
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center mb-4">
+                            <p className="text-sm font-medium">
+                              Total: {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.qtdProtestos}{" "}
+                              protesto(s)
+                            </p>
+                            <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                              {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.valorTotal || "N/A"}
+                            </p>
+                          </div>
+                          {selectedAnalysis.assertiva_data.credito.resposta.protestosPublicos.list?.map(
+                            (protesto: any, idx: number) => (
+                              <div key={idx} className="border rounded-lg p-4 space-y-2">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-foreground">{protesto.cartorio || "N/A"}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {protesto.cidade || ""}/{protesto.uf || ""}
                                     </p>
                                   </div>
-                                  <div className="text-sm">
-                                    <span className="text-muted-foreground">Data:</span>
-                                    <span className="ml-2 font-medium">{protesto.data}</span>
-                                  </div>
+                                  <Badge variant="destructive">{protesto.valor || "N/A"}</Badge>
                                 </div>
-                              ),
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground">Nenhum protesto registrado</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Cheques */}
-                  {selectedAnalysis.assertiva_data.credito?.resposta?.cheques?.list &&
-                    selectedAnalysis.assertiva_data.credito.resposta.cheques.list.length > 0 && (
-                      <Card className="border-l-4 border-amber-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                            <CreditCard className="h-5 w-5" />
-                            Cheques sem Fundo (
-                            {selectedAnalysis.assertiva_data.credito.resposta.cheques.qtdCheques || 0})
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {selectedAnalysis.assertiva_data.credito.resposta.cheques.list.map(
-                              (cheque: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center border-b pb-2">
+                                <div className="grid grid-cols-2 gap-2 text-sm">
                                   <div>
-                                    <p className="font-medium">Banco: {cheque.banco}</p>
-                                    <p className="text-sm text-muted-foreground">Agência: {cheque.agencia}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-bold text-amber-600">
-                                      {new Intl.NumberFormat("pt-BR", {
-                                        style: "currency",
-                                        currency: "BRL",
-                                      }).format(cheque.valor || 0)}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">{cheque.data}</p>
+                                    <p className="text-muted-foreground">Data</p>
+                                    <p className="text-foreground">{protesto.data || "N/A"}</p>
                                   </div>
                                 </div>
-                              ),
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-green-600 dark:text-green-400">✓ Nenhum protesto encontrado</p>
+                      )
+                    ) : (
+                      <p className="text-muted-foreground">Informação não disponível</p>
                     )}
-                </>
-              )}
-
-              {!selectedAnalysis.assertiva_data && (
-                <Card className="border-2 border-dashed">
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Análise Não Realizada</h3>
-                    <p className="text-sm text-muted-foreground text-center">
-                      Esta análise ainda não foi executada ou os dados não estão disponíveis.
-                    </p>
                   </CardContent>
                 </Card>
-              )}
 
-              {/* Government Data Sections */}
-              {selectedAnalysis.data && (
-                <>
-                  {/* CEIS Sanctions */}
-                  {selectedAnalysis.data.sancoes_ceis &&
-                    Array.isArray(selectedAnalysis.data.sancoes_ceis) &&
-                    selectedAnalysis.data.sancoes_ceis.length > 0 && (
-                      <Card className="border-l-4 border-red-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                            <AlertTriangle className="h-5 w-5" />
-                            Sanções CEIS
-                          </CardTitle>
-                          <CardDescription>Cadastro de Empresas Inidôneas e Suspensas</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {selectedAnalysis.data.sancoes_ceis.map((sancao: any, index: number) => (
-                              <div key={index} className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4">
-                                <div className="space-y-2">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-red-900 dark:text-red-100">
-                                        {sancao.fonteSancao?.nomeExibicao ||
-                                          sancao.orgaoSancionador ||
-                                          "Órgão não informado"}
-                                      </p>
-                                      {sancao.tipoSancao && (
-                                        <Badge variant="destructive" className="mt-1">
-                                          {sancao.tipoSancao}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    {sancao.dataPublicacao && (
-                                      <p className="text-sm text-red-700 dark:text-red-300">
-                                        {new Date(sancao.dataPublicacao).toLocaleDateString("pt-BR")}
-                                      </p>
-                                    )}
+                {selectedAnalysis.assertiva_data?.credito?.resposta?.chequesSemFundoCCF && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <CreditCard className="h-5 w-5" />
+                        Cheques sem Fundo (CCF)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {selectedAnalysis.assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">
+                              Total:{" "}
+                              {selectedAnalysis.assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias}{" "}
+                              ocorrência(s)
+                            </p>
+                            <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                              {selectedAnalysis.assertiva_data.credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
+                            </p>
+                          </div>
+                          {selectedAnalysis.assertiva_data.credito.resposta.chequesSemFundoCCF.list?.map(
+                            (cheque: any, idx: number) => (
+                              <div key={idx} className="border rounded-lg p-4 space-y-2">
+                                <p className="font-medium text-foreground">Banco: {cheque.banco || "N/A"}</p>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground">Agência</p>
+                                    <p className="text-foreground">{cheque.agencia || "N/A"}</p>
                                   </div>
-                                  {sancao.fundamentacaoLegal && (
-                                    <p className="text-sm text-red-800 dark:text-red-200">
-                                      <span className="font-medium">Fundamentação:</span> {sancao.fundamentacaoLegal}
-                                    </p>
-                                  )}
+                                  <div>
+                                    <p className="text-muted-foreground">Data</p>
+                                    <p className="text-foreground">{cheque.data || "N/A"}</p>
+                                  </div>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {/* CNEP Punishments */}
-                  {selectedAnalysis.data.punicoes_cnep &&
-                    Array.isArray(selectedAnalysis.data.punicoes_cnep) &&
-                    selectedAnalysis.data.punicoes_cnep.length > 0 && (
-                      <Card className="border-l-4 border-orange-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                            <AlertCircle className="h-5 w-5" />
-                            Punições CNEP
-                          </CardTitle>
-                          <CardDescription>Cadastro Nacional de Empresas Punidas</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {selectedAnalysis.data.punicoes_cnep.map((punicao: any, index: number) => (
-                              <div key={index} className="rounded-lg bg-orange-50 dark:bg-orange-950/20 p-4">
-                                <div className="space-y-2">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-orange-900 dark:text-orange-100">
-                                        {punicao.orgaoSancionador?.nome || "Órgão não informado"}
-                                      </p>
-                                      {punicao.tipoSancao?.descricaoResumida && (
-                                        <Badge
-                                          variant="outline"
-                                          className="mt-1 border-orange-500 text-orange-700 dark:text-orange-300"
-                                        >
-                                          {punicao.tipoSancao.descricaoResumida}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    {punicao.dataPublicacaoSancao && (
-                                      <p className="text-sm text-orange-700 dark:text-orange-300">
-                                        {new Date(punicao.dataPublicacaoSancao).toLocaleDateString("pt-BR")}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {punicao.valorMulta && (
-                                    <p className="text-sm text-orange-800 dark:text-orange-200">
-                                      <span className="font-medium">Valor da Multa:</span> R${" "}
-                                      {punicao.valorMulta.toLocaleString("pt-BR")}
-                                    </p>
-                                  )}
-                                  {punicao.fundamentacaoLegal && (
-                                    <p className="text-sm text-orange-800 dark:text-orange-200">
-                                      <span className="font-medium">Fundamentação:</span> {punicao.fundamentacaoLegal}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {selectedAnalysis.data.impedimentos_cepim &&
-                    Array.isArray(selectedAnalysis.data.impedimentos_cepim) &&
-                    selectedAnalysis.data.impedimentos_cepim.length > 0 && (
-                      <Card className="border-l-4 border-purple-500">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
-                            <AlertTriangle className="h-5 w-5" />
-                            Impedimentos CEPIM
-                          </CardTitle>
-                          <CardDescription>
-                            Cadastro de Entidades Privadas sem Fins Lucrativos Impedidas
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {selectedAnalysis.data.impedimentos_cepim.map((impedimento: any, index: number) => (
-                              <div key={index} className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4">
-                                <div className="space-y-2">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-purple-900 dark:text-purple-100">
-                                        {impedimento.pessoaJuridica?.nome || impedimento.nome || "Nome não informado"}
-                                      </p>
-                                      {impedimento.orgaoVinculado?.nomeOrgaoVinculacao && (
-                                        <Badge
-                                          variant="outline"
-                                          className="mt-1 border-purple-500 text-purple-700 dark:text-purple-300"
-                                        >
-                                          {impedimento.orgaoVinculado.nomeOrgaoVinculacao}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    {impedimento.dataReferencia && (
-                                      <p className="text-sm text-purple-700 dark:text-purple-300">
-                                        {impedimento.dataReferencia}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {impedimento.motivoImpedimento && (
-                                    <p className="text-sm text-purple-800 dark:text-purple-200">
-                                      <span className="font-medium">Motivo:</span> {impedimento.motivoImpedimento}
-                                    </p>
-                                  )}
-                                  {impedimento.convenio?.numeroConvenio && (
-                                    <p className="text-sm text-purple-800 dark:text-purple-200">
-                                      <span className="font-medium">Convênio:</span>{" "}
-                                      {impedimento.convenio.numeroConvenio}
-                                    </p>
-                                  )}
-                                  {impedimento.pessoaJuridica?.uf && (
-                                    <p className="text-sm text-purple-800 dark:text-purple-200">
-                                      <span className="font-medium">UF:</span> {impedimento.pessoaJuridica.uf}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                </>
-              )}
-
-              {/* No Analysis Data */}
-              {!selectedAnalysis.data && (
-                <Card className="border-2 border-dashed">
-                  <CardContent className="text-center text-muted-foreground">
-                    <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-semibold">Análise Não Realizada</p>
-                    <p className="text-sm mt-2">
-                      Esta análise ainda não foi executada ou os dados não estão disponíveis.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+                            ),
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-green-600 dark:text-green-400">✓ Nenhum cheque sem fundo encontrado</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+      </div>
     </div>
   )
 }

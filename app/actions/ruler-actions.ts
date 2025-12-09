@@ -1,16 +1,15 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function getCollectionRulerStats() {
   try {
-    const supabase = createClient()
+    const supabase = createAdminClient()
 
     console.log("[v0] getCollectionRulerStats - Starting...")
 
-    // Get total custom rulers
     const { data: rulers, error: rulersError } = await supabase
-      .from("collection_rulers")
+      .from("collection_rules")
       .select("*")
       .eq("is_active", true)
 
@@ -34,11 +33,10 @@ export async function getCollectionRulerStats() {
 
     console.log("[v0] VMAX records with ACEITA status:", vmaxRecords?.length || 0)
 
-    // Get execution logs
     const { data: executions, error: executionsError } = await supabase
-      .from("collection_ruler_executions")
+      .from("collection_rule_executions")
       .select("*")
-      .order("executed_at", { ascending: false })
+      .order("sent_at", { ascending: false })
       .limit(10)
 
     if (executionsError) {
@@ -48,11 +46,11 @@ export async function getCollectionRulerStats() {
     // Calculate stats
     const activeRulers = rulers?.length || 0
     const eligibleClients = vmaxRecords?.length || 0
-    const lastExecution = executions?.[0]?.executed_at || null
+    const lastExecution = executions?.[0]?.sent_at || null
     const successfulToday =
       executions?.filter((e) => {
         const today = new Date().toDateString()
-        const execDate = new Date(e.executed_at).toDateString()
+        const execDate = new Date(e.sent_at).toDateString()
         return today === execDate && e.status === "success"
       }).length || 0
 

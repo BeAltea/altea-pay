@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS } from "@/lib/notifications/sms"
+import { createCustomerWithAnalysis } from "./create-customer-with-analysis"
 
 export interface CreateCustomerParams {
   name: string
@@ -45,54 +46,29 @@ export async function createCustomer(params: CreateCustomerParams) {
   console.log("[v0] createCustomer - Starting", params)
 
   try {
-    const supabase = await createServerClient()
-
-    // Validate required fields
-    if (!params.name || !params.email || !params.document || !params.companyId) {
-      console.log("[v0] createCustomer - Missing required fields")
-      return {
-        success: false,
-        message: "Campos obrigatórios faltando",
-      }
-    }
-
-    // Determine document type based on length
-    const documentType = params.document.replace(/\D/g, "").length === 11 ? "cpf" : "cnpj"
-    console.log("[v0] createCustomer - Document type:", documentType)
-
-    // Create customer data
-    const customerData = {
+    const result = await createCustomerWithAnalysis({
       name: params.name,
+      cpf_cnpj: params.document,
       email: params.email,
-      document: params.document,
-      document_type: documentType,
-      phone: params.phone || null,
-      company_id: params.companyId,
-      status: "active",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
+      phone: params.phone,
+      companyId: params.companyId,
+    })
 
-    console.log("[v0] createCustomer - Customer data:", customerData)
-
-    // Insert customer
-    const { data, error } = await supabase.from("customers").insert(customerData).select().single()
-
-    if (error) {
-      console.error("[v0] createCustomer - Error:", error)
+    if (!result.success) {
       return {
         success: false,
-        message: `Erro ao criar cliente: ${error.message}`,
-        error: error.message,
+        message: result.message,
+        error: result.error,
       }
     }
 
-    console.log("[v0] createCustomer - Success:", data)
+    console.log("[v0] createCustomer - Success with analysis:", result)
 
     return {
       success: true,
-      message: "Cliente criado com sucesso",
-      data,
+      message: result.message,
+      data: result.customer,
+      creditAnalysis: result.creditAnalysis,
     }
   } catch (error) {
     console.error("[v0] createCustomer - Exception:", error)

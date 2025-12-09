@@ -766,14 +766,18 @@ export async function storeAnalysisResult(
       }
     }
 
+    // Score de Crédito is the PRIMARY score, even if it's 0 (will be converted to 5)
+    const creditScore = data.credito?.resposta?.score?.pontos ?? null
     const score =
-      data.credito?.resposta?.score?.pontos || // From Assertiva detailed analysis (CORRECT PATH)
-      data.score_credito?.pontos || // From Assertiva detailed analysis (alternative path)
-      data.score_assertiva || // From Assertiva detailed analysis
-      data.score_serasa || // From Assertiva detailed analysis (Serasa score)
-      data.score_calculado || // From Gov analysis (free)
-      data.score || // Generic fallback score
-      0 // Default to 0 if no score is found
+      creditScore !== null
+        ? creditScore
+        : // Use credit score (even if 0)
+          data.score_credito?.pontos || // Alternative path for credit score
+          data.score_assertiva || // Generic assertiva score
+          data.score_serasa || // Serasa score
+          data.score_calculado || // From Gov analysis
+          data.score || // Generic fallback
+          0 // Default to 0 if no score found (will be converted to 5)
 
     const finalScore = score === 0 ? 5 : score
 
@@ -781,9 +785,9 @@ export async function storeAnalysisResult(
       originalScore: score,
       finalScore,
       credito_resposta_score_pontos: data.credito?.resposta?.score?.pontos,
+      recupere_resposta_score_pontos: data.recupere?.resposta?.score?.pontos,
       score_credito_pontos: data.score_credito?.pontos,
       score_assertiva: data.score_assertiva,
-      has_credito_resposta: !!data.credito?.resposta?.score,
       score_serasa: data.score_serasa,
       score_calculado: data.score_calculado,
     })
@@ -918,7 +922,10 @@ export async function storeAnalysisResult(
         customerId,
         approvalStatus,
         autoCollectionEnabled,
-        score: finalScore,
+        credit_score: finalScore, // Use finalScore (already converted 0→5)
+        risk_level: riskLevel,
+        analysis_metadata: data, // Save complete data including errors
+        last_analysis_date: new Date().toISOString(),
       })
 
       const { error: vmaxError } = await supabase
@@ -926,10 +933,10 @@ export async function storeAnalysisResult(
         .update({
           approval_status: approvalStatus,
           auto_collection_enabled: autoCollectionEnabled,
-          credit_score: finalScore,
+          credit_score: finalScore, // Use finalScore (already converted 0→5)
           risk_level: riskLevel,
-          analysis_metadata: data,
-          last_analysis_date: new Date().toISOString(), // Track analysis date
+          analysis_metadata: data, // Save complete data including errors
+          last_analysis_date: new Date().toISOString(),
         })
         .eq("id", customerId)
 
