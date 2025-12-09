@@ -357,7 +357,7 @@ export function Header({ user }: HeaderProps) {
               <nav className="space-y-1">
                 {[
                   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-                  { name: "Clientes", href: "/dashboard/customers", icon: Users },
+                  { name: "Clientes", href: "/dashboard/clientes", icon: Users },
                   { name: "Dívidas", href: "/dashboard/debts", icon: CreditCard },
                   { name: "Importar Dados", href: "/dashboard/import", icon: Upload },
                   { name: "Réguas de Cobrança", href: "/dashboard/collection-rules", icon: Target },

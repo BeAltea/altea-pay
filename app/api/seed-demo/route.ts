@@ -2,7 +2,14 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+export const dynamic = "force-dynamic"
+
+function getSupabaseAdmin() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing Supabase environment variables")
+  }
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+}
 
 function generateCPF(): string {
   const randomDigits = () => Math.floor(Math.random() * 10)
@@ -49,13 +56,13 @@ export async function GET(request: NextRequest) {
     const secret = request.nextUrl.searchParams.get("secret")
 
     if (!secret || secret !== process.env.CRON_SECRET) {
-      console.log("[v0] Tentativa de acesso não autorizado ao seed")
+      console.log("Tentativa de acesso não autorizado ao seed")
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
     }
 
     return await executeSeed()
   } catch (error) {
-    console.error("[v0] Erro ao executar seed:", error)
+    console.error("Erro ao executar seed:", error)
     return NextResponse.json(
       {
         success: false,
@@ -71,7 +78,7 @@ export async function POST() {
   try {
     return await executeSeed()
   } catch (error) {
-    console.error("[v0] Erro ao executar seed:", error)
+    console.error("Erro ao executar seed:", error)
     return NextResponse.json(
       {
         success: false,
@@ -84,7 +91,9 @@ export async function POST() {
 }
 
 async function executeSeed() {
-  console.log("[v0] Iniciando seed de dados demo...")
+  console.log("Iniciando seed de dados demo...")
+
+  const supabase = getSupabaseAdmin()
 
   const companies = [
     {
@@ -122,15 +131,15 @@ async function executeSeed() {
     },
   ]
 
-  console.log("[v0] Criando empresas...")
+  console.log("Criando empresas...")
   const { data: createdCompanies, error: companiesError } = await supabase.from("companies").insert(companies).select()
 
   if (companiesError) {
-    console.error("[v0] Erro ao criar empresas:", companiesError)
+    console.error("Erro ao criar empresas:", companiesError)
     throw companiesError
   }
 
-  console.log(`[v0] ${createdCompanies.length} empresas criadas!`)
+  console.log(`${createdCompanies.length} empresas criadas!`)
 
   const firstNames = [
     "João",
@@ -176,7 +185,7 @@ async function executeSeed() {
   let totalDebts = 0
 
   for (const company of createdCompanies) {
-    console.log(`[v0] Criando clientes para ${company.name}...`)
+    console.log(`Criando clientes para ${company.name}...`)
 
     const numCustomers = Math.floor(Math.random() * 51) + 50
     const customers = []
@@ -212,14 +221,14 @@ async function executeSeed() {
       .select()
 
     if (customersError) {
-      console.error(`[v0] Erro ao criar clientes para ${company.name}:`, customersError)
+      console.error(`Erro ao criar clientes para ${company.name}:`, customersError)
       continue
     }
 
     totalCustomers += createdCustomers.length
     console.log(`[v0] ${createdCustomers.length} clientes criados para ${company.name}`)
 
-    console.log(`[v0] Criando dívidas para ${company.name}...`)
+    console.log(`Criando dívidas para ${company.name}...`)
     const debts = []
     const customersWithDebts = createdCustomers.slice(0, Math.floor(createdCustomers.length * 0.7))
 
@@ -255,7 +264,7 @@ async function executeSeed() {
     const { data: createdDebts, error: debtsError } = await supabase.from("debts").insert(debts).select()
 
     if (debtsError) {
-      console.error(`[v0] Erro ao criar dívidas para ${company.name}:`, debtsError)
+      console.error(`Erro ao criar dívidas para ${company.name}:`, debtsError)
       continue
     }
 
@@ -263,7 +272,7 @@ async function executeSeed() {
     console.log(`[v0] ${createdDebts.length} dívidas criadas para ${company.name}`)
   }
 
-  console.log("[v0] Seed concluído com sucesso!")
+  console.log("Seed concluído com sucesso!")
 
   return NextResponse.json({
     success: true,

@@ -7,10 +7,8 @@ import { normalizeCustomerData, normalizeDebtData } from "@/lib/utils/normalizeD
 import { analyzeCreditFree, analyzeCreditAssertiva } from "@/services/creditAnalysisService"
 
 export class ERPService {
-  private supabase
-
-  constructor() {
-    this.supabase = createClient()
+  private async getSupabase() {
+    return await createClient()
   }
 
   // Testa conexão com o ERP
@@ -18,9 +16,11 @@ export class ERPService {
     const startTime = Date.now()
 
     try {
-      console.log("[v0] Testing ERP connection:", integrationId)
+      console.log("Testing ERP connection:", integrationId)
 
-      const { data: integration, error } = await this.supabase
+      const supabase = await this.getSupabase()
+
+      const { data: integration, error } = await supabase
         .from("erp_integrations")
         .select("*")
         .eq("id", integrationId)
@@ -60,7 +60,9 @@ export class ERPService {
 
       return isConnected
     } catch (error) {
-      console.error("[v0] Error testing connection:", error)
+      console.error("Error testing connection:", error)
+
+      const supabase = await this.getSupabase()
 
       await this.createLog({
         integration_id: integrationId,
@@ -84,9 +86,11 @@ export class ERPService {
     const errors: Array<{ record: any; error: string }> = []
 
     try {
-      console.log("[v0] Syncing customers from ERP:", integrationId)
+      console.log("Syncing customers from ERP:", integrationId)
 
-      const { data: integration, error } = await this.supabase
+      const supabase = await this.getSupabase()
+
+      const { data: integration, error } = await supabase
         .from("erp_integrations")
         .select("*")
         .eq("id", integrationId)
@@ -113,7 +117,7 @@ export class ERPService {
 
       // Busca clientes do ERP
       const rawCustomers = await connector.fetchCustomers(config)
-      console.log("[v0] Fetched customers from ERP:", rawCustomers.length)
+      console.log("Fetched customers from ERP:", rawCustomers.length)
 
       let successCount = 0
       let failedCount = 0
@@ -130,7 +134,7 @@ export class ERPService {
           }
 
           // Verifica se cliente já existe
-          const { data: existing } = await this.supabase
+          const { data: existing } = await supabase
             .from("customers")
             .select("id")
             .eq("external_id", normalized.external_id)
@@ -139,7 +143,7 @@ export class ERPService {
 
           if (existing) {
             // Atualiza cliente existente
-            const { error: updateError } = await this.supabase
+            const { error: updateError } = await supabase
               .from("customers")
               .update({
                 name: normalized.name,
@@ -163,7 +167,7 @@ export class ERPService {
             }
           } else {
             // Cria novo cliente
-            const { error: insertError } = await this.supabase.from("customers").insert({
+            const { error: insertError } = await supabase.from("customers").insert({
               external_id: normalized.external_id,
               name: normalized.name,
               document: normalized.cpfCnpj,
@@ -204,10 +208,7 @@ export class ERPService {
       }
 
       // Atualiza última sincronização
-      await this.supabase
-        .from("erp_integrations")
-        .update({ last_sync_at: new Date().toISOString() })
-        .eq("id", integrationId)
+      await supabase.from("erp_integrations").update({ last_sync_at: new Date().toISOString() }).eq("id", integrationId)
 
       // Cria log
       await this.createLog({
@@ -224,7 +225,7 @@ export class ERPService {
 
       return result
     } catch (error) {
-      console.error("[v0] Error syncing customers:", error)
+      console.error("Error syncing customers:", error)
 
       const result: SyncResult = {
         success: false,
@@ -245,9 +246,11 @@ export class ERPService {
     const errors: Array<{ record: any; error: string }> = []
 
     try {
-      console.log("[v0] Syncing debts from ERP:", integrationId)
+      console.log("Syncing debts from ERP:", integrationId)
 
-      const { data: integration, error } = await this.supabase
+      const supabase = await this.getSupabase()
+
+      const { data: integration, error } = await supabase
         .from("erp_integrations")
         .select("*")
         .eq("id", integrationId)
@@ -274,7 +277,7 @@ export class ERPService {
 
       // Busca dívidas do ERP
       const rawDebts = await connector.fetchDebts(config)
-      console.log("[v0] Fetched debts from ERP:", rawDebts.length)
+      console.log("Fetched debts from ERP:", rawDebts.length)
 
       let successCount = 0
       let failedCount = 0
@@ -291,7 +294,7 @@ export class ERPService {
           }
 
           // Busca o customer_id pelo external_id
-          const { data: customer } = await this.supabase
+          const { data: customer } = await supabase
             .from("customers")
             .select("id")
             .eq("external_id", normalized.customer_external_id)
@@ -305,7 +308,7 @@ export class ERPService {
           }
 
           // Verifica se dívida já existe
-          const { data: existing } = await this.supabase
+          const { data: existing } = await supabase
             .from("debts")
             .select("id")
             .eq("external_id", normalized.external_id)
@@ -314,7 +317,7 @@ export class ERPService {
 
           if (existing) {
             // Atualiza dívida existente
-            const { error: updateError } = await this.supabase
+            const { error: updateError } = await supabase
               .from("debts")
               .update({
                 amount: normalized.amount,
@@ -335,7 +338,7 @@ export class ERPService {
             }
           } else {
             // Cria nova dívida
-            const { error: insertError } = await this.supabase.from("debts").insert({
+            const { error: insertError } = await supabase.from("debts").insert({
               external_id: normalized.external_id,
               customer_id: customer.id,
               amount: normalized.amount,
@@ -373,10 +376,7 @@ export class ERPService {
       }
 
       // Atualiza última sincronização
-      await this.supabase
-        .from("erp_integrations")
-        .update({ last_sync_at: new Date().toISOString() })
-        .eq("id", integrationId)
+      await supabase.from("erp_integrations").update({ last_sync_at: new Date().toISOString() }).eq("id", integrationId)
 
       // Cria log
       await this.createLog({
@@ -393,7 +393,7 @@ export class ERPService {
 
       return result
     } catch (error) {
-      console.error("[v0] Error syncing debts:", error)
+      console.error("Error syncing debts:", error)
 
       const result: SyncResult = {
         success: false,
@@ -413,9 +413,11 @@ export class ERPService {
     const startTime = Date.now()
 
     try {
-      console.log("[v0] Syncing results to ERP:", integrationId)
+      console.log("Syncing results to ERP:", integrationId)
 
-      const { data: integration, error } = await this.supabase
+      const supabase = await this.getSupabase()
+
+      const { data: integration, error } = await supabase
         .from("erp_integrations")
         .select("*")
         .eq("id", integrationId)
@@ -441,7 +443,7 @@ export class ERPService {
       }
 
       // Busca pagamentos das últimas 24h
-      const { data: payments } = await this.supabase
+      const { data: payments } = await supabase
         .from("payments")
         .select("*, debt:debts(external_id)")
         .eq("company_id", integration.company_id)
@@ -507,7 +509,7 @@ export class ERPService {
 
       return result
     } catch (error) {
-      console.error("[v0] Error syncing results:", error)
+      console.error("Error syncing results:", error)
 
       const result: SyncResult = {
         success: false,
@@ -530,7 +532,7 @@ export class ERPService {
     const errors: Array<{ record: any; error: string }> = []
 
     try {
-      console.log("[v0] Syncing customers with credit analysis from ERP:", integrationId)
+      console.log("Syncing customers with credit analysis from ERP:", integrationId)
 
       // Primeiro sincroniza os clientes normalmente
       const syncResult = await this.syncCustomers(integrationId)
@@ -539,8 +541,10 @@ export class ERPService {
         return syncResult
       }
 
+      const supabase = await this.getSupabase()
+
       // Busca a integração para pegar o company_id
-      const { data: integration } = await this.supabase
+      const { data: integration } = await supabase
         .from("erp_integrations")
         .select("company_id")
         .eq("id", integrationId)
@@ -551,7 +555,7 @@ export class ERPService {
       }
 
       // Busca clientes recém-sincronizados (últimos 5 minutos)
-      const { data: customers } = await this.supabase
+      const { data: customers } = await supabase
         .from("customers")
         .select("id, name, document, email, phone")
         .eq("company_id", integration.company_id)
@@ -561,7 +565,7 @@ export class ERPService {
         return syncResult
       }
 
-      console.log("[v0] Running credit analysis for", customers.length, "new customers")
+      console.log("Running credit analysis for", customers.length, "new customers")
 
       let analysisSuccess = 0
       let analysisFailed = 0
@@ -576,7 +580,7 @@ export class ERPService {
 
           if (analysisResult.success) {
             // Salva resultado da análise
-            await this.supabase.from("credit_profiles").insert({
+            await supabase.from("credit_profiles").insert({
               customer_id: customer.id,
               company_id: integration.company_id,
               document: customer.document,
@@ -601,7 +605,7 @@ export class ERPService {
         }
       }
 
-      console.log("[v0] Credit analysis completed:", analysisSuccess, "success,", analysisFailed, "failed")
+      console.log("Credit analysis completed:", analysisSuccess, "success,", analysisFailed, "failed")
 
       // Cria log da operação de análise
       await this.createLog({
@@ -621,7 +625,7 @@ export class ERPService {
         duration_ms: Date.now() - startTime,
       }
     } catch (error) {
-      console.error("[v0] Error syncing customers with credit analysis:", error)
+      console.error("Error syncing customers with credit analysis:", error)
 
       const result: SyncResult = {
         success: false,
@@ -637,11 +641,13 @@ export class ERPService {
   }
 
   // Cria log de integração
-  private async createLog(log: Omit<IntegrationLog, "id" | "created_at">) {
+  private async createLog(log: Omit<IntegrationLog, "id" | "created_at">): Promise<void> {
     try {
-      await this.supabase.from("integration_logs").insert(log)
+      const supabase = await this.getSupabase()
+
+      await supabase.from("erp_integration_logs").insert(log)
     } catch (error) {
-      console.error("[v0] Error creating integration log:", error)
+      console.error("Error creating log:", error)
     }
   }
 }
