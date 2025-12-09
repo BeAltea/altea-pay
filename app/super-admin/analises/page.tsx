@@ -623,40 +623,45 @@ export default function AnalysesPage() {
       </Dialog>
 
       <Sheet open={showDetailsDrawer} onOpenChange={setShowDetailsDrawer}>
-        <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background">
-          <SheetHeader>
-            <SheetTitle className="text-2xl">Análise de Crédito Completa</SheetTitle>
-            <SheetDescription>Dados completos da análise de crédito do cliente</SheetDescription>
+        <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background p-4 sm:p-6">
+          <SheetHeader className="space-y-2">
+            <SheetTitle className="text-xl sm:text-2xl">Análise de Crédito Completa</SheetTitle>
+            <SheetDescription className="text-sm">Dados completos da análise de crédito do cliente</SheetDescription>
           </SheetHeader>
 
           {selectedAnalysis && (
-            <div className="mt-6 space-y-6">
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto bg-transparent"
-                onClick={() => exportToPDF(selectedAnalysis)}
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                Análise de Crédito Detalhada
-              </Button>
+            <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-6">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto bg-transparent"
+                  onClick={() => exportToPDF(selectedAnalysis)}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Análise Detalhada
+                </Button>
 
-              <Button variant="outline" className="ml-2 bg-transparent" onClick={() => exportToPDF(selectedAnalysis)}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar PDF
-              </Button>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto bg-transparent"
+                  onClick={() => exportToPDF(selectedAnalysis)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar PDF
+                </Button>
+              </div>
 
-              {/* Score Cards */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardHeader>
+              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                <Card className="overflow-hidden">
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
                       <TrendingUp className="h-4 w-4" />
                       SCORE DE CRÉDITO
                     </CardTitle>
-                    <CardDescription>Análise de Crédito</CardDescription>
+                    <CardDescription className="text-xs">Análise de Crédito</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
+                  <CardContent className="pb-3">
+                    <div className="space-y-1">
                       {(() => {
                         const creditoScore = selectedAnalysis.assertiva_data?.credito?.resposta?.score?.pontos
                         const displayScore = creditoScore === 0 ? 5 : creditoScore || selectedAnalysis.score || 0
@@ -668,13 +673,13 @@ export default function AnalysesPage() {
 
                         return (
                           <>
-                            <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">
+                            <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
                               {displayScore}
                             </div>
                             <p className="text-sm font-medium text-foreground">Classe {scoreClass}</p>
                             <p className="text-sm font-medium text-purple-600 dark:text-purple-400">{scoreFaixa}</p>
                             {scoreFaixaDescricao && (
-                              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                              <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-3">
                                 {scoreFaixaDescricao}
                               </p>
                             )}
@@ -685,89 +690,90 @@ export default function AnalysesPage() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
+                <Card className="overflow-hidden">
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium flex items-center gap-2">
                       <AlertCircle className="h-4 w-4" />
                       Sanções CEIS
                     </CardTitle>
-                    <CardDescription>Empresas Inidôneas</CardDescription>
+                    <CardDescription className="text-xs">Empresas Inidôneas</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-5xl font-bold text-red-600 dark:text-red-400">
+                  <CardContent className="pb-3">
+                    <div className="text-4xl sm:text-5xl font-bold text-red-600 dark:text-red-400">
                       {selectedAnalysis.assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
+                <Card className="overflow-hidden">
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium flex items-center gap-2">
                       <Shield className="h-4 w-4" />
                       Punições CNEP
                     </CardTitle>
-                    <CardDescription>Empresas Punidas</CardDescription>
+                    <CardDescription className="text-xs">Empresas Punidas</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-5xl font-bold text-orange-600 dark:text-orange-400">
+                  <CardContent className="pb-3">
+                    <div className="text-4xl sm:text-5xl font-bold text-orange-600 dark:text-orange-400">
                       {selectedAnalysis.assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" />
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <Building2 className="h-4 w-4 sm:h-5 sm:w-5" />
                     Informações do Cliente
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2">
+                <CardContent className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 pb-3">
                   <div>
-                    <p className="text-sm text-muted-foreground">NOME COMPLETO</p>
-                    <p className="font-medium text-foreground">{selectedAnalysis.customer_name}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">NOME COMPLETO</p>
+                    <p className="font-medium text-sm sm:text-base text-foreground break-words">
+                      {selectedAnalysis.customer_name}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">CPF/CNPJ</p>
-                    <p className="font-medium text-foreground">{selectedAnalysis.cpf}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">CPF/CNPJ</p>
+                    <p className="font-medium text-sm sm:text-base text-foreground">{selectedAnalysis.cpf}</p>
                   </div>
                 </CardContent>
               </Card>
 
               {selectedAnalysis.assertiva_data?.recupere?.resposta?.score && (
-                <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
-                      <TrendingUp className="h-5 w-5" />
+                <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                      <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
                       Score Recupere
                     </CardTitle>
-                    <CardDescription>Probabilidade de negociação e recuperação</CardDescription>
+                    <CardDescription className="text-xs sm:text-sm">
+                      Probabilidade de negociação e recuperação
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
+                  <CardContent className="space-y-3 sm:space-y-4 pb-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
-                        <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">
+                        <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
                           {selectedAnalysis.assertiva_data.recupere.resposta.score.pontos}
                         </div>
-                        <p className="text-sm font-medium text-foreground mt-2">
+                        <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mt-1">
                           Classe {selectedAnalysis.assertiva_data.recupere.resposta.score.classe}
                         </p>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className="text-base px-4 py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700"
-                      >
-                        {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.titulo || "Índice de acordo"}
-                      </Badge>
+                      {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa && (
+                        <div className="flex-1 sm:max-w-md">
+                          <Badge className="bg-purple-100 text-purple-900 dark:bg-purple-900 dark:text-purple-100 mb-2 whitespace-normal h-auto py-1">
+                            {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa.titulo}
+                          </Badge>
+                          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                            {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa.descricao}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa?.descricao && (
-                      <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
-                        <p className="text-sm text-foreground leading-relaxed">
-                          {selectedAnalysis.assertiva_data.recupere.resposta.score.faixa.descricao}
-                        </p>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               )}

@@ -18,6 +18,8 @@ import {
   CreditCard,
 } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default async function ClienteDetalhesPage({ params }: { params: { id: string } }) {
   const supabase = await createServerClient()
 
@@ -48,29 +50,32 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
   const assertiva_data = cliente.analysis_metadata || null
 
   return (
-    <div className="flex flex-col gap-6 p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button asChild variant="ghost" size="icon">
+    <div className="flex flex-col gap-4 md:gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+        <Button asChild variant="ghost" size="icon" className="shrink-0">
           <Link href="/dashboard/clientes">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Análise de Crédito Completa</h1>
-          <p className="text-muted-foreground">Dados completos da análise de crédito do cliente</p>
+        <div className="flex-1 min-w-0 w-full">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight break-words">
+            Análise de Crédito Completa
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
+            Dados completos da análise de crédito do cliente
+          </p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 w-full">
         {/* Score de Crédito */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
-              <TrendingUp className="h-4 w-4" />
-              SCORE DE CRÉDITO
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
+              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+              <span className="truncate">SCORE DE CRÉDITO</span>
             </CardTitle>
-            <CardDescription>Análise de Crédito</CardDescription>
+            <CardDescription className="text-xs truncate">Análise de Crédito</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -83,11 +88,17 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
 
                 return (
                   <>
-                    <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">{displayScore}</div>
-                    <p className="text-sm font-medium text-foreground">Classe {scoreClass}</p>
-                    <p className="text-sm font-medium text-purple-600 dark:text-purple-400">{scoreFaixa}</p>
+                    <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
+                      {displayScore}
+                    </div>
+                    <p className="text-xs sm:text-sm font-medium text-foreground">Classe {scoreClass}</p>
+                    <p className="text-xs sm:text-sm font-medium text-purple-600 dark:text-purple-400 break-words">
+                      {scoreFaixa}
+                    </p>
                     {scoreFaixaDescricao && (
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{scoreFaixaDescricao}</p>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed break-words">
+                        {scoreFaixaDescricao}
+                      </p>
                     )}
                   </>
                 )
@@ -97,86 +108,86 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         </Card>
 
         {/* Sanções CEIS */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Sanções CEIS
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+              <span className="truncate">Sanções CEIS</span>
             </CardTitle>
-            <CardDescription>Empresas Inidôneas</CardDescription>
+            <CardDescription className="text-xs truncate">Empresas Inidôneas</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-bold text-red-600 dark:text-red-400">
+            <div className="text-4xl sm:text-5xl font-bold text-red-600 dark:text-red-400">
               {assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
             </div>
           </CardContent>
         </Card>
 
         {/* Punições CNEP */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Punições CNEP
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
+              <Shield className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+              <span className="truncate">Punições CNEP</span>
             </CardTitle>
-            <CardDescription>Empresas Punidas</CardDescription>
+            <CardDescription className="text-xs truncate">Empresas Punidas</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-bold text-orange-600 dark:text-orange-400">
+            <div className="text-4xl sm:text-5xl font-bold text-orange-600 dark:text-orange-400">
               {assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Informações do Cliente
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <Building2 className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <span className="truncate">Informações do Cliente</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div>
-            <p className="text-sm text-muted-foreground">NOME COMPLETO</p>
-            <p className="font-medium text-foreground">{cliente.Cliente}</p>
+        <CardContent className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted-foreground mb-1">NOME COMPLETO</p>
+            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente.Cliente}</p>
           </div>
-          <div>
-            <p className="text-sm text-muted-foreground">CPF/CNPJ</p>
-            <p className="font-medium text-foreground">{cliente["CPF/CNPJ"]}</p>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted-foreground mb-1">CPF/CNPJ</p>
+            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente["CPF/CNPJ"]}</p>
           </div>
         </CardContent>
       </Card>
 
       {assertiva_data?.recupere?.resposta?.score && (
-        <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
-              <TrendingUp className="h-5 w-5" />
-              Score Recupere
+        <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+              <span className="truncate">Score Recupere</span>
             </CardTitle>
-            <CardDescription>Probabilidade de negociação e recuperação</CardDescription>
+            <CardDescription className="text-xs truncate">Probabilidade de negociação e recuperação</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-5xl font-bold text-purple-600 dark:text-purple-400">
+          <CardContent className="space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex-1">
+                <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
                   {assertiva_data.recupere.resposta.score.pontos}
                 </div>
-                <p className="text-sm font-medium text-foreground mt-2">
+                <p className="text-xs sm:text-sm font-medium text-foreground mt-2">
                   Classe {assertiva_data.recupere.resposta.score.classe}
                 </p>
               </div>
               <Badge
                 variant="outline"
-                className="text-base px-4 py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700"
+                className="text-xs sm:text-base px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700 shrink-0"
               >
                 {assertiva_data.recupere.resposta.score.faixa?.titulo || "Índice de acordo"}
               </Badge>
             </div>
             {assertiva_data.recupere.resposta.score.faixa?.descricao && (
-              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
-                <p className="text-sm text-foreground leading-relaxed">
+              <div className="bg-white dark:bg-gray-900 rounded-lg p-3 sm:p-4 border border-purple-200 dark:border-purple-800">
+                <p className="text-xs sm:text-sm text-foreground leading-relaxed break-words">
                   {assertiva_data.recupere.resposta.score.faixa.descricao}
                 </p>
               </div>
@@ -186,16 +197,16 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
       )}
 
       {assertiva_data?.credito?.resposta?.faturamentoEstimado !== undefined && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Faturamento Estimado
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+              <span className="truncate">Faturamento Estimado</span>
             </CardTitle>
-            <CardDescription>Estimativa de faturamento anual</CardDescription>
+            <CardDescription className="text-xs truncate">Estimativa de faturamento anual</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
               {typeof assertiva_data.credito.resposta.faturamentoEstimado.valor === "number" &&
               assertiva_data.credito.resposta.faturamentoEstimado.valor > 0
                 ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -208,68 +219,68 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
       )}
 
       {assertiva_data?.credito?.resposta?.rendaPresumida?.valor && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Renda Presumida
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+              <span className="truncate">Renda Presumida</span>
             </CardTitle>
-            <CardDescription>Estimativa de renda mensal</CardDescription>
+            <CardDescription className="text-xs truncate">Estimativa de renda mensal</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
               {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
                 assertiva_data.credito.resposta.rendaPresumida.valor,
               )}
             </div>
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-2 break-words">
               Faixa: {assertiva_data.credito.resposta.rendaPresumida.faixa || "N/A"}
             </p>
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            Protestos Públicos
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <span className="truncate">Protestos Públicos</span>
           </CardTitle>
-          <CardDescription>Protestos registrados em cartório</CardDescription>
+          <CardDescription className="text-xs truncate">Protestos registrados em cartório</CardDescription>
         </CardHeader>
         <CardContent>
           {assertiva_data?.acoes?.resposta?.protestos?.list &&
           assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Total de Protestos:</span>
-                <Badge variant="destructive" className="text-base">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="text-xs sm:text-sm font-medium">Total de Protestos:</span>
+                <Badge variant="destructive" className="text-sm sm:text-base">
                   {assertiva_data.acoes.resposta.protestos.qtdProtestos}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Valor Total:</span>
-                <span className="text-lg font-bold text-red-600 dark:text-red-400">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="text-xs sm:text-sm font-medium">Valor Total:</span>
+                <span className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
                     assertiva_data.acoes.resposta.protestos.valorTotal,
                   )}
                 </span>
               </div>
               <Separator />
-              <div className="space-y-3 max-h-64 overflow-y-auto">
+              <div className="space-y-2 sm:space-y-3 max-h-64 overflow-y-auto">
                 {assertiva_data.acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
                   <div
                     key={idx}
                     className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-medium text-sm">{protesto.cartorio}</p>
-                        <p className="text-xs text-muted-foreground">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-xs sm:text-sm break-words">{protesto.cartorio}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {protesto.cidade} - {protesto.uf}
                         </p>
                       </div>
-                      <Badge variant="destructive" className="ml-2">
+                      <Badge variant="destructive" className="shrink-0 text-xs">
                         {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(protesto.valor)}
                       </Badge>
                     </div>
@@ -278,27 +289,30 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Informação não disponível</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Informação não disponível</p>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Últimas Consultas
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <FileText className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <span className="truncate">Últimas Consultas</span>
           </CardTitle>
-          <CardDescription>Empresas que consultaram este documento</CardDescription>
+          <CardDescription className="text-xs truncate">Empresas que consultaram este documento</CardDescription>
         </CardHeader>
         <CardContent>
           {assertiva_data?.credito?.resposta?.ultimasConsultas?.list &&
           assertiva_data.credito.resposta.ultimasConsultas.list.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {assertiva_data.credito.resposta.ultimasConsultas.list.slice(0, 10).map((consulta: any, idx: number) => (
-                <div key={idx} className="flex justify-between items-center border-b pb-2 last:border-0">
-                  <div>
-                    <p className="font-medium text-sm">{consulta.consultante}</p>
+                <div
+                  key={idx}
+                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 border-b pb-2 last:border-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-xs sm:text-sm break-words">{consulta.consultante}</p>
                     <p className="text-xs text-muted-foreground">{consulta.dataOcorrencia}</p>
                   </div>
                 </div>
@@ -306,29 +320,29 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
             </div>
           ) : (
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <Check className="h-4 w-4" />
-              <p className="text-sm font-medium">Nenhuma consulta recente registrada</p>
+              <Check className="h-3 w-3 sm:h-4 sm:w-4" />
+              <p className="text-xs sm:text-sm font-medium">Nenhuma consulta recente registrada</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Débitos
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <span className="truncate">Débitos</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
           assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
-                <p className="text-sm font-medium">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 sm:mb-4">
+                <p className="text-xs sm:text-sm font-medium">
                   Total: {assertiva_data.credito.resposta.registrosDebitos.qtdDebitos} débito(s)
                 </p>
-                <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
                   {typeof assertiva_data.credito.resposta.registrosDebitos.valorTotal === "number"
                     ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
                         assertiva_data.credito.resposta.registrosDebitos.valorTotal,
@@ -337,26 +351,28 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
                 </p>
               </div>
               {assertiva_data.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
-                <div key={idx} className="border rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{debito.credor || "N/A"}</p>
-                      <p className="text-sm text-muted-foreground">{debito.tipoDevedor?.titulo || ""}</p>
+                <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-xs sm:text-sm text-foreground break-words">
+                        {debito.credor || "N/A"}
+                      </p>
+                      <p className="text-xs text-muted-foreground break-words">{debito.tipoDevedor?.titulo || ""}</p>
                     </div>
-                    <Badge variant="destructive">
+                    <Badge variant="destructive" className="shrink-0 text-xs">
                       {typeof debito.valor === "number"
                         ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(debito.valor)
                         : "N/A"}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <div>
                       <p className="text-muted-foreground">Vencimento</p>
-                      <p className="text-foreground">{debito.dataVencimento || "N/A"}</p>
+                      <p className="text-foreground break-words">{debito.dataVencimento || "N/A"}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Cidade/UF</p>
-                      <p className="text-foreground">
+                      <p className="text-foreground break-words">
                         {debito.cidade || "N/A"}/{debito.uf || "N/A"}
                       </p>
                     </div>
@@ -365,48 +381,52 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground">Nenhum débito encontrado</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Nenhum débito encontrado</p>
           )}
         </CardContent>
       </Card>
 
       {assertiva_data?.credito?.resposta?.chequesSemFundoCCF && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Cheques sem Fundo (CCF)
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+              <span className="truncate">Cheques sem Fundo (CCF)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <p className="text-xs sm:text-sm font-medium">
                     Total: {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias} ocorrência(s)
                   </p>
-                  <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                  <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
                     {assertiva_data.credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
                   </p>
                 </div>
                 {assertiva_data.credito.resposta.chequesSemFundoCCF.list?.map((cheque: any, idx: number) => (
-                  <div key={idx} className="border rounded-lg p-4 space-y-2">
-                    <p className="font-medium text-foreground">Banco: {cheque.banco || "N/A"}</p>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
+                    <p className="font-medium text-xs sm:text-sm text-foreground break-words">
+                      Banco: {cheque.banco || "N/A"}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                       <div>
                         <p className="text-muted-foreground">Agência</p>
-                        <p className="text-foreground">{cheque.agencia || "N/A"}</p>
+                        <p className="text-foreground break-words">{cheque.agencia || "N/A"}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Data</p>
-                        <p className="text-foreground">{cheque.data || "N/A"}</p>
+                        <p className="text-foreground break-words">{cheque.data || "N/A"}</p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-green-600 dark:text-green-400">✓ Nenhum cheque sem fundo encontrado</p>
+              <p className="text-xs sm:text-sm text-green-600 dark:text-green-400">
+                ✓ Nenhum cheque sem fundo encontrado
+              </p>
             )}
           </CardContent>
         </Card>
