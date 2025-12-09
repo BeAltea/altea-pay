@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { processCollectionRulers } from "@/lib/collection-ruler-engine"
 
+export const dynamic = "force-dynamic"
+
 /**
  * Cron Job: Processa réguas de cobrança automaticamente
  * Roda a cada hora para verificar dívidas que precisam de cobrança

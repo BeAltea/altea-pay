@@ -2,8 +2,6 @@
 
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 interface SendEmailParams {
   to: string
   subject: string
@@ -32,6 +30,13 @@ export async function sendEmail({ to, subject, html, body, text }: SendEmailPara
 
     console.log("[Resend] Email validation passed")
     console.log("[Resend] Calling Resend API...")
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error("[Resend] ERROR: RESEND_API_KEY not configured")
+      return { success: false, error: "API key do Resend não configurada" }
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY)
 
     const { data, error } = await resend.emails.send({
       from: "AlteaPay Cobranças <cobranca@alteapay.com>",

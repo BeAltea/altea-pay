@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -11,38 +13,33 @@ export async function GET(request: Request) {
     if (!companyId) {
       return NextResponse.json(
         { success: false, error: "Company ID obrigatório", customers: [], total: 0 },
-        { status: 200 }
+        { status: 200 },
       )
     }
 
     // Service role client para bypassar RLS
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
 
     // Buscar TODOS os clientes VMAX
     const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*")
 
     if (vmaxError) {
       console.error("[v0] Erro ao buscar VMAX:", vmaxError)
-      return NextResponse.json(
-        { success: false, error: vmaxError.message, customers: [], total: 0 },
-        { status: 200 }
-      )
+      return NextResponse.json({ success: false, error: vmaxError.message, customers: [], total: 0 }, { status: 200 })
     }
 
     console.log("[v0] Total registros VMAX:", vmaxData?.length || 0)
 
     const clientesDaEmpresa = (vmaxData || []).filter(
       (cliente: any) =>
-        String(cliente.id_company || "").toLowerCase().trim() === String(companyId).toLowerCase().trim()
+        String(cliente.id_company || "")
+          .toLowerCase()
+          .trim() === String(companyId).toLowerCase().trim(),
     )
 
     console.log("[v0] Clientes da empresa filtrados:", clientesDaEmpresa.length)
@@ -64,13 +61,10 @@ export async function GET(request: Request) {
         integrationData,
         total: clientesDaEmpresa.length,
       },
-      { status: 200 }
+      { status: 200 },
     )
   } catch (error: any) {
     console.error("[v0] Erro na API:", error)
-    return NextResponse.json(
-      { success: false, error: error.message, customers: [], total: 0 },
-      { status: 200 }
-    )
+    return NextResponse.json({ success: false, error: error.message, customers: [], total: 0 }, { status: 200 })
   }
 }

@@ -31,7 +31,6 @@ export async function createClient() {
 
     return client
   } catch (error) {
-    console.error("[v0] Erro ao criar cliente Supabase:", error)
     throw error
   }
 }
@@ -45,20 +44,16 @@ export function createAdminClient() {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable")
   }
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      cookies: {
-        getAll() {
-          return []
-        },
-        setAll() {
-          // No-op for admin client
-        },
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    cookies: {
+      getAll() {
+        return []
       },
-    }
-  )
+      setAll() {
+        // No-op for admin client
+      },
+    },
+  })
 }
 
 export { createClient as createServerClient }

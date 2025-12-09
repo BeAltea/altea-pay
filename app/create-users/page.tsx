@@ -1,15 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+export const dynamic = "force-dynamic"
+
 export default function CreateUsersPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState("")
-  const supabase = createClientComponentClient()
+  const supabase = createBrowserClient()
 
   const createDefaultUsers = async () => {
     setLoading(true)

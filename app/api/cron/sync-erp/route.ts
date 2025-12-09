@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { erpService } from "@/lib/integrations/erp/erpService"
 
+export const dynamic = "force-dynamic"
+
 // Esta rota será chamada pelo Vercel Cron ou Supabase Edge Functions
 // Configurar no vercel.json:
 // {

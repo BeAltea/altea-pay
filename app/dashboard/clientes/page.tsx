@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Eye, Sparkles, Plus } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default async function ClientesPage() {
   try {
     const supabase = await createServerClient()
