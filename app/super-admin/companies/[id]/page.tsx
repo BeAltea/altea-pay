@@ -209,13 +209,11 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{companyData.name}</h1>
-                <Badge variant={companyData.status === "active" ? "default" : "secondary"}>
-                  {companyData.status === "active" ? "Ativa" : "Inativa"}
+                <Badge variant={company.status === "active" ? "default" : "secondary"}>
+                  {company.status === "active" ? "Ativa" : "Inativa"}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {companyData.tax_id ? `N/A` : "N/A"} • CNPJ: {companyData.tax_id || "N/A"}
-              </p>
+              <p className="text-sm text-muted-foreground">CNPJ: {company.cnpj}</p>
             </div>
           </div>
         </div>
@@ -230,6 +228,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             <Link href={`/super-admin/companies/${company.id}/export`}>
               <Download className="h-4 w-4 mr-1 shrink-0" />
               <span className="truncate">Exportar</span>
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
+            <Link href={`/super-admin/companies/${company.id}/customers`}>
+              <Users className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">Clientes</span>
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none min-w-0 bg-transparent">
@@ -248,47 +252,41 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
-        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{company.totalCustomers.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">{company.admins} administradores</p>
-            </CardContent>
-          </Card>
-        </Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{company.totalCustomers.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{company.admins} administradores</p>
+          </CardContent>
+        </Card>
 
-        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de Dívidas</CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{company.totalDebts.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">{company.overdueDebts} em atraso</p>
-            </CardContent>
-          </Card>
-        </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Dívidas</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{company.totalDebts.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{company.overdueDebts} em atraso</p>
+          </CardContent>
+        </Card>
 
-        <Link href="/super-admin/analises" className="transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
-              <p className="text-xs text-muted-foreground">
-                R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
+            <p className="text-xs text-muted-foreground">
+              R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
+            </p>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -515,19 +513,12 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                   Gerenciar Usuários
                 </Link>
               </Button>
-              <Button asChild className="w-full bg-transparent" variant="outline">
-                <Link href={`/super-admin/companies/${company.id}/customers`}>
-                  <Users className="mr-2 h-4 w-4" />
-                  Gerenciar Clientes
-                </Link>
-              </Button>
               <Button asChild className="w-full" variant="default">
                 <Link href={`/super-admin/companies/${company.id}/customers/new`}>
                   <Users className="mr-2 h-4 w-4" />
                   Cadastrar Cliente
                 </Link>
               </Button>
-              {/* </CHANGE> */}
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/erp-integration`}>
                   <Plug className="mr-2 h-4 w-4" />

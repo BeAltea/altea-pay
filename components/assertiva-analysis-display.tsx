@@ -294,7 +294,7 @@ export function AssertivaAnalysisDisplay({ data }: AssertivaAnalysisDisplayProps
               <Eye className="h-5 w-5 text-cyan-500" />
               Últimas Consultas ({ultimasConsultas.length})
             </CardTitle>
-            <CardDescription>Empresas que consultaram recentemente</CardDescription>
+            <CardDescription>Histórico de consultas realizadas</CardDescription>
           </CardHeader>
           <CardContent>
             {ultimasConsultas.length === 0 ? (
@@ -306,8 +306,8 @@ export function AssertivaAnalysisDisplay({ data }: AssertivaAnalysisDisplayProps
               <div className="space-y-3">
                 {ultimasConsultas.map((consulta: any, index: number) => (
                   <div key={index} className="border-l-2 border-cyan-500 pl-3 space-y-1">
-                    <p className="text-sm font-medium">{consulta.consultante || "Consultante não informado"}</p>
-                    <p className="text-xs text-muted-foreground">Data: {consulta.dataOcorrencia || "N/A"}</p>
+                    <p className="text-sm font-medium">{consulta.dataOcorrencia || "N/A"}</p>
+                    <p className="text-xs text-muted-foreground">Consulta realizada</p>
                   </div>
                 ))}
               </div>

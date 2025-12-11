@@ -16,7 +16,9 @@ import {
   FileText,
   Check,
   CreditCard,
+  Handshake,
 } from "lucide-react"
+import { ExportCustomerPDFButton } from "@/components/dashboard/export-customer-pdf-button"
 
 export const dynamic = "force-dynamic"
 
@@ -64,6 +66,15 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
             Dados completos da análise de crédito do cliente
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button asChild variant="default" size="sm">
+            <Link href={`/dashboard/clientes/${cliente.id}/negotiate`}>
+              <Handshake className="h-4 w-4 mr-2" />
+              Negociar
+            </Link>
+          </Button>
+          <ExportCustomerPDFButton customerId={cliente.id} customerName={cliente.Cliente} />
         </div>
       </div>
 
@@ -300,7 +311,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
             <FileText className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
             <span className="truncate">Últimas Consultas</span>
           </CardTitle>
-          <CardDescription className="text-xs truncate">Empresas que consultaram este documento</CardDescription>
+          <CardDescription className="text-xs truncate">Histórico de consultas realizadas</CardDescription>
         </CardHeader>
         <CardContent>
           {assertiva_data?.credito?.resposta?.ultimasConsultas?.list &&
@@ -312,8 +323,8 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
                   className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 border-b pb-2 last:border-0"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-xs sm:text-sm break-words">{consulta.consultante}</p>
-                    <p className="text-xs text-muted-foreground">{consulta.dataOcorrencia}</p>
+                    <p className="text-sm sm:text-base font-medium">{consulta.dataOcorrencia}</p>
+                    <p className="text-xs text-muted-foreground">Consulta realizada</p>
                   </div>
                 </div>
               ))}
@@ -338,7 +349,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           {assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
           assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
             <div className="space-y-3 sm:space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 sm:mb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3 sm:mb-4">
                 <p className="text-xs sm:text-sm font-medium">
                   Total: {assertiva_data.credito.resposta.registrosDebitos.qtdDebitos} débito(s)
                 </p>

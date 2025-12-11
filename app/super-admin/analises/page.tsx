@@ -304,21 +304,23 @@ export default function AnalysesPage() {
     setShowDetailsDrawer(true)
   }
 
-  const exportToPDF = async (analysis: CreditAnalysis) => {
+  const exportToPDF = async (customer: any) => {
+    if (!customer) return
+
     try {
-      const response = await fetch("/api/export-analysis-pdf", {
+      const response = await fetch("/api/export-customer-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisId: analysis.id }),
+        body: JSON.stringify({ customerId: customer.id }),
       })
 
       if (!response.ok) {
-        throw new Error("Falha ao gerar PDF")
+        const error = await response.json()
+        throw new Error(error.error || "Falha ao gerar PDF")
       }
 
       const { html } = await response.json()
 
-      // Criar uma nova janela com o HTML
       const printWindow = window.open("", "_blank")
       if (!printWindow) {
         throw new Error("Popup bloqueado. Permita popups para exportar PDF.")
@@ -327,17 +329,16 @@ export default function AnalysesPage() {
       printWindow.document.write(html)
       printWindow.document.close()
 
-      // Aguardar carregamento e imprimir
       printWindow.onload = () => {
         printWindow.print()
       }
 
       toast({
         title: "PDF gerado com sucesso!",
-        description: "Use Ctrl+P ou Cmd+P para salvar como PDF",
+        description: `Relatório de ${customer.name} pronto para download`,
       })
     } catch (error: any) {
-      console.error("[v0] exportToPDF - Error:", error)
+      console.error("[v0] exportToPDF - Error:", error.message)
       toast({
         title: "Erro ao gerar PDF",
         description: error.message,
@@ -901,7 +902,7 @@ export default function AnalysesPage() {
                     <FileText className="h-5 w-5" />
                     Últimas Consultas
                   </CardTitle>
-                  <CardDescription>Empresas que consultaram este documento</CardDescription>
+                  <CardDescription>Histórico de consultas realizadas</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {selectedAnalysis.assertiva_data?.credito?.resposta?.ultimasConsultas?.list &&
@@ -912,8 +913,8 @@ export default function AnalysesPage() {
                         .map((consulta: any, idx: number) => (
                           <div key={idx} className="flex justify-between items-center border-b pb-2 last:border-0">
                             <div>
-                              <p className="font-medium text-sm">{consulta.consultante}</p>
-                              <p className="text-xs text-muted-foreground">{consulta.dataOcorrencia}</p>
+                              <p className="font-medium text-sm">{consulta.dataOcorrencia}</p>
+                              <p className="text-xs text-muted-foreground">Consulta realizada</p>
                             </div>
                           </div>
                         ))}

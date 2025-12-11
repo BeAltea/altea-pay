@@ -27,22 +27,16 @@ import { NegotiationResponseSimulator } from "@/components/user-dashboard/negoti
 
 interface Negotiation {
   id: string
-  debt_id: string
   status: "pending" | "accepted" | "rejected" | "counter_offer"
   original_amount: number
   proposed_amount: number
+  discount_amount: number
   installments: number
+  payment_method: string
+  terms: string
+  attendant_name: string
   created_at: string
   updated_at: string
-  user_message: string
-  admin_response?: string
-  debt: {
-    description: string
-    amount: number
-    customer: {
-      name: string
-    }
-  }
 }
 
 function NegotiationSkeleton() {
@@ -87,15 +81,15 @@ export default function NegotiationPage() {
   const [showResponseSimulator, setShowResponseSimulator] = useState(false)
   const [selectedNegotiation, setSelectedNegotiation] = useState<Negotiation | null>(null)
 
-  const supabase = createClient()
-
   useEffect(() => {
     fetchNegotiations()
     fetchAvailableDebts()
   }, [])
 
   const fetchNegotiations = async () => {
+    setLoading(true)
     try {
+      const supabase = createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -104,14 +98,9 @@ export default function NegotiationPage() {
       const { data: realNegotiations, error } = await supabase
         .from("agreements")
         .select(`
-          *,
-          debt:debts(
-            description,
-            amount,
-            customer:customers(name)
-          )
+          *
         `)
-        .eq("user_id", user.id)
+        .eq("customer_id", user.id)
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -121,22 +110,16 @@ export default function NegotiationPage() {
       } else {
         const formattedNegotiations = (realNegotiations || []).map((neg) => ({
           id: neg.id,
-          debt_id: neg.debt_id,
           status: neg.status,
           original_amount: Number(neg.original_amount),
-          proposed_amount: Number(neg.agreed_amount),
-          installments: neg.installments,
+          proposed_amount: Number(neg.agreed_amount || neg.original_amount),
+          discount_amount: Number(neg.discount_amount || 0),
+          installments: neg.installments || 1,
+          payment_method: neg.payment_method || "boleto",
+          terms: neg.terms || "",
+          attendant_name: neg.attendant_name || "Sistema",
           created_at: neg.created_at,
           updated_at: neg.updated_at,
-          user_message: neg.terms || "",
-          admin_response: "",
-          debt: {
-            description: neg.debt?.description || "",
-            amount: Number(neg.debt?.amount || 0),
-            customer: {
-              name: neg.debt?.customer?.name || "",
-            },
-          },
         }))
 
         setNegotiations(formattedNegotiations)
@@ -160,10 +143,10 @@ export default function NegotiationPage() {
     try {
       const {
         data: { user },
-      } = await supabase.auth.getUser()
+      } = await createClient().auth.getUser()
       if (!user) return
 
-      const { data: debts, error } = await supabase
+      const { data: debts, error } = await createClient()
         .from("debts")
         .select("*")
         .eq("user_id", user.id)
@@ -198,17 +181,29 @@ export default function NegotiationPage() {
 
   const handleExport = () => {
     const csvContent = [
-      ["Data", "Cliente", "Descrição", "Valor Original", "Valor Proposto", "Desconto", "Parcelas", "Status"],
+      [
+        "Data",
+        "Cliente",
+        "Descrição",
+        "Valor Original",
+        "Valor Proposto",
+        "Desconto",
+        "Parcelas",
+        "Status",
+        "Método de Pagamento",
+        "Atendente",
+      ],
       ...filteredNegotiations.map((negotiation) => [
         format(new Date(negotiation.created_at), "dd/MM/yyyy", { locale: ptBR }),
-        negotiation.debt.customer.name,
-        negotiation.debt.description,
+        negotiation.customer_name,
+        negotiation.description,
         negotiation.original_amount.toFixed(2),
         negotiation.proposed_amount.toFixed(2),
-        (((negotiation.original_amount - negotiation.proposed_amount) / negotiation.original_amount) * 100).toFixed(1) +
-          "%",
+        negotiation.discount_amount.toFixed(2),
         negotiation.installments + "x",
         negotiation.status,
+        negotiation.payment_method,
+        negotiation.attendant_name,
       ]),
     ]
       .map((row) => row.join(","))

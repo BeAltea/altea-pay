@@ -7,7 +7,7 @@ import Link from "next/link"
 import { Building2, DollarSign, TrendingUp, Plus, Eye, Edit, Clock } from "lucide-react"
 import { CompanyFilters } from "@/components/super-admin/company-filters"
 import { DeleteCompanyButton } from "@/components/super-admin/delete-company-button"
-import { formatCurrency, formatCompactCurrency } from "@/lib/format-currency"
+import { formatCompactCurrency } from "@/lib/format-currency"
 
 interface Company {
   id: string
@@ -124,7 +124,7 @@ async function fetchCompanies() {
         return sum + value
       }, 0)
 
-    const recoveryRate = vmaxTotalAmount > 0 ? (paidAmount / vmaxTotalAmount) * 100 : 0
+    const recoveryRate = 0 // No recovery data available yet
 
     const totalCustomers = companyVmaxData.length
     const totalDebts = companyVmaxData.filter((v) => !v.DT_Cancelamento).length
@@ -149,61 +149,58 @@ async function fetchCompanies() {
     }
   })
 
-  const totalStats = companies.reduce(
-    (acc, company) => ({
-      totalCompanies: acc.totalCompanies + 1,
-      totalCustomers: acc.totalCustomers + company.totalCustomers,
-      totalAmount: acc.totalAmount + company.totalAmount,
-      avgRecoveryRate: acc.avgRecoveryRate + company.recoveryRate,
-      avgDaysOverdue: acc.avgDaysOverdue + company.avgDaysOverdue,
-    }),
-    {
-      totalCompanies: 0,
-      totalCustomers: 0,
-      totalAmount: 0,
-      avgRecoveryRate: 0,
-      avgDaysOverdue: 0,
+  console.log("[v0] Super Admin Stats:")
+  const totalCustomersAllCompanies = companies.reduce((sum, c) => sum + c.totalCustomers, 0)
+  const totalAmountAllCompanies = companies.reduce((sum, c) => sum + c.totalAmount, 0)
+  const avgPerClient = totalCustomersAllCompanies > 0 ? totalAmountAllCompanies / totalCustomersAllCompanies : 0
+
+  const companiesWithOverdue = companies.filter((c) => c.avgDaysOverdue > 0)
+  const totalAvgDaysOverdue = companiesWithOverdue.reduce((sum, c) => sum + c.avgDaysOverdue, 0)
+  const avgDaysOverdueAll = companiesWithOverdue.length > 0 ? totalAvgDaysOverdue / companiesWithOverdue.length : 0
+
+  return {
+    companies,
+    stats: {
+      totalCompanies: companies.length,
+      totalVolume: companies.reduce((sum, c) => sum + c.totalAmount, 0),
+      avgPerClient: avgPerClient,
+      totalCustomersAllCompanies: totalCustomersAllCompanies,
+      avgDaysOverdue: Math.round(avgDaysOverdueAll),
     },
-  )
-
-  console.log(`[v0] Total Stats - totalAmount: ${totalStats.totalAmount}, totalCompanies: ${totalStats.totalCompanies}`)
-
-  return { companies, totalStats }
+  }
 }
 
 export default async function SuperAdminCompaniesPage() {
-  const { companies, totalStats } = await fetchCompanies()
+  const { companies, stats } = await fetchCompanies()
+
+  const totalCustomers = companies.reduce((sum, c) => sum + c.totalCustomers, 0)
+  const avgDebtPerCustomer = totalCustomers > 0 ? stats.totalVolume / totalCustomers : 0
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-background space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Gerenciamento de Empresas</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
-            Gerencie todas as empresas clientes da plataforma Altea Pay.
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gerenciamento de Empresas</h1>
+          <p className="text-muted-foreground">Gerencie todas as empresas clientes da plataforma Altea Pay.</p>
         </div>
-        <div className="flex space-x-3 flex-shrink-0">
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/super-admin/companies/new">
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Nova Empresa</span>
-              <span className="sm:hidden">Nova</span>
-            </Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link href="/super-admin/companies/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Empresa
+          </Link>
+        </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Empresas</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStats.totalCompanies}</div>
+            <div className="text-2xl font-bold">{stats.totalCompanies}</div>
             <p className="text-xs text-muted-foreground">Todas as empresas</p>
           </CardContent>
         </Card>
@@ -214,21 +211,19 @@ export default async function SuperAdminCompaniesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalStats.totalAmount)}</div>
+            <div className="text-2xl font-bold">{formatCompactCurrency(stats.totalVolume)}</div>
             <p className="text-xs text-muted-foreground">Em cobrança</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa Média</CardTitle>
+            <CardTitle className="text-sm font-medium">Média por Cliente</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {(totalStats.avgRecoveryRate / totalStats.totalCompanies).toFixed(1)}%
-            </div>
-            <p className="text-xs text-muted-foreground">Recuperação</p>
+            <div className="text-2xl font-bold">{formatCompactCurrency(stats.avgPerClient)}</div>
+            <p className="text-xs text-muted-foreground">{stats.totalCustomersAllCompanies} clientes totais</p>
           </CardContent>
         </Card>
 
@@ -238,9 +233,7 @@ export default async function SuperAdminCompaniesPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round(totalStats.avgDaysOverdue / totalStats.totalCompanies)}
-            </div>
+            <div className="text-2xl font-bold">{stats.avgDaysOverdue}</div>
             <p className="text-xs text-muted-foreground">Média geral</p>
           </CardContent>
         </Card>
