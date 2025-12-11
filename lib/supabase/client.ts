@@ -2,7 +2,6 @@ import { createBrowserClient as createSupabaseBrowserClient } from "@supabase/ss
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 let clientInstance: SupabaseClient | null = null
-let isInitializing = false
 
 export function createClient() {
   // Return existing instance if already created
@@ -10,45 +9,34 @@ export function createClient() {
     return clientInstance
   }
 
-  // Prevent multiple simultaneous initializations
-  if (isInitializing) {
-    return null as any // Will retry on next call
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables. Please check your configuration.")
   }
 
-  isInitializing = true
+  // Extract subdomain for unique storage key
+  const subdomain = supabaseUrl.split("//")[1]?.split(".")[0] || "supabase"
 
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error("Missing Supabase environment variables. Please check your configuration.")
-    }
-
-    // Extract subdomain for unique storage key
-    const subdomain = supabaseUrl.split("//")[1]?.split(".")[0] || "supabase"
-
-    // Create new instance only if it doesn't exist
-    clientInstance = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: "pkce",
-        storage: typeof window !== "undefined" ? window.localStorage : undefined,
-        storageKey: `sb-${subdomain}-auth-token`,
+  // Create new instance only if it doesn't exist
+  clientInstance = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: "pkce",
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
+      storageKey: `sb-${subdomain}-auth-token`,
+    },
+    global: {
+      headers: {
+        "X-Client-Info": "cobrancaauto-web",
       },
-      global: {
-        headers: {
-          "X-Client-Info": "cobrancaauto-web",
-        },
-      },
-    })
+    },
+  })
 
-    return clientInstance
-  } finally {
-    isInitializing = false
-  }
+  return clientInstance
 }
 
 export function createBrowserClient() {
@@ -58,5 +46,4 @@ export function createBrowserClient() {
 // Reset function for testing or hot reload
 export function resetClient() {
   clientInstance = null
-  isInitializing = false
 }

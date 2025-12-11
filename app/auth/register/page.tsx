@@ -90,28 +90,28 @@ export default function RegisterPage() {
 
       const supabase = createClient()
       const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
+      const formattedCpfCnpj = cpfCnpj
 
       console.log("[v0] 📋 Dados do registro:", {
         email,
-        cpf_cnpj: cleanCpfCnpj,
+        cpf_cnpj_clean: cleanCpfCnpj,
+        cpf_cnpj_formatted: formattedCpfCnpj,
         person_type: personType,
         phone,
       })
 
       console.log("[v0] 🔍 PASSO 1: Buscando na tabela companies...")
 
-      const companiesResponse = await fetch("/api/check-company", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, cnpj: cleanCpfCnpj }),
-      })
-
-      const { company: foundCompany, error: companiesError } = await companiesResponse.json()
+      const { data: foundCompany, error: companyError } = await supabase
+        .from("companies")
+        .select("*")
+        .or(`cnpj.eq.${cleanCpfCnpj},cnpj.eq.${formattedCpfCnpj},email.eq.${email}`)
+        .maybeSingle()
 
       console.log("[v0] 📊 Resultado da busca companies:", {
         encontrou: !!foundCompany,
         empresa_nome: foundCompany?.name,
-        tem_erro: !!companiesError,
+        tem_erro: !!companyError,
       })
 
       let role = "user"
@@ -132,55 +132,38 @@ export default function RegisterPage() {
           empresa_id: companyId,
         })
       } else {
-        // Não é admin, vamos buscar nas tabelas de clientes
-        console.log("[v0] 🔍 PASSO 2: Buscando cliente nas tabelas de empresas...")
+        console.log("[v0] 🔍 PASSO 2: Buscando cliente em TODAS as tabelas do banco...")
 
-        // Buscar todas as empresas
-        const { data: allCompanies, error: companiesListError } = await supabase
-          .from("companies")
-          .select("id, name, customer_table_name")
-          .not("customer_table_name", "is", null)
+        try {
+          const response = await fetch("/api/find-in-all-tables", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cpfCnpj: formattedCpfCnpj }),
+          })
 
-        console.log("[v0] 📋 Empresas encontradas:", allCompanies?.length || 0)
+          const searchResult = await response.json()
 
-        if (allCompanies && allCompanies.length > 0) {
-          // Buscar o cliente em cada tabela de empresa
-          for (const company of allCompanies) {
-            if (!company.customer_table_name) continue
-
-            console.log(`[v0] 🔍 Buscando em ${company.customer_table_name}...`)
-
-            const { data: customerData, error: customerError } = await supabase
-              .from(company.customer_table_name)
-              .select("*")
-              .or(`CPF/CNPJ.eq.${cleanCpfCnpj},Email.eq.${email}`)
-              .single()
-
-            if (customerData && !customerError) {
-              foundInCustomerTable = {
-                company_id: company.id,
-                company_name: company.name,
-                table_name: company.customer_table_name,
-                customer_data: customerData,
-              }
-
-              console.log("[v0] ✅ Cliente encontrado!", {
-                empresa: company.name,
-                tabela: company.customer_table_name,
-                nome_cliente: customerData.Cliente,
-              })
-
-              break
+          if (searchResult.found) {
+            foundInCustomerTable = {
+              company_id: searchResult.company_id,
+              company_name: searchResult.company_name,
+              table_name: searchResult.table,
+              customer_data: searchResult.data,
             }
+
+            companyId = searchResult.company_id
+            detectedCompanyName = searchResult.company_name
+
+            console.log("[v0] 🎉 CLIENTE ENCONTRADO!", {
+              empresa: detectedCompanyName,
+              tabela: searchResult.table,
+              coluna: searchResult.column_used,
+            })
+          } else {
+            console.log("[v0] ℹ️ Cliente não encontrado em nenhuma tabela do banco")
           }
-        }
-
-        if (foundInCustomerTable) {
-          // Cliente encontrado em alguma empresa
-          companyId = foundInCustomerTable.company_id
-          detectedCompanyName = foundInCustomerTable.company_name
-
-          console.log("[v0] 🎉 CLIENTE ENCONTRADO NA EMPRESA:", detectedCompanyName)
+        } catch (apiError) {
+          console.error("[v0] ❌ Erro ao buscar em todas as tabelas:", apiError)
         }
       }
 
@@ -200,11 +183,11 @@ export default function RegisterPage() {
           emailRedirectTo:
             process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
           data: {
-            full_name: fullName,
+            full_name: fullName.trim(),
             company_name: detectedCompanyName,
             company_id: companyId,
             role: role,
-            cpf_cnpj: cleanCpfCnpj,
+            cpf_cnpj: formattedCpfCnpj,
             person_type: personType,
             requires_email_verification: requiresEmailVerification,
             phone: phone,
@@ -231,10 +214,11 @@ export default function RegisterPage() {
         const { error: profileError } = await supabase
           .from("profiles")
           .update({
+            full_name: fullName.trim(),
             company_id: companyId,
             role: role,
             phone: phone,
-            cpf_cnpj: cleanCpfCnpj,
+            cpf_cnpj: formattedCpfCnpj,
           })
           .eq("id", data.user.id)
 

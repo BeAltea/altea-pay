@@ -19,15 +19,14 @@ import { useState, useEffect, useMemo, useCallback, memo } from "react"
 import { X } from "lucide-react"
 import { Home, CreditCard, History, MessageSquare, BarChart3, User, LogOut, ChevronDown } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { Badge } from "@/components/ui/badge"
 
 const navigation = [
-  { name: "Início", href: "/user-dashboard", icon: Home, badge: null },
-  { name: "Minhas Dívidas", href: "/user-dashboard/debts", icon: CreditCard, badge: "5" },
-  { name: "Histórico", href: "/user-dashboard/history", icon: History, badge: null },
-  { name: "Negociação", href: "/user-dashboard/negotiation", icon: MessageSquare, badge: "2" },
-  { name: "Análise de Propensão", href: "/user-dashboard/propensity", icon: BarChart3, badge: null },
-  { name: "Perfil", href: "/user-dashboard/profile", icon: User, badge: null },
+  { name: "Início", href: "/user-dashboard", icon: Home },
+  { name: "Minhas Dívidas", href: "/user-dashboard/debts", icon: CreditCard },
+  { name: "Histórico", href: "/user-dashboard/history", icon: History },
+  { name: "Negociação", href: "/user-dashboard/negotiation", icon: MessageSquare },
+  { name: "Análise de Propensão", href: "/user-dashboard/propensity", icon: BarChart3 },
+  { name: "Perfil", href: "/user-dashboard/profile", icon: User },
 ]
 
 interface UserSidebarProps {
@@ -69,19 +68,6 @@ const NavigationItem = memo(
           )}
         />
         <span className="truncate">{item.name}</span>
-        {item.badge && (
-          <Badge
-            variant={isActive ? "secondary" : "outline"}
-            className={cn(
-              "ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs transition-colors duration-200",
-              isActive
-                ? "bg-altea-navy/10 text-altea-navy border-altea-gold/30 dark:bg-altea-gold/20 dark:text-altea-gold"
-                : "bg-muted text-muted-foreground border-border group-hover:bg-accent group-hover:text-accent-foreground",
-            )}
-          >
-            {item.badge}
-          </Badge>
-        )}
       </Button>
     </Link>
   ),

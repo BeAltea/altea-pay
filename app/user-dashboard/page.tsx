@@ -107,6 +107,9 @@ export default async function UserDashboardPage() {
     if (profile?.cpf_cnpj) {
       console.log("[v0] UserDashboard - Fetching debts from all company tables for CPF/CNPJ:", profile.cpf_cnpj)
 
+      const cleanCpfCnpj = profile.cpf_cnpj.replace(/\D/g, "")
+      const formattedCpfCnpj = profile.cpf_cnpj
+
       // Buscar todas as empresas e suas tabelas
       const { data: companies, error: companiesError } = await supabase
         .from("companies")
@@ -124,10 +127,11 @@ export default async function UserDashboardPage() {
 
           try {
             console.log("[v0] UserDashboard - Searching in table:", company.customer_table_name)
+
             const { data: companyDebts, error: companyDebtsError } = await supabase
               .from(company.customer_table_name)
               .select("*")
-              .eq("CPF/CNPJ", profile.cpf_cnpj)
+              .or(`CPF/CNPJ.eq.${cleanCpfCnpj},CPF/CNPJ.eq.${formattedCpfCnpj}`)
 
             if (companyDebtsError) {
               console.error(
