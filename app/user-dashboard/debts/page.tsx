@@ -68,22 +68,30 @@ export default function UserDebtsPage() {
       } = await supabase.auth.getUser()
       if (!user) return
 
-      // Buscar dívidas reais do usuário
-      const { data: realDebts, error } = await supabase
-        .from("debts")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("due_date", { ascending: false })
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
 
-      if (error) {
-        console.error("Error fetching debts:", error)
+      if (!profile || !profile.cpf_cnpj) {
         setDebts([])
         setFilteredDebts([])
-      } else {
-        console.log("[v0] UserDebts - Using REAL data:", realDebts?.length || 0, "debts")
-        setDebts(realDebts || [])
-        setFilteredDebts(realDebts || [])
+        setLoading(false)
+        return
       }
+
+      const response = await fetch("/api/get-user-debts-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, cpfCnpj: profile.cpf_cnpj }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      const realDebts = data.debts || []
+      setDebts(realDebts)
+      setFilteredDebts(realDebts)
     } catch (error) {
       console.error("Error fetching debts:", error)
       toast({

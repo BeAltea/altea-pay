@@ -44,36 +44,49 @@ export function UserHeader({ user }: UserHeaderProps) {
   const { toast } = useToast()
   const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileUserSidebar()
 
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      title: "Pagamento Processado",
-      message: "Seu pagamento de R$ 1.500,00 foi processado com sucesso",
-      type: "success",
-      timestamp: "2024-01-15T10:30:00Z",
-      read: false,
-    },
-    {
-      id: "2",
-      title: "Nova Proposta de Negociação",
-      message: "Sua proposta de R$ 850,00 está sendo analisada",
-      type: "info",
-      timestamp: "2024-01-14T14:20:00Z",
-      read: false,
-    },
-    {
-      id: "3",
-      title: "Dívida Vencendo",
-      message: "Você tem uma dívida vencendo em 3 dias",
-      type: "warning",
-      timestamp: "2024-01-13T09:15:00Z",
-      read: true,
-    },
-  ])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setMounted(true)
-  }, [])
+    if (user?.id) {
+      fetchNotifications()
+    }
+  }, [user?.id])
+
+  const fetchNotifications = async () => {
+    if (!user?.id) return
+
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10)
+
+      if (error) {
+        console.error("Error fetching notifications:", error)
+        return
+      }
+
+      const formattedNotifications: Notification[] = (data || []).map((notif) => ({
+        id: notif.id,
+        title: notif.title || "Nova notificação",
+        message: notif.description || "",
+        type: notif.type || "info",
+        timestamp: notif.created_at,
+        read: notif.read || false,
+      }))
+
+      setNotifications(formattedNotifications)
+    } catch (error) {
+      console.error("Exception fetching notifications:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

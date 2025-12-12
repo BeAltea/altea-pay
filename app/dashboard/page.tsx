@@ -12,17 +12,12 @@ export const dynamic = "force-dynamic"
 export default async function DashboardPage() {
   const supabase = await createClient()
 
-  console.log("[v0] Dashboard: Iniciando carregamento da página")
-
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Dashboard: Usuário obtido", { user: user?.id, error: userError })
-
   if (!user) {
-    console.log("[v0] Dashboard: Usuário não encontrado, retornando null")
     return null
   }
 
@@ -32,15 +27,11 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single()
 
-  console.log("[v0] Dashboard: Perfil obtido", { profile, error: profileError })
-
   if (!profile) {
-    console.log("[v0] Dashboard: Perfil não encontrado, retornando null")
     return null
   }
 
   if (!profile.company_id) {
-    console.log("[v0] Dashboard: No company_id found, showing warning")
     return (
       <div className="p-6">
         <Alert variant="destructive">
@@ -60,20 +51,12 @@ export default async function DashboardPage() {
     .eq("id", profile.company_id)
     .single()
 
-  console.log("[v0] Dashboard: Empresa obtida", { company, error: companyError })
   companyData = company
 
   const companyId = profile.company_id
 
   const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
 
-  if (vmaxError) {
-    console.error("[v0] ❌ Erro ao buscar VMAX:", vmaxError)
-  } else {
-    console.log("[v0] 📊 VMAX total records in database:", allVmaxRecords?.length || 0)
-  }
-
-  // Filtrar localmente por company_id (igual ao super-admin)
   const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
     (v: any) =>
       String(v.id_company || "")
@@ -81,16 +64,12 @@ export default async function DashboardPage() {
         .trim() === String(companyId).toLowerCase().trim(),
   )
 
-  console.log(`[v0] ✅ VMAX clientes da empresa ${companyData?.name}: ${vmaxCustomersFiltered.length}`)
-
-  // Buscar dados complementares da integration_logs para os IDs dos clientes VMAX
   let integrationLogsData = []
   if (vmaxCustomersFiltered.length > 0) {
     const vmaxIds = vmaxCustomersFiltered.map((v: any) => v.id).filter(Boolean)
     const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
 
     integrationLogsData = logsData || []
-    console.log(`[v0] 📊 Integration logs encontrados: ${integrationLogsData.length}`)
   }
 
   const { data: customers, error: customersError } = await supabase
@@ -99,13 +78,6 @@ export default async function DashboardPage() {
     .eq("company_id", companyId)
 
   const totalCustomers = (customers?.length || 0) + vmaxCustomersFiltered.length
-
-  console.log("[v0] Dashboard: Clientes obtidos", {
-    customersTable: customers?.length,
-    vmaxTable: vmaxCustomersFiltered.length,
-    total: totalCustomers,
-    error: customersError,
-  })
 
   const { data: debts, error: debtsError } = await supabase
     .from("debts")
@@ -126,13 +98,6 @@ export default async function DashboardPage() {
 
   const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
 
-  console.log("[v0] Dashboard: Dívidas obtidas", {
-    debtsTable: debts?.length,
-    vmaxTable: vmaxDebtsFormatted.length,
-    total: allDebts.length,
-    error: debtsError,
-  })
-
   const stats = {
     totalCustomers,
     totalDebts: allDebts.length,
@@ -142,8 +107,7 @@ export default async function DashboardPage() {
 
   const criticalDebts = vmaxDebtsFormatted.filter((d) => d.diasInad > 90).length
 
-  // Since we can't filter by company, we'll just count pending scheduled actions from debts
-  const scheduledCount = 0 // Placeholder - would need to join through debt_id to filter by company
+  const scheduledCount = 0
 
   const { data: activeDebts } = await supabase
     .from("debts")
@@ -152,13 +116,6 @@ export default async function DashboardPage() {
     .eq("status", "in_collection")
 
   const agreementsCount = activeDebts?.length || 0
-
-  console.log("[v0] Dashboard: Estatísticas finais", stats)
-
-  const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
-  const companyName = companyData?.name
-
-  console.log("[v0] Dashboard: Renderizando página", { displayName, companyName })
 
   const { data: collectionStats } = await supabase
     .from("VMAX")
@@ -171,9 +128,11 @@ export default async function DashboardPage() {
   ).length
   const rejectedCount = (collectionStats || []).filter((c) => c.approval_status === "REJEITA").length
 
+  const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
+  const companyName = companyData?.name
+
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
-      {/* Welcome Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
@@ -190,7 +149,6 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
@@ -239,7 +197,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Collection Automation Status Card */}
       <Card>
         <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
           <CardTitle className="text-base sm:text-lg lg:text-xl">Status de Cobrança Automática</CardTitle>
@@ -290,9 +247,7 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        {/* Quick Actions */}
         <Card className="xl:col-span-1">
           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-base sm:text-lg lg:text-xl">Ações Rápidas</CardTitle>
@@ -374,7 +329,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Pending Actions */}
       <Card>
         <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">

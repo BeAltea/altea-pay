@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { Eye, Sparkles, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Eye, Sparkles, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Handshake } from "lucide-react"
 
 interface Cliente {
   id: string
@@ -275,11 +275,17 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                 </div>
               )}
 
-              <div className="mt-4 pt-4 border-t">
-                <Button asChild variant="outline" size="sm" className="w-full gap-2 bg-transparent">
+              <div className="mt-4 pt-4 border-t flex gap-2">
+                <Button asChild variant="outline" size="sm" className="flex-1 gap-2 bg-transparent">
                   <Link href={`/dashboard/clientes/${cliente.id}`} prefetch={true}>
                     <Eye className="h-4 w-4" />
                     Ver Detalhes
+                  </Link>
+                </Button>
+                <Button asChild variant="default" size="sm" className="flex-1 gap-2">
+                  <Link href={`/dashboard/clientes/${cliente.id}/negotiate`} prefetch={true}>
+                    <Handshake className="h-4 w-4" />
+                    Negociar
                   </Link>
                 </Button>
               </div>

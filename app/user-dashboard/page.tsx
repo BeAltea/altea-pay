@@ -51,19 +51,14 @@ function DashboardSkeleton() {
 }
 
 export default async function UserDashboardPage() {
-  console.log("[v0] UserDashboard - Starting page render")
-
   try {
     const supabase = await createClient()
-    console.log("[v0] UserDashboard - Supabase client created")
 
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    console.log("[v0] UserDashboard - User data:", user?.id, user?.email)
 
     if (!user) {
-      console.log("[v0] UserDashboard - No user found, redirecting to login")
       redirect("/auth/login")
     }
 
@@ -73,130 +68,132 @@ export default async function UserDashboardPage() {
         .from("profiles")
         .select("*")
         .eq("id", user.id)
-        .single()
+        .maybeSingle()
 
       if (profileError) {
-        console.error("[v0] UserDashboard - Error fetching profile:", profileError)
+        console.error("Error fetching profile:", profileError)
         profile = {
           full_name: user.email?.split("@")[0] || "Usuário",
           email: user.email,
         }
       } else {
         profile = profileData
-        console.log("[v0] UserDashboard - Profile fetched:", profile.full_name)
       }
     } catch (error) {
-      console.error("[v0] UserDashboard - Exception fetching profile:", error)
+      console.error("Exception fetching profile:", error)
       profile = {
         full_name: user.email?.split("@")[0] || "Usuário",
         email: user.email,
       }
     }
 
-    console.log("[v0] UserDashboard - Fetching real debts for user:", user.id)
+    const allDebts: any[] = []
 
-    const { data: debts, error: debtsError } = await supabase
-      .from("debts")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("due_date", { ascending: false })
-
-    console.log("[v0] UserDashboard - Real debts fetched:", debts?.length || 0, "Error:", debtsError)
-
-    const vmaxDebts: any[] = []
     if (profile?.cpf_cnpj) {
-      console.log("[v0] UserDashboard - Fetching debts from all company tables for CPF/CNPJ:", profile.cpf_cnpj)
+      const { createServiceClient } = await import("@/lib/supabase/service")
+      const serviceSupabase = createServiceClient()
 
       const cleanCpfCnpj = profile.cpf_cnpj.replace(/\D/g, "")
       const formattedCpfCnpj = profile.cpf_cnpj
 
-      // Buscar todas as empresas e suas tabelas
-      const { data: companies, error: companiesError } = await supabase
-        .from("companies")
-        .select("id, name, customer_table_name")
-        .not("customer_table_name", "is", null)
+      try {
+        const { data: allRecords, error: fetchError } = await serviceSupabase.from("VMAX").select("*").limit(1000)
 
-      if (companiesError) {
-        console.error("[v0] UserDashboard - Error fetching companies:", companiesError)
-      } else {
-        console.log("[v0] UserDashboard - Found companies with tables:", companies?.length || 0)
+        if (!fetchError && allRecords) {
+          const matchingRecords = (allRecords || []).filter((record: any) => {
+            const possibleColumns = ["CPF/CNPJ", "cpf_cnpj", "cpf", "cnpj", "document"]
 
-        // Buscar em cada tabela de empresa
-        for (const company of companies || []) {
-          if (!company.customer_table_name) continue
+            for (const col of possibleColumns) {
+              if (!record[col]) continue
 
-          try {
-            console.log("[v0] UserDashboard - Searching in table:", company.customer_table_name)
+              const value = String(record[col])
+              const cleanValue = value.replace(/\D/g, "")
 
-            const { data: companyDebts, error: companyDebtsError } = await supabase
-              .from(company.customer_table_name)
-              .select("*")
-              .or(`CPF/CNPJ.eq.${cleanCpfCnpj},CPF/CNPJ.eq.${formattedCpfCnpj}`)
+              if (cleanValue === cleanCpfCnpj || value === formattedCpfCnpj) {
+                return true
+              }
+            }
+            return false
+          })
 
-            if (companyDebtsError) {
-              console.error(
-                `[v0] UserDashboard - Error fetching from ${company.customer_table_name}:`,
-                companyDebtsError,
-              )
-              continue
+          if (matchingRecords.length > 0) {
+            let companyId = profile.company_id
+            let companyName = "VMAX"
+
+            const { data: vmaxCompany } = await serviceSupabase
+              .from("companies")
+              .select("id, name")
+              .eq("name", "VMAX")
+              .single()
+
+            if (vmaxCompany) {
+              companyId = vmaxCompany.id
+              companyName = vmaxCompany.name
             }
 
-            console.log(
-              `[v0] UserDashboard - Found ${companyDebts?.length || 0} debts in ${company.customer_table_name}`,
-            )
+            const formattedDebts = matchingRecords.map((debt) => {
+              let amount = 0
+              if (debt.Vencido) {
+                const vencidoStr = String(debt.Vencido)
+                const cleanValue = vencidoStr
+                  .replace(/R\$/g, "")
+                  .replace(/\s/g, "")
+                  .replace(/\./g, "")
+                  .replace(",", ".")
+                amount = Number.parseFloat(cleanValue) || 0
+              } else if (debt.amount) {
+                amount = Number.parseFloat(debt.amount) || 0
+              }
 
-            // Converter dívidas da empresa para o formato padrão
-            const formattedDebts = (companyDebts || []).map((debt) => {
-              const amount = Number.parseFloat(debt.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
-              const dueDate = debt.Primeira_Vencida
-              const daysOverdue = Number.parseInt(debt["Dias_Inad."] || "0")
+              let daysOverdue = 0
+              if (debt.Dias_Inad) {
+                daysOverdue = Number.parseInt(String(debt.Dias_Inad).replace(/\D/g, "")) || 0
+              } else if (debt.days_overdue) {
+                daysOverdue = debt.days_overdue
+              }
+
+              const dueDate = debt.Primeira_Vencida || debt.due_date || new Date().toISOString()
 
               return {
-                id: debt.id,
+                id: debt.id || `VMAX-${Math.random()}`,
                 user_id: user.id,
                 customer_id: null,
                 amount: amount,
                 due_date: dueDate,
                 status: daysOverdue > 0 ? "overdue" : "open",
-                description: `Fatura - ${debt.Cliente}`,
+                description: `Fatura - ${debt.Cliente || debt.name || "Sem descrição"}`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 propensity_payment_score: 0,
                 propensity_loan_score: 0,
                 classification: daysOverdue > 90 ? "high_risk" : daysOverdue > 30 ? "medium_risk" : "low_risk",
-                source_system: company.customer_table_name,
+                source_system: "VMAX",
                 external_id: debt.id,
-                company_id: company.id,
-                company_name: company.name,
+                company_id: companyId,
+                company_name: companyName,
+                days_overdue: daysOverdue,
               }
             })
 
-            vmaxDebts.push(...formattedDebts)
-          } catch (error) {
-            console.error(`[v0] UserDashboard - Exception fetching from ${company.customer_table_name}:`, error)
+            allDebts.push(...formattedDebts)
           }
         }
+      } catch (error) {
+        console.error("Error searching VMAX:", error)
       }
     }
 
-    const allDebts = [...(debts || []), ...vmaxDebts]
-    console.log("[v0] UserDashboard - Total debts (all sources):", allDebts.length)
-
-    const { data: payments, error: paymentsError } = await supabase
+    const { data: payments } = await supabase
       .from("payments")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
-    console.log("[v0] UserDashboard - Real payments fetched:", payments?.length || 0, "Error:", paymentsError)
-
-    const { data: agreements, error: agreementsError } = await supabase
+    const { data: agreements } = await supabase
       .from("agreements")
       .select("*")
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false })
-
-    console.log("[v0] UserDashboard - Real agreements fetched:", agreements?.length || 0, "Error:", agreementsError)
 
     const getOpenDebts = (debts: any[]) =>
       debts?.filter((debt) => ["open", "overdue", "in_collection"].includes(debt.status)) || []
@@ -494,7 +491,7 @@ export default async function UserDashboardPage() {
       </Suspense>
     )
   } catch (error) {
-    console.error("[v0] UserDashboard - Error:", error)
+    console.error("Error:", error)
     throw error
   }
 }

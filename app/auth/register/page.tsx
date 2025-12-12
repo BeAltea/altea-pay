@@ -211,21 +211,39 @@ export default function RegisterPage() {
       if (data.user?.id) {
         console.log("[v0] 💾 Salvando dados no perfil do usuário...")
 
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            full_name: fullName.trim(),
-            company_id: companyId,
-            role: role,
-            phone: phone,
-            cpf_cnpj: formattedCpfCnpj,
+        try {
+          const saveProfileResponse = await fetch("/api/save-profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: data.user.id,
+              profileData: {
+                email: email,
+                full_name: fullName.trim(),
+                company_id: companyId,
+                company_name: detectedCompanyName,
+                role: role,
+                phone: phone,
+                cpf_cnpj: formattedCpfCnpj,
+              },
+            }),
           })
-          .eq("id", data.user.id)
 
-        if (profileError) {
-          console.error("[v0] ❌ Erro ao atualizar perfil:", profileError)
-        } else {
-          console.log("[v0] ✅ Perfil atualizado com sucesso")
+          const saveProfileResult = await saveProfileResponse.json()
+
+          if (!saveProfileResponse.ok || saveProfileResult.error) {
+            console.error("[v0] ❌ Erro ao atualizar perfil:", saveProfileResult.error)
+          } else {
+            console.log("[v0] ✅ Perfil atualizado com sucesso com todos os dados:", {
+              full_name: fullName.trim(),
+              company_id: companyId,
+              company_name: detectedCompanyName,
+              phone: phone,
+              cpf_cnpj: formattedCpfCnpj,
+            })
+          }
+        } catch (profileError) {
+          console.error("[v0] ❌ Erro ao chamar API save-profile:", profileError)
         }
       }
 
