@@ -39,6 +39,9 @@ export async function createNegotiation(formData: FormData) {
     const terms = formData.get("terms") as string
     const attendantName = formData.get("attendantName") as string
 
+    const discountPercentage = originalAmount > 0 ? (discountAmount / originalAmount) * 100 : 0
+    const installmentAmount = installments > 0 ? agreedAmount / installments : agreedAmount
+
     // Use service client to bypass RLS
     const serviceClient = createServiceClient()
 
@@ -171,6 +174,8 @@ export async function createNegotiation(formData: FormData) {
         original_amount: originalAmount,
         agreed_amount: agreedAmount,
         discount_amount: discountAmount,
+        discount_percentage: discountPercentage,
+        installment_amount: installmentAmount,
         installments: installments,
         due_date: dueDate,
         terms: terms,
@@ -185,13 +190,12 @@ export async function createNegotiation(formData: FormData) {
       return { success: false, error: `Erro ao criar negociação: ${agreementError.message}` }
     }
 
-    const installmentValue = agreedAmount / installments
     const { error: notificationError } = await serviceClient.from("notifications").insert({
       user_id: customerUserId,
       company_id: profile.company_id,
       type: "negotiation",
       title: "Nova Proposta de Acordo",
-      description: `Você recebeu uma proposta de acordo no valor de R$ ${agreedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em ${installments}x de R$ ${installmentValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      description: `Você recebeu uma proposta de acordo no valor de R$ ${agreedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em ${installments}x de R$ ${installmentAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
       read: false,
     })
 

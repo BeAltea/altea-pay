@@ -20,31 +20,36 @@ import { useToast } from "@/hooks/use-toast"
 interface NegotiationCardProps {
   negotiation: {
     id: string
-    proposed_amount: string
-    proposed_installments: number
+    original_amount: number
+    proposed_amount: number
+    discount_amount: number
+    discount_percentage: number
+    installments: number
+    installment_amount: number
     status: string
-    message?: string
-    response_message?: string
+    payment_method: string
+    terms: string
+    attendant_name: string
+    company_name: string
+    customer_name: string
+    debt_description: string
+    due_date: string | null
     created_at: string
     updated_at: string
-    debts?: {
-      id: string
-      description: string
-      amount: string
-      due_date: string
-      status: string
-    }
+    message?: string
+    response_message?: string
   }
+  onSimulateResponse?: () => void
 }
 
-export function NegotiationCard({ negotiation }: NegotiationCardProps) {
+export function NegotiationCard({ negotiation, onSimulateResponse }: NegotiationCardProps) {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const { toast } = useToast()
 
-  const originalAmount = Number(negotiation.debts?.amount || 0)
-  const proposedAmount = Number(negotiation.proposed_amount)
-  const savings = originalAmount - proposedAmount
-  const savingsPercentage = originalAmount > 0 ? (savings / originalAmount) * 100 : 0
+  const originalAmount = negotiation.original_amount
+  const proposedAmount = negotiation.proposed_amount
+  const savings = negotiation.discount_amount
+  const savingsPercentage = negotiation.discount_percentage
 
   const getStatusBadge = () => {
     switch (negotiation.status) {
@@ -125,7 +130,7 @@ export function NegotiationCard({ negotiation }: NegotiationCardProps) {
             {getStatusIcon()}
             <div>
               <CardTitle className="text-lg">
-                {negotiation.debts?.description || `Negociação #${negotiation.id.slice(-8)}`}
+                {negotiation.debt_description || `Negociação #${negotiation.id.slice(-8)}`}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
                 Criada em {new Date(negotiation.created_at).toLocaleDateString("pt-BR")}
@@ -163,7 +168,10 @@ export function NegotiationCard({ negotiation }: NegotiationCardProps) {
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Parcelas</p>
-              <p className="text-lg font-bold">{negotiation.proposed_installments}x</p>
+              <p className="text-lg font-bold">
+                {negotiation.installments}x de R${" "}
+                {negotiation.installment_amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </p>
             </div>
           </div>
         </div>
@@ -257,16 +265,27 @@ export function NegotiationCard({ negotiation }: NegotiationCardProps) {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    <h4 className="font-medium mb-2">Informações do Cliente</h4>
+                    <p className="text-sm">Nome: {negotiation.customer_name}</p>
+                    <p className="text-sm">Documento: {negotiation.debts?.cpf_cnpj || "N/A"}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-medium mb-2">Informações da Empresa</h4>
+                    <p className="text-sm">Empresa: {negotiation.company_name}</p>
+                    <p className="text-sm">Atendente: {negotiation.attendant_name}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
                     <h4 className="font-medium mb-2">Informações da Dívida</h4>
-                    <p className="text-sm text-muted-foreground">{negotiation.debts?.description}</p>
+                    <p className="text-sm text-muted-foreground">{negotiation.debt_description}</p>
                     <p className="text-sm">
                       Valor original: R$ {originalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-sm">
                       Vencimento:{" "}
-                      {negotiation.debts?.due_date
-                        ? new Date(negotiation.debts.due_date).toLocaleDateString("pt-BR")
-                        : "N/A"}
+                      {negotiation.due_date ? new Date(negotiation.due_date).toLocaleDateString("pt-BR") : "N/A"}
                     </p>
                   </div>
                   <div>
@@ -274,19 +293,24 @@ export function NegotiationCard({ negotiation }: NegotiationCardProps) {
                     <p className="text-sm">
                       Valor proposto: R$ {proposedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
-                    <p className="text-sm">Parcelas: {negotiation.proposed_installments}x</p>
-                    <p className="text-sm text-green-600">
-                      Economia: R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} (
-                      {savingsPercentage.toFixed(1)}%)
+                    <p className="text-sm">Parcelas: {negotiation.installments}x</p>
+                    <p className="text-sm">
+                      Valor da Parcela: R${" "}
+                      {negotiation.installment_amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
+                    <p className="text-sm">Desconto: {savingsPercentage.toFixed(1)}%</p>
+                    <p className="text-sm text-green-600">
+                      Economia: R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-sm">Método: {negotiation.payment_method}</p>
                   </div>
                 </div>
 
                 <div>
                   <h4 className="font-medium mb-2">Histórico</h4>
                   <div className="space-y-2 text-sm">
-                    <p>Criada em: {new Date(negotiation.created_at).toLocaleString("pt-BR")}</p>
-                    <p>Última atualização: {new Date(negotiation.updated_at).toLocaleString("pt-BR")}</p>
+                    <p>Criada em: {new Date(negotiation.created_at).toLocaleDateString("pt-BR")}</p>
+                    <p>Última atualização: {new Date(negotiation.updated_at).toLocaleDateString("pt-BR")}</p>
                     <p>Status atual: {getStatusBadge()}</p>
                   </div>
                 </div>

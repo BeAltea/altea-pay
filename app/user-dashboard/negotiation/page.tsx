@@ -31,12 +31,18 @@ interface Negotiation {
   original_amount: number
   proposed_amount: number
   discount_amount: number
+  discount_percentage: number
   installments: number
+  installment_amount: number
   payment_method: string
   terms: string
   attendant_name: string
+  company_name: string
+  customer_name: string
+  due_date: string | null
   created_at: string
   updated_at: string
+  debt_description: string
 }
 
 function NegotiationSkeleton() {
@@ -97,10 +103,8 @@ export default function NegotiationPage() {
 
       const { data: realNegotiations, error } = await supabase
         .from("agreements")
-        .select(`
-          *
-        `)
-        .eq("customer_id", user.id)
+        .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -108,22 +112,66 @@ export default function NegotiationPage() {
         setNegotiations([])
         setFilteredNegotiations([])
       } else {
-        const formattedNegotiations = (realNegotiations || []).map((neg) => ({
-          id: neg.id,
-          status: neg.status,
-          original_amount: Number(neg.original_amount),
-          proposed_amount: Number(neg.agreed_amount || neg.original_amount),
-          discount_amount: Number(neg.discount_amount || 0),
-          installments: neg.installments || 1,
-          payment_method: neg.payment_method || "boleto",
-          terms: neg.terms || "",
-          attendant_name: neg.attendant_name || "Sistema",
-          created_at: neg.created_at,
-          updated_at: neg.updated_at,
-        }))
+        const negotiationsWithDetails = await Promise.all(
+          (realNegotiations || []).map(async (neg) => {
+            let debtData = null
+            let customerData = null
+            let companyData = null
 
-        setNegotiations(formattedNegotiations)
-        setFilteredNegotiations(formattedNegotiations)
+            // Fetch debt details
+            if (neg.debt_id) {
+              const { data: debt } = await supabase
+                .from("debts")
+                .select("id, description, amount, due_date, status")
+                .eq("id", neg.debt_id)
+                .single()
+              debtData = debt
+            }
+
+            // Fetch customer details
+            if (neg.customer_id) {
+              const { data: customer } = await supabase
+                .from("customers")
+                .select("id, name")
+                .eq("id", neg.customer_id)
+                .single()
+              customerData = customer
+            }
+
+            // Fetch company details
+            if (neg.company_id) {
+              const { data: company } = await supabase
+                .from("companies")
+                .select("id, name")
+                .eq("id", neg.company_id)
+                .single()
+              companyData = company
+            }
+
+            return {
+              id: neg.id,
+              status: neg.status,
+              original_amount: Number(neg.original_amount) || Number(debtData?.amount) || 0,
+              proposed_amount: Number(neg.agreed_amount || neg.original_amount),
+              discount_amount: Number(neg.discount_amount || 0),
+              discount_percentage: Number(neg.discount_percentage || 0),
+              installments: neg.installments || 1,
+              installment_amount: Number(neg.installment_amount || 0),
+              payment_method: neg.payment_method || "boleto",
+              terms: neg.terms || "",
+              attendant_name: neg.attendant_name || "Sistema",
+              company_name: companyData?.name || "N/A",
+              customer_name: customerData?.name || "N/A",
+              due_date: neg.due_date || debtData?.due_date || null,
+              created_at: neg.created_at,
+              updated_at: neg.updated_at,
+              debt_description: debtData?.description || "Dívida",
+            }
+          }),
+        )
+
+        setNegotiations(negotiationsWithDetails)
+        setFilteredNegotiations(negotiationsWithDetails)
       }
     } catch (error) {
       console.error("Error fetching negotiations:", error)
@@ -196,7 +244,7 @@ export default function NegotiationPage() {
       ...filteredNegotiations.map((negotiation) => [
         format(new Date(negotiation.created_at), "dd/MM/yyyy", { locale: ptBR }),
         negotiation.customer_name,
-        negotiation.description,
+        negotiation.debt_description,
         negotiation.original_amount.toFixed(2),
         negotiation.proposed_amount.toFixed(2),
         negotiation.discount_amount.toFixed(2),
