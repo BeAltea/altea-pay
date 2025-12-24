@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Percent, Save } from "lucide-react"
-import { createNegotiation } from "@/app/actions/create-negotiation"
+import { createAgreementWithAsaas } from "@/app/actions/create-agreement-with-asaas"
 import { toast } from "sonner"
 import { SendProposalDialog } from "./send-proposal-dialog"
 
@@ -20,6 +20,8 @@ interface Customer {
   cpf: string
   debtAmount: number
   daysOverdue: number
+  email?: string
+  phone?: string
 }
 
 export function NegotiationFormClient({ customer }: { customer: Customer }) {
@@ -47,33 +49,25 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
     setLoading(true)
 
     try {
-      const formData = new FormData()
-      formData.append("customerId", customer.id)
-      formData.append("originalAmount", customer.debtAmount.toString())
-      formData.append("agreedAmount", finalAmount.toString())
-      formData.append("discountAmount", discountAmount.toString())
-      formData.append("installments", installments)
-      formData.append("paymentMethod", paymentMethod)
-      formData.append("dueDate", dueDate)
-      formData.append(
-        "terms",
-        terms || `Acordo para ${customer.name} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
-      )
-      formData.append("attendantName", attendantName)
-      formData.append("observations", observations)
+      const result = await createAgreementWithAsaas({
+        vmaxId: customer.id,
+        agreedAmount: finalAmount,
+        installments: Number(installments),
+        dueDate: dueDate,
+        attendantName: attendantName || undefined,
+        terms: terms || `Acordo para ${customer.name} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+      })
 
-      const result = await createNegotiation(formData)
-
-      if (result.success) {
-        toast.success("Proposta criada com sucesso!")
-        setCreatedAgreementId(result.data.id)
+      if (result.success && result.agreement) {
+        toast.success("Proposta criada com sucesso no Asaas!")
+        setCreatedAgreementId(result.agreement.id)
         setShowSendDialog(true)
       } else {
-        toast.error(result.error || "Erro ao criar proposta")
+        toast.error("Erro ao criar proposta")
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating negotiation:", error)
-      toast.error("Erro ao criar proposta. Tente novamente.")
+      toast.error(error.message || "Erro ao criar proposta. Tente novamente.")
     } finally {
       setLoading(false)
     }
@@ -320,13 +314,13 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
           onOpenChange={(open) => {
             setShowSendDialog(open)
             if (!open) {
-              router.push("/dashboard/agreements")
+              router.push("/dashboard/clientes")
             }
           }}
           agreementId={createdAgreementId}
           customerName={customer.name}
-          customerEmail={undefined}
-          customerPhone={undefined}
+          customerEmail={customer.email}
+          customerPhone={customer.phone}
         />
       )}
     </>
