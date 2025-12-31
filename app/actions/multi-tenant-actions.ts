@@ -99,13 +99,13 @@ export async function createCompanyClient(companyId: string, clientData: Record<
 
     console.log("[v0] createCompanyClient - Creating client in table:", tableName)
 
-    // Verifica se cliente já existe (baseado em CPF/CNPJ se existir)
     const cpfCnpj = clientData["CPF/CNPJ"] || clientData.cpf_cnpj || clientData.document
     if (cpfCnpj) {
+      // Usar sintaxe com aspas duplas para colunas com caracteres especiais
       const { data: existingCustomer } = await supabase
         .from(tableName)
         .select("id")
-        .eq("CPF/CNPJ", cpfCnpj)
+        .eq('"CPF/CNPJ"', cpfCnpj)
         .eq("id_company", companyId)
         .maybeSingle()
 

@@ -566,8 +566,9 @@ export default function AnalysesPage() {
                           }
                           setSelectedCustomers(newSet)
                         }}
-                        className="mt-1"
+                        className="mt-1 border-2 border-gray-400 data-[state=checked]:border-primary data-[state=checked]:bg-primary hover:border-primary transition-colors"
                       />
+                      {/* </CHANGE> */}
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-base truncate">{analysis.customer_name}</h3>
                         <p className="text-sm text-muted-foreground truncate">{analysis.cpf}</p>
