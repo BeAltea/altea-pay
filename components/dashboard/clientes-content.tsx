@@ -183,32 +183,60 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
       </Card>
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 w-full">
-        {filteredAndSortedClientes.map((cliente) => (
-          <Card key={cliente.id} className="hover:shadow-lg transition-shadow overflow-hidden">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base md:text-lg flex items-start justify-between gap-2">
-                <span className="line-clamp-2 break-words min-w-0">{cliente.Cliente || "N/A"}</span>
-              </CardTitle>
-              <p className="text-xs md:text-sm text-muted-foreground break-words overflow-hidden">
-                {cliente["CPF/CNPJ"] || "N/A"}
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {cliente.credit_score && (
-                <div className="border rounded-lg p-3 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Sparkles className="h-4 w-4 text-purple-600" />
-                    <span className="text-xs text-purple-600 font-semibold">Score de Crédito</span>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-bold text-purple-600">{cliente.credit_score}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Análise de Crédito</p>
-                </div>
-              )}
+        {filteredAndSortedClientes.map((cliente) => {
+          const metadata = cliente.analysis_metadata
+          const scoreRecupere = metadata?.recupere?.resposta?.score?.pontos || null
+          const classeRecupere = metadata?.recupere?.resposta?.score?.classe || null
 
-              {cliente.approval_status && (
+          console.log(
+            "[v0] Cliente:",
+            cliente.Cliente,
+            "metadata:",
+            metadata,
+            "scoreRecupere:",
+            scoreRecupere,
+            "classeRecupere:",
+            classeRecupere,
+          )
+
+          return (
+            <Card key={cliente.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base md:text-lg flex items-start justify-between gap-2">
+                  <span className="line-clamp-2 break-words min-w-0">{cliente.Cliente || "N/A"}</span>
+                </CardTitle>
+                <p className="text-xs md:text-sm text-muted-foreground break-words overflow-hidden">
+                  {cliente["CPF/CNPJ"] || "N/A"}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Score de Crédito */}
+                  <div className="border rounded-lg p-3 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sparkles className="h-4 w-4 text-purple-600" />
+                      <span className="text-xs text-purple-600 font-semibold">Score Crédito</span>
+                    </div>
+                    <div className="text-2xl md:text-3xl font-bold text-purple-600">{cliente.credit_score || "-"}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Análise de Crédito</p>
+                  </div>
+
+                  {/* Score Recupere */}
+                  <div className="border rounded-lg p-3 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sparkles className="h-4 w-4 text-emerald-600" />
+                      <span className="text-xs text-emerald-600 font-semibold">Score Recupere</span>
+                    </div>
+                    <div className="text-2xl md:text-3xl font-bold text-emerald-600">{scoreRecupere || "-"}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {classeRecupere ? `Classe ${classeRecupere}` : "Recuperação"}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="flex flex-col gap-1 p-2 rounded bg-muted">
-                    <span className="text-muted-foreground">Risco</span>
+                    <span className="text-muted-foreground">Risco Crédito</span>
                     <Badge
                       variant={
                         cliente.approval_status === "ACEITA"
@@ -227,71 +255,74 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                     </Badge>
                   </div>
                   <div className="flex flex-col gap-1 p-2 rounded bg-muted">
-                    <span className="text-muted-foreground">Sanções</span>
-                    <Badge variant="destructive" className="w-fit">
-                      {cliente.sanctions_count || 0}
+                    <span className="text-muted-foreground">Classe Recupere</span>
+                    <Badge
+                      variant={classeRecupere ? "outline" : "secondary"}
+                      className="w-fit bg-emerald-100 text-emerald-700 border-emerald-300"
+                    >
+                      {classeRecupere || "N/A"}
                     </Badge>
                   </div>
                 </div>
-              )}
 
-              <div className="space-y-2 text-xs md:text-sm">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-muted-foreground shrink-0">Cidade:</span>
-                  <span className="font-medium truncate min-w-0">{cliente.Cidade || "N/A"}</span>
+                <div className="space-y-2 text-xs md:text-sm">
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-muted-foreground shrink-0">Cidade:</span>
+                    <span className="font-medium truncate min-w-0">{cliente.Cidade || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-muted-foreground shrink-0">UF:</span>
+                    <span className="font-medium">{cliente.UF || "N/A"}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-muted-foreground shrink-0">UF:</span>
-                  <span className="font-medium">{cliente.UF || "N/A"}</span>
-                </div>
-              </div>
 
-              {cliente.Dias_Inad && cliente.Dias_Inad > 0 && (
-                <div className="flex justify-between items-center text-xs md:text-sm">
-                  <span className="text-muted-foreground">Inadimplência:</span>
-                  <Badge
-                    variant="destructive"
-                    className={
-                      cliente.Dias_Inad <= 30
-                        ? "bg-yellow-500"
-                        : cliente.Dias_Inad <= 60
-                          ? "bg-orange-500"
-                          : cliente.Dias_Inad <= 90
-                            ? "bg-red-500"
-                            : "bg-red-700"
-                    }
-                  >
-                    {cliente.Dias_Inad} dias
-                  </Badge>
-                </div>
-              )}
+                {cliente.Dias_Inad && cliente.Dias_Inad > 0 && (
+                  <div className="flex justify-between items-center text-xs md:text-sm">
+                    <span className="text-muted-foreground">Inadimplência:</span>
+                    <Badge
+                      variant="destructive"
+                      className={
+                        cliente.Dias_Inad <= 30
+                          ? "bg-yellow-500"
+                          : cliente.Dias_Inad <= 60
+                            ? "bg-orange-500"
+                            : cliente.Dias_Inad <= 90
+                              ? "bg-red-500"
+                              : "bg-red-700"
+                      }
+                    >
+                      {cliente.Dias_Inad} dias
+                    </Badge>
+                  </div>
+                )}
 
-              {cliente.Vencido && Number.parseFloat(cliente.Vencido.toString().replace(",", ".")) > 0 && (
-                <div className="flex justify-between items-center text-xs md:text-sm">
-                  <span className="text-muted-foreground">Valor Vencido:</span>
-                  <span className="font-semibold text-red-600">
-                    R$ {Number.parseFloat(cliente.Vencido.toString().replace(",", ".")).toFixed(2)}
-                  </span>
-                </div>
-              )}
+                {cliente.Vencido && Number.parseFloat(cliente.Vencido.toString().replace(",", ".")) > 0 && (
+                  <div className="flex justify-between items-center text-xs md:text-sm">
+                    <span className="text-muted-foreground">Valor Vencido:</span>
+                    <span className="font-semibold text-red-600">
+                      R$ {Number.parseFloat(cliente.Vencido.toString().replace(",", ".")).toFixed(2)}
+                    </span>
+                  </div>
+                )}
 
-              <div className="mt-4 pt-4 border-t flex gap-2">
-                <Button asChild variant="outline" size="sm" className="flex-1 gap-2 bg-transparent">
-                  <Link href={`/dashboard/clientes/${cliente.id}`} prefetch={true}>
-                    <Eye className="h-4 w-4" />
-                    Ver Detalhes
-                  </Link>
-                </Button>
-                <Button asChild variant="default" size="sm" className="flex-1 gap-2">
-                  <Link href={`/dashboard/clientes/${cliente.id}/negotiate`} prefetch={true}>
-                    <Handshake className="h-4 w-4" />
-                    Negociar
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="mt-4 pt-4 border-t flex gap-2">
+                  <Button asChild variant="outline" size="sm" className="flex-1 gap-2 bg-transparent">
+                    <Link href={`/dashboard/clientes/${cliente.id}`}>
+                      <Eye className="h-4 w-4" />
+                      Ver Detalhes
+                    </Link>
+                  </Button>
+                  <Button asChild variant="default" size="sm" className="flex-1 gap-2">
+                    <Link href={`/dashboard/clientes/${cliente.id}/negotiate`}>
+                      <Handshake className="h-4 w-4" />
+                      Negociar
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       {filteredAndSortedClientes.length === 0 && (

@@ -42,16 +42,7 @@ export function SendProposalDialog({
 
         const { data: agreement } = await supabase
           .from("agreements")
-          .select(
-            `
-            customer_id,
-            customers:customer_id (
-              document,
-              email,
-              phone
-            )
-          `,
-          )
+          .select("customer_id, customers:customer_id(document, email, phone)")
           .eq("id", agreementId)
           .single()
 
@@ -60,11 +51,14 @@ export function SendProposalDialog({
           let customerEmail = customer?.email
           let customerPhone = customer?.phone
 
+          // If customer data is missing, try to get from VMAX
           if (!customerEmail || !customerPhone) {
+            const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
+
             const { data: vmaxRecord } = await supabase
               .from("VMAX")
               .select("Email, Telefone")
-              .eq('"CPF/CNPJ"', customer?.document?.replace(/[^\d]/g, ""))
+              .eq('"CPF/CNPJ"', cleanedDocument)
               .single()
 
             if (vmaxRecord) {
@@ -127,7 +121,6 @@ export function SendProposalDialog({
           ) : (
             <RadioGroup value={sendingChannel} onValueChange={(value) => setSendingChannel(value as any)}>
               <div className="space-y-3">
-                {/* Email Option */}
                 <div
                   className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
                     sendingChannel === "email" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
@@ -144,7 +137,6 @@ export function SendProposalDialog({
                   </div>
                 </div>
 
-                {/* WhatsApp Option */}
                 <div
                   className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
                     sendingChannel === "whatsapp"
@@ -163,7 +155,6 @@ export function SendProposalDialog({
                   </div>
                 </div>
 
-                {/* SMS Option */}
                 <div
                   className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
                     sendingChannel === "sms" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
