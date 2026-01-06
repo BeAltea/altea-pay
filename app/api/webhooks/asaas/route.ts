@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    console.log("[v0] Received Asaas webhook:", body.event)
+    console.log("[v0] Received Asaas webhook:", JSON.stringify(body, null, 2))
 
     const event = body.event
     const payment = body.payment
@@ -17,19 +17,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
     }
 
-    // Find agreement by asaas_payment_id
-    const { data: agreement, error: agreementError } = await supabase
+    console.log("[v0] Searching for agreement with payment ID:", payment.id)
+
+    // First, try by asaas_payment_id
+    let { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select("*")
       .eq("asaas_payment_id", payment.id)
       .single()
 
+    // If not found, try by subscription (for installment payments)
     if (agreementError || !agreement) {
-      console.error("[v0] Agreement not found for payment:", payment.id)
+      console.log("[v0] Not found by payment_id, trying by subscription...")
+      const result = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("asaas_subscription_id", payment.subscription)
+        .single()
+
+      agreement = result.data
+      agreementError = result.error
+    }
+
+    // If still not found, try by external reference
+    if (agreementError || !agreement) {
+      console.log("[v0] Not found by subscription, trying by external reference...")
+      const externalRef = payment.externalReference
+      if (externalRef) {
+        const vmaxId = externalRef.replace("agreement_", "")
+        const result = await supabase
+          .from("agreements")
+          .select(`
+            *,
+            debts!inner(external_id)
+          `)
+          .eq("debts.external_id", vmaxId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single()
+
+        agreement = result.data
+        agreementError = result.error
+      }
+    }
+
+    if (agreementError || !agreement) {
+      console.error("[v0] Agreement not found for payment:", payment.id, "Error:", agreementError)
+      console.error("[v0] Tried: payment_id, subscription, external_reference")
       return NextResponse.json({ error: "Agreement not found" }, { status: 404 })
     }
 
-    console.log("[v0] Processing payment event for agreement:", agreement.id)
+    console.log("[v0] Found agreement:", agreement.id, "Processing event:", event)
 
     // Update agreement status based on payment event
     let paymentStatus = agreement.payment_status

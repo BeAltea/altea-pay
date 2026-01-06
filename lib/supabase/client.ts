@@ -1,13 +1,11 @@
 import { createBrowserClient as createSupabaseBrowserClient } from "@supabase/ssr"
 
-if (typeof window !== "undefined" && !(window as any).__supabaseClient) {
-  ;(window as any).__supabaseClient = null
-}
+let browserClient: ReturnType<typeof createSupabaseBrowserClient> | null = null
 
 export function createClient() {
   // Return existing instance if already created
-  if (typeof window !== "undefined" && (window as any).__supabaseClient) {
-    return (window as any).__supabaseClient
+  if (browserClient) {
+    return browserClient
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -20,8 +18,7 @@ export function createClient() {
   // Extract subdomain for unique storage key
   const subdomain = supabaseUrl.split("//")[1]?.split(".")[0] || "supabase"
 
-  // Create new instance only if it doesn't exist
-  const client = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey, {
+  browserClient = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -37,12 +34,7 @@ export function createClient() {
     },
   })
 
-  // Store in global variable
-  if (typeof window !== "undefined") {
-    ;(window as any).__supabaseClient = client
-  }
-
-  return client
+  return browserClient
 }
 
 export function createBrowserClient() {
@@ -51,7 +43,5 @@ export function createBrowserClient() {
 
 // Reset function for testing or hot reload
 export function resetClient() {
-  if (typeof window !== "undefined") {
-    ;(window as any).__supabaseClient = null
-  }
+  browserClient = null
 }

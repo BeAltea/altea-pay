@@ -42,7 +42,7 @@ interface CollectionRule {
 
 interface CollectionRuleStep {
   id: string
-  collection_rule_id: string
+  rule_id: string
   step_order: number
   days_after_due: number
   channel: string
@@ -131,7 +131,7 @@ export default function SuperAdminCollectionRulesPage() {
           const { data: stepsData } = await supabase
             .from("collection_rule_steps")
             .select("*")
-            .eq("collection_rule_id", rule.id)
+            .eq("rule_id", rule.id)
             .order("step_order")
 
           return { ...rule, steps: stepsData || [] }
@@ -212,11 +212,11 @@ export default function SuperAdminCollectionRulesPage() {
         if (ruleError) throw ruleError
 
         // Delete old steps
-        await supabase.from("collection_rule_steps").delete().eq("collection_rule_id", editingRule.id)
+        await supabase.from("collection_rule_steps").delete().eq("rule_id", editingRule.id)
 
         // Insert new steps
         const stepsToInsert = formData.steps.map((step) => ({
-          collection_rule_id: editingRule.id,
+          rule_id: editingRule.id,
           ...step,
         }))
 
@@ -259,7 +259,7 @@ export default function SuperAdminCollectionRulesPage() {
 
         // Insert steps
         const stepsToInsert = formData.steps.map((step) => ({
-          collection_rule_id: newRule.id,
+          rule_id: newRule.id,
           ...step,
         }))
 

@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { Eye, Sparkles, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Handshake } from "lucide-react"
+import { Eye, Sparkles, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Handshake, Trash2 } from "lucide-react"
+import { deleteCustomer } from "@/app/actions/delete-customer"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface Cliente {
   id: string
@@ -36,6 +39,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
   const [sortField, setSortField] = useState<SortField>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const router = useRouter()
 
   const comAnalise = clientes.filter((c) => c.analysis_metadata !== null).length
 
@@ -91,6 +95,27 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />
     return sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+  }
+
+  const handleDeleteCustomer = async (customerId: string, customerName: string) => {
+    if (!company?.id) {
+      toast.error("Empresa não identificada")
+      return
+    }
+
+    const confirmed = confirm(
+      `Tem certeza que deseja excluir permanentemente o cliente ${customerName}?\n\nEsta ação não pode ser desfeita e removerá todos os dados associados.`,
+    )
+    if (!confirmed) return
+
+    const result = await deleteCustomer(customerId, company.id)
+
+    if (result.success) {
+      toast.success(result.message)
+      router.refresh()
+    } else {
+      toast.error(result.message)
+    }
   }
 
   return (
@@ -309,14 +334,28 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                   <Button asChild variant="outline" size="sm" className="flex-1 gap-2 bg-transparent">
                     <Link href={`/dashboard/clientes/${cliente.id}`}>
                       <Eye className="h-4 w-4" />
-                      Ver Detalhes
+                      <span className="hidden sm:inline">Ver Detalhes</span>
                     </Link>
                   </Button>
-                  <Button asChild variant="default" size="sm" className="flex-1 gap-2">
+                  <Button
+                    asChild
+                    variant="default"
+                    size="sm"
+                    className="flex-1 gap-2 bg-yellow-500 hover:bg-yellow-600"
+                  >
                     <Link href={`/dashboard/clientes/${cliente.id}/negotiate`}>
                       <Handshake className="h-4 w-4" />
-                      Negociar
+                      <span className="hidden sm:inline">Negociar</span>
                     </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-200 hover:bg-red-50 hover:border-red-300 text-red-600 hover:text-red-700 w-10 p-0 flex items-center justify-center bg-transparent"
+                    onClick={() => handleDeleteCustomer(cliente.id, cliente.Cliente)}
+                    title="Excluir cliente"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </CardContent>

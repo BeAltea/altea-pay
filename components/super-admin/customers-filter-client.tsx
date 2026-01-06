@@ -8,7 +8,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { Users, DollarSign, AlertTriangle, MapPin, Handshake } from "lucide-react"
+import { Users, DollarSign, AlertTriangle, MapPin, Handshake, Trash2 } from "lucide-react"
+import { deleteCustomer } from "@/app/actions/delete-customer"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 type Customer = {
   id: string
@@ -25,6 +28,7 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
   const [searchTerm, setSearchTerm] = useState("")
   const [daysSort, setDaysSort] = useState<"none" | "asc" | "desc">("none")
   const [amountSort, setAmountSort] = useState<"none" | "asc" | "desc">("none")
+  const router = useRouter()
 
   const totalCustomers = customers.length
   const overdueCustomers = customers.filter((c) => c.status === "overdue").length
@@ -76,6 +80,23 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
         return "outline"
       default:
         return "default"
+    }
+  }
+
+  const handleDeleteCustomer = async (customerId: string, customerName: string) => {
+    const confirmed = confirm(
+      `Tem certeza que deseja excluir permanentemente o cliente ${customerName}?\n\nEsta ação não pode ser desfeita e removerá todos os dados associados (acordos, dívidas, pagamentos, etc.).`,
+    )
+
+    if (!confirmed) return
+
+    const result = await deleteCustomer(customerId, companyId)
+
+    if (result.success) {
+      toast.success(result.message)
+      router.refresh()
+    } else {
+      toast.error(result.message)
     }
   }
 
@@ -271,12 +292,22 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
                         atraso
                       </div>
                     )}
-                    <Button asChild size="sm" className="mt-2 w-full sm:w-auto">
-                      <Link href={`/super-admin/companies/${companyId}/customers/${customer.id}/negotiate`}>
-                        <Handshake className="h-4 w-4 mr-2" />
-                        Negociar
-                      </Link>
-                    </Button>
+                    <div className="flex gap-2 mt-2">
+                      <Button asChild size="sm" className="flex-1 bg-yellow-500 hover:bg-yellow-600">
+                        <Link href={`/super-admin/companies/${companyId}/customers/${customer.id}/negotiate`}>
+                          <Handshake className="h-4 w-4 mr-2" />
+                          Negociar
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-red-200 hover:bg-red-50 hover:border-red-300 text-red-600 hover:text-red-700 bg-transparent"
+                        onClick={() => handleDeleteCustomer(customer.id, customer.name)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))

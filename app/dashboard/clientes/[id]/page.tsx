@@ -17,8 +17,11 @@ import {
   Check,
   CreditCard,
   Handshake,
+  Trash2,
 } from "lucide-react"
 import { ExportCustomerPDFButton } from "@/components/dashboard/export-customer-pdf-button"
+import { deleteCustomer } from "@/app/actions/delete-customer"
+import { toast } from "sonner"
 
 export const dynamic = "force-dynamic"
 
@@ -51,6 +54,29 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
 
   const assertiva_data = cliente.analysis_metadata || null
 
+  const handleDelete = async () => {
+    "use server"
+    const supabase = await createServerClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) redirect("/auth/signin")
+
+    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+
+    if (!profile?.company_id) redirect("/dashboard")
+
+    const result = await deleteCustomer(params.id, profile.company_id)
+
+    if (result.success) {
+      redirect("/dashboard/clientes")
+    } else {
+      toast.error("Erro ao excluir cliente")
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 md:gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
@@ -74,6 +100,12 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               Negociar
             </Link>
           </Button>
+          <form action={handleDelete}>
+            <Button type="submit" variant="destructive" size="sm">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir
+            </Button>
+          </form>
           <ExportCustomerPDFButton customerId={cliente.id} customerName={cliente.Cliente} />
         </div>
       </div>
