@@ -17,57 +17,107 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
     }
 
-    console.log("[v0] Searching for agreement with payment ID:", payment.id)
+    console.log("[v0] Processing event:", event, "for payment:", payment.id)
+    console.log("[v0] Payment details:", {
+      description: payment.description,
+      externalReference: payment.externalReference,
+      customer: payment.customer,
+      value: payment.value,
+    })
 
-    // First, try by asaas_payment_id
-    let { data: agreement, error: agreementError } = await supabase
+    let agreement = null
+    let searchMethod = ""
+
+    // Strategy 1: Direct payment ID match (most reliable)
+    const { data: agreementByPaymentId } = await supabase
       .from("agreements")
       .select("*")
       .eq("asaas_payment_id", payment.id)
-      .single()
+      .maybeSingle()
 
-    // If not found, try by subscription (for installment payments)
-    if (agreementError || !agreement) {
-      console.log("[v0] Not found by payment_id, trying by subscription...")
-      const result = await supabase
+    if (agreementByPaymentId) {
+      agreement = agreementByPaymentId
+      searchMethod = "payment_id"
+    }
+
+    // Strategy 2: Subscription ID (for installment payments)
+    if (!agreement && payment.subscription) {
+      const { data: agreementBySubscription } = await supabase
         .from("agreements")
         .select("*")
         .eq("asaas_subscription_id", payment.subscription)
-        .single()
+        .maybeSingle()
 
-      agreement = result.data
-      agreementError = result.error
-    }
-
-    // If still not found, try by external reference
-    if (agreementError || !agreement) {
-      console.log("[v0] Not found by subscription, trying by external reference...")
-      const externalRef = payment.externalReference
-      if (externalRef) {
-        const vmaxId = externalRef.replace("agreement_", "")
-        const result = await supabase
-          .from("agreements")
-          .select(`
-            *,
-            debts!inner(external_id)
-          `)
-          .eq("debts.external_id", vmaxId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single()
-
-        agreement = result.data
-        agreementError = result.error
+      if (agreementBySubscription) {
+        agreement = agreementBySubscription
+        searchMethod = "subscription_id"
       }
     }
 
-    if (agreementError || !agreement) {
-      console.error("[v0] Agreement not found for payment:", payment.id, "Error:", agreementError)
-      console.error("[v0] Tried: payment_id, subscription, external_reference")
+    // Strategy 3: External reference with "agreement_" prefix
+    if (!agreement && payment.externalReference?.startsWith("agreement_")) {
+      const vmaxId = payment.externalReference.replace("agreement_", "")
+
+      const { data: agreementByExternalRef } = await supabase
+        .from("agreements")
+        .select(`
+          *,
+          debts!inner(external_id)
+        `)
+        .eq("debts.external_id", vmaxId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (agreementByExternalRef) {
+        agreement = agreementByExternalRef
+        searchMethod = "external_reference"
+      }
+    }
+
+    // Strategy 4: Search by Asaas customer ID
+    if (!agreement && payment.customer) {
+      const { data: agreementByCustomer } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("asaas_customer_id", payment.customer)
+        .eq("agreed_amount", payment.value)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (agreementByCustomer) {
+        agreement = agreementByCustomer
+        searchMethod = "customer_id_and_amount"
+
+        // Update with payment ID for future lookups
+        await supabase.from("agreements").update({ asaas_payment_id: payment.id }).eq("id", agreementByCustomer.id)
+      }
+    }
+
+    // If no agreement found, check if this is a platform subscription payment (not debt agreement)
+    if (!agreement) {
+      console.log("[v0] No agreement found. Checking if this is a platform subscription...")
+
+      // Platform subscriptions have descriptions like "Plano Premium", "Plano Básico", etc.
+      const isPlatformSubscription =
+        payment.description?.toLowerCase().includes("plano") ||
+        payment.description?.toLowerCase().includes("assinatura")
+
+      if (isPlatformSubscription) {
+        console.log("[v0] This is a platform subscription payment, not a debt agreement. Ignoring.")
+        return NextResponse.json({
+          success: true,
+          message: "Platform subscription payment - no action needed",
+        })
+      }
+
+      console.error("[v0] Agreement not found for payment:", payment.id)
+      console.error("[v0] Tried all search strategies: payment_id, subscription_id, external_reference, customer_id")
       return NextResponse.json({ error: "Agreement not found" }, { status: 404 })
     }
 
-    console.log("[v0] Found agreement:", agreement.id, "Processing event:", event)
+    console.log("[v0] Found agreement:", agreement.id, "via:", searchMethod)
 
     // Update agreement status based on payment event
     let paymentStatus = agreement.payment_status
