@@ -10,7 +10,7 @@ export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled"
 
 /**
  * Motor de Regras de Cobrança Automática
- * Processa dívidas baseado no score de crédito do devedor
+ * Processa dívidas baseado no score de recuperação do devedor
  */
 export async function processCollectionByScore(params: {
   debtId: string
@@ -22,7 +22,7 @@ export async function processCollectionByScore(params: {
   const supabase = createAdminClient()
 
   try {
-    // 1. Chamar endpoint /score-check para obter risk_tier
+    // 1. Chamar endpoint /score-check para obter recovery_score
     const scoreResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/score-check`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -34,19 +34,21 @@ export async function processCollectionByScore(params: {
     })
 
     if (!scoreResponse.ok) {
-      throw new Error("Falha ao verificar score de crédito")
+      throw new Error("Falha ao verificar score de recuperação")
     }
 
     const scoreData = await scoreResponse.json()
-    const { risk_tier, score } = scoreData
+    const { recovery_score, recovery_class } = scoreData
 
-    console.log(`[v0] Collection Engine - Debt: ${params.debtId}, Score: ${score}, Risk Tier: ${risk_tier}`)
+    console.log(
+      `[v0] Collection Engine - Debt: ${params.debtId}, Recovery Score: ${recovery_score}, Recovery Class: ${recovery_class}`,
+    )
 
-    // 2. Motor de Regras interpreta o tier e executa ação
+    // 2. Motor de Regras interpreta o score de recuperação e executa ação
     let actionResult: any
 
     // Processa réguas de cobrança (padrão + customizadas)
-    actionResult = await processCollectionRules(params.debtId, params.customerId, score)
+    actionResult = await processCollectionRules(params.debtId, params.customerId, recovery_score)
 
     // 3. Registrar log de auditoria
     await supabase.from("integration_logs").insert({
@@ -59,8 +61,8 @@ export async function processCollectionByScore(params: {
         amount: params.amount,
       },
       response_data: {
-        risk_tier,
-        score,
+        recovery_score,
+        recovery_class,
         action: actionResult?.action,
         task_id: actionResult?.taskId,
       },
@@ -69,8 +71,8 @@ export async function processCollectionByScore(params: {
 
     return {
       success: true,
-      risk_tier,
-      score,
+      recovery_score,
+      recovery_class,
       action: actionResult?.action,
       message: actionResult?.message,
     }
@@ -95,7 +97,7 @@ export async function processCollectionByScore(params: {
 /**
  * Processa réguas de cobrança (padrão + customizadas)
  */
-export async function processCollectionRules(debtId: string, customerId: string, score: number) {
+export async function processCollectionRules(debtId: string, customerId: string, recoveryScore: number) {
   const supabase = createAdminClient()
 
   try {
@@ -106,20 +108,20 @@ export async function processCollectionRules(debtId: string, customerId: string,
       .eq("is_active", true)
       .eq("rule_type", "custom")
       .contains("active_for_customers", [customerId])
-      .gte("max_score", score)
-      .lte("min_score", score)
+      .gte("max_score", recoveryScore)
+      .lte("min_score", recoveryScore)
       .order("priority", { ascending: false })
       .limit(1)
 
     if (customRules && customRules.length > 0) {
       // Usar régua customizada
       console.log(`[v0] Using custom rule for customer ${customerId}:`, customRules[0].name)
-      return await applyCustomRule(debtId, customerId, customRules[0], score)
+      return await applyCustomRule(debtId, customerId, customRules[0], recoveryScore)
     }
 
-    // 2. Se não houver régua customizada, usar régua padrão baseada em score
+    // 2. Se não houver régua customizada, usar régua padrão baseada em recovery score
     console.log(`[v0] Using default rule for customer ${customerId}`)
-    return await applyDefaultRule(debtId, customerId, score)
+    return await applyDefaultRule(debtId, customerId, recoveryScore)
   } catch (error) {
     console.error("[v0] Error processing collection rules:", error)
     throw error
@@ -129,7 +131,7 @@ export async function processCollectionRules(debtId: string, customerId: string,
 /**
  * Aplica régua customizada
  */
-async function applyCustomRule(debtId: string, customerId: string, rule: any, score: number) {
+async function applyCustomRule(debtId: string, customerId: string, rule: any, recoveryScore: number) {
   const supabase = createAdminClient()
 
   console.log(`[v0] Applying custom rule: ${rule.name} (${rule.process_type})`)
@@ -143,7 +145,7 @@ async function applyCustomRule(debtId: string, customerId: string, rule: any, sc
       debtId,
       customerId,
       priority: rule.priority,
-      description: `Régua customizada: ${rule.name} - Score: ${score}`,
+      description: `Régua customizada: ${rule.name} - Recovery Score: ${recoveryScore}`,
     })
   } else {
     // Manual
@@ -151,24 +153,31 @@ async function applyCustomRule(debtId: string, customerId: string, rule: any, sc
       debtId,
       customerId,
       priority: rule.priority,
-      description: `Régua customizada (manual): ${rule.name} - Score: ${score}`,
+      description: `Régua customizada (manual): ${rule.name} - Recovery Score: ${recoveryScore}`,
     })
   }
 }
 
 /**
  * Aplica régua padrão do sistema
+ * Nova lógica baseada em Recovery Score:
+ * - Score >= 294 (Classes C, B, A): Cobrança automática
+ * - Score < 294 (Classes D, E, F): Cobrança manual
  */
-async function applyDefaultRule(debtId: string, customerId: string, score: number) {
-  if (score > 490) {
-    // RISCO BAIXO
+async function applyDefaultRule(debtId: string, customerId: string, recoveryScore: number) {
+  if (recoveryScore >= 294) {
+    // CLASSES C, B, A - Cobrança automática permitida
+    console.log(`[v0] Recovery Score ${recoveryScore} >= 294 - Automatic collection allowed`)
     return await dispatchAutoMessage({ debtId, customerId })
-  } else if (score >= 350) {
-    // RISCO MÉDIO
-    return await createAssistedCollectionTask({ debtId, customerId, priority: "medium" })
   } else {
-    // RISCO ALTO
-    return await createManualCollectionTask({ debtId, customerId, priority: "high" })
+    // CLASSES D, E, F - Cobrança manual obrigatória
+    console.log(`[v0] Recovery Score ${recoveryScore} < 294 - Manual collection required`)
+    return await createManualCollectionTask({
+      debtId,
+      customerId,
+      priority: "high",
+      description: `Cobrança manual obrigatória - Recovery Score: ${recoveryScore} (Classes D, E ou F). Disparos automáticos bloqueados.`,
+    })
   }
 }
 

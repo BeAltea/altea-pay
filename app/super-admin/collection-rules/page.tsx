@@ -471,9 +471,7 @@ export default function SuperAdminCollectionRulesPage() {
               {automaticStats?.eligible > 0 ? "Funcionando" : "Sem clientes"}
             </Badge>
           </div>
-          <CardDescription>
-            Régua automática que analisa clientes via Assertiva e define aprovação baseado no score
-          </CardDescription>
+          <CardDescription>Régua automática baseada no Score de Recuperação da Assertiva (Classes A-F)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Status Cards */}
@@ -485,7 +483,7 @@ export default function SuperAdminCollectionRulesPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">
-                  Total de clientes com status ACEITA e régua automática ativada
+                  Total de clientes com status ACEITA e Recovery Score ≥ 294 (Classe C ou superior)
                 </p>
               </CardContent>
             </Card>
@@ -517,15 +515,15 @@ export default function SuperAdminCollectionRulesPage() {
               <Info className="h-4 w-4 text-blue-600 mt-0.5" />
               <div className="space-y-1 text-sm text-blue-900 dark:text-blue-100">
                 <p>
-                  <strong>Como funciona:</strong> Quando você clica em "Analisar" em /super-admin/analises, o sistema
-                  busca dados da Assertiva e calcula o approval_status automaticamente.
+                  <strong>Como funciona:</strong> Quando você importa ou analisa um cliente, o sistema busca dados da
+                  Assertiva e verifica o Score de Recuperação automaticamente.
                 </p>
                 <p>
-                  <strong>Critérios:</strong> Score ≥ 400 → ACEITA | Score 300-399 → ACEITA_ESPECIAL | Score &lt; 300 →
-                  REJEITA
+                  <strong>Critérios de Cobrança Automática:</strong> Recovery Score ≥ 294 (Classes C, B, A) → Cobrança
+                  automática permitida | Recovery Score &lt; 294 (Classes D, E, F) → Cobrança manual obrigatória
                 </p>
                 <p>
-                  <strong>Status:</strong> 100% Funcional e salvando dados na tabela VMAX
+                  <strong>Status:</strong> 100% Funcional baseado no Score de Recuperação da Assertiva
                 </p>
               </div>
             </div>
@@ -545,7 +543,8 @@ export default function SuperAdminCollectionRulesPage() {
             </Badge>
           </div>
           <CardDescription>
-            Régua customizável onde cada empresa pode configurar seus próprios dias e canais de cobrança
+            Régua customizável baseada no Score de Recuperação. Permite configurar dias e canais personalizados de
+            cobrança
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -840,6 +839,46 @@ export default function SuperAdminCollectionRulesPage() {
                   Esta régua customizada será aplicada apenas aos clientes selecionados. Os demais clientes continuarão
                   usando a régua padrão do sistema.
                 </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+              <h4 className="font-semibold text-sm">Critérios de Score de Recuperação</h4>
+              <p className="text-xs text-muted-foreground">
+                Defina a faixa de Recovery Score para aplicar esta régua (sistema usa ≥ 294 como padrão para cobrança
+                automática)
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="min_score">Recovery Score Mínimo</Label>
+                  <Input
+                    id="min_score"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={formData.min_score}
+                    onChange={(e) => setFormData({ ...formData, min_score: Number.parseInt(e.target.value) || 0 })}
+                    placeholder="Ex: 294"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Padrão sistema: 294 (Classe C), 491 (Classe B), 800+ (Classe A)
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="max_score">Recovery Score Máximo</Label>
+                  <Input
+                    id="max_score"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={formData.max_score}
+                    onChange={(e) => setFormData({ ...formData, max_score: Number.parseInt(e.target.value) || 1000 })}
+                    placeholder="Ex: 1000"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Máximo: 1000 (Classe A)</p>
+                </div>
               </div>
             </div>
 

@@ -41,6 +41,8 @@ interface EligibleDebt {
   customer_phone: string
   approval_status: string
   start_date: string
+  recovery_score?: number
+  recovery_class?: string
 }
 
 /**
@@ -195,7 +197,9 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
       Vencido,
       Primeira_Vencida,
       approval_status,
-      id_company
+      id_company,
+      recovery_score,
+      recovery_class
     `)
     .eq("id_company", rule.company_id)
     .in("approval_status", rule.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"])
@@ -236,9 +240,24 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
         customer_phone: debt.Telefone || "",
         approval_status: debt.approval_status || "",
         start_date: startDate,
+        recovery_score: debt.recovery_score,
+        recovery_class: debt.recovery_class,
       }
     })
-    .filter((debt) => debt.customer_email || debt.customer_phone) // Filtrar apenas com contato
+    .filter((debt) => {
+      // Abaixo disso, apenas cobrança manual é permitida
+      const hasContact = debt.customer_email || debt.customer_phone
+      const recoveryScore = debt.recovery_score || 0
+      const isEligibleForAutoCollection = recoveryScore >= 294
+
+      if (!isEligibleForAutoCollection) {
+        console.log(
+          `[v0] Debt ${debt.id}: Recovery Score ${recoveryScore} (${debt.recovery_class || "N/A"}) - AUTO COLLECTION BLOCKED`,
+        )
+      }
+
+      return hasContact && isEligibleForAutoCollection
+    })
 
   return eligibleDebts
 }
