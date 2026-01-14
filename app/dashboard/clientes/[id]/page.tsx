@@ -87,10 +87,10 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         </Button>
         <div className="flex-1 min-w-0 w-full">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight break-words">
-            Análise de Crédito Completa
+            Análise Restritiva Completa
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
-            Dados completos da análise de crédito do cliente
+            Dados completos da análise restritiva do cliente
           </p>
         </div>
         <div className="flex gap-2">
@@ -118,7 +118,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
               <span className="truncate">SCORE DE CRÉDITO</span>
             </CardTitle>
-            <CardDescription className="text-xs truncate">Análise de Crédito</CardDescription>
+            <CardDescription className="text-xs truncate">Análise Restritiva</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">

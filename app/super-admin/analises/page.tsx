@@ -192,7 +192,7 @@ export default function AnalysesPage() {
     })
 
   const getSourceBadge = (source: string) => {
-    return <Badge variant="default">Análise de Crédito</Badge>
+    return <Badge variant="default">Análise Restritiva</Badge>
   }
 
   const getScoreBadgeColor = (score: number | null) => {
@@ -404,10 +404,8 @@ export default function AnalysesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Análises de Crédito</h1>
-            <p className="text-muted-foreground mt-1">
-              Visualize e gerencie todas as análises realizadas pela API Assertiva
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight">Análise Restritiva</h1>
+            <p className="text-muted-foreground mt-1">Visualize e gerencie todas as análises restritivas realizadas</p>
           </div>
         </div>
 
@@ -502,7 +500,8 @@ export default function AnalysesPage() {
                   <Sparkles className="h-8 w-8 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-foreground">Análise de Crédito com Assertiva</h3>
+                  {/* Renomeando "Análise de Crédito" para "Análise Restritiva" */}
+                  <h3 className="text-xl font-bold text-foreground">Análise Restritiva com Assertiva</h3>
                   <p className="text-sm text-muted-foreground">
                     {selectedCustomers.size} cliente{selectedCustomers.size > 1 ? "s" : ""} selecionado
                     {selectedCustomers.size > 1 ? "s" : ""}
@@ -612,10 +611,12 @@ export default function AnalysesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-600" />
-              Confirmar Análise de Crédito
+              {/* Renomeando "Análise de Crédito" para "Análise Restritiva" */}
+              Confirmar Análise Restritiva
             </DialogTitle>
             <DialogDescription>
-              Você está prestes a executar a análise de crédito para {selectedCustomers.size} cliente
+              {/* Renomeando "análise de crédito" para "análise restritiva" */}
+              Você está prestes a executar a análise restritiva para {selectedCustomers.size} cliente
               {selectedCustomers.size > 1 ? "s" : ""}. Esta ação irá consumir créditos da API Assertiva.
             </DialogDescription>
           </DialogHeader>
@@ -633,8 +634,10 @@ export default function AnalysesPage() {
       <Sheet open={showDetailsDrawer} onOpenChange={setShowDetailsDrawer}>
         <SheetContent className="w-full sm:max-w-4xl overflow-y-auto bg-background p-4 sm:p-6">
           <SheetHeader className="space-y-2">
-            <SheetTitle className="text-xl sm:text-2xl">Análise de Crédito Completa</SheetTitle>
-            <SheetDescription className="text-sm">Dados completos da análise de crédito do cliente</SheetDescription>
+            {/* Renomeando "Análise de Crédito" para "Análise Restritiva" */}
+            <SheetTitle className="text-xl sm:text-2xl">Análise Restritiva Completa</SheetTitle>
+            {/* Renomeando "análise de crédito" para "análise restritiva" */}
+            <SheetDescription className="text-sm">Dados completos da análise restritiva do cliente</SheetDescription>
           </SheetHeader>
 
           {selectedAnalysis && (
@@ -666,7 +669,8 @@ export default function AnalysesPage() {
                       <TrendingUp className="h-4 w-4" />
                       SCORE DE CRÉDITO
                     </CardTitle>
-                    <CardDescription className="text-xs">Análise de Crédito</CardDescription>
+                    {/* Renomeando "Análise de Crédito" para "Análise Restritiva" */}
+                    <CardDescription className="text-xs">Análise Restritiva</CardDescription>
                   </CardHeader>
                   <CardContent className="pb-3">
                     <div className="space-y-1">

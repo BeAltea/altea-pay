@@ -219,7 +219,7 @@ export async function runAnalysis(customerId: string, document: string) {
     const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
 
     if (!assertivaUrl || !clientId || !clientSecret) {
-      throw new Error("Credenciais da API de crédito não configuradas")
+      throw new Error("Credenciais da API restritiva não configuradas")
     }
 
     const response = await fetch(`${assertivaUrl}/credit-analysis`, {
@@ -235,7 +235,7 @@ export async function runAnalysis(customerId: string, document: string) {
     })
 
     if (!response.ok) {
-      throw new Error(`Erro na API de crédito: ${response.statusText}`)
+      throw new Error(`Erro na API restritiva: ${response.statusText}`)
     }
 
     const analysisData = await response.json()
@@ -261,14 +261,14 @@ export async function runAnalysis(customerId: string, document: string) {
     return {
       success: true,
       data: newProfile,
-      message: "Análise de crédito realizada com sucesso",
+      message: "Análise restritiva realizada com sucesso",
     }
   } catch (error: any) {
     console.error("[SERVER] runAnalysis - Error:", error)
     return {
       success: false,
       error: error.message,
-      message: "Erro ao realizar análise de crédito",
+      message: "Erro ao realizar análise restritiva",
     }
   }
 }

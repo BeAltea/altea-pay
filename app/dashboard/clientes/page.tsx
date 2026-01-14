@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { ClientesContent } from "@/components/dashboard/clientes-content"
+import { getAllBehavioralAnalyses } from "@/app/actions/get-all-behavioral-analyses"
 
 export const dynamic = "force-dynamic"
 
@@ -34,7 +35,31 @@ export default async function ClientesPage() {
       .select("*")
       .eq("id_company", profile.company_id)
 
-    const clientes = vmaxCustomers || []
+    const behavioralRes = await getAllBehavioralAnalyses()
+    const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
+
+    console.log("[v0] Total behavioral analyses fetched:", allBehavioralAnalyses?.length)
+
+    const behavioralMap = new Map()
+    if (allBehavioralAnalyses) {
+      allBehavioralAnalyses.forEach((analysis) => {
+        // Usar o campo 'cpf' da tabela credit_profiles
+        if (analysis.cpf) {
+          const cleanCpf = analysis.cpf.replace(/[^\d]/g, "")
+          behavioralMap.set(cleanCpf, analysis)
+        }
+      })
+    }
+
+    const clientes = (vmaxCustomers || []).map((cliente) => {
+      const cpfCnpj = cliente["CPF/CNPJ"]?.replace(/[^\d]/g, "")
+      const behavioralData = cpfCnpj ? behavioralMap.get(cpfCnpj) : null
+
+      return {
+        ...cliente,
+        behavioralData,
+      }
+    })
 
     return <ClientesContent clientes={clientes} company={company} />
   } catch (error) {

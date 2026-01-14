@@ -1,13 +1,13 @@
 "use client"
 
-import { notFound } from 'next/navigation'
+import { notFound } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { getCustomerDetails } from "@/app/actions/analyses-actions"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail, FileDown } from 'lucide-react'
+import { ArrowLeft, User, Building2, CreditCard, Calendar, MapPin, Phone, Mail, FileDown } from "lucide-react"
 
 export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
   const { id } = await params
@@ -28,7 +28,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
 
   const getSourceBadge = (source: string) => {
     const variants: Record<string, { variant: any; label: string }> = {
-      assertiva: { variant: "default", label: "Análise de Crédito" },
+      assertiva: { variant: "default", label: "Análise Restritiva" },
       unknown: { variant: "outline", label: "Desconhecido" },
     }
     const config = variants[source] || variants.unknown
@@ -46,7 +46,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">{customer.name}</h1>
-          <p className="text-muted-foreground">Detalhes completos do cliente e análises de crédito</p>
+          <p className="text-muted-foreground">Detalhes completos do cliente e análises restritivas</p>
         </div>
         {profile && (
           <Button
@@ -228,7 +228,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
             </div>
           ) : (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">Nenhuma análise de crédito realizada ainda</p>
+              <p className="text-muted-foreground">Nenhuma análise restritiva realizada ainda</p>
               <Button className="mt-4" asChild>
                 <Link href="/super-admin/analises">Executar Análise</Link>
               </Button>

@@ -29,19 +29,19 @@ export function CreditAnalysisIntegration({ companyId }: CreditAnalysisIntegrati
       if (result.success) {
         toast({
           title: "Análise iniciada",
-          description: `Análise de crédito ${analysisType === "free" ? "gratuita" : "completa"} iniciada para todos os clientes.`,
+          description: `Análise restritiva ${analysisType === "free" ? "gratuita" : "completa"} iniciada para todos os clientes.`,
         })
       } else {
         toast({
           title: "Erro ao iniciar análise",
-          description: result.error || "Ocorreu um erro ao iniciar a análise de crédito.",
+          description: result.error || "Ocorreu um erro ao iniciar a análise restritiva.",
           variant: "destructive",
         })
       }
     } catch (error) {
       toast({
         title: "Erro",
-        description: "Ocorreu um erro ao iniciar a análise de crédito.",
+        description: "Ocorreu um erro ao iniciar a análise restritiva.",
         variant: "destructive",
       })
     } finally {
@@ -54,9 +54,9 @@ export function CreditAnalysisIntegration({ companyId }: CreditAnalysisIntegrati
       <CardHeader>
         <div className="flex items-center space-x-2">
           <CreditCard className="h-5 w-5 text-blue-600" />
-          <CardTitle>Análise de Crédito Automática</CardTitle>
+          <CardTitle>Análise Restritiva Automática</CardTitle>
         </div>
-        <CardDescription>Configure análises de crédito automáticas para clientes importados do ERP</CardDescription>
+        <CardDescription>Configure análises restritivas automáticas para clientes importados do ERP</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Configurações */}
@@ -65,7 +65,7 @@ export function CreditAnalysisIntegration({ companyId }: CreditAnalysisIntegrati
             <div className="space-y-0.5">
               <Label htmlFor="auto-analysis">Análise Automática</Label>
               <p className="text-sm text-muted-foreground">
-                Executar análise de crédito automaticamente ao importar novos clientes
+                Executar análise restritiva automaticamente ao importar novos clientes
               </p>
             </div>
             <Switch id="auto-analysis" checked={autoAnalysis} onCheckedChange={setAutoAnalysis} />
@@ -109,7 +109,7 @@ export function CreditAnalysisIntegration({ companyId }: CreditAnalysisIntegrati
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Executar Análise Manual</p>
-              <p className="text-xs text-muted-foreground">Analisar todos os clientes sem análise de crédito</p>
+              <p className="text-xs text-muted-foreground">Analisar todos os clientes sem análise restritiva</p>
             </div>
             <Button onClick={handleRunAnalysis} disabled={isRunning}>
               {isRunning ? (

@@ -18,6 +18,8 @@ import {
   Database,
   Target,
   CreditCard,
+  Sparkles,
+  LayoutGrid,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -62,10 +64,22 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/companies"),
     },
     {
-      name: "Análises de Crédito",
+      name: "Análise Restritiva",
       href: "/super-admin/analises",
       icon: CreditCard,
-      current: pathname.startsWith("/super-admin/analises"),
+      current: pathname === "/super-admin/analises",
+    },
+    {
+      name: "Análise Comportamental",
+      href: "/super-admin/analises/comportamental",
+      icon: Sparkles,
+      current: pathname.startsWith("/super-admin/analises/comportamental"),
+    },
+    {
+      name: "Análise Consolidada",
+      href: "/super-admin/analises/consolidada",
+      icon: LayoutGrid,
+      current: pathname.startsWith("/super-admin/analises/consolidada"),
     },
     {
       name: "Usuários",

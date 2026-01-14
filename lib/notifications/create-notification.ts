@@ -92,7 +92,7 @@ export async function notifyCreditAnalysisComplete(userId: string, companyId: st
     userId,
     companyId,
     type: "credit_analysis_complete",
-    title: "Análise de crédito concluída",
+    title: "Análise restritiva concluída",
     description: `${customersAnalyzed} ${customersAnalyzed === 1 ? "cliente analisado" : "clientes analisados"} com sucesso`,
   })
 }

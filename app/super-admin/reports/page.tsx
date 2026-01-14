@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrendingUp, DollarSign, Users, Building2, Download, FileText, Calendar, Settings } from "lucide-react"
-import { createBrowserClient } from "@supabase/ssr"
+import { createBrowserClient } from "@/lib/supabase/client"
 
 interface CompanyReport {
   id: string
@@ -38,10 +38,7 @@ export default function ReportsPage() {
   useEffect(() => {
     const fetchRealData = async () => {
       try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        )
+        const supabase = createBrowserClient()
 
         console.log("[v0] 📊 Carregando dados reais dos relatórios...")
 

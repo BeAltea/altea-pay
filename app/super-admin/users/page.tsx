@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
 import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2 } from "lucide-react"
 import { UserFilters } from "@/components/super-admin/user-filters"
-import { createBrowserClient } from "@supabase/ssr"
+import { createBrowserClient } from "@/lib/supabase/client"
 
 interface User {
   id: string
@@ -32,10 +32,7 @@ export default function UsersPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        )
+        const supabase = createBrowserClient()
 
         const { data: profiles, error } = await supabase
           .from("profiles")

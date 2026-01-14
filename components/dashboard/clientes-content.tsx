@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { Eye, Sparkles, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Handshake, Trash2 } from "lucide-react"
+import { Eye, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown, Handshake, Trash2 } from "lucide-react"
 import { deleteCustomer } from "@/app/actions/delete-customer"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -24,6 +24,7 @@ interface Cliente {
   Dias_Inad: number
   Vencido: string
   analysis_metadata: any
+  behavioralData?: any // Adicionado para análise comportamental
 }
 
 interface ClientesContentProps {
@@ -213,16 +214,33 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           const scoreRecupere = metadata?.recupere?.resposta?.score?.pontos || null
           const classeRecupere = metadata?.recupere?.resposta?.score?.classe || null
 
-          console.log(
-            "[v0] Cliente:",
-            cliente.Cliente,
-            "metadata:",
-            metadata,
-            "scoreRecupere:",
-            scoreRecupere,
-            "classeRecupere:",
-            classeRecupere,
-          )
+          const behavioralData = cliente.behavioralData?.data || cliente.behavioralData?.data_assertiva
+          const behavioralCreditScore = behavioralData?.credito?.resposta?.score?.pontos
+          const behavioralCreditClass = behavioralData?.credito?.resposta?.score?.classe
+          const behavioralRecoveryScore = behavioralData?.recupere?.resposta?.score?.pontos
+          const behavioralRecoveryClass = behavioralData?.recupere?.resposta?.score?.classe
+
+          const hasBehavioralData = behavioralData && (behavioralCreditScore || behavioralRecoveryScore)
+
+          // Debug log para verificar dados
+          if (cliente.behavioralData) {
+            console.log(
+              "[v0] Cliente:",
+              cliente.Cliente,
+              "behavioralData exists:",
+              !!cliente.behavioralData,
+              "data exists:",
+              !!cliente.behavioralData.data,
+              "data_assertiva exists:",
+              !!cliente.behavioralData.data_assertiva,
+              "hasBehavioralData:",
+              hasBehavioralData,
+              "creditScore:",
+              behavioralCreditScore,
+              "recoveryScore:",
+              behavioralRecoveryScore,
+            )
+          }
 
           return (
             <Card key={cliente.id} className="hover:shadow-lg transition-shadow overflow-hidden">
@@ -235,27 +253,66 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Score de Crédito */}
-                  <div className="border rounded-lg p-3 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="h-4 w-4 text-purple-600" />
-                      <span className="text-xs text-purple-600 font-semibold">Score Crédito</span>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Análise Restritiva */}
+                  <div className="col-span-2 border-2 border-blue-200 rounded-lg p-3 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-2 w-2 rounded-full bg-blue-600" />
+                      <span className="text-xs font-bold text-blue-700">Análise Restritiva</span>
                     </div>
-                    <div className="text-2xl md:text-3xl font-bold text-purple-600">{cliente.credit_score || "-"}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Análise de Crédito</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-blue-600 font-semibold mb-1">Score Crédito</p>
+                        <div className="text-2xl font-bold text-blue-600">{cliente.credit_score || "-"}</div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-blue-600 font-semibold mb-1">Score Recuperação</p>
+                        <div className="text-2xl font-bold text-orange-600">{scoreRecupere || "-"}</div>
+                        {classeRecupere && (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 text-xs bg-orange-100 text-orange-700 border-orange-300"
+                          >
+                            Classe {classeRecupere}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Score Recupere */}
-                  <div className="border rounded-lg p-3 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="h-4 w-4 text-emerald-600" />
-                      <span className="text-xs text-emerald-600 font-semibold">Score Recupere</span>
+                  {/* Análise Comportamental */}
+                  <div className="col-span-2 border-2 border-amber-200 rounded-lg p-3 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-2 w-2 rounded-full bg-amber-600" />
+                      <span className="text-xs font-bold text-amber-700">Análise Comportamental</span>
                     </div>
-                    <div className="text-2xl md:text-3xl font-bold text-emerald-600">{scoreRecupere || "-"}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {classeRecupere ? `Classe ${classeRecupere}` : "Recuperação"}
-                    </p>
+                    {hasBehavioralData ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-xs text-amber-600 font-semibold mb-1">Score Crédito</p>
+                          <div className="text-2xl font-bold text-blue-600">{behavioralCreditScore || "-"}</div>
+                          {behavioralCreditClass && (
+                            <Badge variant="outline" className="mt-1 text-xs bg-blue-100 text-blue-700 border-blue-300">
+                              Classe {behavioralCreditClass}
+                            </Badge>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs text-amber-600 font-semibold mb-1">Score Recuperação</p>
+                          <div className="text-2xl font-bold text-orange-600">{behavioralRecoveryScore || "-"}</div>
+                          {behavioralRecoveryClass && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 text-xs bg-orange-100 text-orange-700 border-orange-300"
+                            >
+                              Classe {behavioralRecoveryClass}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">Não realizada</p>
+                    )}
                   </div>
                 </div>
 
@@ -280,24 +337,10 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                     </Badge>
                   </div>
                   <div className="flex flex-col gap-1 p-2 rounded bg-muted">
-                    <span className="text-muted-foreground">Classe Recupere</span>
-                    <Badge
-                      variant={classeRecupere ? "outline" : "secondary"}
-                      className="w-fit bg-emerald-100 text-emerald-700 border-emerald-300"
-                    >
-                      {classeRecupere || "N/A"}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-xs md:text-sm">
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-muted-foreground shrink-0">Cidade:</span>
-                    <span className="font-medium truncate min-w-0">{cliente.Cidade || "N/A"}</span>
-                  </div>
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-muted-foreground shrink-0">UF:</span>
-                    <span className="font-medium">{cliente.UF || "N/A"}</span>
+                    <span className="text-muted-foreground">Localização</span>
+                    <span className="font-medium text-xs truncate">
+                      {cliente.Cidade || "N/A"}, {cliente.UF || "-"}
+                    </span>
                   </div>
                 </div>
 

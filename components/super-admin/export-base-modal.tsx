@@ -79,7 +79,7 @@ export function ExportBaseModal({ open, onOpenChange, companyId }: ExportBaseMod
               htmlFor="include-analysis"
               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              Incluir dados de análise de crédito
+              Incluir dados de análise restritiva
             </Label>
           </div>
 

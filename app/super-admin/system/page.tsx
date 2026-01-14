@@ -25,7 +25,7 @@ import {
 
 import { useToast } from "@/hooks/use-toast"
 import { useState, useEffect } from "react"
-import { createBrowserClient } from "@supabase/ssr"
+import { createBrowserClient } from "@/lib/supabase/client"
 
 export default function SystemPage() {
   const { toast } = useToast()
@@ -36,10 +36,7 @@ export default function SystemPage() {
   useEffect(() => {
     const fetchDatabaseStats = async () => {
       try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        )
+        const supabase = createBrowserClient()
 
         console.log("[v0] 🔧 Carregando estatísticas reais do banco de dados...")
 

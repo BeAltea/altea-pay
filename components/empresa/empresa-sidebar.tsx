@@ -27,7 +27,7 @@ export function EmpresaSidebar({ companyName }: EmpresaSidebarProps) {
       current: pathname.startsWith("/empresa/clientes"),
     },
     {
-      name: "Análises de Crédito",
+      name: "Análise Restritiva",
       href: "/empresa/analises",
       icon: CreditCard,
       current: pathname.startsWith("/empresa/analises"),

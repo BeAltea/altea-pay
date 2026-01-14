@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { Mail, Calendar, Save, CheckCircle, Phone, Building } from "lucide-react"
-import { createBrowserClient } from "@supabase/ssr"
+import { createBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 
@@ -34,13 +34,10 @@ export default function UserProfilePage() {
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState(false) // Declare the saving variable
   const { toast } = useToast()
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const supabase = createBrowserClient()
 
   useEffect(() => {
     const getUser = async () => {

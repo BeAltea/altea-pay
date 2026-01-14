@@ -136,7 +136,7 @@ export default async function SuperAdminDashboardPage() {
     recentAnalyses?.map((analysis) => ({
       id: analysis.id,
       type: "analysis",
-      description: `Análise de crédito realizada - Score: ${analysis.score || "N/A"}`,
+      description: `Análise restritiva realizada - Score: ${analysis.score || "N/A"}`,
       company: analysis.companies?.name || "Empresa",
       amount: null,
       time: new Date(analysis.created_at).toLocaleDateString("pt-BR"),

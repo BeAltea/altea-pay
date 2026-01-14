@@ -127,7 +127,7 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Relatórios e Análises</h1>
           <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
-            Acompanhe o desempenho das suas cobranças e análises de crédito
+            Acompanhe o desempenho das suas cobranças e análises restritivas
           </p>
         </div>
         <div className="flex flex-col space-y-2 md:flex-row md:items-center md:space-y-0 md:space-x-3">
@@ -207,7 +207,7 @@ export default function ReportsPage() {
               <div className="flex-1">
                 <p className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Score Médio</p>
                 <p className="text-lg md:text-2xl font-bold">{kpiData.averageScore.toFixed(0)}</p>
-                <p className="text-xs text-gray-500 mt-1">Análise de crédito</p>
+                <p className="text-xs text-gray-500 mt-1">Análise restritiva</p>
               </div>
               <div className="bg-purple-100 dark:bg-purple-900/20 p-2 md:p-3 rounded-lg">
                 <TrendingUp className="h-4 w-4 md:h-6 md:w-6 text-purple-600 dark:text-purple-400" />
@@ -320,7 +320,7 @@ export default function ReportsPage() {
               <p className="font-semibold text-blue-900 dark:text-blue-100">Dados Reais do Sistema</p>
               <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                 Todos os dados exibidos nesta página são provenientes do banco de dados real do sistema, refletindo as
-                análises de crédito realizadas via Assertiva e o status atual de cada cliente.
+                análises restritivas realizadas via Assertiva e o status atual de cada cliente.
               </p>
             </div>
           </div>

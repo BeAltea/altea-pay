@@ -9,7 +9,7 @@ export async function runCreditAnalysis(companyId: string, analysisType: "free" 
 
     const supabase = await createClient()
 
-    // Busca clientes da empresa que não têm análise de crédito
+    // Busca clientes da empresa que não têm análise restritiva
     const { data: customers, error: customersError } = await supabase
       .from("customers")
       .select("id, name, document")
@@ -27,7 +27,7 @@ export async function runCreditAnalysis(companyId: string, analysisType: "free" 
     if (!customers || customers.length === 0) {
       return {
         success: true,
-        message: "Nenhum cliente sem análise de crédito encontrado",
+        message: "Nenhum cliente sem análise restritiva encontrado",
         processed: 0,
       }
     }
@@ -115,7 +115,7 @@ export async function syncERPWithCreditAnalysis(integrationId: string, analysisT
     // Importa o serviço ERP dinamicamente para evitar problemas de importação circular
     const { erpService } = await import("@/lib/integrations/erp/erpService")
 
-    // Sincroniza clientes com análise de crédito
+    // Sincroniza clientes com análise restritiva
     const result = await erpService.syncCustomersWithCreditAnalysis(integrationId, analysisType)
 
     return {
