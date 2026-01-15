@@ -13,8 +13,6 @@ import {
   Building2,
   DollarSign,
   AlertTriangle,
-  FileText,
-  Check,
   CreditCard,
   Handshake,
   Trash2,
@@ -53,6 +51,22 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
   }
 
   const assertiva_data = cliente.analysis_metadata || null
+
+  const cleanCpfCnpj = cliente["CPF/CNPJ"]?.replace(/\D/g, "")
+  const { data: behavioralAnalysis } = await supabase
+    .from("credit_profiles")
+    .select("*")
+    .eq("cpf", cleanCpfCnpj)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  console.log("[v0] DETAIL PAGE - CPF:", cleanCpfCnpj)
+  console.log("[v0] behavioralAnalysis:", JSON.stringify(behavioralAnalysis, null, 2))
+  console.log("[v0] behavioralAnalysis?.data:", JSON.stringify(behavioralAnalysis?.data, null, 2))
+  console.log("[v0] behavioralAnalysis?.data_assertiva:", JSON.stringify(behavioralAnalysis?.data_assertiva, null, 2))
+
+  const behavioralData = behavioralAnalysis?.data || behavioralAnalysis?.data_assertiva || null
 
   const handleDelete = async () => {
     "use server"
@@ -183,6 +197,127 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         </Card>
       </div>
 
+      {(() => {
+        const creditScore = behavioralData?.credito?.resposta?.score
+        const recoveryScore = behavioralData?.recupere?.resposta?.score
+
+        if (!creditScore && !recoveryScore) return null
+
+        return (
+          <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 overflow-hidden">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
+                <span className="truncate">Análise Comportamental</span>
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Dados consolidados da análise comportamental do cliente
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                {/* Score de Crédito Comportamental */}
+                {creditScore && (
+                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Crédito</p>
+                    <div className="flex items-end gap-3">
+                      <div className="text-3xl sm:text-4xl font-bold text-blue-600 dark:text-blue-400">
+                        {creditScore.pontos}
+                      </div>
+                      <Badge className="mb-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                        Classe {creditScore.classe}
+                      </Badge>
+                    </div>
+                    {creditScore.faixa?.titulo && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-medium">
+                        {creditScore.faixa.titulo}
+                      </p>
+                    )}
+                    {creditScore.faixa?.descricao && (
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        {creditScore.faixa.descricao}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Score de Recuperação Comportamental */}
+                {recoveryScore && (
+                  <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Recuperação</p>
+                    <div className="flex items-end gap-3">
+                      <div className="text-3xl sm:text-4xl font-bold text-orange-600 dark:text-orange-400">
+                        {recoveryScore.pontos}
+                      </div>
+                      <Badge className="mb-1 bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">
+                        Classe {recoveryScore.classe}
+                      </Badge>
+                    </div>
+                    {recoveryScore.faixa?.titulo && (
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-2 font-medium">
+                        {recoveryScore.faixa.titulo}
+                      </p>
+                    )}
+                    {recoveryScore.faixa?.descricao && (
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        {recoveryScore.faixa.descricao}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Protestos da Análise Comportamental */}
+              {behavioralData?.acoes?.resposta?.protestos && (
+                <div className="p-4 rounded-lg bg-white dark:bg-gray-900 border">
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <p className="text-sm font-semibold">Protestos</p>
+                  </div>
+                  <div className="grid gap-2 grid-cols-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Quantidade</p>
+                      <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                        {behavioralData.acoes.resposta.protestos.qtdProtestos || 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Valor Total</p>
+                      <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                        {behavioralData.acoes.resposta.protestos.valorTotal
+                          ? new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(behavioralData.acoes.resposta.protestos.valorTotal)
+                          : "R$ 0,00"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Faturamento Estimado da Análise Comportamental */}
+              {behavioralData?.credito?.resposta?.faturamentoEstimado?.valor && (
+                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-2">Faturamento Estimado</p>
+                  <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(behavioralData.credito.resposta.faturamentoEstimado.valor)}
+                  </div>
+                  {behavioralData.credito.resposta.faturamentoEstimado.faixa && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Faixa: {behavioralData.credito.resposta.faturamentoEstimado.faixa}
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       <Card className="overflow-hidden">
         <CardHeader className="pb-3">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -295,13 +430,13 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           {assertiva_data?.acoes?.resposta?.protestos?.list &&
           assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
             <div className="space-y-3 sm:space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                 <span className="text-xs sm:text-sm font-medium">Total de Protestos:</span>
                 <Badge variant="destructive" className="text-sm sm:text-base">
                   {assertiva_data.acoes.resposta.protestos.qtdProtestos}
                 </Badge>
               </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                 <span className="text-xs sm:text-sm font-medium">Valor Total:</span>
                 <span className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -333,39 +468,6 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
             </div>
           ) : (
             <p className="text-xs sm:text-sm text-muted-foreground">Informação não disponível</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <FileText className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Últimas Consultas</span>
-          </CardTitle>
-          <CardDescription className="text-xs truncate">Histórico de consultas realizadas</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {assertiva_data?.credito?.resposta?.ultimasConsultas?.list &&
-          assertiva_data.credito.resposta.ultimasConsultas.list.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3">
-              {assertiva_data.credito.resposta.ultimasConsultas.list.slice(0, 10).map((consulta: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 border-b pb-2 last:border-0"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm sm:text-base font-medium">{consulta.dataOcorrencia}</p>
-                    <p className="text-xs text-muted-foreground">Consulta realizada</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <Check className="h-3 w-3 sm:h-4 sm:w-4" />
-              <p className="text-xs sm:text-sm font-medium">Nenhuma consulta recente registrada</p>
-            </div>
           )}
         </CardContent>
       </Card>

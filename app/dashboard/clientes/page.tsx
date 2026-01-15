@@ -38,12 +38,9 @@ export default async function ClientesPage() {
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
 
-    console.log("[v0] Total behavioral analyses fetched:", allBehavioralAnalyses?.length)
-
     const behavioralMap = new Map()
     if (allBehavioralAnalyses) {
       allBehavioralAnalyses.forEach((analysis) => {
-        // Usar o campo 'cpf' da tabela credit_profiles
         if (analysis.cpf) {
           const cleanCpf = analysis.cpf.replace(/[^\d]/g, "")
           behavioralMap.set(cleanCpf, analysis)
