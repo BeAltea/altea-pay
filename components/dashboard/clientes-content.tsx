@@ -253,36 +253,6 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* Análise Restritiva */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
-                  <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-blue-600" />
-                    Análise Restritiva
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Crédito</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-lg font-bold text-blue-600">{cliente.credit_score || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Recuperação</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-lg font-bold text-orange-600">{scoreRecupere || "-"}</p>
-                        {classeRecupere && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 px-1 bg-orange-100 text-orange-700 border-orange-300"
-                          >
-                            {classeRecupere}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Análise Comportamental */}
                 <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-3 rounded-lg border border-amber-200">
                   <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
