@@ -2,77 +2,103 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
 /**
- * Componente que detecta tokens de recovery no hash da URL e redireciona para a página de reset de senha.
- * Isso é necessário porque o Supabase redireciona para a URL configurada com os tokens no hash,
- * e o hash não é enviado ao servidor (middleware não consegue capturar).
+ * Componente que detecta tokens de recovery na URL e redireciona para a página de reset de senha.
+ * Suporta tanto o fluxo PKCE (?code=...) quanto o fluxo implícito (#access_token=...).
  */
 export function RecoveryRedirect() {
   const router = useRouter()
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState("Redirecionando...")
 
   useEffect(() => {
-    // Função para processar o hash
-    const processHash = () => {
+    const processAuthParams = async () => {
       if (typeof window === "undefined") return
 
+      const urlParams = new URLSearchParams(window.location.search)
       const hash = window.location.hash
-      console.log("[RecoveryRedirect] Hash da URL:", hash)
       
-      if (!hash || hash.length < 2) return
+      // Verifica se há código PKCE na query string
+      const code = urlParams.get("code")
+      
+      console.log("[RecoveryRedirect] URL params:", { 
+        code: code ? "presente" : "ausente",
+        hash: hash || "vazio"
+      })
 
-      try {
-        const hashParams = new URLSearchParams(hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
-        const errorCode = hashParams.get("error_code")
-        const errorDescription = hashParams.get("error_description")
+      // FLUXO PKCE: código na query string
+      if (code) {
+        console.log("[RecoveryRedirect] Detectado código PKCE, processando...")
+        setIsRedirecting(true)
+        setStatusMessage("Verificando código de segurança...")
 
-        console.log("[RecoveryRedirect] Parsed params:", { 
-          hasAccessToken: !!accessToken, 
-          type, 
-          errorCode, 
-          errorDescription 
-        })
-
-        // Se houver erro no token
-        if (errorCode || errorDescription) {
-          console.log("[RecoveryRedirect] Erro no token de recovery:", errorDescription || errorCode)
-          setIsRedirecting(true)
-          router.replace("/auth/reset-password?error=" + encodeURIComponent(errorDescription || errorCode || "Token inválido"))
-          return
-        }
-
-        // Se for um recovery com tokens válidos, redireciona para reset-password
-        if (accessToken && type === "recovery") {
-          console.log("[RecoveryRedirect] Detectado token de recovery, redirecionando para reset-password")
-          setIsRedirecting(true)
+        try {
+          const supabase = createClient()
           
-          // Usa window.location para garantir que o hash seja preservado
-          const resetUrl = `/auth/reset-password#access_token=${accessToken}&refresh_token=${refreshToken || ""}&type=${type}`
-          window.location.href = resetUrl
-          return
+          // Troca o código por uma sessão
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          
+          if (error) {
+            console.error("[RecoveryRedirect] Erro ao trocar código:", error)
+            window.location.href = `/auth/reset-password?error=${encodeURIComponent(error.message)}`
+            return
+          }
+
+          if (data.session) {
+            console.log("[RecoveryRedirect] Sessão criada com sucesso, redirecionando para reset-password")
+            // Limpa a URL e redireciona
+            window.history.replaceState({}, document.title, window.location.pathname)
+            window.location.href = "/auth/reset-password"
+            return
+          }
+        } catch (err) {
+          console.error("[RecoveryRedirect] Erro ao processar código PKCE:", err)
+          window.location.href = "/auth/reset-password?error=Erro ao processar código de recuperação"
         }
-      } catch (error) {
-        console.error("[RecoveryRedirect] Erro ao processar hash:", error)
+        return
+      }
+
+      // FLUXO IMPLÍCITO: tokens no hash
+      if (hash && hash.length > 2) {
+        try {
+          const hashParams = new URLSearchParams(hash.substring(1))
+          const accessToken = hashParams.get("access_token")
+          const refreshToken = hashParams.get("refresh_token")
+          const type = hashParams.get("type")
+          const errorCode = hashParams.get("error_code")
+          const errorDescription = hashParams.get("error_description")
+
+          console.log("[RecoveryRedirect] Hash params:", { 
+            hasAccessToken: !!accessToken, 
+            type, 
+            errorCode 
+          })
+
+          // Se houver erro no token
+          if (errorCode || errorDescription) {
+            console.log("[RecoveryRedirect] Erro no token:", errorDescription || errorCode)
+            setIsRedirecting(true)
+            window.location.href = `/auth/reset-password?error=${encodeURIComponent(errorDescription || errorCode || "Token inválido")}`
+            return
+          }
+
+          // Se for um recovery com tokens válidos
+          if (accessToken && type === "recovery") {
+            console.log("[RecoveryRedirect] Detectado token de recovery no hash")
+            setIsRedirecting(true)
+            const resetUrl = `/auth/reset-password#access_token=${accessToken}&refresh_token=${refreshToken || ""}&type=${type}`
+            window.location.href = resetUrl
+            return
+          }
+        } catch (error) {
+          console.error("[RecoveryRedirect] Erro ao processar hash:", error)
+        }
       }
     }
 
-    // Executa imediatamente
-    processHash()
-
-    // Também escuta mudanças no hash (caso o hash seja adicionado depois)
-    const handleHashChange = () => {
-      processHash()
-    }
-
-    window.addEventListener("hashchange", handleHashChange)
-
-    return () => {
-      window.removeEventListener("hashchange", handleHashChange)
-    }
+    processAuthParams()
   }, [router])
 
   // Mostra loading se estiver redirecionando
@@ -87,7 +113,7 @@ export function RecoveryRedirect() {
               </div>
             </div>
           </div>
-          <h1 className="text-xl font-bold text-white mb-2">Redirecionando...</h1>
+          <h1 className="text-xl font-bold text-white mb-2">{statusMessage}</h1>
           <p className="text-blue-100">Aguarde enquanto processamos sua solicitação.</p>
           <div className="mt-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-altea-gold mx-auto"></div>
