@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import {
@@ -229,12 +229,14 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           const classeRecupere = metadata?.recupere?.resposta?.score?.classe || null
 
           const behavioralData = cliente.behavioralData?.data || cliente.behavioralData?.data_assertiva
-          const behavioralCreditScore = behavioralData?.credito?.resposta?.score?.pontos
+          const rawBehavioralCreditScore = behavioralData?.credito?.resposta?.score?.pontos
+          const behavioralCreditScore = rawBehavioralCreditScore === 0 ? 5 : rawBehavioralCreditScore
           const behavioralCreditClass = behavioralData?.credito?.resposta?.score?.classe
-          const behavioralRecoveryScore = behavioralData?.recupere?.resposta?.score?.pontos
+          const rawBehavioralRecoveryScore = behavioralData?.recupere?.resposta?.score?.pontos
+          const behavioralRecoveryScore = rawBehavioralRecoveryScore === 0 ? 5 : rawBehavioralRecoveryScore
           const behavioralRecoveryClass = behavioralData?.recupere?.resposta?.score?.classe
 
-          const hasBehavioralData = behavioralData && (behavioralCreditScore || behavioralRecoveryScore)
+          const hasBehavioralData = behavioralData && (rawBehavioralCreditScore !== undefined || rawBehavioralRecoveryScore !== undefined)
 
           // Define new Intl only if it's not already defined to avoid multiple declarations
           const newIntl =
@@ -253,42 +255,12 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* Análise Restritiva */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
-                  <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-blue-600" />
-                    Análise Restritiva
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Crédito</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-lg font-bold text-blue-600">{cliente.credit_score || "-"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Recuperação</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-lg font-bold text-orange-600">{scoreRecupere || "-"}</p>
-                        {classeRecupere && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 px-1 bg-orange-100 text-orange-700 border-orange-300"
-                          >
-                            {classeRecupere}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Análise Comportamental */}
                 <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-3 rounded-lg border border-amber-200">
-                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-amber-600" />
+                  <span className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-amber-600 inline-block" />
                     Análise Comportamental
-                  </p>
+                  </span>
                   {hasBehavioralData ? (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -336,7 +308,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                     <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
                       <SheetHeader className="pb-6">
                         <SheetTitle className="text-2xl">{cliente.Cliente}</SheetTitle>
-                        <p className="text-sm text-muted-foreground">{cliente["CPF/CNPJ"]}</p>
+                        <SheetDescription>{cliente["CPF/CNPJ"]} - Detalhes das análises de crédito</SheetDescription>
                       </SheetHeader>
 
                       <Tabs defaultValue="geral" className="mt-6">
@@ -353,7 +325,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                             <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
                               <CardHeader className="pb-3">
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                  <div className="h-3 w-3 rounded-full bg-blue-600" />
+                                  <span className="h-3 w-3 rounded-full bg-blue-600 inline-block" />
                                   Análise Restritiva
                                 </CardTitle>
                               </CardHeader>
@@ -398,7 +370,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                             <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50">
                               <CardHeader className="pb-3">
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                  <div className="h-3 w-3 rounded-full bg-amber-600" />
+                                  <span className="h-3 w-3 rounded-full bg-amber-600 inline-block" />
                                   Análise Comportamental
                                 </CardTitle>
                               </CardHeader>
