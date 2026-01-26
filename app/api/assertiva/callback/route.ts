@@ -207,6 +207,7 @@ export async function POST(request: Request) {
           risk_level: creditClass,
           data_assertiva: payload,
           has_sanctions: acoesData?.resposta?.acoes || false,
+          updated_at: new Date().toISOString(), // Atualiza a data quando a análise é processada novamente
         })
         .eq("id", existingProfile.id)
         .select()
