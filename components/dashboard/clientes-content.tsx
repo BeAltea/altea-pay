@@ -229,12 +229,14 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           const classeRecupere = metadata?.recupere?.resposta?.score?.classe || null
 
           const behavioralData = cliente.behavioralData?.data || cliente.behavioralData?.data_assertiva
-          const behavioralCreditScore = behavioralData?.credito?.resposta?.score?.pontos
+          const rawBehavioralCreditScore = behavioralData?.credito?.resposta?.score?.pontos
+          const behavioralCreditScore = rawBehavioralCreditScore === 0 ? 5 : rawBehavioralCreditScore
           const behavioralCreditClass = behavioralData?.credito?.resposta?.score?.classe
-          const behavioralRecoveryScore = behavioralData?.recupere?.resposta?.score?.pontos
+          const rawBehavioralRecoveryScore = behavioralData?.recupere?.resposta?.score?.pontos
+          const behavioralRecoveryScore = rawBehavioralRecoveryScore === 0 ? 5 : rawBehavioralRecoveryScore
           const behavioralRecoveryClass = behavioralData?.recupere?.resposta?.score?.classe
 
-          const hasBehavioralData = behavioralData && (behavioralCreditScore || behavioralRecoveryScore)
+          const hasBehavioralData = behavioralData && (rawBehavioralCreditScore !== undefined || rawBehavioralRecoveryScore !== undefined)
 
           // Define new Intl only if it's not already defined to avoid multiple declarations
           const newIntl =
