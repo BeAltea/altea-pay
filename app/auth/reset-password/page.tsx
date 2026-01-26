@@ -24,8 +24,19 @@ export default function ResetPasswordPage() {
     const checkSession = async () => {
       const supabase = createClient()
       
+      console.log("[ResetPassword] Iniciando verificação de sessão")
+      console.log("[ResetPassword] Hash:", window.location.hash)
+      console.log("[ResetPassword] Search:", window.location.search)
+      
       // Primeiro, tenta processar tokens do hash da URL (formato mais comum do Supabase)
-      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const hash = window.location.hash
+      let hashParams: URLSearchParams
+      try {
+        hashParams = new URLSearchParams(hash.substring(1))
+      } catch {
+        hashParams = new URLSearchParams()
+      }
+      
       const hashAccessToken = hashParams.get("access_token")
       const hashRefreshToken = hashParams.get("refresh_token")
       const hashType = hashParams.get("type")
@@ -35,50 +46,71 @@ export default function ResetPasswordPage() {
       const queryAccessToken = urlParams.get("access_token")
       const queryRefreshToken = urlParams.get("refresh_token")
       const queryType = urlParams.get("type")
+      const queryError = urlParams.get("error")
+      
+      // Se tiver erro na URL, mostra erro
+      if (queryError) {
+        console.log("[ResetPassword] Erro na URL:", queryError)
+        setError(decodeURIComponent(queryError))
+        setIsValidSession(false)
+        return
+      }
       
       const accessToken = hashAccessToken || queryAccessToken
       const refreshToken = hashRefreshToken || queryRefreshToken
       const type = hashType || queryType
       
+      console.log("[ResetPassword] Tokens encontrados:", { 
+        hasAccessToken: !!accessToken, 
+        hasRefreshToken: !!refreshToken, 
+        type 
+      })
+      
       // Se tiver tokens na URL, processa primeiro
-      if (accessToken && refreshToken) {
-        console.log("[v0] Processando tokens da URL, type:", type)
+      if (accessToken) {
+        console.log("[ResetPassword] Processando tokens da URL, type:", type)
         try {
           const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
-            refresh_token: refreshToken,
+            refresh_token: refreshToken || "",
           })
           
           if (sessionError) {
-            console.error("[v0] Erro ao definir sessão:", sessionError)
+            console.error("[ResetPassword] Erro ao definir sessão:", sessionError)
+            // Tenta verificar se o token ainda é válido de outra forma
+            if (sessionError.message.includes("expired") || sessionError.message.includes("invalid")) {
+              setError("O link de recuperação expirou ou é inválido. Por favor, solicite um novo link.")
+            }
             setIsValidSession(false)
             return
           }
           
           if (data.session) {
-            console.log("[v0] Sessão definida com sucesso via tokens da URL")
+            console.log("[ResetPassword] Sessão definida com sucesso via tokens da URL")
             // Limpa a URL para não expor os tokens
             window.history.replaceState({}, document.title, window.location.pathname)
             setIsValidSession(true)
             return
           }
         } catch (err) {
-          console.error("[v0] Erro ao processar tokens:", err)
+          console.error("[ResetPassword] Erro ao processar tokens:", err)
+          setIsValidSession(false)
+          return
         }
       }
       
       // Verifica se há uma sessão ativa existente
-      const { data: { session }, error } = await supabase.auth.getSession()
+      const { data: { session }, error: getSessionError } = await supabase.auth.getSession()
       
-      if (error) {
-        console.error("[v0] Erro ao verificar sessão:", error)
+      if (getSessionError) {
+        console.error("[ResetPassword] Erro ao verificar sessão:", getSessionError)
         setIsValidSession(false)
         return
       }
 
       // Listener para detectar eventos de autenticação (incluindo PASSWORD_RECOVERY do hash da URL)
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log("[v0] Auth state change:", event)
+        console.log("[ResetPassword] Auth state change:", event)
         if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
           setIsValidSession(true)
         }
@@ -86,15 +118,16 @@ export default function ResetPasswordPage() {
 
       // Se já tem sessão, considera válido
       if (session) {
-        console.log("[v0] Sessão existente encontrada")
+        console.log("[ResetPassword] Sessão existente encontrada")
         setIsValidSession(true)
       } else {
         // Aguarda um pouco para o listener processar eventos
         setTimeout(() => {
           if (isValidSession === null) {
+            console.log("[ResetPassword] Timeout - nenhuma sessão encontrada")
             setIsValidSession(false)
           }
-        }, 3000)
+        }, 2000)
       }
 
       return () => {
