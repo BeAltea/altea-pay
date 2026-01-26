@@ -61,10 +61,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
     .limit(1)
     .maybeSingle()
 
-  console.log("[v0] DETAIL PAGE - CPF:", cleanCpfCnpj)
-  console.log("[v0] behavioralAnalysis:", JSON.stringify(behavioralAnalysis, null, 2))
-  console.log("[v0] behavioralAnalysis?.data:", JSON.stringify(behavioralAnalysis?.data, null, 2))
-  console.log("[v0] behavioralAnalysis?.data_assertiva:", JSON.stringify(behavioralAnalysis?.data_assertiva, null, 2))
+
 
   const behavioralData = behavioralAnalysis?.data || behavioralAnalysis?.data_assertiva || null
 
@@ -206,10 +203,18 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         return (
           <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 overflow-hidden">
             <CardHeader className="pb-3">
-              <CardTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
-                <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
-                <span className="truncate">Análise Comportamental</span>
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                  <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
+                  <span className="truncate">Análise Comportamental</span>
+                </CardTitle>
+                {/* Data da última análise - usa updated_at se existir, senão created_at */}
+                {(behavioralAnalysis?.updated_at || behavioralAnalysis?.created_at) && (
+                  <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                    {new Date(behavioralAnalysis.updated_at || behavioralAnalysis.created_at).toLocaleDateString("pt-BR")}
+                  </Badge>
+                )}
+              </div>
               <CardDescription className="text-xs sm:text-sm">
                 Dados consolidados da análise comportamental do cliente
               </CardDescription>

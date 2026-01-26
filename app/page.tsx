@@ -5,10 +5,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
 import { ArrowRight, CheckCircle, Zap, Shield, CreditCard, BarChart3, Lock, Code } from "lucide-react"
+import { RecoveryRedirect } from "@/components/auth/recovery-redirect"
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white">
+      {/* Componente para detectar e redirecionar tokens de recovery do Supabase */}
+      <RecoveryRedirect />
       {/* Header */}
       <header className="bg-altea-navy text-white">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">

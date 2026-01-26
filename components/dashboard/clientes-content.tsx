@@ -38,6 +38,7 @@ interface Cliente {
   Vencido: string
   analysis_metadata: any
   behavioralData?: any // Adicionado para análise comportamental
+  last_analysis_date?: string // Data da última análise restritiva
 }
 
 interface ClientesContentProps {
@@ -257,10 +258,18 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
               <CardContent className="space-y-3">
                 {/* Análise Comportamental */}
                 <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-3 rounded-lg border border-amber-200">
-                  <span className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-amber-600 inline-block" />
-                    Análise Comportamental
-                  </span>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-amber-600 inline-block" />
+                      Análise Comportamental
+                    </span>
+                    {/* Data da última análise comportamental - usa updated_at se existir, senão created_at */}
+                    {(cliente.behavioralData?.updated_at || cliente.behavioralData?.created_at) && (
+                      <span className="text-[10px] text-amber-600">
+                        {new Date(cliente.behavioralData.updated_at || cliente.behavioralData.created_at).toLocaleDateString("pt-BR")}
+                      </span>
+                    )}
+                  </div>
                   {hasBehavioralData ? (
                     <div className="grid grid-cols-2 gap-2">
                       <div>

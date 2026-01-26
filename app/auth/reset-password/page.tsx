@@ -24,7 +24,50 @@ export default function ResetPasswordPage() {
     const checkSession = async () => {
       const supabase = createClient()
       
-      // Verifica se há uma sessão ativa (o usuário veio do link de email processado pela rota /auth/confirm)
+      // Primeiro, tenta processar tokens do hash da URL (formato mais comum do Supabase)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1))
+      const hashAccessToken = hashParams.get("access_token")
+      const hashRefreshToken = hashParams.get("refresh_token")
+      const hashType = hashParams.get("type")
+      
+      // Também verifica query params (alguns flows usam query string)
+      const urlParams = new URLSearchParams(window.location.search)
+      const queryAccessToken = urlParams.get("access_token")
+      const queryRefreshToken = urlParams.get("refresh_token")
+      const queryType = urlParams.get("type")
+      
+      const accessToken = hashAccessToken || queryAccessToken
+      const refreshToken = hashRefreshToken || queryRefreshToken
+      const type = hashType || queryType
+      
+      // Se tiver tokens na URL, processa primeiro
+      if (accessToken && refreshToken) {
+        console.log("[v0] Processando tokens da URL, type:", type)
+        try {
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+          
+          if (sessionError) {
+            console.error("[v0] Erro ao definir sessão:", sessionError)
+            setIsValidSession(false)
+            return
+          }
+          
+          if (data.session) {
+            console.log("[v0] Sessão definida com sucesso via tokens da URL")
+            // Limpa a URL para não expor os tokens
+            window.history.replaceState({}, document.title, window.location.pathname)
+            setIsValidSession(true)
+            return
+          }
+        } catch (err) {
+          console.error("[v0] Erro ao processar tokens:", err)
+        }
+      }
+      
+      // Verifica se há uma sessão ativa existente
       const { data: { session }, error } = await supabase.auth.getSession()
       
       if (error) {
@@ -43,35 +86,15 @@ export default function ResetPasswordPage() {
 
       // Se já tem sessão, considera válido
       if (session) {
+        console.log("[v0] Sessão existente encontrada")
         setIsValidSession(true)
       } else {
-        // Tenta processar o hash da URL (caso tenha access_token e refresh_token)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
-        const type = hashParams.get("type")
-        
-        if (accessToken && refreshToken) {
-          console.log("[v0] Processando tokens da URL, type:", type)
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-          
-          if (sessionError) {
-            console.error("[v0] Erro ao definir sessão:", sessionError)
+        // Aguarda um pouco para o listener processar eventos
+        setTimeout(() => {
+          if (isValidSession === null) {
             setIsValidSession(false)
-          } else if (data.session) {
-            setIsValidSession(true)
           }
-        } else {
-          // Aguarda um pouco para o listener processar eventos
-          setTimeout(() => {
-            if (isValidSession === null) {
-              setIsValidSession(false)
-            }
-          }, 2000)
-        }
+        }, 3000)
       }
 
       return () => {

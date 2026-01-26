@@ -24,8 +24,11 @@ export default function ForgotPasswordPage() {
     try {
       const supabase = createClient()
 
+      // Usa a URL base do site para o redirect
+      // O Supabase vai redirecionar para esta URL com os tokens no hash
+      // O componente RecoveryRedirect na página inicial vai detectar e redirecionar para /auth/reset-password
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/confirm`,
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       })
 
       if (error) {

@@ -3,6 +3,32 @@ import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
   const currentPath = request.nextUrl.pathname
+  const url = request.nextUrl.clone()
+
+  // Verifica se é um callback de recuperação de senha do Supabase
+  // O link vem no formato: /?token=xxx&type=recovery ou com hash #access_token=xxx
+  const token = url.searchParams.get("token")
+  const type = url.searchParams.get("type")
+  
+  // Se vier token de recovery na URL raiz, redireciona para /auth/confirm
+  if (currentPath === "/" && token && type === "recovery") {
+    url.pathname = "/auth/confirm"
+    url.searchParams.set("token_hash", token)
+    url.searchParams.set("type", "recovery")
+    return NextResponse.redirect(url)
+  }
+
+  // Verifica se há access_token e type=recovery no hash (após processamento do Supabase)
+  // Isso acontece quando o Supabase redireciona de volta após verificar o token
+  const accessToken = url.searchParams.get("access_token")
+  const refreshToken = url.searchParams.get("refresh_token")
+  const tokenType = url.searchParams.get("type")
+  
+  if (currentPath === "/" && accessToken && tokenType === "recovery") {
+    // Redireciona para reset-password mantendo os tokens na URL para o cliente processar
+    url.pathname = "/auth/reset-password"
+    return NextResponse.redirect(url)
+  }
 
   if (
     currentPath.startsWith("/_next") ||
