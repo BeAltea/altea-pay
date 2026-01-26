@@ -38,8 +38,8 @@ export async function updateSession(request: NextRequest) {
       },
     )
 
-    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error"]
-    const isPublicPath = publicPaths.includes(currentPath)
+    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error", "/auth/reset-password", "/auth/forgot-password", "/auth/confirm"]
+    const isPublicPath = publicPaths.includes(currentPath) || currentPath.startsWith("/auth/")
 
     let user = null
     let userError = null

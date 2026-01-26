@@ -24,7 +24,7 @@ export default function ResetPasswordPage() {
     const checkSession = async () => {
       const supabase = createClient()
       
-      // O Supabase automaticamente processa o token da URL quando a página carrega
+      // Verifica se há uma sessão ativa (o usuário veio do link de email processado pela rota /auth/confirm)
       const { data: { session }, error } = await supabase.auth.getSession()
       
       if (error) {
@@ -33,24 +33,45 @@ export default function ResetPasswordPage() {
         return
       }
 
-      // Verifica se há um evento de PASSWORD_RECOVERY
+      // Listener para detectar eventos de autenticação (incluindo PASSWORD_RECOVERY do hash da URL)
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         console.log("[v0] Auth state change:", event)
-        if (event === "PASSWORD_RECOVERY") {
+        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
           setIsValidSession(true)
         }
       })
 
-      // Se já tem sessão, considera válido (o usuário veio do link de email)
+      // Se já tem sessão, considera válido
       if (session) {
         setIsValidSession(true)
       } else {
-        // Aguarda um pouco para o Supabase processar o token
-        setTimeout(() => {
-          if (isValidSession === null) {
+        // Tenta processar o hash da URL (caso tenha access_token e refresh_token)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get("access_token")
+        const refreshToken = hashParams.get("refresh_token")
+        const type = hashParams.get("type")
+        
+        if (accessToken && refreshToken) {
+          console.log("[v0] Processando tokens da URL, type:", type)
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+          
+          if (sessionError) {
+            console.error("[v0] Erro ao definir sessão:", sessionError)
             setIsValidSession(false)
+          } else if (data.session) {
+            setIsValidSession(true)
           }
-        }, 2000)
+        } else {
+          // Aguarda um pouco para o listener processar eventos
+          setTimeout(() => {
+            if (isValidSession === null) {
+              setIsValidSession(false)
+            }
+          }, 2000)
+        }
       }
 
       return () => {
