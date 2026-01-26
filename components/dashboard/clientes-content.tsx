@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import {
@@ -255,10 +255,10 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
               <CardContent className="space-y-3">
                 {/* Análise Comportamental */}
                 <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-3 rounded-lg border border-amber-200">
-                  <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-amber-600" />
+                  <span className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-amber-600 inline-block" />
                     Análise Comportamental
-                  </p>
+                  </span>
                   {hasBehavioralData ? (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -306,7 +306,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                     <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
                       <SheetHeader className="pb-6">
                         <SheetTitle className="text-2xl">{cliente.Cliente}</SheetTitle>
-                        <p className="text-sm text-muted-foreground">{cliente["CPF/CNPJ"]}</p>
+                        <SheetDescription>{cliente["CPF/CNPJ"]} - Detalhes das análises de crédito</SheetDescription>
                       </SheetHeader>
 
                       <Tabs defaultValue="geral" className="mt-6">
@@ -323,7 +323,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                             <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
                               <CardHeader className="pb-3">
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                  <div className="h-3 w-3 rounded-full bg-blue-600" />
+                                  <span className="h-3 w-3 rounded-full bg-blue-600 inline-block" />
                                   Análise Restritiva
                                 </CardTitle>
                               </CardHeader>
@@ -368,7 +368,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                             <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50">
                               <CardHeader className="pb-3">
                                 <CardTitle className="text-lg flex items-center gap-2">
-                                  <div className="h-3 w-3 rounded-full bg-amber-600" />
+                                  <span className="h-3 w-3 rounded-full bg-amber-600 inline-block" />
                                   Análise Comportamental
                                 </CardTitle>
                               </CardHeader>
