@@ -73,6 +73,35 @@ export function DynamicCustomerForm({ companyId, onSuccess, onCancel }: DynamicC
     )
   }
 
+  const isAnalysisField = (columnName: string): boolean => {
+    // Campos que são preenchidos automaticamente pelas análises de crédito/comportamental
+    const analysisFields = [
+      "approval_reason",
+      "approval_status",
+      "behavior_classification",
+      "presumed_income",
+      "presumed_limit",
+      "collection_count",
+      "recovery_score",
+      "recovery_class",
+      "recovery_description",
+      "assertiva_uuid",
+      "assertiva_protocol",
+      "risk_level",
+      "credit_score",
+      "score",
+      "propensity_score",
+      "created_at",
+      "updated_at",
+      "id",
+    ]
+    const lowerCol = columnName.toLowerCase().replace(/\s+/g, "_")
+    return analysisFields.some((field) => lowerCol.includes(field) || field.includes(lowerCol))
+  }
+
+  // Filtra os campos para mostrar apenas os que devem ser preenchidos manualmente
+  const visibleColumns = columns.filter((col) => !isAnalysisField(col))
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -109,7 +138,7 @@ export function DynamicCustomerForm({ companyId, onSuccess, onCancel }: DynamicC
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2">
-        {columns.map((column) => (
+        {visibleColumns.map((column) => (
           <div key={column} className="space-y-2">
             <Label htmlFor={column}>
               {getFieldLabel(column)}
