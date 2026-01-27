@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
 /**
- * Componente que detecta tokens de recovery na URL e redireciona para a página de reset de senha.
- * Suporta tanto o fluxo PKCE (?code=...) quanto o fluxo implícito (#access_token=...).
+ * Componente que detecta APENAS tokens de RECOVERY (recuperação de senha) na URL.
+ * NÃO deve interceptar tokens de confirmação de email (signup).
  */
 export function RecoveryRedirect() {
   const router = useRouter()
@@ -17,50 +17,10 @@ export function RecoveryRedirect() {
     const processAuthParams = async () => {
       if (typeof window === "undefined") return
 
-      const urlParams = new URLSearchParams(window.location.search)
       const hash = window.location.hash
       
-      // Verifica se há código PKCE na query string
-      const code = urlParams.get("code")
-      
-      console.log("[RecoveryRedirect] URL params:", { 
-        code: code ? "presente" : "ausente",
-        hash: hash || "vazio"
-      })
-
-      // FLUXO PKCE: código na query string
-      if (code) {
-        console.log("[RecoveryRedirect] Detectado código PKCE, processando...")
-        setIsRedirecting(true)
-        setStatusMessage("Verificando código de segurança...")
-
-        try {
-          const supabase = createClient()
-          
-          // Troca o código por uma sessão
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-          
-          if (error) {
-            console.error("[RecoveryRedirect] Erro ao trocar código:", error)
-            window.location.href = `/auth/reset-password?error=${encodeURIComponent(error.message)}`
-            return
-          }
-
-          if (data.session) {
-            console.log("[RecoveryRedirect] Sessão criada com sucesso, redirecionando para reset-password")
-            // Limpa a URL e redireciona
-            window.history.replaceState({}, document.title, window.location.pathname)
-            window.location.href = "/auth/reset-password"
-            return
-          }
-        } catch (err) {
-          console.error("[RecoveryRedirect] Erro ao processar código PKCE:", err)
-          window.location.href = "/auth/reset-password?error=Erro ao processar código de recuperação"
-        }
-        return
-      }
-
-      // FLUXO IMPLÍCITO: tokens no hash
+      // APENAS processa tokens no HASH que são explicitamente de RECOVERY
+      // NÃO intercepta códigos PKCE na query string - esses são para confirmação de email
       if (hash && hash.length > 2) {
         try {
           const hashParams = new URLSearchParams(hash.substring(1))
@@ -70,15 +30,13 @@ export function RecoveryRedirect() {
           const errorCode = hashParams.get("error_code")
           const errorDescription = hashParams.get("error_description")
 
-          console.log("[RecoveryRedirect] Hash params:", { 
-            hasAccessToken: !!accessToken, 
-            type, 
-            errorCode 
-          })
+          // IMPORTANTE: Só processa se o type for EXPLICITAMENTE "recovery"
+          if (type !== "recovery") {
+            return // Não é recovery, deixa o fluxo normal continuar
+          }
 
-          // Se houver erro no token
+          // Se houver erro no token de recovery
           if (errorCode || errorDescription) {
-            console.log("[RecoveryRedirect] Erro no token:", errorDescription || errorCode)
             setIsRedirecting(true)
             window.location.href = `/auth/reset-password?error=${encodeURIComponent(errorDescription || errorCode || "Token inválido")}`
             return
@@ -86,14 +44,13 @@ export function RecoveryRedirect() {
 
           // Se for um recovery com tokens válidos
           if (accessToken && type === "recovery") {
-            console.log("[RecoveryRedirect] Detectado token de recovery no hash")
             setIsRedirecting(true)
             const resetUrl = `/auth/reset-password#access_token=${accessToken}&refresh_token=${refreshToken || ""}&type=${type}`
             window.location.href = resetUrl
             return
           }
         } catch (error) {
-          console.error("[RecoveryRedirect] Erro ao processar hash:", error)
+          // Silently ignore parsing errors
         }
       }
     }

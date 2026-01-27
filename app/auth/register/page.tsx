@@ -86,33 +86,15 @@ export default function RegisterPage() {
     }
 
     try {
-      console.log("[v0] 🚀 Iniciando processo de registro")
-
       const supabase = createClient()
       const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
       const formattedCpfCnpj = cpfCnpj
 
-      console.log("[v0] 📋 Dados do registro:", {
-        email,
-        cpf_cnpj_clean: cleanCpfCnpj,
-        cpf_cnpj_formatted: formattedCpfCnpj,
-        person_type: personType,
-        phone,
-      })
-
-      console.log("[v0] 🔍 PASSO 1: Buscando na tabela companies...")
-
-      const { data: foundCompany, error: companyError } = await supabase
+      const { data: foundCompany } = await supabase
         .from("companies")
         .select("*")
         .or(`cnpj.eq.${cleanCpfCnpj},cnpj.eq.${formattedCpfCnpj},email.eq.${email}`)
         .maybeSingle()
-
-      console.log("[v0] 📊 Resultado da busca companies:", {
-        encontrou: !!foundCompany,
-        empresa_nome: foundCompany?.name,
-        tem_erro: !!companyError,
-      })
 
       let role = "user"
       let companyId = null
@@ -126,13 +108,7 @@ export default function RegisterPage() {
         companyId = foundCompany.id
         detectedCompanyName = foundCompany.name
         requiresEmailVerification = false
-
-        console.log("[v0] 🎉 USUÁRIO É ADMIN DA EMPRESA:", {
-          empresa_nome: detectedCompanyName,
-          empresa_id: companyId,
-        })
       } else {
-        console.log("[v0] 🔍 PASSO 2: Buscando cliente em TODAS as tabelas do banco...")
 
         try {
           const response = await fetch("/api/find-in-all-tables", {
@@ -153,28 +129,11 @@ export default function RegisterPage() {
 
             companyId = searchResult.company_id
             detectedCompanyName = searchResult.company_name
-
-            console.log("[v0] 🎉 CLIENTE ENCONTRADO!", {
-              empresa: detectedCompanyName,
-              tabela: searchResult.table,
-              coluna: searchResult.column_used,
-            })
-          } else {
-            console.log("[v0] ℹ️ Cliente não encontrado em nenhuma tabela do banco")
           }
-        } catch (apiError) {
-          console.error("[v0] ❌ Erro ao buscar em todas as tabelas:", apiError)
+        } catch {
+          // Silently ignore search errors
         }
       }
-
-      console.log("[v0] 🔐 Criando conta no Supabase Auth:", {
-        email,
-        role,
-        company_id: companyId,
-        company_name: detectedCompanyName,
-        requires_verification: requiresEmailVerification,
-        found_in_customer_table: !!foundInCustomerTable,
-      })
 
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -197,19 +156,10 @@ export default function RegisterPage() {
       })
 
       if (error) {
-        console.error("[v0] ❌ Erro ao criar conta:", error)
         throw error
       }
 
-      console.log("[v0] ✅ Conta criada com sucesso!", {
-        user_id: data.user?.id,
-        email: data.user?.email,
-        role: role,
-        company_id: companyId,
-      })
-
       if (data.user?.id) {
-        console.log("[v0] 💾 Salvando dados no perfil do usuário...")
 
         try {
           const saveProfileResponse = await fetch("/api/save-profile", {
@@ -229,27 +179,14 @@ export default function RegisterPage() {
             }),
           })
 
-          const saveProfileResult = await saveProfileResponse.json()
-
-          if (!saveProfileResponse.ok || saveProfileResult.error) {
-            console.error("[v0] ❌ Erro ao atualizar perfil:", saveProfileResult.error)
-          } else {
-            console.log("[v0] ✅ Perfil atualizado com sucesso com todos os dados:", {
-              full_name: fullName.trim(),
-              company_id: companyId,
-              company_name: detectedCompanyName,
-              phone: phone,
-              cpf_cnpj: formattedCpfCnpj,
-            })
-          }
-        } catch (profileError) {
-          console.error("[v0] ❌ Erro ao chamar API save-profile:", profileError)
+          // Profile saved
+        } catch {
+          // Silently ignore profile save errors - trigger will handle it
         }
       }
 
       router.push("/auth/register-success")
     } catch (error: unknown) {
-      console.error("[v0] ❌ Falha no registro:", error)
       if (error instanceof Error) {
         if (error.message.includes("User already registered")) {
           setError("Este email já está cadastrado. Tente fazer login.")

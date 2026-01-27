@@ -24,10 +24,6 @@ export default function ResetPasswordPage() {
     const checkSession = async () => {
       const supabase = createClient()
       
-      console.log("[ResetPassword] Iniciando verificação de sessão")
-      console.log("[ResetPassword] Hash:", window.location.hash)
-      console.log("[ResetPassword] Search:", window.location.search)
-      
       // Primeiro, tenta processar tokens do hash da URL (formato mais comum do Supabase)
       const hash = window.location.hash
       let hashParams: URLSearchParams
@@ -50,7 +46,6 @@ export default function ResetPasswordPage() {
       
       // Se tiver erro na URL, mostra erro
       if (queryError) {
-        console.log("[ResetPassword] Erro na URL:", queryError)
         setError(decodeURIComponent(queryError))
         setIsValidSession(false)
         return
@@ -60,15 +55,8 @@ export default function ResetPasswordPage() {
       const refreshToken = hashRefreshToken || queryRefreshToken
       const type = hashType || queryType
       
-      console.log("[ResetPassword] Tokens encontrados:", { 
-        hasAccessToken: !!accessToken, 
-        hasRefreshToken: !!refreshToken, 
-        type 
-      })
-      
       // Se tiver tokens na URL, processa primeiro
       if (accessToken) {
-        console.log("[ResetPassword] Processando tokens da URL, type:", type)
         try {
           const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
@@ -76,8 +64,6 @@ export default function ResetPasswordPage() {
           })
           
           if (sessionError) {
-            console.error("[ResetPassword] Erro ao definir sessão:", sessionError)
-            // Tenta verificar se o token ainda é válido de outra forma
             if (sessionError.message.includes("expired") || sessionError.message.includes("invalid")) {
               setError("O link de recuperação expirou ou é inválido. Por favor, solicite um novo link.")
             }
@@ -86,14 +72,12 @@ export default function ResetPasswordPage() {
           }
           
           if (data.session) {
-            console.log("[ResetPassword] Sessão definida com sucesso via tokens da URL")
             // Limpa a URL para não expor os tokens
             window.history.replaceState({}, document.title, window.location.pathname)
             setIsValidSession(true)
             return
           }
-        } catch (err) {
-          console.error("[ResetPassword] Erro ao processar tokens:", err)
+        } catch {
           setIsValidSession(false)
           return
         }
@@ -103,14 +87,12 @@ export default function ResetPasswordPage() {
       const { data: { session }, error: getSessionError } = await supabase.auth.getSession()
       
       if (getSessionError) {
-        console.error("[ResetPassword] Erro ao verificar sessão:", getSessionError)
         setIsValidSession(false)
         return
       }
 
       // Listener para detectar eventos de autenticação (incluindo PASSWORD_RECOVERY do hash da URL)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log("[ResetPassword] Auth state change:", event)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
           setIsValidSession(true)
         }
@@ -118,13 +100,11 @@ export default function ResetPasswordPage() {
 
       // Se já tem sessão, considera válido
       if (session) {
-        console.log("[ResetPassword] Sessão existente encontrada")
         setIsValidSession(true)
       } else {
         // Aguarda um pouco para o listener processar eventos
         setTimeout(() => {
           if (isValidSession === null) {
-            console.log("[ResetPassword] Timeout - nenhuma sessão encontrada")
             setIsValidSession(false)
           }
         }, 2000)
@@ -173,7 +153,6 @@ export default function ResetPasswordPage() {
         router.push("/auth/login")
       }, 3000)
     } catch (error: unknown) {
-      console.error("[v0] Erro ao atualizar senha:", error)
       setError(error instanceof Error ? error.message : "Erro ao atualizar senha")
     } finally {
       setIsLoading(false)
