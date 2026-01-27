@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(redirectTo)
     }
 
-    console.error("[v0] Erro ao verificar OTP:", error)
+    // OTP verification failed
   }
 
   // Em caso de erro, redireciona para a página de erro
