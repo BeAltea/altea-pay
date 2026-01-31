@@ -632,7 +632,7 @@ export default function AnalysesPage() {
       </Dialog>
 
       <Sheet open={showDetailsDrawer} onOpenChange={setShowDetailsDrawer}>
-        <SheetContent className="w-full sm:max-w-5xl overflow-y-auto bg-background">
+        <SheetContent className="w-full sm:max-w-5xl overflow-y-auto bg-background px-6 sm:px-8">
           <SheetHeader className="pb-4 border-b">
             <SheetTitle className="text-2xl font-bold flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">

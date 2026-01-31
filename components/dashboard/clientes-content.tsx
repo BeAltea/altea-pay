@@ -327,7 +327,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                         <span className="hidden sm:inline">Ver Detalhes</span>
                       </Button>
                     </SheetTrigger>
-                    <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
+                    <SheetContent className="w-full sm:max-w-6xl overflow-y-auto px-6 sm:px-8">
                       <SheetHeader className="pb-6">
                         <SheetTitle className="text-2xl">{cliente.Cliente}</SheetTitle>
                         <SheetDescription>{cliente["CPF/CNPJ"]} - Detalhes das análises de crédito</SheetDescription>

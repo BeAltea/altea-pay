@@ -480,7 +480,7 @@ export default function ConsolidatedAnalysisPage() {
 
       {/* Sheet de Detalhes */}
       <Sheet open={!!selectedCustomer} onOpenChange={(open) => !open && setSelectedCustomer(null)}>
-        <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-6xl overflow-y-auto px-6 sm:px-8">
           <SheetHeader className="pb-4 border-b">
             <SheetTitle className="text-2xl">{selectedCustomer?.name}</SheetTitle>
             <p className="text-sm text-muted-foreground">{selectedCustomer?.document}</p>
