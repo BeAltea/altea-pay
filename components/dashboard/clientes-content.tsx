@@ -1130,71 +1130,11 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                                   </div>
                                 </CardContent>
                               </Card>
-
-                              {behavioralData?.credito?.resposta?.ultimasConsultas?.list &&
-                                behavioralData.credito.resposta.ultimasConsultas.list.length > 0 && (
-                                  <Card className="border-2 border-blue-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <Eye className="h-5 w-5 text-blue-600" />
-                                        Últimas Consultas (
-                                        {behavioralData.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {behavioralData.credito.resposta.ultimasConsultas.list
-                                          .slice(0, 10)
-                                          .map((consulta: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500"
-                                            >
-                                              <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
-                                              <p className="text-xs text-muted-foreground">Consulta realizada</p>
-                                            </div>
-                                          ))}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              {/* Classificação de Score Comportamental */}
-                              <Card className="bg-gradient-to-br from-amber-50 to-yellow-50">
-                                <CardHeader>
-                                  <CardTitle className="text-base">Classificação de Score Comportamental</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2 text-sm">
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe A</span>
-                                    <span className="text-muted-foreground">Excelente (900-1000)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe B</span>
-                                    <span className="text-muted-foreground">Muito Bom (700-899)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe C</span>
-                                    <span className="text-muted-foreground">Bom (500-699)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe D</span>
-                                    <span className="text-muted-foreground">Regular (300-499)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe E</span>
-                                    <span className="text-muted-foreground">Baixo (100-299)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe F</span>
-                                    <span className="text-muted-foreground">Muito Baixo (0-99)</span>
-                                  </div>
-                                </CardContent>
-                              </Card>
                             </>
                           ) : (
                             <Card>
                               <CardContent className="py-12 text-center">
-                                <p className="text-muted-foreground italic">Análise comportamental não realizada</p>
+                                <p className="text-muted-foreground italic">Analise comportamental nao realizada</p>
                               </CardContent>
                             </Card>
                           )}
