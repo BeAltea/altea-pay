@@ -455,23 +455,27 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
 
                         {/* Aba Análise Restritiva */}
                         <TabsContent value="restritiva" className="space-y-6 mt-6 p-1">
+                          {/* Topo - Score Crédito e Score Recupere */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
                               <CardHeader className="pb-3">
                                 <CardTitle className="text-sm text-blue-700">Score de Crédito</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className="text-5xl font-bold text-blue-600">{cliente.credit_score || "-"}</div>
-                                <Badge variant="outline" className="mt-2 bg-blue-100 text-blue-700 border-blue-300">
-                                  {cliente.approval_status || "Pendente"}
-                                </Badge>
+                                <div className="flex items-baseline gap-3">
+                                  <div className="text-5xl font-bold text-blue-600">
+                                    {metadata?.credito?.resposta?.score?.pontos || cliente.credit_score || "-"}
+                                  </div>
+                                  {metadata?.credito?.resposta?.score?.classe && (
+                                    <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-lg px-3 py-1">
+                                      {metadata.credito.resposta.score.classe}
+                                    </Badge>
+                                  )}
+                                </div>
                                 {metadata?.credito?.resposta?.score?.faixa && (
                                   <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                                    <p className="text-xs font-semibold text-blue-700">
+                                    <p className="text-sm font-semibold text-blue-700">
                                       {metadata.credito.resposta.score.faixa.titulo}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {metadata.credito.resposta.score.faixa.descricao}
                                     </p>
                                   </div>
                                 )}
@@ -483,18 +487,17 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                                 <CardTitle className="text-sm text-orange-700">Score de Recuperação</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className="text-5xl font-bold text-orange-600">{scoreRecupere || "-"}</div>
-                                {classeRecupere && (
-                                  <Badge
-                                    variant="outline"
-                                    className="mt-2 bg-orange-100 text-orange-700 border-orange-300"
-                                  >
-                                    Classe {classeRecupere}
-                                  </Badge>
-                                )}
+                                <div className="flex items-baseline gap-3">
+                                  <div className="text-5xl font-bold text-orange-600">{scoreRecupere || "-"}</div>
+                                  {classeRecupere && (
+                                    <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 text-lg px-3 py-1">
+                                      {classeRecupere}
+                                    </Badge>
+                                  )}
+                                </div>
                                 {metadata?.recupere?.resposta?.score?.faixa && (
                                   <div className="mt-4 p-3 bg-orange-50 rounded-lg">
-                                    <p className="text-xs font-semibold text-orange-700">
+                                    <p className="text-sm font-semibold text-orange-700">
                                       {metadata.recupere.resposta.score.faixa.titulo}
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-1">
@@ -506,269 +509,207 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                             </Card>
                           </div>
 
-                          {metadata && (
-                            <>
-                              {metadata.acoes?.resposta?.protestos?.list &&
-                                metadata.acoes.resposta.protestos.list.length > 0 && (
-                                  <Card className="border-2 border-red-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <AlertCircle className="h-5 w-5 text-red-600" />
-                                        Protestos Públicos
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-3 bg-red-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Quantidade</p>
-                                          <p className="text-2xl font-bold text-red-600">
-                                            {metadata.acoes.resposta.protestos.qtdProtestos || 0}
-                                          </p>
-                                        </div>
-                                        <div className="p-3 bg-red-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Valor Total</p>
-                                          <p className="text-2xl font-bold text-red-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(metadata.acoes.resposta.protestos.valorTotal || 0)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {metadata.acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
-                                          <div key={idx} className="p-3 bg-red-50 rounded-lg border-l-4 border-red-500">
-                                            <div className="flex justify-between items-start mb-2">
-                                              <div>
-                                                <p className="font-medium text-sm">{protesto.cartorio}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                  {protesto.cidade} - {protesto.uf}
-                                                </p>
-                                              </div>
-                                              <Badge variant="destructive">
-                                                {newIntl
-                                                  .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                                  .format(protesto.valor)}
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
+                          {/* Alertas Rápidos */}
+                          <Card className="border-2 border-slate-200">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <AlertCircle className="h-5 w-5 text-slate-600" />
+                                Alertas Rápidos
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Protestos Públicos</p>
+                                  <p className="text-3xl font-bold text-red-600">
+                                    {metadata?.credito?.resposta?.protestosPublicos?.qtdProtestos || 0}
+                                  </p>
+                                </div>
+                                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Últimas Consultas</p>
+                                  <p className="text-3xl font-bold text-blue-600">
+                                    {metadata?.credito?.resposta?.ultimasConsultas?.qtdUltConsultas || 0}
+                                  </p>
+                                </div>
+                                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200 text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Débitos</p>
+                                  <p className="text-3xl font-bold text-purple-600">
+                                    {metadata?.credito?.resposta?.registrosDebitos?.qtdDebitos || 0}
+                                  </p>
+                                </div>
+                                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200 text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Cheques s/ Fundo</p>
+                                  <p className="text-3xl font-bold text-orange-600">
+                                    {metadata?.credito?.resposta?.cheques?.quantidade || 0}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
 
-                              {metadata.credito?.resposta?.registrosDebitos?.list &&
-                                metadata.credito.resposta.registrosDebitos.list.length > 0 && (
-                                  <Card className="border-2 border-purple-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <DollarSign className="h-5 w-5 text-purple-600" />
-                                        Débitos Financeiros
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-3 bg-purple-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Quantidade</p>
-                                          <p className="text-2xl font-bold text-purple-600">
-                                            {metadata.credito.resposta.registrosDebitos.qtdDebitos || 0}
-                                          </p>
-                                        </div>
-                                        <div className="p-3 bg-purple-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Valor Total</p>
-                                          <p className="text-2xl font-bold text-purple-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(metadata.credito.resposta.registrosDebitos.valorTotal || 0)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {metadata.credito.resposta.registrosDebitos.list.map(
-                                          (debito: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500"
-                                            >
-                                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Credor</p>
-                                                  <p className="font-bold">{debito.credor || "N/A"}</p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Valor</p>
-                                                  <p className="font-bold text-purple-600">
-                                                    {newIntl
-                                                      .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                                      .format(debito.valor || 0)}
-                                                  </p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Data Vencimento</p>
-                                                  <p className="font-medium">{debito.dataVencimento || "N/A"}</p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Cidade/UF</p>
-                                                  <p className="font-medium">
-                                                    {debito.cidade || "N/A"}/{debito.uf || "N/A"}
-                                                  </p>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ),
-                                        )}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-
-                              {metadata.credito?.resposta?.cheques && (
-                                <Card className="border-2 border-orange-200">
-                                  <CardHeader className="pb-3">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                      <AlertCircle className="h-5 w-5 text-orange-600" />
-                                      Cheques sem Fundos
-                                    </CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    {metadata.credito.resposta.cheques.quantidade > 0 ? (
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-orange-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground mb-1">Quantidade</p>
-                                          <p className="text-3xl font-bold text-orange-600">
-                                            {metadata.credito.resposta.cheques.quantidade || 0}
-                                          </p>
-                                        </div>
-                                        <div className="p-4 bg-orange-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground mb-1">Valor Total</p>
-                                          <p className="text-2xl font-bold text-orange-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(metadata.credito.resposta.cheques.valorTotal || 0)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="text-center py-8">
-                                        <p className="text-sm font-medium text-green-700">
-                                          Nenhum cheque sem fundo encontrado
-                                        </p>
-                                      </div>
-                                    )}
-                                  </CardContent>
-                                </Card>
-                              )}
-
-                              {metadata.credito?.resposta?.rendaPresumida?.valor && (
-                                <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
-                                  <CardHeader className="pb-3">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                      <DollarSign className="h-5 w-5 text-green-600" />
-                                      Renda Presumida
-                                    </CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <div className="text-3xl font-bold text-green-600">
+                          {/* Detalhes - Protestos */}
+                          {metadata?.credito?.resposta?.protestosPublicos?.list &&
+                            metadata.credito.resposta.protestosPublicos.list.length > 0 && (
+                              <Card className="border-2 border-red-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <AlertCircle className="h-5 w-5 text-red-600" />
+                                    Protestos Públicos ({metadata.credito.resposta.protestosPublicos.qtdProtestos})
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  <div className="p-3 bg-red-50 rounded-lg">
+                                    <p className="text-xs text-muted-foreground">Valor Total</p>
+                                    <p className="text-2xl font-bold text-red-600">
                                       {newIntl
                                         .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                        .format(metadata.credito.resposta.rendaPresumida.valor)}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                      Faixa: {metadata.credito.resposta.rendaPresumida.faixa || "N/A"}
+                                        .format(Number(metadata.credito.resposta.protestosPublicos.valorTotal) || 0)}
                                     </p>
-                                  </CardContent>
-                                </Card>
-                              )}
-
-                              {metadata.credito?.resposta?.ultimasConsultas?.list &&
-                                metadata.credito.resposta.ultimasConsultas.list.length > 0 && (
-                                  <Card className="border-2 border-blue-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <Eye className="h-5 w-5 text-blue-600" />
-                                        Últimas Consultas (
-                                        {metadata.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {metadata.credito.resposta.ultimasConsultas.list
-                                          .slice(0, 10)
-                                          .map((consulta: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500"
-                                            >
-                                              <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
-                                              <p className="text-xs text-muted-foreground">Consulta realizada</p>
-                                            </div>
-                                          ))}
+                                  </div>
+                                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                                    {metadata.credito.resposta.protestosPublicos.list.map((protesto: any, idx: number) => (
+                                      <div key={idx} className="p-3 bg-red-50 rounded-lg border-l-4 border-red-500">
+                                        <div className="flex justify-between items-start mb-2">
+                                          <div>
+                                            <p className="font-medium text-sm">{protesto.cartorio}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {protesto.cidade} - {protesto.uf}
+                                            </p>
+                                          </div>
+                                          <Badge variant="destructive">
+                                            {newIntl
+                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+                                              .format(protesto.valor)}
+                                          </Badge>
+                                        </div>
                                       </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
+                                    ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Sanções CEIS */}
-                                {metadata.sancoes_ceis !== undefined && (
-                                  <Card className="border-2">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <AlertCircle className="h-5 w-5 text-red-500" />
-                                        Sanções CEIS
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="text-3xl font-bold mb-2">{metadata.sancoes_ceis}</div>
-                                      <Badge variant={metadata.sancoes_ceis > 0 ? "destructive" : "default"}>
-                                        {metadata.sancoes_ceis > 0 ? "Com sanções" : "Sem sanções"}
-                                      </Badge>
-                                    </CardContent>
-                                  </Card>
-                                )}
+                          {/* Detalhes - Débitos */}
+                          {metadata?.credito?.resposta?.registrosDebitos?.list &&
+                            metadata.credito.resposta.registrosDebitos.list.length > 0 && (
+                              <Card className="border-2 border-purple-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <DollarSign className="h-5 w-5 text-purple-600" />
+                                    Débitos Financeiros ({metadata.credito.resposta.registrosDebitos.qtdDebitos})
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  <div className="p-3 bg-purple-50 rounded-lg">
+                                    <p className="text-xs text-muted-foreground">Valor Total</p>
+                                    <p className="text-2xl font-bold text-purple-600">
+                                      {newIntl
+                                        .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+                                        .format(metadata.credito.resposta.registrosDebitos.valorTotal || 0)}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                                    {metadata.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
+                                      <div key={idx} className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">Credor</p>
+                                            <p className="font-bold">{debito.credor || "N/A"}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">Valor</p>
+                                            <p className="font-bold text-purple-600">
+                                              {newIntl
+                                                .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+                                                .format(debito.valor || 0)}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">Data Vencimento</p>
+                                            <p className="font-medium">{debito.dataVencimento || "N/A"}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-muted-foreground">Cidade/UF</p>
+                                            <p className="font-medium">{debito.cidade || "N/A"}/{debito.uf || "N/A"}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
 
-                                {/* Punições CNEP */}
-                                {metadata.punicoes_cnep !== undefined && (
-                                  <Card className="border-2">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <AlertCircle className="h-5 w-5 text-orange-500" />
-                                        Punições CNEP
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="text-3xl font-bold mb-2">{metadata.punicoes_cnep}</div>
-                                      <Badge variant={metadata.punicoes_cnep > 0 ? "destructive" : "default"}>
-                                        {metadata.punicoes_cnep > 0 ? "Com punições" : "Sem punições"}
-                                      </Badge>
-                                    </CardContent>
-                                  </Card>
-                                )}
+                          {/* Detalhes - Últimas Consultas */}
+                          {metadata?.credito?.resposta?.ultimasConsultas?.list &&
+                            metadata.credito.resposta.ultimasConsultas.list.length > 0 && (
+                              <Card className="border-2 border-blue-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <Eye className="h-5 w-5 text-blue-600" />
+                                    Últimas Consultas ({metadata.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-3 max-h-64 overflow-y-auto">
+                                    {metadata.credito.resposta.ultimasConsultas.list
+                                      .slice(0, 10)
+                                      .map((consulta: any, idx: number) => (
+                                        <div key={idx} className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                                          <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
+                                          <p className="text-xs text-muted-foreground">Consulta realizada</p>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
 
-                                {/* Faturamento/Receita Estimado */}
-                                {metadata.faturamentoPresumido !== undefined && (
-                                  <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <DollarSign className="h-5 w-5 text-green-600" />
-                                        Faturamento Estimado (Anual)
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <p className="text-3xl font-bold text-green-600">
-                                        R${" "}
-                                        {(metadata.faturamentoPresumido || 0).toLocaleString("pt-BR", {
-                                          minimumFractionDigits: 2,
-                                        })}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground mt-2">
-                                        Estimativa baseada em dados públicos
-                                      </p>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              </div>
-                            </>
+                          {/* Informações da Análise */}
+                          {metadata && (
+                            <Card className="border-2 border-slate-200">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Informações da Análise</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Documento</p>
+                                    <p className="font-medium">{metadata.documento || cliente["CPF/CNPJ"] || "N/A"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Tipo</p>
+                                    <p className="font-medium">{metadata.tipo || "N/A"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Data da Análise</p>
+                                    <p className="font-medium">
+                                      {metadata.timestamp ? new Date(metadata.timestamp).toLocaleString("pt-BR") : (cliente.last_analysis_date ? new Date(cliente.last_analysis_date).toLocaleString("pt-BR") : "N/A")}
+                                    </p>
+                                  </div>
+                                  {metadata.credito?.cabecalho?.protocolo && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Protocolo Crédito</p>
+                                      <p className="font-medium text-xs break-all">{metadata.credito.cabecalho.protocolo}</p>
+                                    </div>
+                                  )}
+                                  {metadata.recupere?.cabecalho?.protocolo && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Protocolo Recupere</p>
+                                      <p className="font-medium text-xs break-all">{metadata.recupere.cabecalho.protocolo}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {!metadata && (
+                            <Card>
+                              <CardContent className="py-12 text-center">
+                                <p className="text-muted-foreground italic">Análise restritiva não realizada</p>
+                              </CardContent>
+                            </Card>
                           )}
                         </TabsContent>
 
