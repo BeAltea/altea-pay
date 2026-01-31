@@ -455,384 +455,150 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
 
                         {/* Aba Análise Restritiva */}
                         <TabsContent value="restritiva" className="space-y-6 mt-6 p-1">
-                          {/* Topo - Score Crédito e Score Recupere */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Topo - Cards Principais */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {/* Score Crédito */}
                             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-sm text-blue-700">Score de Crédito</CardTitle>
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm text-blue-700">Score Crédito</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className="flex items-baseline gap-3">
-                                  <div className="text-5xl font-bold text-blue-600">
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-4xl font-bold text-blue-600">
                                     {metadata?.credito?.resposta?.score?.pontos || cliente.credit_score || "-"}
-                                  </div>
+                                  </span>
                                   {metadata?.credito?.resposta?.score?.classe && (
-                                    <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-lg px-3 py-1">
+                                    <Badge className="bg-blue-600 text-white">
                                       {metadata.credito.resposta.score.classe}
                                     </Badge>
                                   )}
                                 </div>
-                                {metadata?.credito?.resposta?.score?.faixa && (
-                                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                                    <p className="text-sm font-semibold text-blue-700">
-                                      {metadata.credito.resposta.score.faixa.titulo}
-                                    </p>
-                                  </div>
+                                {metadata?.credito?.resposta?.score?.faixa?.titulo && (
+                                  <p className="text-sm font-medium text-blue-700 mt-2">
+                                    {metadata.credito.resposta.score.faixa.titulo}
+                                  </p>
                                 )}
                               </CardContent>
                             </Card>
 
+                            {/* Score Recupere */}
                             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-sm text-orange-700">Score de Recuperação</CardTitle>
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm text-orange-700">Score Recupere</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className="flex items-baseline gap-3">
-                                  <div className="text-5xl font-bold text-orange-600">{scoreRecupere || "-"}</div>
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-4xl font-bold text-orange-600">
+                                    {scoreRecupere || "-"}
+                                  </span>
                                   {classeRecupere && (
-                                    <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 text-lg px-3 py-1">
+                                    <Badge className="bg-orange-600 text-white">
                                       {classeRecupere}
                                     </Badge>
                                   )}
                                 </div>
-                                {metadata?.recupere?.resposta?.score?.faixa && (
-                                  <div className="mt-4 p-3 bg-orange-50 rounded-lg">
-                                    <p className="text-sm font-semibold text-orange-700">
-                                      {metadata.recupere.resposta.score.faixa.titulo}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {metadata.recupere.resposta.score.faixa.descricao}
-                                    </p>
-                                  </div>
+                                {metadata?.recupere?.resposta?.score?.faixa?.titulo && (
+                                  <p className="text-sm font-medium text-orange-700 mt-2">
+                                    {metadata.recupere.resposta.score.faixa.titulo}
+                                  </p>
                                 )}
+                                {metadata?.recupere?.resposta?.score?.faixa?.descricao && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {metadata.recupere.resposta.score.faixa.descricao}
+                                  </p>
+                                )}
+                              </CardContent>
+                            </Card>
+
+                            {/* Alertas Rápidos */}
+                            <Card className="border-2 border-slate-200">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm text-slate-700">Alertas Rápidos</CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs text-muted-foreground">Protestos Públicos</span>
+                                  <Badge variant={metadata?.credito?.resposta?.protestosPublicos?.qtdProtestos > 0 ? "destructive" : "secondary"}>
+                                    {metadata?.credito?.resposta?.protestosPublicos?.qtdProtestos || 0}
+                                  </Badge>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs text-muted-foreground">Últimas Consultas</span>
+                                  <Badge variant="secondary">
+                                    {metadata?.credito?.resposta?.ultimasConsultas?.qtdUltConsultas || 0}
+                                  </Badge>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs text-muted-foreground">Débitos</span>
+                                  <Badge variant={metadata?.credito?.resposta?.registrosDebitos?.qtdDebitos > 0 ? "destructive" : "secondary"}>
+                                    {metadata?.credito?.resposta?.registrosDebitos?.qtdDebitos || 0}
+                                  </Badge>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs text-muted-foreground">Cheques s/ Fundo</span>
+                                  <Badge variant={metadata?.credito?.resposta?.cheques?.quantidade > 0 ? "destructive" : "secondary"}>
+                                    {metadata?.credito?.resposta?.cheques?.quantidade || 0}
+                                  </Badge>
+                                </div>
                               </CardContent>
                             </Card>
                           </div>
 
-                          {/* Alertas Rápidos */}
-                          <Card className="border-2 border-slate-200">
-                            <CardHeader className="pb-3">
-                              <CardTitle className="text-base flex items-center gap-2">
-                                <AlertCircle className="h-5 w-5 text-slate-600" />
-                                Alertas Rápidos
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Protestos Públicos</p>
-                                  <p className="text-3xl font-bold text-red-600">
-                                    {metadata?.credito?.resposta?.protestosPublicos?.qtdProtestos || 0}
-                                  </p>
-                                </div>
-                                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Últimas Consultas</p>
-                                  <p className="text-3xl font-bold text-blue-600">
-                                    {metadata?.credito?.resposta?.ultimasConsultas?.qtdUltConsultas || 0}
-                                  </p>
-                                </div>
-                                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200 text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Débitos</p>
-                                  <p className="text-3xl font-bold text-purple-600">
-                                    {metadata?.credito?.resposta?.registrosDebitos?.qtdDebitos || 0}
-                                  </p>
-                                </div>
-                                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200 text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Cheques s/ Fundo</p>
-                                  <p className="text-3xl font-bold text-orange-600">
-                                    {metadata?.credito?.resposta?.cheques?.quantidade || 0}
-                                  </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-
-                          {/* Detalhes - Protestos */}
-                          {metadata?.credito?.resposta?.protestosPublicos?.list &&
-                            metadata.credito.resposta.protestosPublicos.list.length > 0 && (
-                              <Card className="border-2 border-red-200">
-                                <CardHeader className="pb-3">
-                                  <CardTitle className="text-base flex items-center gap-2">
-                                    <AlertCircle className="h-5 w-5 text-red-600" />
-                                    Protestos Públicos ({metadata.credito.resposta.protestosPublicos.qtdProtestos})
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                  <div className="p-3 bg-red-50 rounded-lg">
-                                    <p className="text-xs text-muted-foreground">Valor Total</p>
-                                    <p className="text-2xl font-bold text-red-600">
-                                      {newIntl
-                                        .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                        .format(Number(metadata.credito.resposta.protestosPublicos.valorTotal) || 0)}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                                    {metadata.credito.resposta.protestosPublicos.list.map((protesto: any, idx: number) => (
-                                      <div key={idx} className="p-3 bg-red-50 rounded-lg border-l-4 border-red-500">
-                                        <div className="flex justify-between items-start mb-2">
-                                          <div>
-                                            <p className="font-medium text-sm">{protesto.cartorio}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                              {protesto.cidade} - {protesto.uf}
-                                            </p>
-                                          </div>
-                                          <Badge variant="destructive">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(protesto.valor)}
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            )}
-
-                          {/* Detalhes - Débitos */}
-                          {metadata?.credito?.resposta?.registrosDebitos?.list &&
-                            metadata.credito.resposta.registrosDebitos.list.length > 0 && (
-                              <Card className="border-2 border-purple-200">
-                                <CardHeader className="pb-3">
-                                  <CardTitle className="text-base flex items-center gap-2">
-                                    <DollarSign className="h-5 w-5 text-purple-600" />
-                                    Débitos Financeiros ({metadata.credito.resposta.registrosDebitos.qtdDebitos})
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                  <div className="p-3 bg-purple-50 rounded-lg">
-                                    <p className="text-xs text-muted-foreground">Valor Total</p>
-                                    <p className="text-2xl font-bold text-purple-600">
-                                      {newIntl
-                                        .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                        .format(metadata.credito.resposta.registrosDebitos.valorTotal || 0)}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                                    {metadata.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
-                                      <div key={idx} className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">Credor</p>
-                                            <p className="font-bold">{debito.credor || "N/A"}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">Valor</p>
-                                            <p className="font-bold text-purple-600">
-                                              {newIntl
-                                                .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                                .format(debito.valor || 0)}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">Data Vencimento</p>
-                                            <p className="font-medium">{debito.dataVencimento || "N/A"}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-muted-foreground">Cidade/UF</p>
-                                            <p className="font-medium">{debito.cidade || "N/A"}/{debito.uf || "N/A"}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            )}
-
-                          {/* Detalhes - Últimas Consultas */}
-                          {metadata?.credito?.resposta?.ultimasConsultas?.list &&
-                            metadata.credito.resposta.ultimasConsultas.list.length > 0 && (
-                              <Card className="border-2 border-blue-200">
-                                <CardHeader className="pb-3">
-                                  <CardTitle className="text-base flex items-center gap-2">
-                                    <Eye className="h-5 w-5 text-blue-600" />
-                                    Últimas Consultas ({metadata.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                                    {metadata.credito.resposta.ultimasConsultas.list
-                                      .slice(0, 10)
-                                      .map((consulta: any, idx: number) => (
-                                        <div key={idx} className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                                          <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
-                                          <p className="text-xs text-muted-foreground">Consulta realizada</p>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            )}
-
-                          {/* Informações da Análise */}
                           {metadata && (
-                            <Card className="border-2 border-slate-200">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-base">Informações da Análise</CardTitle>
-                              </CardHeader>
-                              <CardContent>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">Documento</p>
-                                    <p className="font-medium">{metadata.documento || cliente["CPF/CNPJ"] || "N/A"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">Tipo</p>
-                                    <p className="font-medium">{metadata.tipo || "N/A"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">Data da Análise</p>
-                                    <p className="font-medium">
-                                      {metadata.timestamp ? new Date(metadata.timestamp).toLocaleString("pt-BR") : (cliente.last_analysis_date ? new Date(cliente.last_analysis_date).toLocaleString("pt-BR") : "N/A")}
-                                    </p>
-                                  </div>
-                                  {metadata.credito?.cabecalho?.protocolo && (
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">Protocolo Crédito</p>
-                                      <p className="font-medium text-xs break-all">{metadata.credito.cabecalho.protocolo}</p>
-                                    </div>
-                                  )}
-                                  {metadata.recupere?.cabecalho?.protocolo && (
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">Protocolo Recupere</p>
-                                      <p className="font-medium text-xs break-all">{metadata.recupere.cabecalho.protocolo}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          )}
-
-                          {!metadata && (
-                            <Card>
-                              <CardContent className="py-12 text-center">
-                                <p className="text-muted-foreground italic">Análise restritiva não realizada</p>
-                              </CardContent>
-                            </Card>
-                          )}
-                        </TabsContent>
-
-                        {/* Aba Análise Comportamental */}
-                        <TabsContent value="comportamental" className="space-y-6 mt-6 p-1">
-                          {hasBehavioralData ? (
                             <>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
+                              {/* Protestos Públicos */}
+                              {(metadata.credito?.resposta?.protestosPublicos?.qtdProtestos > 0 || 
+                                (metadata.credito?.resposta?.protestosPublicos?.list && metadata.credito.resposta.protestosPublicos.list.length > 0)) && (
+                                <Card className="border-2 border-red-200">
                                   <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm text-blue-700">Score de Crédito</CardTitle>
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                      <AlertCircle className="h-5 w-5 text-red-600" />
+                                      Protestos Públicos
+                                    </CardTitle>
                                   </CardHeader>
-                                  <CardContent>
-                                    <div className="text-5xl font-bold text-blue-600">
-                                      {behavioralCreditScore || "-"}
+                                  <CardContent className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="p-3 bg-red-50 rounded-lg">
+                                        <p className="text-xs text-muted-foreground">Quantidade</p>
+                                        <p className="text-2xl font-bold text-red-600">
+                                          {metadata.credito.resposta.protestosPublicos.qtdProtestos || 0}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-red-50 rounded-lg">
+                                        <p className="text-xs text-muted-foreground">Valor Total</p>
+                                        <p className="text-2xl font-bold text-red-600">
+                                          {metadata.credito.resposta.protestosPublicos.valorTotal 
+                                            ? newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(metadata.credito.resposta.protestosPublicos.valorTotal) || 0)
+                                            : "R$ 0,00"}
+                                        </p>
+                                      </div>
                                     </div>
-                                    {behavioralCreditClass && (
-                                      <Badge
-                                        variant="outline"
-                                        className="mt-2 bg-blue-100 text-blue-700 border-blue-300"
-                                      >
-                                        Classe {behavioralCreditClass}
-                                      </Badge>
-                                    )}
-                                    {behavioralData?.credito?.resposta?.score?.faixa && (
-                                      <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                                        <p className="text-xs font-semibold text-blue-700">
-                                          {behavioralData.credito.resposta.score.faixa.titulo}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {behavioralData.credito.resposta.score.faixa.descricao}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </CardContent>
-                                </Card>
-
-                                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200">
-                                  <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm text-orange-700">Score de Recuperação</CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <div className="text-5xl font-bold text-orange-600">
-                                      {behavioralRecoveryScore || "-"}
-                                    </div>
-                                    {behavioralRecoveryClass && (
-                                      <Badge
-                                        variant="outline"
-                                        className="mt-2 bg-orange-100 text-orange-700 border-orange-300"
-                                      >
-                                        Classe {behavioralRecoveryClass}
-                                      </Badge>
-                                    )}
-                                    {behavioralData?.recupere?.resposta?.score?.faixa && (
-                                      <div className="mt-4 p-3 bg-orange-50 rounded-lg">
-                                        <p className="text-xs font-semibold text-orange-700">
-                                          {behavioralData.recupere.resposta.score.faixa.titulo}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          {behavioralData.recupere.resposta.score.faixa.descricao}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </CardContent>
-                                </Card>
-                              </div>
-
-                              {behavioralData?.acoes?.resposta?.protestos?.list &&
-                                behavioralData.acoes.resposta.protestos.list.length > 0 && (
-                                  <Card className="border-2 border-red-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <AlertCircle className="h-5 w-5 text-red-600" />
-                                        Protestos Públicos
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-3 bg-red-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Quantidade</p>
-                                          <p className="text-2xl font-bold text-red-600">
-                                            {behavioralData.acoes.resposta.protestos.qtdProtestos || 0}
-                                          </p>
-                                        </div>
-                                        <div className="p-3 bg-red-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground">Valor Total</p>
-                                          <p className="text-2xl font-bold text-red-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(behavioralData.acoes.resposta.protestos.valorTotal || 0)}
-                                          </p>
-                                        </div>
-                                      </div>
+                                    {metadata.credito.resposta.protestosPublicos.list && metadata.credito.resposta.protestosPublicos.list.length > 0 && (
                                       <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {behavioralData.acoes.resposta.protestos.list.map(
-                                          (protesto: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-3 bg-red-50 rounded-lg border-l-4 border-red-500"
-                                            >
-                                              <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                  <p className="font-medium text-sm">{protesto.cartorio}</p>
-                                                  <p className="text-xs text-muted-foreground">
-                                                    {protesto.cidade} - {protesto.uf}
-                                                  </p>
-                                                </div>
-                                                <Badge variant="destructive">
-                                                  {newIntl
-                                                    .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                                    .format(protesto.valor)}
-                                                </Badge>
+                                        {metadata.credito.resposta.protestosPublicos.list.map((protesto: any, idx: number) => (
+                                          <div key={idx} className="p-3 bg-red-50 rounded-lg border-l-4 border-red-500">
+                                            <div className="flex justify-between items-start mb-2">
+                                              <div>
+                                                <p className="font-medium text-sm">{protesto.cartorio || "N/A"}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                  {protesto.cidade || "N/A"} - {protesto.uf || "N/A"}
+                                                </p>
                                               </div>
+                                              <Badge variant="destructive">
+                                                {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(protesto.valor || 0)}
+                                              </Badge>
                                             </div>
-                                          ),
-                                        )}
+                                          </div>
+                                        ))}
                                       </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
+                                    )}
+                                  </CardContent>
+                                </Card>
+                              )}
 
-                              {behavioralData?.credito?.resposta?.registrosDebitos?.list &&
-                                behavioralData.credito.resposta.registrosDebitos.list.length > 0 && (
+                              {/* Débitos Financeiros */}
+                              {metadata.credito?.resposta?.registrosDebitos?.list &&
+                                metadata.credito.resposta.registrosDebitos.list.length > 0 && (
                                   <Card className="border-2 border-purple-200">
                                     <CardHeader className="pb-3">
                                       <CardTitle className="text-base flex items-center gap-2">
@@ -845,179 +611,526 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                                         <div className="p-3 bg-purple-50 rounded-lg">
                                           <p className="text-xs text-muted-foreground">Quantidade</p>
                                           <p className="text-2xl font-bold text-purple-600">
-                                            {behavioralData.credito.resposta.registrosDebitos.qtdDebitos || 0}
+                                            {metadata.credito.resposta.registrosDebitos.qtdDebitos || 0}
                                           </p>
                                         </div>
                                         <div className="p-3 bg-purple-50 rounded-lg">
                                           <p className="text-xs text-muted-foreground">Valor Total</p>
                                           <p className="text-2xl font-bold text-purple-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(behavioralData.credito.resposta.registrosDebitos.valorTotal || 0)}
+                                            {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(metadata.credito.resposta.registrosDebitos.valorTotal || 0)}
                                           </p>
                                         </div>
                                       </div>
                                       <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {behavioralData.credito.resposta.registrosDebitos.list.map(
-                                          (debito: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500"
-                                            >
-                                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Credor</p>
-                                                  <p className="font-bold">{debito.credor || "N/A"}</p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Valor</p>
-                                                  <p className="font-bold text-purple-600">
-                                                    {newIntl
-                                                      .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                                      .format(debito.valor || 0)}
-                                                  </p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Data Vencimento</p>
-                                                  <p className="font-medium">{debito.dataVencimento || "N/A"}</p>
-                                                </div>
-                                                <div>
-                                                  <p className="text-xs text-muted-foreground">Cidade/UF</p>
-                                                  <p className="font-medium">
-                                                    {debito.cidade || "N/A"}/{debito.uf || "N/A"}
-                                                  </p>
-                                                </div>
+                                        {metadata.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
+                                          <div key={idx} className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Credor</p>
+                                                <p className="font-bold">{debito.credor || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Valor</p>
+                                                <p className="font-bold text-purple-600">
+                                                  {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(debito.valor || 0)}
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Data Vencimento</p>
+                                                <p className="font-medium">{debito.dataVencimento || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Cidade/UF</p>
+                                                <p className="font-medium">{debito.cidade || "N/A"}/{debito.uf || "N/A"}</p>
                                               </div>
                                             </div>
-                                          ),
-                                        )}
+                                          </div>
+                                        ))}
                                       </div>
                                     </CardContent>
                                   </Card>
                                 )}
 
-                              {behavioralData?.credito?.resposta?.cheques && (
-                                <Card className="border-2 border-orange-200">
-                                  <CardHeader className="pb-3">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                      <AlertCircle className="h-5 w-5 text-orange-600" />
-                                      Cheques sem Fundos
-                                    </CardTitle>
-                                  </CardHeader>
-                                  <CardContent>
-                                    {behavioralData.credito.resposta.cheques.quantidade > 0 ? (
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-orange-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground mb-1">Quantidade</p>
-                                          <p className="text-3xl font-bold text-orange-600">
-                                            {behavioralData.credito.resposta.cheques.quantidade || 0}
-                                          </p>
-                                        </div>
-                                        <div className="p-4 bg-orange-50 rounded-lg">
-                                          <p className="text-xs text-muted-foreground mb-1">Valor Total</p>
-                                          <p className="text-2xl font-bold text-orange-600">
-                                            {newIntl
-                                              .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                              .format(behavioralData.credito.resposta.cheques.valorTotal || 0)}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="text-center py-8">
-                                        <p className="text-sm font-medium text-green-700">
-                                          Nenhum cheque sem fundo encontrado
+                              {/* Cheques sem Fundos */}
+                              <Card className="border-2 border-orange-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <AlertCircle className="h-5 w-5 text-orange-600" />
+                                    Cheques sem Fundos
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  {metadata.credito?.resposta?.cheques?.quantidade > 0 ? (
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="p-4 bg-orange-50 rounded-lg">
+                                        <p className="text-xs text-muted-foreground mb-1">Quantidade</p>
+                                        <p className="text-3xl font-bold text-orange-600">
+                                          {metadata.credito.resposta.cheques.quantidade || 0}
                                         </p>
                                       </div>
+                                      <div className="p-4 bg-orange-50 rounded-lg">
+                                        <p className="text-xs text-muted-foreground mb-1">Valor Total</p>
+                                        <p className="text-2xl font-bold text-orange-600">
+                                          {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(metadata.credito.resposta.cheques.valorTotal || 0)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-4">
+                                      <p className="text-sm font-medium text-green-700">Nenhum cheque sem fundo encontrado</p>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+
+                              {/* Últimas Consultas */}
+                              <Card className="border-2 border-blue-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <Eye className="h-5 w-5 text-blue-600" />
+                                    Últimas Consultas ({metadata.credito?.resposta?.ultimasConsultas?.qtdUltConsultas || 0})
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  {metadata.credito?.resposta?.ultimasConsultas?.list && metadata.credito.resposta.ultimasConsultas.list.length > 0 ? (
+                                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                                      {metadata.credito.resposta.ultimasConsultas.list.slice(0, 10).map((consulta: any, idx: number) => (
+                                        <div key={idx} className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                                          <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
+                                          <p className="text-xs text-muted-foreground">Consulta realizada</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-4">
+                                      <p className="text-sm text-muted-foreground">Nenhuma consulta registrada</p>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+
+                              {/* Metadados / Auditoria */}
+                              <Card className="border">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base">Auditoria / Metadados</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Protocolo Crédito</p>
+                                      <p className="font-mono text-xs break-all">{metadata.credito?.cabecalho?.protocolo || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Protocolo Recupere</p>
+                                      <p className="font-mono text-xs break-all">{metadata.recupere?.cabecalho?.protocolo || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Data/Hora Crédito</p>
+                                      <p className="font-medium">{metadata.credito?.cabecalho?.dataHora || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Data/Hora Recupere</p>
+                                      <p className="font-medium">{metadata.recupere?.cabecalho?.dataHora || "-"}</p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </>
+                          )}
+
+                          {!metadata && (
+                            <Card className="border-2 border-dashed">
+                              <CardContent className="py-12 text-center">
+                                <p className="text-muted-foreground">Nenhuma análise restritiva realizada para este cliente.</p>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </TabsContent>
+
+                        {/* Aba Análise Comportamental */}
+                        <TabsContent value="comportamental" className="space-y-6 mt-6 p-1">
+                          {hasBehavioralData ? (
+                            <>
+                              {/* Topo - Scores principais */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {/* Score Crédito */}
+                                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
+                                  <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm text-blue-700">Score Crédito</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="flex items-baseline gap-2">
+                                      <span className="text-4xl font-bold text-blue-600">
+                                        {behavioralCreditScore || "-"}
+                                      </span>
+                                      {behavioralCreditClass && (
+                                        <Badge className="bg-blue-600 text-white">{behavioralCreditClass}</Badge>
+                                      )}
+                                    </div>
+                                    {behavioralData?.credito?.resposta?.score?.faixa?.titulo && (
+                                      <p className="text-sm font-medium text-blue-700 mt-2">
+                                        {behavioralData.credito.resposta.score.faixa.titulo}
+                                      </p>
+                                    )}
+                                    {behavioralData?.credito?.resposta?.score?.probabilidade && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Probabilidade: {behavioralData.credito.resposta.score.probabilidade}%
+                                      </p>
                                     )}
                                   </CardContent>
                                 </Card>
-                              )}
 
-                              {behavioralData?.credito?.resposta?.faturamentoEstimado?.valor && (
-                                <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                                {/* Score Recupere */}
+                                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200">
+                                  <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm text-orange-700">Score Recupere</CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="flex items-baseline gap-2">
+                                      <span className="text-4xl font-bold text-orange-600">
+                                        {behavioralRecoveryScore || "-"}
+                                      </span>
+                                      {behavioralRecoveryClass && (
+                                        <Badge className="bg-orange-600 text-white">{behavioralRecoveryClass}</Badge>
+                                      )}
+                                    </div>
+                                    {behavioralData?.recupere?.resposta?.score?.faixa?.titulo && (
+                                      <p className="text-sm font-medium text-orange-700 mt-2">
+                                        {behavioralData.recupere.resposta.score.faixa.titulo}
+                                      </p>
+                                    )}
+                                    {behavioralData?.recupere?.resposta?.score?.probabilidade && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Probabilidade: {behavioralData.recupere.resposta.score.probabilidade}%
+                                      </p>
+                                    )}
+                                  </CardContent>
+                                </Card>
+
+                                {/* Projeção de Recuperação */}
+                                <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+                                  <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm text-teal-700">Projeção de Recuperação</CardTitle>
+                                  </CardHeader>
+                                  <CardContent className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-muted-foreground">30 dias</span>
+                                      <span className="font-bold text-teal-600">
+                                        {behavioralData?.recupere?.resposta?.projecaoRecuperacao?.probabilidade30dias || behavioralData?.projecaoRecuperacao?.probabilidade30dias || "-"}%
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-muted-foreground">60 dias</span>
+                                      <span className="font-bold text-teal-600">
+                                        {behavioralData?.recupere?.resposta?.projecaoRecuperacao?.probabilidade60dias || behavioralData?.projecaoRecuperacao?.probabilidade60dias || "-"}%
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-muted-foreground">90 dias</span>
+                                      <span className="font-bold text-teal-600">
+                                        {behavioralData?.recupere?.resposta?.projecaoRecuperacao?.probabilidade90dias || behavioralData?.projecaoRecuperacao?.probabilidade90dias || "-"}%
+                                      </span>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              </div>
+
+                              {/* Risco / Restrições */}
+                              <Card className="border-2 border-red-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <AlertCircle className="h-5 w-5 text-red-600" />
+                                    Risco / Restrições
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="p-3 bg-red-50 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Pendências Financeiras</p>
+                                      <p className="text-xl font-bold text-red-600">
+                                        {behavioralData?.credito?.resposta?.pendenciasFinanceiras?.quantidade || behavioralData?.pendenciasFinanceiras?.quantidade || 0}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                          behavioralData?.credito?.resposta?.pendenciasFinanceiras?.valorTotal || behavioralData?.pendenciasFinanceiras?.valorTotal || 0
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-red-50 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Protestos</p>
+                                      <p className="text-xl font-bold text-red-600">
+                                        {behavioralData?.credito?.resposta?.protestos?.quantidade || behavioralData?.protestos?.quantidade || 0}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                          behavioralData?.credito?.resposta?.protestos?.valorTotal || behavioralData?.protestos?.valorTotal || 0
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-orange-50 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Cheques s/ Fundo</p>
+                                      <p className="text-xl font-bold text-orange-600">
+                                        {behavioralData?.credito?.resposta?.chequesSemFundo?.quantidade || behavioralData?.chequesSemFundo?.quantidade || 0}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-purple-50 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Ações Judiciais</p>
+                                      <p className="text-xl font-bold text-purple-600">
+                                        {behavioralData?.acoes?.resposta?.acoes ? "Sim" : "Não"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Qtd: {behavioralData?.acoes?.resposta?.quantidade || 0}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Detalhes das Ações Judiciais */}
+                                  {behavioralData?.acoes?.resposta?.detalhes && behavioralData.acoes.resposta.detalhes.length > 0 && (
+                                    <div className="mt-4">
+                                      <p className="text-sm font-semibold mb-2">Detalhes das Ações Judiciais</p>
+                                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {behavioralData.acoes.resposta.detalhes.map((acao: any, idx: number) => (
+                                          <div key={idx} className="p-3 bg-purple-50 rounded-lg border-l-4 border-purple-500 text-sm">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Tipo</p>
+                                                <p className="font-medium">{acao.tipo || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Vara</p>
+                                                <p className="font-medium">{acao.vara || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Comarca</p>
+                                                <p className="font-medium">{acao.comarca || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Data Distribuição</p>
+                                                <p className="font-medium">{acao.dataDistribuicao || "N/A"}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Valor</p>
+                                                <p className="font-medium text-purple-600">
+                                                  {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(acao.valor || 0)}
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Status</p>
+                                                <Badge variant={acao.status === "Em andamento" ? "destructive" : "secondary"}>
+                                                  {acao.status || "N/A"}
+                                                </Badge>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+
+                              {/* Perfil e Contato */}
+                              <Card className="border-2 border-slate-200">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base">Perfil e Contato</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Dados Pessoais */}
+                                    <div className="space-y-3">
+                                      <p className="text-sm font-semibold text-slate-700">Dados Cadastrais</p>
+                                      <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                          <p className="text-xs text-muted-foreground">Nome</p>
+                                          <p className="font-medium">{behavioralData?.dadosCadastrais?.resposta?.nome || "-"}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-muted-foreground">Data Nascimento</p>
+                                          <p className="font-medium">{behavioralData?.dadosCadastrais?.resposta?.dataNascimento || "-"}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-muted-foreground">Sexo</p>
+                                          <p className="font-medium">{behavioralData?.dadosCadastrais?.resposta?.sexo === "M" ? "Masculino" : behavioralData?.dadosCadastrais?.resposta?.sexo === "F" ? "Feminino" : "-"}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-muted-foreground">Situação CPF</p>
+                                          <Badge variant={behavioralData?.dadosCadastrais?.resposta?.situacaoCPF === "Regular" ? "default" : "destructive"}>
+                                            {behavioralData?.dadosCadastrais?.resposta?.situacaoCPF || "-"}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-muted-foreground">Óbito</p>
+                                          <Badge variant={behavioralData?.dadosCadastrais?.resposta?.obito ? "destructive" : "secondary"}>
+                                            {behavioralData?.dadosCadastrais?.resposta?.obito ? "Sim" : "Não"}
+                                          </Badge>
+                                        </div>
+                                      </div>
+
+                                      {/* Endereço */}
+                                      {behavioralData?.dadosCadastrais?.resposta?.endereco && (
+                                        <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                                          <p className="text-xs text-muted-foreground mb-1">Endereço</p>
+                                          <p className="text-sm">
+                                            {behavioralData.dadosCadastrais.resposta.endereco.logradouro}, {behavioralData.dadosCadastrais.resposta.endereco.numero}
+                                            {behavioralData.dadosCadastrais.resposta.endereco.complemento && ` - ${behavioralData.dadosCadastrais.resposta.endereco.complemento}`}
+                                          </p>
+                                          <p className="text-sm">
+                                            {behavioralData.dadosCadastrais.resposta.endereco.bairro} - {behavioralData.dadosCadastrais.resposta.endereco.cidade}/{behavioralData.dadosCadastrais.resposta.endereco.uf}
+                                          </p>
+                                          <p className="text-sm">CEP: {behavioralData.dadosCadastrais.resposta.endereco.cep}</p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Contatos */}
+                                    <div className="space-y-3">
+                                      {/* Telefones */}
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-700 mb-2">Telefones</p>
+                                        {behavioralData?.dadosCadastrais?.resposta?.telefones && behavioralData.dadosCadastrais.resposta.telefones.length > 0 ? (
+                                          <div className="space-y-2">
+                                            {behavioralData.dadosCadastrais.resposta.telefones.map((tel: any, idx: number) => (
+                                              <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                                                <span className="text-sm font-mono">({tel.ddd}) {tel.numero}</span>
+                                                <Badge variant="outline">{tel.tipo}</Badge>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-muted-foreground">Nenhum telefone encontrado</p>
+                                        )}
+                                      </div>
+
+                                      {/* E-mails */}
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-700 mb-2">E-mails</p>
+                                        {behavioralData?.dadosCadastrais?.resposta?.emails && behavioralData.dadosCadastrais.resposta.emails.length > 0 ? (
+                                          <div className="space-y-2">
+                                            {behavioralData.dadosCadastrais.resposta.emails.map((email: any, idx: number) => (
+                                              <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                                                <span className="text-sm">{email.email}</span>
+                                                <Badge variant="outline">Rank {email.ranking}</Badge>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-muted-foreground">Nenhum e-mail encontrado</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              {/* Capacidade de Pagamento - Renda Presumida */}
+                              <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base flex items-center gap-2">
+                                    <DollarSign className="h-5 w-5 text-green-600" />
+                                    Capacidade de Pagamento - Renda Presumida
+                                  </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="p-3 bg-green-100 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Faixa</p>
+                                      <p className="text-2xl font-bold text-green-700">
+                                        {behavioralData?.rendaPresumida?.resposta?.faixa || behavioralData?.rendaPresumida?.faixa || "-"}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-green-100 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Mínimo</p>
+                                      <p className="text-lg font-bold text-green-700">
+                                        {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                          behavioralData?.rendaPresumida?.resposta?.valorMinimo || behavioralData?.rendaPresumida?.valorMinimo || 0
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-green-100 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Máximo</p>
+                                      <p className="text-lg font-bold text-green-700">
+                                        {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                          behavioralData?.rendaPresumida?.resposta?.valorMaximo || behavioralData?.rendaPresumida?.valorMaximo || 0
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="p-3 bg-green-100 rounded-lg">
+                                      <p className="text-xs text-muted-foreground">Médio</p>
+                                      <p className="text-lg font-bold text-green-700">
+                                        {newIntl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                          behavioralData?.rendaPresumida?.resposta?.valorMedio || behavioralData?.rendaPresumida?.valorMedio || 0
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              {/* Participação em Empresas */}
+                              {(behavioralData?.credito?.resposta?.participacaoEmpresas?.quantidade > 0 || 
+                                (behavioralData?.participacaoEmpresas?.empresas && behavioralData.participacaoEmpresas.empresas.length > 0)) && (
+                                <Card className="border-2 border-indigo-200">
                                   <CardHeader className="pb-3">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                      <DollarSign className="h-5 w-5 text-green-600" />
-                                      Faturamento Estimado (Anual)
+                                    <CardTitle className="text-base">
+                                      Participação em Empresas ({behavioralData?.credito?.resposta?.participacaoEmpresas?.quantidade || behavioralData?.participacaoEmpresas?.quantidade || 0})
                                     </CardTitle>
                                   </CardHeader>
                                   <CardContent>
-                                    <div className="text-3xl font-bold text-green-600">
-                                      {newIntl
-                                        .NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
-                                        .format(behavioralData.credito.resposta.faturamentoEstimado.valor)}
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                      {(behavioralData?.credito?.resposta?.participacaoEmpresas?.empresas || behavioralData?.participacaoEmpresas?.empresas || []).map((empresa: any, idx: number) => (
+                                        <div key={idx} className="p-3 bg-indigo-50 rounded-lg border-l-4 border-indigo-500">
+                                          <div className="grid grid-cols-3 gap-2 text-sm">
+                                            <div>
+                                              <p className="text-xs text-muted-foreground">CNPJ</p>
+                                              <p className="font-mono">{empresa.cnpj || "N/A"}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-muted-foreground">Razão Social</p>
+                                              <p className="font-medium">{empresa.razaoSocial || "N/A"}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-muted-foreground">Participação</p>
+                                              <Badge variant="outline">{empresa.participacao || "N/A"}</Badge>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-2">
-                                      Estimativa baseada em dados públicos
-                                    </p>
                                   </CardContent>
                                 </Card>
                               )}
 
-                              {behavioralData?.credito?.resposta?.ultimasConsultas?.list &&
-                                behavioralData.credito.resposta.ultimasConsultas.list.length > 0 && (
-                                  <Card className="border-2 border-blue-200">
-                                    <CardHeader className="pb-3">
-                                      <CardTitle className="text-base flex items-center gap-2">
-                                        <Eye className="h-5 w-5 text-blue-600" />
-                                        Últimas Consultas (
-                                        {behavioralData.credito.resposta.ultimasConsultas.qtdUltConsultas || 0})
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        {behavioralData.credito.resposta.ultimasConsultas.list
-                                          .slice(0, 10)
-                                          .map((consulta: any, idx: number) => (
-                                            <div
-                                              key={idx}
-                                              className="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500"
-                                            >
-                                              <p className="text-sm font-medium">{consulta.dataOcorrencia}</p>
-                                              <p className="text-xs text-muted-foreground">Consulta realizada</p>
-                                            </div>
-                                          ))}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              {/* Classificação de Score Comportamental */}
-                              <Card className="bg-gradient-to-br from-amber-50 to-yellow-50">
-                                <CardHeader>
-                                  <CardTitle className="text-base">Classificação de Score Comportamental</CardTitle>
+                              {/* Auditoria / Correlação */}
+                              <Card className="border">
+                                <CardHeader className="pb-3">
+                                  <CardTitle className="text-base">Auditoria / Correlação</CardTitle>
                                 </CardHeader>
-                                <CardContent className="space-y-2 text-sm">
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe A</span>
-                                    <span className="text-muted-foreground">Excelente (900-1000)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe B</span>
-                                    <span className="text-muted-foreground">Muito Bom (700-899)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe C</span>
-                                    <span className="text-muted-foreground">Bom (500-699)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe D</span>
-                                    <span className="text-muted-foreground">Regular (300-499)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe E</span>
-                                    <span className="text-muted-foreground">Baixo (100-299)</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium">Classe F</span>
-                                    <span className="text-muted-foreground">Muito Baixo (0-99)</span>
+                                <CardContent>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Identificador</p>
+                                      <p className="font-mono text-xs break-all">{behavioralData?.cabecalho?.identificador || cliente.behavioralData?.assertiva_uuid || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Protocolo</p>
+                                      <p className="font-mono text-xs break-all">{behavioralData?.cabecalho?.protocolo || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Data Processamento</p>
+                                      <p className="font-medium">{behavioralData?.cabecalho?.dataProcessamento || cliente.behavioralData?.updated_at || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Documento/Tipo</p>
+                                      <p className="font-medium">{behavioralData?.cabecalho?.entrada?.documento || cliente["CPF/CNPJ"]} / {behavioralData?.cabecalho?.entrada?.tipoDocumento || (cliente["CPF/CNPJ"]?.length > 14 ? "CNPJ" : "CPF")}</p>
+                                    </div>
                                   </div>
                                 </CardContent>
                               </Card>
                             </>
                           ) : (
-                            <Card>
+                            <Card className="border-2 border-dashed">
                               <CardContent className="py-12 text-center">
-                                <p className="text-muted-foreground italic">Análise comportamental não realizada</p>
+                                <p className="text-muted-foreground">Nenhuma análise comportamental realizada para este cliente.</p>
                               </CardContent>
                             </Card>
                           )}
