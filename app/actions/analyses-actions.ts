@@ -288,6 +288,7 @@ export async function getAllCustomers() {
 
     console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
 
+    console.log("[SERVER] ========== getAllCustomers v3 - PAGINATION ENABLED ==========")
     // Buscar TODOS os registros VMAX (sem limite)
     let allVmaxData: any[] = []
     let page = 0
@@ -308,6 +309,8 @@ export async function getAllCustomers() {
         break
       }
 
+      console.log(`[SERVER] getAllCustomers - VMAX page ${page}: ${vmaxPage?.length || 0} records`)
+      
       if (vmaxPage && vmaxPage.length > 0) {
         allVmaxData = [...allVmaxData, ...vmaxPage]
         page++
@@ -320,11 +323,7 @@ export async function getAllCustomers() {
     const vmaxData = allVmaxData
     const vmaxError = null
 
-    if (vmaxError) {
-      console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
-    }
-
-    console.log("[SERVER] getAllCustomers - VMAX records loaded:", vmaxData?.length || 0)
+    console.log("[SERVER] getAllCustomers - TOTAL VMAX records loaded (after pagination):", vmaxData.length)
 
     const allCustomers = [
       ...(customersData || []).map((c) => ({

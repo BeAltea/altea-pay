@@ -28,6 +28,8 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0 // Force no cache for this page
 
 async function fetchCompanies() {
+  console.log("[v0] ========== COMPANIES PAGE v3 - PAGINATION ENABLED ==========")
+  
   const supabase = createAdminClient()
 
   const { data: companiesData, error: companiesError } = await supabase.from("companies").select("*")

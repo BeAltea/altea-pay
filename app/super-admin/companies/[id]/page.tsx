@@ -33,6 +33,7 @@ interface CompanyDetailsProps {
 }
 
 export default async function CompanyDetailsPage({ params }: CompanyDetailsProps) {
+  console.log("[v0] === COMPANY DETAILS PAGE v2 - WITH PAGINATION ===")
   const supabase = createAdminClient()
 
   const { data: companyData, error: companyError } = await supabase

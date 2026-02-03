@@ -6,6 +6,8 @@ import { ArrowLeft } from "lucide-react"
 import { notFound } from "next/navigation"
 
 export default async function ManageCustomersPage({ params }: { params: { id: string } }) {
+  console.log("[v0] ========== CUSTOMERS PAGE v3 - PAGINATION ENABLED ==========")
+  
   const supabase = createAdminClient()
 
   const { data: company, error: companyError } = await supabase

@@ -31,6 +31,8 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export default async function SuperAdminDashboardPage() {
+  console.log("[v0] ========== SUPER ADMIN PAGE v3 - PAGINATION ENABLED ==========")
+  
   const supabase = createAdminClient()
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
