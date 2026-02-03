@@ -88,7 +88,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const overdueDebts = debtsData?.filter((d) => d.status === "overdue").length || 0
   const vmaxOverdueDebts =
     vmaxData?.filter((v) => {
-      const diasInadStr = String(v["Dias_Inad."] || v.Dias_Inad || 0)
+      const diasInadStr = String(v["Dias Inad."] || 0)
       const diasInad = Number(diasInadStr) || 0
       return diasInad > 0
     }).length || 0
@@ -96,7 +96,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
   const admins = adminsData?.length || 0
 
-  const daysOverdueData = vmaxData?.map((v) => Number(v.Dias_Inad || 0)) || []
+  const daysOverdueData = vmaxData?.map((v) => Number(v["Dias Inad."] || 0)) || []
   const avgDaysOverdue =
     daysOverdueData.length > 0 ? daysOverdueData.reduce((sum, days) => sum + days, 0) / daysOverdueData.length : 0
 

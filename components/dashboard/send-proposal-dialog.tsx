@@ -57,13 +57,13 @@ export function SendProposalDialog({
 
             const { data: vmaxRecord } = await supabase
               .from("VMAX")
-              .select("Email, Telefone")
+              .select('Email, "Telefone 1", "Telefone 2"')
               .eq('"CPF/CNPJ"', cleanedDocument)
               .single()
 
             if (vmaxRecord) {
               customerEmail = customerEmail || vmaxRecord.Email
-              customerPhone = customerPhone || vmaxRecord.Telefone
+              customerPhone = customerPhone || vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"]
             }
           }
 

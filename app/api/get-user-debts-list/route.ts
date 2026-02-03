@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
               amount:
                 Number.parseFloat(String(record.Vencido || record.amount || record.valor || "0").replace(",", ".")) ||
                 0,
-              due_date: record.Primeira_Vencida || record.due_date || null,
-              days_overdue: Number.parseInt(record.Dias_Inad || record.days_overdue || "0") || 0,
+              due_date: record.Vecto || record.due_date || null,
+              days_overdue: Number.parseInt(record["Dias Inad."] || record.days_overdue || "0") || 0,
               status: "overdue",
               cpf_cnpj: record["CPF/CNPJ"] || record.cpf_cnpj || cpfCnpj,
               city: record.Cidade || record.city || null,

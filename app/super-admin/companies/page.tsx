@@ -106,17 +106,17 @@ async function fetchCompanies() {
     console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
-      const diasInad = Number(v.Dias_Inad || 0)
+      const diasInad = Number(v["Dias Inad."] || 0)
       return diasInad > 0
     })
 
     const avgDaysOverdue =
       vmaxWithOverdue.length > 0
-        ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v.Dias_Inad || 0), 0) / vmaxWithOverdue.length
+        ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v["Dias Inad."] || 0), 0) / vmaxWithOverdue.length
         : 0
 
     const paidAmount = companyVmaxData
-      .filter((v) => v.DT_Cancelamento)
+      .filter((v) => v["DT Cancelamento"])
       .reduce((sum, v) => {
         const vencidoStr = String(v.Vencido || "0")
         const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
@@ -127,7 +127,7 @@ async function fetchCompanies() {
     const recoveryRate = 0 // No recovery data available yet
 
     const totalCustomers = companyVmaxData.length
-    const totalDebts = companyVmaxData.filter((v) => !v.DT_Cancelamento).length
+    const totalDebts = companyVmaxData.filter((v) => !v["DT Cancelamento"]).length
 
     console.log(
       `[v0] Company ${company.name} - totalAmount: ${vmaxTotalAmount}, VMAX records: ${companyVmaxData.length}`,

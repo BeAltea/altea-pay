@@ -91,8 +91,8 @@ export default async function DashboardPage() {
 
     return {
       amount,
-      status: debt.DT_Cancelamento ? "paid" : "pending",
-      diasInad: Number(debt.Dias_Inad) || 0,
+      status: debt["DT Cancelamento"] ? "paid" : "pending",
+      diasInad: Number(debt["Dias Inad."]) || 0,
     }
   })
 

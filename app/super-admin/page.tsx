@@ -59,7 +59,7 @@ export default async function SuperAdminDashboardPage() {
         .select("amount, status, due_date")
         .eq("company_id", company.id)
 
-      const vmaxOverdueDebts = vmaxCustomers?.filter((v) => Number(v.Dias_Inad || 0) > 0).length || 0
+      const vmaxOverdueDebts = vmaxCustomers?.filter((v) => Number(v["Dias Inad."] || 0) > 0).length || 0
 
       const vmaxTotalAmount =
         vmaxCustomers?.reduce((sum, v) => {
@@ -72,7 +72,7 @@ export default async function SuperAdminDashboardPage() {
       const vmaxDebtsFormatted =
         vmaxCustomers?.map((debt) => ({
           amount: 0,
-          status: debt.DT_Cancelamento ? "paid" : "pending",
+          status: debt["DT Cancelamento"] ? "paid" : "pending",
           due_date: new Date().toISOString(),
         })) || []
 

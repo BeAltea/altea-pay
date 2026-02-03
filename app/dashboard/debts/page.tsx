@@ -61,7 +61,7 @@ export default function DebtsPage() {
       if (error) throw error
 
       const vmaxDebts = (vmaxData || []).map((record) => {
-        const diasInadimplencia = record.Dias_Inad ? Number(record.Dias_Inad) : 0
+        const diasInadimplencia = record["Dias Inad."] ? Number(record["Dias Inad."]) : 0
         const valorVencido = record.Vencido
           ? Number.parseFloat(
               String(record.Vencido)
@@ -81,7 +81,7 @@ export default function DebtsPage() {
           customerDocument: record["CPF/CNPJ"] || "",
           originalAmount: valorVencido,
           currentAmount: valorVencido,
-          dueDate: record.Primeira_Vencida || new Date().toISOString(),
+          dueDate: record.Vecto || new Date().toISOString(),
           daysOverdue: diasInadimplencia,
           status: "in_collection" as const,
           classification,

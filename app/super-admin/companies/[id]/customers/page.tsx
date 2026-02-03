@@ -37,9 +37,9 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
   const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
     const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
     const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
-    const diasInad = Number(vmax["Dias_Inad"] || vmax.dias_inad || 0)
-    const primeiraVencida = vmax.Primeira_Vencida || vmax.primeira_vencida
-    const dtCancelamento = vmax.DT_Cancelamento || vmax.dt_cancelamento
+    const diasInad = Number(vmax["Dias Inad."] || vmax.dias_inad || 0)
+    const primeiraVencida = vmax.Vecto || vmax.primeira_vencida
+    const dtCancelamento = vmax["DT Cancelamento"] || vmax.dt_cancelamento
 
     let status: "active" | "overdue" | "negotiating" | "paid" = "active"
     if (diasInad > 0) {

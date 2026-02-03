@@ -282,7 +282,7 @@ export async function getCustomerDetails(companyId: string, document: string) {
         city: vmaxData.Cidade || vmaxData.cidade || null,
         email: null,
         phone: null,
-        created_at: vmaxData.Primeira_Vencida || vmaxData.primeira_vencida || new Date().toISOString(),
+        created_at: vmaxData.Vecto || vmaxData.primeira_vencida || new Date().toISOString(),
         score: latestProfile?.score || null,
         analysis_data: latestProfile?.data || null,
         analysis_history: creditProfiles || [],

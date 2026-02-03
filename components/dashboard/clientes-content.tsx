@@ -47,7 +47,7 @@ interface Cliente {
   credit_score: number
   approval_status: string
   sanctions_count: number
-  Dias_Inad: number
+  "Dias Inad.": number
   Vencido: string
   analysis_metadata: any
   behavioralData?: any // Adicionado para análise comportamental
@@ -102,7 +102,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           comparison = (a.approval_status || "").localeCompare(b.approval_status || "")
           break
         case "days":
-          comparison = (a.Dias_Inad || 0) - (b.Dias_Inad || 0)
+          comparison = (a["Dias Inad."] || 0) - (b["Dias Inad."] || 0)
           break
       }
 

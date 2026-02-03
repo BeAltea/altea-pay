@@ -146,13 +146,13 @@ export default async function UserDashboardPage() {
               }
 
               let daysOverdue = 0
-              if (debt.Dias_Inad) {
-                daysOverdue = Number.parseInt(String(debt.Dias_Inad).replace(/\D/g, "")) || 0
+              if (debt["Dias Inad."]) {
+                daysOverdue = Number.parseInt(String(debt["Dias Inad."]).replace(/\D/g, "")) || 0
               } else if (debt.days_overdue) {
                 daysOverdue = debt.days_overdue
               }
 
-              const dueDate = debt.Primeira_Vencida || debt.due_date || new Date().toISOString()
+              const dueDate = debt.Vecto || debt.due_date || new Date().toISOString()
 
               return {
                 id: debt.id || `VMAX-${Math.random()}`,
