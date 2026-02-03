@@ -4,22 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function getAnalysesData() {
   try {
-    console.log("[SERVER] getAnalysesData - Starting...")
+    console.log("[SERVER] getAnalysesData - Starting (VMAX ONLY)...")
 
     const supabase = createAdminClient()
 
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document, company_id")
-      .order("name")
-
-    if (customersError) {
-      console.error("[SERVER] getAnalysesData - Error loading customers:", customersError)
-      throw customersError
-    }
-
-    console.log("[SERVER] getAnalysesData - Customers loaded:", customersData?.length || 0)
-
+    // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
       .select(
@@ -272,23 +261,7 @@ export async function runAnalysis(customerId: string, document: string) {
 
 export async function getAllCustomers() {
   try {
-    console.log("[SERVER] getAllCustomers - Starting...")
-
     const supabase = createAdminClient()
-
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document, company_id")
-      .order("name")
-
-    if (customersError) {
-      console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
-      throw customersError
-    }
-
-    console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
-
-    console.log("[SERVER] ========== getAllCustomers v3 - PAGINATION ENABLED ==========")
     // Buscar TODOS os registros VMAX (sem limite)
     let allVmaxData: any[] = []
     let page = 0
@@ -309,8 +282,6 @@ export async function getAllCustomers() {
         break
       }
 
-      console.log(`[SERVER] getAllCustomers - VMAX page ${page}: ${vmaxPage?.length || 0} records`)
-      
       if (vmaxPage && vmaxPage.length > 0) {
         allVmaxData = [...allVmaxData, ...vmaxPage]
         page++
@@ -323,24 +294,8 @@ export async function getAllCustomers() {
     const vmaxData = allVmaxData
     const vmaxError = null
 
-    console.log("[SERVER] getAllCustomers - TOTAL VMAX records loaded (after pagination):", vmaxData.length)
-
-    const allCustomers = [
-      ...(customersData || []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        document: c.document,
-        company_id: c.company_id,
-        city: "N/A",
-        source_table: "customers" as const,
-        dias_inad: 0,
-        credit_score: null,
-        risk_level: null,
-        approval_status: null,
-        analysis_metadata: null,
-        last_analysis_date: null,
-      })),
-      ...(vmaxData || []).map((v) => {
+    // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
+    const allCustomers = (vmaxData || []).map((v) => {
         let score = v.credit_score
 
         if (!score && v.analysis_metadata) {
@@ -372,13 +327,12 @@ export async function getAllCustomers() {
           approval_status: v.approval_status,
           analysis_metadata: v.analysis_metadata,
           last_analysis_date: v.last_analysis_date,
-          recovery_score: v.recovery_score,
-          recovery_class: v.recovery_class,
-        }
-      }),
-    ]
+        recovery_score: v.recovery_score,
+        recovery_class: v.recovery_class,
+      }
+    })
 
-    console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)
+    console.log("[SERVER] getAllCustomers - Total VMAX customers:", allCustomers.length)
 
     if (allCustomers.length === 0) {
       return { success: true, data: [] }

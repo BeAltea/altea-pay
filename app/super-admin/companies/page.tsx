@@ -39,23 +39,7 @@ async function fetchCompanies() {
     return []
   }
 
-  const { data: customersData, error: customersError } = await supabase.from("customers").select("company_id")
-
-  if (customersError) {
-    console.error("[v0] Error fetching customers:", customersError)
-  }
-
-  const { data: debtsData, error: debtsError } = await supabase.from("debts").select("company_id, amount, status")
-
-  if (debtsError) {
-    console.error("[v0] Error fetching debts:", debtsError)
-  }
-
-  const { data: paymentsData, error: paymentsError } = await supabase.from("payments").select("company_id, amount")
-
-  if (paymentsError) {
-    console.error("[v0] Error fetching payments:", paymentsError)
-  }
+  // SOMENTE dados da tabela VMAX (tabelas customers, debts e payments foram descontinuadas)
 
   const { data: adminsData, error: adminsError } = await supabase
     .from("profiles")
@@ -97,11 +81,9 @@ async function fetchCompanies() {
   console.log("[v0] TOTAL VMAX records loaded (after pagination):", vmaxData.length)
 
   const companies: Company[] = (companiesData || []).map((company) => {
-    const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
-    const companyDebts = debtsData?.filter((d) => d.company_id === company.id) || []
-    const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
     const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
 
+    // SOMENTE dados da tabela VMAX
     const companyVmaxData = vmaxData.filter((v) => {
       const vmaxCompanyId = v.id_company?.toString().toLowerCase().trim()
       const match = vmaxCompanyId === company.id.toString().toLowerCase().trim()

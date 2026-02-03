@@ -71,8 +71,7 @@ export default async function SuperAdminDashboardPage() {
 
   if (companies) {
     for (const company of companies) {
-      const { data: customers } = await supabase.from("customers").select("id").eq("company_id", company.id)
-
+      // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
       const vmaxCustomers =
         allVmaxRecords?.filter((v) => {
           const match =
@@ -82,13 +81,9 @@ export default async function SuperAdminDashboardPage() {
           return match
         }) || []
 
-      const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
+      const totalCustomers = vmaxCustomers?.length || 0
 
-      const { data: debts } = await supabase
-        .from("debts")
-        .select("amount, status, due_date")
-        .eq("company_id", company.id)
-
+      // SOMENTE dados da tabela VMAX
       const vmaxOverdueDebts = vmaxCustomers?.filter((v) => {
         const diasInadStr = String(v["Dias Inad."] || "0")
         return (Number(diasInadStr.replace(/\./g, "")) || 0) > 0
@@ -102,43 +97,21 @@ export default async function SuperAdminDashboardPage() {
           return sum + value
         }, 0) || 0
 
-      const vmaxDebtsFormatted =
-        vmaxCustomers?.map((debt) => ({
-          amount: 0,
-          status: debt["DT Cancelamento"] ? "paid" : "pending",
-          due_date: new Date().toISOString(),
-        })) || []
-
-      const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
-
       const { data: admins } = await supabase
         .from("profiles")
         .select("id")
         .eq("company_id", company.id)
         .eq("role", "admin")
 
-      const regularDebtsAmount = (debts || [])
-        .filter((d) => d.status !== "paid")
-        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
-
-      const totalAmount = regularDebtsAmount + vmaxTotalAmount
-
-      const regularOverdueDebts =
-        debts?.filter((d) => {
-          if (d.status === "paid") return false
-          const dueDate = new Date(d.due_date)
-          return dueDate < new Date()
-        }).length || 0
-
       companiesStats.push({
         id: company.id,
         name: company.name,
         totalCustomers,
-        totalDebts: allDebts.length,
-        totalAmount,
+        totalDebts: vmaxCustomers?.length || 0,
+        totalAmount: vmaxTotalAmount,
         recoveredAmount: 0,
         recoveryRate: 0,
-        overdueDebts: regularOverdueDebts + vmaxOverdueDebts,
+        overdueDebts: vmaxOverdueDebts,
         admins: admins?.length || 0,
       })
     }
