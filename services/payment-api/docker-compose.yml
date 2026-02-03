@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  payment-db:
+    image: postgres:16-alpine
+    container_name: payment-api-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: payment_api
+      POSTGRES_USER: payment_api
+      POSTGRES_PASSWORD: payment_api_secret
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment_api -d payment_api"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-redis:
+    image: redis:7-alpine
+    container_name: payment-api-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - payment_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  payment_db_data:
+  payment_redis_data:

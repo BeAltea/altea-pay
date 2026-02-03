@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Percent, Save } from "lucide-react"
-import { createAgreementWithAsaas } from "@/app/actions/create-agreement-with-asaas"
+import { createAgreement } from "@/app/actions/create-agreement"
 import { toast } from "sonner"
 import { SendProposalDialog } from "./send-proposal-dialog"
 
@@ -49,7 +49,7 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
     setLoading(true)
 
     try {
-      const result = await createAgreementWithAsaas({
+      const result = await createAgreement({
         vmaxId: customer.id,
         agreedAmount: finalAmount,
         installments: Number(installments),
@@ -59,7 +59,7 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
       })
 
       if (result.success && result.agreement) {
-        toast.success("Proposta criada com sucesso no Asaas!")
+        toast.success("Proposta criada com sucesso!")
         setCreatedAgreementId(result.agreement.id)
         setShowSendDialog(true)
       } else {
