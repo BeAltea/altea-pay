@@ -12,7 +12,6 @@ export async function getAnalysesData() {
       .from("customers")
       .select("id, name, document, company_id")
       .order("name")
-      .limit(200)
 
     if (customersError) {
       console.error("[SERVER] getAnalysesData - Error loading customers:", customersError)
@@ -40,7 +39,6 @@ export async function getAnalysesData() {
       .select("*")
       .eq("source", "assertiva")
       .order("created_at", { ascending: false })
-      .limit(200)
 
     if (profilesError) {
       console.error("[SERVER] Error loading profiles:", profilesError)
@@ -282,7 +280,6 @@ export async function getAllCustomers() {
       .from("customers")
       .select("id, name, document, company_id")
       .order("name")
-      .limit(200)
 
     if (customersError) {
       console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
@@ -291,12 +288,37 @@ export async function getAllCustomers() {
 
     console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
 
-    const { data: vmaxData, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
-      )
-      .order("Cliente")
+    // Buscar TODOS os registros VMAX (sem limite)
+    let allVmaxData: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
+
+    while (hasMore) {
+      const { data: vmaxPage, error: vmaxPageError } = await supabase
+        .from("VMAX")
+        .select(
+          'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
+        )
+        .order("Cliente")
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (vmaxPageError) {
+        console.error("[SERVER] getAllCustomers - Error loading VMAX page:", vmaxPageError)
+        break
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        allVmaxData = [...allVmaxData, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
+    }
+
+    const vmaxData = allVmaxData
+    const vmaxError = null
 
     if (vmaxError) {
       console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)

@@ -64,11 +64,33 @@ async function fetchCompanies() {
     console.error("[v0] Error fetching admins:", adminsError)
   }
 
-  const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*")
+  // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+  let vmaxData: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  if (vmaxError) {
-    console.error("[v0] Error fetching VMAX:", vmaxError)
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPageError) {
+      console.error("[v0] Error fetching VMAX page:", vmaxPageError)
+      break
+    }
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
   }
+
+  console.log("[v0] Total VMAX records loaded:", vmaxData.length)
 
   const companies: Company[] = (companiesData || []).map((company) => {
     const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []

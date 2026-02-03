@@ -54,20 +54,38 @@ export async function GET(request: Request) {
 
     for (const tableName of tablesToSearch) {
       try {
-        console.log(`[v0] 🔍 Searching in table: ${tableName}`)
+        console.log(`[v0] Searching in table: ${tableName}`)
 
-        // Fetch ALL records from table (service role bypasses RLS)
-        const { data: allRecords, error: fetchError } = await serviceSupabase.from(tableName).select("*").limit(1000)
+        // Buscar TODOS os registros (paginação para superar limite de 1000)
+        let allRecords: any[] = []
+        let page = 0
+        const pageSize = 1000
+        let hasMore = true
 
-        if (fetchError) {
-          console.log(`[v0] ⚠️ Table ${tableName} not accessible:`, fetchError.message)
-          continue
+        while (hasMore) {
+          const { data: recordsPage, error: fetchError } = await serviceSupabase
+            .from(tableName)
+            .select("*")
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (fetchError) {
+            console.log(`[v0] Table ${tableName} not accessible:`, fetchError.message)
+            break
+          }
+
+          if (recordsPage && recordsPage.length > 0) {
+            allRecords = [...allRecords, ...recordsPage]
+            page++
+            hasMore = recordsPage.length === pageSize
+          } else {
+            hasMore = false
+          }
         }
 
-        console.log(`[v0] 📊 Table ${tableName}: ${allRecords?.length || 0} records`)
+        console.log(`[v0] Table ${tableName}: ${allRecords.length} records`)
 
         // Filter manually by CPF/CNPJ
-        const matchingRecords = (allRecords || []).filter((record: any) => {
+        const matchingRecords = allRecords.filter((record: any) => {
           const possibleColumns = ["CPF/CNPJ", "cpf_cnpj", "cpf", "cnpj", "document"]
 
           for (const col of possibleColumns) {

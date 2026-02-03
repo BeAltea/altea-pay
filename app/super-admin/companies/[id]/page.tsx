@@ -58,9 +58,29 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     .eq("company_id", params.id)
     .eq("role", "admin")
 
-  const { data: vmaxData } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
+  // Buscar TODOS os registros VMAX para esta empresa (paginação para superar limite de 1000)
+  let vmaxData: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  console.log("[v0] 📊 VMAX records for company:", vmaxData?.length || 0)
+  while (hasMore) {
+    const { data: vmaxPage } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", params.id)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] VMAX records for company:", vmaxData.length)
 
   const allCustomers = [...(customersData || []), ...(vmaxData || [])]
   const totalCustomers = allCustomers.length

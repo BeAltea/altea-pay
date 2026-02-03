@@ -32,7 +32,29 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     .eq("company_id", params.id)
     .order("created_at", { ascending: false })
 
-  const { data: vmaxCustomers } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
+  // Buscar TODOS os registros VMAX para esta empresa (paginação para superar limite de 1000)
+  let vmaxCustomers: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
+
+  while (hasMore) {
+    const { data: vmaxPage } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", params.id)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxCustomers = [...vmaxCustomers, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] VMAX customers loaded:", vmaxCustomers.length)
 
   const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
     const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")

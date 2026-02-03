@@ -8,20 +8,37 @@ export async function getVMAXRecords(companyId: string) {
 
     const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from("VMAX")
-      .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
-      .eq("id_company", companyId)
-      .order("Cliente")
+    // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+    let allData: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    if (error) {
-      console.error("[SERVER] getVMAXRecords - Error:", error)
-      throw error
+    while (hasMore) {
+      const { data: vmaxPage, error } = await supabase
+        .from("VMAX")
+        .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
+        .eq("id_company", companyId)
+        .order("Cliente")
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (error) {
+        console.error("[SERVER] getVMAXRecords - Error:", error)
+        throw error
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        allData = [...allData, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
     }
 
-    console.log("[SERVER] getVMAXRecords - Found records:", data?.length || 0)
+    console.log("[SERVER] getVMAXRecords - Found records:", allData.length)
 
-    return { success: true, data: data || [] }
+    return { success: true, data: allData }
   } catch (error: any) {
     console.error("[SERVER] getVMAXRecords - Error:", error)
     return { success: false, error: error.message, data: [] }

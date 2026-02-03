@@ -23,21 +23,40 @@ export async function POST(request: NextRequest) {
 
     for (const tableName of tablesToSearch) {
       try {
-        console.log(`[v0] 🔍 Searching in table: ${tableName}`)
+        console.log(`[v0] Searching in table: ${tableName}`)
 
-        const { data: records, error } = await supabase.from(tableName).select("*").limit(1000)
+        // Buscar TODOS os registros (paginação para superar limite de 1000)
+        let records: any[] = []
+        let page = 0
+        const pageSize = 1000
+        let hasMore = true
 
-        if (error) {
-          console.log(`[v0] ⚠️ Table ${tableName} not accessible:`, error.message)
+        while (hasMore) {
+          const { data: recordsPage, error } = await supabase
+            .from(tableName)
+            .select("*")
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (error) {
+            console.log(`[v0] Table ${tableName} not accessible:`, error.message)
+            break
+          }
+
+          if (recordsPage && recordsPage.length > 0) {
+            records = [...records, ...recordsPage]
+            page++
+            hasMore = recordsPage.length === pageSize
+          } else {
+            hasMore = false
+          }
+        }
+
+        if (records.length === 0) {
+          console.log(`[v0] Table ${tableName}: 0 records`)
           continue
         }
 
-        if (!records || records.length === 0) {
-          console.log(`[v0] 📊 Table ${tableName}: 0 records`)
-          continue
-        }
-
-        console.log(`[v0] 📊 Table ${tableName}: ${records.length} records`)
+        console.log(`[v0] Table ${tableName}: ${records.length} records`)
 
         // Filtrar registros que correspondem ao CPF
         for (const record of records) {

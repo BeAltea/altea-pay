@@ -20,18 +20,34 @@ export async function getCollectionRulerStats() {
 
     console.log("[v0] Active rulers found:", rulers?.length || 0)
 
-    // Get total VMAX records that are eligible for custom rulers
-    const { data: vmaxRecords, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("approval_status", "ACEITA")
+    // Buscar TODOS os registros VMAX elegíveis (paginação para superar limite de 1000)
+    let vmaxRecords: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    if (vmaxError) {
-      console.error("[v0] Error fetching VMAX:", vmaxError)
-      throw vmaxError
+    while (hasMore) {
+      const { data: vmaxPage, error: vmaxPageError } = await supabase
+        .from("VMAX")
+        .select("*")
+        .eq("approval_status", "ACEITA")
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (vmaxPageError) {
+        console.error("[v0] Error fetching VMAX page:", vmaxPageError)
+        break
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        vmaxRecords = [...vmaxRecords, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
     }
 
-    console.log("[v0] VMAX records with ACEITA status:", vmaxRecords?.length || 0)
+    console.log("[v0] VMAX records with ACEITA status:", vmaxRecords.length)
 
     const { data: executions, error: executionsError } = await supabase
       .from("collection_rule_executions")
