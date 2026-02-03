@@ -24,11 +24,10 @@ export async function getAnalysesData() {
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
       .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
       )
       .not("analysis_metadata", "is", null) // Apenas com análise
       .order("last_analysis_date", { ascending: false })
-      .limit(200)
 
     if (vmaxError) {
       console.error("[SERVER] Error loading VMAX:", vmaxError)
@@ -295,10 +294,9 @@ export async function getAllCustomers() {
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
       .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
       )
       .order("Cliente")
-      .limit(200)
 
     if (vmaxError) {
       console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
@@ -346,13 +344,15 @@ export async function getAllCustomers() {
           document: v["CPF/CNPJ"],
           company_id: v.id_company,
           city: v.Cidade || "N/A",
-          source_table: "vmax" as const,
+          source_table: "VMAX" as const,
           dias_inad: v["Dias Inad."] || 0,
           credit_score: score,
           risk_level: v.risk_level,
           approval_status: v.approval_status,
           analysis_metadata: v.analysis_metadata,
           last_analysis_date: v.last_analysis_date,
+          recovery_score: v.recovery_score,
+          recovery_class: v.recovery_class,
         }
       }),
     ]
@@ -368,7 +368,7 @@ export async function getAllCustomers() {
 
     const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
 
-    const formattedCustomers = allCustomers.map((customer) => {
+    const formattedCustomers = allCustomers.map((customer: any) => {
       const company = companiesMap.get(customer.company_id)
 
       return {
@@ -385,6 +385,8 @@ export async function getAllCustomers() {
         approval_status: customer.approval_status,
         analysis_metadata: customer.analysis_metadata,
         last_analysis_date: customer.last_analysis_date,
+        recovery_score: customer.recovery_score,
+        recovery_class: customer.recovery_class,
       }
     })
 
