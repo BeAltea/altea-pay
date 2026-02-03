@@ -891,12 +891,12 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                                     <p className="font-semibold text-slate-700">{cliente.Cidade || "N/A"}, {cliente.UF || "-"}</p>
                                   </div>
                                 </div>
-                                {cliente.Dias_Inad > 0 && (
+                                {cliente["Dias Inad."] > 0 && (
                                   <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl">
                                     <Clock className="h-5 w-5 text-red-400" />
                                     <div>
                                       <p className="text-xs text-red-400">Inadimplencia</p>
-                                      <p className="font-bold text-red-600">{cliente.Dias_Inad} dias</p>
+                                      <p className="font-bold text-red-600">{cliente["Dias Inad."]} dias</p>
                                     </div>
                                   </div>
                                 )}
