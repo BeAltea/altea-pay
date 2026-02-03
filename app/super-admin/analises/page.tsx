@@ -75,6 +75,8 @@ export default function AnalysesPage() {
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false)
   const [sortField, setSortField] = useState<SortField>("date")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+  const [filterStatus, setFilterStatus] = useState<string>("all") // "all", "pending", "completed"
+  const [displayLimit, setDisplayLimit] = useState<number>(100) // Limite de exibição
   const { toast } = useToast()
 
   // Helper for currency formatting
@@ -170,7 +172,8 @@ export default function AnalysesPage() {
         analysis.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         analysis.cpf?.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesCompany = filterCompany === "all" || analysis.company_id === filterCompany
-      return matchesSearch && matchesCompany
+      const matchesStatus = filterStatus === "all" || analysis.status === filterStatus
+      return matchesSearch && matchesCompany && matchesStatus
     })
     .sort((a, b) => {
       const direction = sortDirection === "asc" ? 1 : -1
@@ -190,6 +193,16 @@ export default function AnalysesPage() {
           return 0
       }
     })
+    .slice(0, displayLimit) // Limitar quantidade de exibição
+
+  const totalFilteredCount = analyses.filter((analysis) => {
+    const matchesSearch =
+      analysis.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      analysis.cpf?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesCompany = filterCompany === "all" || analysis.company_id === filterCompany
+    const matchesStatus = filterStatus === "all" || analysis.status === filterStatus
+    return matchesSearch && matchesCompany && matchesStatus
+  }).length
 
   const getSourceBadge = (source: string) => {
     return <Badge variant="default">Análise Restritiva</Badge>
@@ -453,6 +466,39 @@ export default function AnalysesPage() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Filtros adicionais para facilitar processamento em lotes */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm text-muted-foreground">Filtros:</span>
+          
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Status da análise" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="pending">Sem Análise</SelectItem>
+              <SelectItem value="completed">Com Análise</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={String(displayLimit)} onValueChange={(v) => setDisplayLimit(Number(v))}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Exibir..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="50">Exibir 50</SelectItem>
+              <SelectItem value="100">Exibir 100</SelectItem>
+              <SelectItem value="200">Exibir 200</SelectItem>
+              <SelectItem value="500">Exibir 500</SelectItem>
+              <SelectItem value="99999">Exibir Todos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <span className="text-sm text-muted-foreground ml-2">
+            Mostrando {filteredAnalyses.length} de {totalFilteredCount} clientes
+          </span>
         </div>
 
         <div className="flex flex-wrap gap-2">

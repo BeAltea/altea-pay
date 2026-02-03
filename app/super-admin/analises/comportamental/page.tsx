@@ -52,6 +52,8 @@ export default function ComportamentalPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [sortBy, setSortBy] = useState<"name" | "score" | "status" | "date">("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
+  const [filterStatus, setFilterStatus] = useState<string>("all") // "all", "pending", "completed"
+  const [displayLimit, setDisplayLimit] = useState<number>(100) // Limite de exibição
   const { toast } = useToast()
 
   useEffect(() => {
@@ -97,7 +99,12 @@ export default function ComportamentalPage() {
         customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.document?.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesCompany = filterCompany === "all" || customer.company_id === filterCompany
-      return matchesSearch && matchesCompany
+      // Filtro por status de análise
+      const hasAnalysis = customer.recovery_score !== null || customer.analysis_metadata !== null
+      const matchesStatus = filterStatus === "all" || 
+        (filterStatus === "pending" && !hasAnalysis) || 
+        (filterStatus === "completed" && hasAnalysis)
+      return matchesSearch && matchesCompany && matchesStatus
     })
     .map((customer) => {
       const analysis = pendingAnalyses.find((a) => a.cpf?.replace(/\D/g, "") === customer.document?.replace(/\D/g, ""))
@@ -131,6 +138,20 @@ export default function ComportamentalPage() {
 
       return sortOrder === "asc" ? compareValue : -compareValue
     })
+    .slice(0, displayLimit) // Limitar quantidade de exibição
+
+  // Total de clientes filtrados (antes do limite)
+  const totalFilteredCount = customers.filter((customer) => {
+    const matchesSearch =
+      customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.document?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesCompany = filterCompany === "all" || customer.company_id === filterCompany
+    const hasAnalysis = customer.recovery_score !== null || customer.analysis_metadata !== null
+    const matchesStatus = filterStatus === "all" || 
+      (filterStatus === "pending" && !hasAnalysis) || 
+      (filterStatus === "completed" && hasAnalysis)
+    return matchesSearch && matchesCompany && matchesStatus
+  }).length
 
   const toggleSelectAll = () => {
     if (selectedCustomers.size === filteredCustomers.length) {
@@ -956,6 +977,39 @@ export default function ComportamentalPage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Filtros adicionais para facilitar processamento em lotes */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-sm text-muted-foreground">Filtros:</span>
+        
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Status da análise" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="pending">Sem Análise</SelectItem>
+            <SelectItem value="completed">Com Análise</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={String(displayLimit)} onValueChange={(v) => setDisplayLimit(Number(v))}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Exibir..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="50">Exibir 50</SelectItem>
+            <SelectItem value="100">Exibir 100</SelectItem>
+            <SelectItem value="200">Exibir 200</SelectItem>
+            <SelectItem value="500">Exibir 500</SelectItem>
+            <SelectItem value="99999">Exibir Todos</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <span className="text-sm text-muted-foreground ml-2">
+          Mostrando {filteredCustomers.length} de {totalFilteredCount} clientes
+        </span>
       </div>
 
       <div className="flex gap-2">
