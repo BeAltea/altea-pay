@@ -59,7 +59,10 @@ export default async function SuperAdminDashboardPage() {
         .select("amount, status, due_date")
         .eq("company_id", company.id)
 
-      const vmaxOverdueDebts = vmaxCustomers?.filter((v) => Number(v["Dias Inad."] || 0) > 0).length || 0
+      const vmaxOverdueDebts = vmaxCustomers?.filter((v) => {
+        const diasInadStr = String(v["Dias Inad."] || "0")
+        return (Number(diasInadStr.replace(/\./g, "")) || 0) > 0
+      }).length || 0
 
       const vmaxTotalAmount =
         vmaxCustomers?.reduce((sum, v) => {

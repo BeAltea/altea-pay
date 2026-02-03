@@ -99,7 +99,7 @@ export async function getCustomerDetails(vmaxId: string) {
         company: vmaxData.Empresa || null,
         overdue_amount: vmaxData.Vencido || null,
         first_overdue: vmaxData.Vecto || null,
-        days_overdue: vmaxData["Dias Inad."] || null,
+        days_overdue: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || null,
         cancellation_date: vmaxData["DT Cancelamento"] || null,
         email: null,
         phone: null,

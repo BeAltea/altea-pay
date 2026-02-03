@@ -61,7 +61,8 @@ export default function DebtsPage() {
       if (error) throw error
 
       const vmaxDebts = (vmaxData || []).map((record) => {
-        const diasInadimplencia = record["Dias Inad."] ? Number(record["Dias Inad."]) : 0
+        const diasInadStr = String(record["Dias Inad."] || "0")
+        const diasInadimplencia = Number(diasInadStr.replace(/\./g, "")) || 0
         const valorVencido = record.Vencido
           ? Number.parseFloat(
               String(record.Vencido)

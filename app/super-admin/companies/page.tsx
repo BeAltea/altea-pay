@@ -106,13 +106,17 @@ async function fetchCompanies() {
     console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
-      const diasInad = Number(v["Dias Inad."] || 0)
+      const diasInadStr = String(v["Dias Inad."] || "0")
+      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
       return diasInad > 0
     })
 
     const avgDaysOverdue =
       vmaxWithOverdue.length > 0
-        ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v["Dias Inad."] || 0), 0) / vmaxWithOverdue.length
+        ? vmaxWithOverdue.reduce((sum, v) => {
+            const diasInadStr = String(v["Dias Inad."] || "0")
+            return sum + (Number(diasInadStr.replace(/\./g, "")) || 0)
+          }, 0) / vmaxWithOverdue.length
         : 0
 
     const paidAmount = companyVmaxData

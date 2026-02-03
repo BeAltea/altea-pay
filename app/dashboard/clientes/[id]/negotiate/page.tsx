@@ -47,7 +47,7 @@ export default async function NegotiatePage({
     name: customerData.Cliente || customerData.name,
     cpf: customerData["CPF/CNPJ"] || customerData.cpf,
     debtAmount: Number.parseFloat(customerData.Vencido || customerData.debt_amount || "0"),
-    daysOverdue: Number.parseInt(customerData["Dias Inad."] || customerData.days_overdue || "0"),
+    daysOverdue: Number.parseInt(String(customerData["Dias Inad."] || customerData.days_overdue || "0").replace(/\D/g, "")) || 0,
   }
 
   return (

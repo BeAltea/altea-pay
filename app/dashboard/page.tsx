@@ -89,10 +89,11 @@ export default async function DashboardPage() {
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
     const amount = Number(cleanValue) || 0
 
+    const diasInadStr = String(debt["Dias Inad."] || "0")
     return {
       amount,
       status: debt["DT Cancelamento"] ? "paid" : "pending",
-      diasInad: Number(debt["Dias Inad."]) || 0,
+      diasInad: Number(diasInadStr.replace(/\./g, "")) || 0,
     }
   })
 

@@ -685,7 +685,7 @@ function generateCustomerPDFHTML(cliente: any, company: any): string {
           </div>
           <div class="info-item">
             <div class="info-label">Dias em Inadimplência</div>
-            <div class="info-value" style="color: #F59E0B; font-size: 20px;">${cliente["Dias Inad."] || 0} dias</div>
+            <div class="info-value" style="color: #F59E0B; font-size: 20px;">${Number(String(cliente["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias</div>
           </div>
           <div class="info-item">
             <div class="info-label">Status de Aprovação</div>

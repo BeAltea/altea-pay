@@ -37,7 +37,9 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
   const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
     const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
     const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
-    const diasInad = Number(vmax["Dias Inad."] || vmax.dias_inad || 0)
+    // Remove ponto usado como separador de milhar no formato brasileiro
+    const diasInadStr = String(vmax["Dias Inad."] || vmax.dias_inad || "0")
+    const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
     const primeiraVencida = vmax.Vecto || vmax.primeira_vencida
     const dtCancelamento = vmax["DT Cancelamento"] || vmax.dt_cancelamento
 

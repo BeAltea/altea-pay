@@ -55,7 +55,7 @@ export async function getAnalysesData() {
         company_id: v.id_company,
         city: v.Cidade || "N/A",
         source_table: "vmax" as const,
-        dias_inad: v["Dias Inad."] || 0,
+        dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
         credit_score: v.credit_score,
         risk_level: v.risk_level,
         approval_status: v.approval_status,
@@ -151,7 +151,7 @@ export async function getCustomerDetails(customerId: string) {
         document: vmaxData["CPF/CNPJ"],
         company_id: vmaxData.id_company,
         city: vmaxData.Cidade,
-        dias_inad: vmaxData["Dias Inad."] || 0,
+        dias_inad: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
       }
       isVMAX = true
     }
@@ -345,7 +345,7 @@ export async function getAllCustomers() {
           company_id: v.id_company,
           city: v.Cidade || "N/A",
           source_table: "VMAX" as const,
-          dias_inad: v["Dias Inad."] || 0,
+          dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
           credit_score: score,
           risk_level: v.risk_level,
           approval_status: v.approval_status,
