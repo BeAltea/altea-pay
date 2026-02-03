@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     const { data: vmaxRecord, error: vmaxError } = await supabase
       .from("VMAX")
       .select("*")
-      .eq("CPF/CNPJ", cleanDoc)
+      .eq('"CPF/CNPJ"', cleanDoc)
       .single()
 
     if (vmaxRecord) {
@@ -230,7 +230,7 @@ export async function POST(request: Request) {
           cpf: cleanDoc,
           name: customerRecord?.name || vmaxRecord?.Cliente || "N/A",
           email: customerRecord?.email || vmaxRecord?.Email,
-          phone: customerRecord?.phone || vmaxRecord?.Telefone,
+          phone: customerRecord?.phone || vmaxRecord?.["Telefone 1"] || vmaxRecord?.["Telefone 2"],
           city: customerRecord?.city || vmaxRecord?.Cidade,
           document_type: documentType,
           score: creditScore,
