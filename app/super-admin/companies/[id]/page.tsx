@@ -65,11 +65,18 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   let hasMore = true
 
   while (hasMore) {
-    const { data: vmaxPage } = await supabase
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
       .from("VMAX")
       .select("*")
       .eq("id_company", params.id)
       .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPageError) {
+      console.log("[v0] VMAX page error:", vmaxPageError.message)
+      break
+    }
+
+    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
 
     if (vmaxPage && vmaxPage.length > 0) {
       vmaxData = [...vmaxData, ...vmaxPage]
@@ -80,7 +87,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     }
   }
 
-  console.log("[v0] VMAX records for company:", vmaxData.length)
+  console.log("[v0] TOTAL VMAX records for company (after pagination):", vmaxData.length)
 
   const allCustomers = [...(customersData || []), ...(vmaxData || [])]
   const totalCustomers = allCustomers.length

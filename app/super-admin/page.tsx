@@ -42,10 +42,17 @@ export default async function SuperAdminDashboardPage() {
   let hasMore = true
 
   while (hasMore) {
-    const { data: vmaxPage } = await supabase
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
       .from("VMAX")
       .select("*")
       .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPageError) {
+      console.log("[v0] VMAX page error:", vmaxPageError.message)
+      break
+    }
+
+    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
 
     if (vmaxPage && vmaxPage.length > 0) {
       allVmaxRecords = [...allVmaxRecords, ...vmaxPage]
@@ -56,7 +63,7 @@ export default async function SuperAdminDashboardPage() {
     }
   }
 
-  console.log("[v0] Total VMAX records loaded:", allVmaxRecords.length)
+  console.log("[v0] TOTAL VMAX records loaded (after pagination):", allVmaxRecords.length)
 
   const companiesStats: CompanyStats[] = []
 

@@ -81,6 +81,8 @@ async function fetchCompanies() {
       break
     }
 
+    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
+
     if (vmaxPage && vmaxPage.length > 0) {
       vmaxData = [...vmaxData, ...vmaxPage]
       page++
@@ -90,7 +92,7 @@ async function fetchCompanies() {
     }
   }
 
-  console.log("[v0] Total VMAX records loaded:", vmaxData.length)
+  console.log("[v0] TOTAL VMAX records loaded (after pagination):", vmaxData.length)
 
   const companies: Company[] = (companiesData || []).map((company) => {
     const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
