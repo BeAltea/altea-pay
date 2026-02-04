@@ -46,12 +46,31 @@ export default async function SuperAdminDashboardPage() {
 
   const companiesStats: CompanyStats[] = []
 
+  // Helper function to parse Brazilian currency format "R$ 1.234,56" to number
+  const parseBrazilianCurrency = (value: string | null | undefined): number => {
+    if (!value || typeof value !== 'string') return 0
+    // Remove "R$ " prefix, replace dots (thousands sep), replace comma (decimal sep) with dot
+    const cleaned = value.replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.')
+    const parsed = parseFloat(cleaned)
+    return isNaN(parsed) ? 0 : parsed
+  }
+
   for (const company of allCompanies) {
     const vmaxCustomers = allVmaxRecords.filter(
       (v) => String(v.idCompany || "").toLowerCase().trim() === String(company.id).toLowerCase().trim()
     )
 
     const totalCustomers = vmaxCustomers.length
+
+    // Calculate total amount from Valor_Total column
+    const totalAmount = vmaxCustomers.reduce((sum, v) => {
+      return sum + parseBrazilianCurrency(v.valorTotal)
+    }, 0)
+
+    // Count records with Maior_Atraso (days in delinquency) as critical/overdue cases
+    const overdueDebts = vmaxCustomers.filter(
+      (v) => v.maiorAtraso && v.maiorAtraso.trim() !== ''
+    ).length
 
     const adminCount = await db
       .select({ count: sql<number>`count(*)` })
@@ -63,10 +82,10 @@ export default async function SuperAdminDashboardPage() {
       name: company.name,
       totalCustomers,
       totalDebts: vmaxCustomers.length,
-      totalAmount: 0,
+      totalAmount,
       recoveredAmount: 0,
       recoveryRate: 0,
-      overdueDebts: 0,
+      overdueDebts,
       admins: Number(adminCount[0]?.count ?? 0),
     })
   }
