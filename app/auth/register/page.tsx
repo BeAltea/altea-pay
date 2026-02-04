@@ -2,7 +2,6 @@
 
 import type React from "react"
 
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,6 +11,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Mail, Lock, User, Building, ArrowLeft, CreditCard } from "lucide-react"
+import { registerAction } from "@/app/actions/auth-actions"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -30,7 +30,6 @@ export default function RegisterPage() {
     const numbers = value.replace(/\D/g, "")
 
     if (personType === "PF") {
-      // Format CPF: 000.000.000-00
       if (numbers.length <= 11) {
         return numbers
           .replace(/(\d{3})(\d)/, "$1.$2")
@@ -38,7 +37,6 @@ export default function RegisterPage() {
           .replace(/(\d{3})(\d{1,2})$/, "$1-$2")
       }
     } else {
-      // Format CNPJ: 00.000.000/0000-00
       if (numbers.length <= 14) {
         return numbers
           .replace(/(\d{2})(\d)/, "$1.$2")
@@ -86,114 +84,27 @@ export default function RegisterPage() {
     }
 
     try {
-      const supabase = createClient()
-      const cleanCpfCnpj = cpfCnpj.replace(/\D/g, "")
-      const formattedCpfCnpj = cpfCnpj
-
-      const { data: foundCompany } = await supabase
-        .from("companies")
-        .select("*")
-        .or(`cnpj.eq.${cleanCpfCnpj},cnpj.eq.${formattedCpfCnpj},email.eq.${email}`)
-        .maybeSingle()
-
-      let role = "user"
-      let companyId = null
-      let detectedCompanyName = companyName || "Sem empresa"
-      let requiresEmailVerification = true
-      let foundInCustomerTable = null
-
-      if (foundCompany) {
-        // É um admin de empresa
-        role = "admin"
-        companyId = foundCompany.id
-        detectedCompanyName = foundCompany.name
-        requiresEmailVerification = false
-      } else {
-
-        try {
-          const response = await fetch("/api/find-in-all-tables", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cpfCnpj: formattedCpfCnpj }),
-          })
-
-          const searchResult = await response.json()
-
-          if (searchResult.found) {
-            foundInCustomerTable = {
-              company_id: searchResult.company_id,
-              company_name: searchResult.company_name,
-              table_name: searchResult.table,
-              customer_data: searchResult.data,
-            }
-
-            companyId = searchResult.company_id
-            detectedCompanyName = searchResult.company_name
-          }
-        } catch {
-          // Silently ignore search errors
-        }
-      }
-
-      const { data, error } = await supabase.auth.signUp({
+      const result = await registerAction({
         email,
         password,
-        options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
-          data: {
-            full_name: fullName.trim(),
-            company_name: detectedCompanyName,
-            company_id: companyId,
-            role: role,
-            cpf_cnpj: formattedCpfCnpj,
-            person_type: personType,
-            requires_email_verification: requiresEmailVerification,
-            phone: phone,
-            customer_table_name: foundInCustomerTable?.table_name || null,
-          },
-        },
+        fullName: fullName.trim(),
+        phone,
+        cpfCnpj,
+        personType,
+        companyName: companyName || undefined,
       })
 
-      if (error) {
-        throw error
-      }
-
-      if (data.user?.id) {
-
-        try {
-          const saveProfileResponse = await fetch("/api/save-profile", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: data.user.id,
-              profileData: {
-                email: email,
-                full_name: fullName.trim(),
-                company_id: companyId,
-                company_name: detectedCompanyName,
-                role: role,
-                phone: phone,
-                cpf_cnpj: formattedCpfCnpj,
-              },
-            }),
-          })
-
-          // Profile saved
-        } catch {
-          // Silently ignore profile save errors - trigger will handle it
-        }
+      if (!result.success) {
+        setError(result.error || "Erro ao criar conta")
+        setIsLoading(false)
+        return
       }
 
       router.push("/auth/register-success")
     } catch (error: unknown) {
       if (error instanceof Error) {
-        if (error.message.includes("User already registered")) {
+        if (error.message.includes("already registered") || error.message.includes("já está cadastrado")) {
           setError("Este email já está cadastrado. Tente fazer login.")
-        } else if (error.message.includes("Invalid email")) {
-          setError("Email inválido. Verifique o formato do email.")
-        } else if (error.message.includes("Password")) {
-          setError("Erro na senha. Verifique se atende aos requisitos.")
         } else {
           setError(`Erro ao criar conta: ${error.message}`)
         }
@@ -244,7 +155,7 @@ export default function RegisterPage() {
                   value={personType}
                   onValueChange={(value) => {
                     setPersonType(value as "PF" | "PJ")
-                    setCpfCnpj("") // Clear CPF/CNPJ when changing type
+                    setCpfCnpj("")
                   }}
                   className="flex gap-4"
                 >

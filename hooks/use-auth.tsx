@@ -1,9 +1,8 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useRef } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
+import { createContext, useContext } from "react"
+import { useSession, signOut as nextAuthSignOut, SessionProvider } from "next-auth/react"
 
 interface Profile {
   id: string
@@ -14,7 +13,7 @@ interface Profile {
 }
 
 interface AuthContextType {
-  user: User | null
+  user: { id: string; email: string } | null
   profile: Profile | null
   loading: boolean
   companyId: string | null
@@ -23,104 +22,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+function AuthContextProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession()
+  const loading = status === "loading"
 
-  const fetchingRef = useRef(false)
-  const lastFetchRef = useRef<number>(0)
-  const mountedRef = useRef(true)
-
-  useEffect(() => {
-    mountedRef.current = true
-
-    const fetchUser = async () => {
-      // Evitar múltiplas requisições simultâneas
-      if (fetchingRef.current) {
-        return
+  const user = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email || "",
       }
+    : null
 
-      // Debounce de 2 segundos entre requisições
-      const now = Date.now()
-      if (now - lastFetchRef.current < 2000) {
-        return
+  const profile: Profile | null = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email || "",
+        full_name: session.user.fullName || null,
+        role: (session.user.role as "super_admin" | "admin" | "user") || "user",
+        company_id: session.user.companyId || null,
       }
+    : null
 
-      fetchingRef.current = true
-      lastFetchRef.current = now
-
-      try {
-        const {
-          data: { user: authUser },
-          error: userError,
-        } = await supabase.auth.getUser()
-
-        if (!mountedRef.current) return
-
-        if (userError || !authUser) {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          return
-        }
-
-        setUser(authUser)
-
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, email, full_name, role, company_id")
-          .eq("id", authUser.id)
-          .single()
-
-        if (!mountedRef.current) return
-
-        if (profileError) {
-          console.error("[v0] Erro ao carregar perfil:", profileError)
-          setProfile(null)
-        } else {
-          setProfile(profileData)
-        }
-      } catch (error) {
-        if (mountedRef.current) {
-          console.error("[v0] Erro na autenticação:", error)
-        }
-      } finally {
-        if (mountedRef.current) {
-          setLoading(false)
-          fetchingRef.current = false
-        }
-      }
-    }
-
-    fetchUser()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mountedRef.current) return
-
-      if (session?.user) {
-        setUser(session.user)
-        lastFetchRef.current = 0
-        fetchUser()
-      } else {
-        setUser(null)
-        setProfile(null)
-      }
-    })
-
-    return () => {
-      mountedRef.current = false
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  const signOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setProfile(null)
+  const handleSignOut = async () => {
+    await nextAuthSignOut({ callbackUrl: "/" })
   }
 
   return (
@@ -130,11 +54,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         loading,
         companyId: profile?.company_id || null,
-        signOut,
+        signOut: handleSignOut,
       }}
     >
       {children}
     </AuthContext.Provider>
+  )
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <AuthContextProvider>{children}</AuthContextProvider>
+    </SessionProvider>
   )
 }
 

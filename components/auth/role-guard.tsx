@@ -1,47 +1,16 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState } from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
+import { useAuth } from "@/hooks/use-auth"
 
 interface RoleGuardProps {
   children: React.ReactNode
-  requiredRole?: "admin" | "user"
+  requiredRole?: "admin" | "user" | "super_admin"
   fallback?: React.ReactNode
 }
 
 export function RoleGuard({ children, requiredRole = "user", fallback }: RoleGuardProps) {
-  const [user, setUser] = useState<User | null>(null)
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const supabase = createBrowserClient()
-
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-
-      if (user) {
-        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
-
-        setUserRole(profile?.role || "user")
-      }
-
-      setLoading(false)
-    }
-
-    getUser()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(getUser)
-    return () => subscription.unsubscribe()
-  }, [])
+  const { user, profile, loading } = useAuth()
 
   if (loading) {
     return <div>Carregando...</div>
@@ -51,8 +20,12 @@ export function RoleGuard({ children, requiredRole = "user", fallback }: RoleGua
     return fallback || <div>Acesso negado. Faça login.</div>
   }
 
-  if (requiredRole === "admin" && userRole !== "admin") {
+  if (requiredRole === "admin" && profile?.role !== "admin" && profile?.role !== "super_admin") {
     return fallback || <div>Acesso negado. Apenas administradores.</div>
+  }
+
+  if (requiredRole === "super_admin" && profile?.role !== "super_admin") {
+    return fallback || <div>Acesso negado. Apenas super administradores.</div>
   }
 
   return <>{children}</>

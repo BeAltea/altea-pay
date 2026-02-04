@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,6 +9,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Mail, Lock, ArrowLeft } from "lucide-react"
+import { loginAction } from "@/app/actions/auth-actions"
 
 export function LoginForm() {
   const [email, setEmail] = useState("")
@@ -24,58 +24,16 @@ export function LoginForm() {
     setError(null)
 
     try {
-      const supabase = createClient()
+      const result = await loginAction(email, password)
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        console.error("[v0] Erro no login:", error)
-        throw error
+      if (!result.success) {
+        setError(result.error || "Erro ao fazer login")
+        setIsLoading(false)
+        return
       }
 
-      if (data.user) {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role, company_id")
-          .eq("id", data.user.id)
-          .single()
-
-        if (profileError || !profile) {
-          const { error: insertError } = await supabase.from("profiles").insert({
-            id: data.user.id,
-            email: data.user.email,
-            role: "user",
-            full_name: data.user.user_metadata?.full_name || null,
-            company_id: null,
-          })
-
-          if (insertError) {
-            console.error("[v0] Erro ao criar perfil:", insertError)
-            setError("Erro ao criar perfil do usuário")
-            return
-          }
-
-          router.push("/user-dashboard")
-          router.refresh()
-          return
-        }
-
-        if (profile.role === "super_admin") {
-          router.push("/super-admin")
-          router.refresh()
-        } else if (profile.role === "admin") {
-          router.push("/dashboard")
-          router.refresh()
-        } else {
-          router.push("/user-dashboard")
-          router.refresh()
-        }
-      }
+      router.push(result.redirectTo || "/")
+      router.refresh()
     } catch (error: unknown) {
       console.error("[v0] Erro no processo de login:", error)
       setError(error instanceof Error ? error.message : "Erro ao fazer login")

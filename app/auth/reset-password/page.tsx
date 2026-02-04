@@ -1,188 +1,27 @@
 "use client"
 
 import type React from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, Suspense } from "react"
 import { Lock, CheckCircle, AlertCircle } from "lucide-react"
+import { resetPasswordAction } from "@/app/actions/auth-actions"
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [isValidSession, setIsValidSession] = useState<boolean | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const token = searchParams.get("token")
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const supabase = createClient()
-      
-      // Primeiro, tenta processar tokens do hash da URL (formato mais comum do Supabase)
-      const hash = window.location.hash
-      let hashParams: URLSearchParams
-      try {
-        hashParams = new URLSearchParams(hash.substring(1))
-      } catch {
-        hashParams = new URLSearchParams()
-      }
-      
-      const hashAccessToken = hashParams.get("access_token")
-      const hashRefreshToken = hashParams.get("refresh_token")
-      const hashType = hashParams.get("type")
-      
-      // Também verifica query params (alguns flows usam query string)
-      const urlParams = new URLSearchParams(window.location.search)
-      const queryAccessToken = urlParams.get("access_token")
-      const queryRefreshToken = urlParams.get("refresh_token")
-      const queryType = urlParams.get("type")
-      const queryError = urlParams.get("error")
-      
-      // Se tiver erro na URL, mostra erro
-      if (queryError) {
-        setError(decodeURIComponent(queryError))
-        setIsValidSession(false)
-        return
-      }
-      
-      const accessToken = hashAccessToken || queryAccessToken
-      const refreshToken = hashRefreshToken || queryRefreshToken
-      const type = hashType || queryType
-      
-      // Se tiver tokens na URL, processa primeiro
-      if (accessToken) {
-        try {
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || "",
-          })
-          
-          if (sessionError) {
-            if (sessionError.message.includes("expired") || sessionError.message.includes("invalid")) {
-              setError("O link de recuperação expirou ou é inválido. Por favor, solicite um novo link.")
-            }
-            setIsValidSession(false)
-            return
-          }
-          
-          if (data.session) {
-            // Limpa a URL para não expor os tokens
-            window.history.replaceState({}, document.title, window.location.pathname)
-            setIsValidSession(true)
-            return
-          }
-        } catch {
-          setIsValidSession(false)
-          return
-        }
-      }
-      
-      // Verifica se há uma sessão ativa existente
-      const { data: { session }, error: getSessionError } = await supabase.auth.getSession()
-      
-      if (getSessionError) {
-        setIsValidSession(false)
-        return
-      }
-
-      // Listener para detectar eventos de autenticação (incluindo PASSWORD_RECOVERY do hash da URL)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-          setIsValidSession(true)
-        }
-      })
-
-      // Se já tem sessão, considera válido
-      if (session) {
-        setIsValidSession(true)
-      } else {
-        // Aguarda um pouco para o listener processar eventos
-        setTimeout(() => {
-          if (isValidSession === null) {
-            setIsValidSession(false)
-          }
-        }, 2000)
-      }
-
-      return () => {
-        subscription.unsubscribe()
-      }
-    }
-
-    checkSession()
-  }, [])
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError(null)
-
-    if (password !== confirmPassword) {
-      setError("As senhas não coincidem")
-      setIsLoading(false)
-      return
-    }
-
-    if (password.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres")
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      const supabase = createClient()
-
-      const { error } = await supabase.auth.updateUser({
-        password: password,
-      })
-
-      if (error) {
-        throw error
-      }
-
-      setIsSuccess(true)
-      
-      // Redireciona para login após 3 segundos
-      setTimeout(() => {
-        router.push("/auth/login")
-      }, 3000)
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Erro ao atualizar senha")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Loading state
-  if (isValidSession === null) {
-    return (
-      <div className="min-h-screen bg-altea-navy flex items-center justify-center p-3 sm:p-4 lg:p-6">
-        <div className="text-center">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-altea-gold p-3 rounded-xl">
-              <div className="h-8 w-8 bg-altea-navy rounded-sm flex items-center justify-center">
-                <span className="text-altea-gold font-bold text-lg">A</span>
-              </div>
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Verificando link...</h1>
-          <p className="text-blue-100">Aguarde enquanto validamos seu acesso.</p>
-          <div className="mt-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-altea-gold mx-auto"></div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Invalid session state
-  if (!isValidSession) {
+  if (!token) {
     return (
       <div className="min-h-screen bg-altea-navy flex items-center justify-center p-3 sm:p-4 lg:p-6">
         <div className="w-full max-w-sm sm:max-w-md">
@@ -234,7 +73,43 @@ export default function ResetPasswordPage() {
     )
   }
 
-  // Success state
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem")
+      setIsLoading(false)
+      return
+    }
+
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres")
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const result = await resetPasswordAction(token, password)
+
+      if (!result.success) {
+        setError(result.error || "Erro ao atualizar senha")
+        setIsLoading(false)
+        return
+      }
+
+      setIsSuccess(true)
+      setTimeout(() => {
+        router.push("/auth/login")
+      }, 3000)
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Erro ao atualizar senha")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (isSuccess) {
     return (
       <div className="min-h-screen bg-altea-navy flex items-center justify-center p-3 sm:p-4 lg:p-6">
@@ -279,7 +154,6 @@ export default function ResetPasswordPage() {
     )
   }
 
-  // Reset password form
   return (
     <div className="min-h-screen bg-altea-navy flex items-center justify-center p-3 sm:p-4 lg:p-6">
       <div className="w-full max-w-sm sm:max-w-md">
@@ -357,5 +231,19 @@ export default function ResetPasswordPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-altea-navy flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-altea-gold"></div>
+        </div>
+      }
+    >
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

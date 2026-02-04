@@ -2,66 +2,29 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useSession } from "next-auth/react"
 
 export default function AuthCallback() {
   const router = useRouter()
+  const { data: session, status } = useSession()
 
   useEffect(() => {
-    const handleAuthCallback = async () => {
-      const supabase = createClient()
+    if (status === "loading") return
 
-      try {
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error || !data.session?.user) {
-          router.push("/auth/login")
-          return
-        }
-
-        const userId = data.session.user.id
-        const userMetadata = data.session.user.user_metadata
-
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role, company_id, cpf_cnpj, email")
-          .eq("id", userId)
-          .single()
-
-        if (profileError || !profile) {
-          // Profile not found, create it from user metadata
-          await supabase.from("profiles").insert({
-            id: userId,
-            email: data.session.user.email,
-            role: userMetadata?.role || "user",
-            full_name: userMetadata?.full_name || null,
-            company_id: userMetadata?.company_id || null,
-            cpf_cnpj: userMetadata?.cpf_cnpj || null,
-            person_type: userMetadata?.person_type || null,
-          })
-
-          if (userMetadata?.role === "admin") {
-            router.push("/dashboard")
-          } else {
-            router.push("/user-dashboard")
-          }
-          return
-        }
-
-        if (profile.role === "super_admin") {
-          router.push("/super-admin")
-        } else if (profile.role === "admin") {
-          router.push("/dashboard")
-        } else {
-          router.push("/user-dashboard")
-        }
-      } catch {
-        router.push("/auth/login")
-      }
+    if (!session?.user) {
+      router.push("/auth/login")
+      return
     }
 
-    handleAuthCallback()
-  }, [router])
+    const role = session.user.role || "user"
+    if (role === "super_admin") {
+      router.push("/super-admin")
+    } else if (role === "admin") {
+      router.push("/dashboard")
+    } else {
+      router.push("/user-dashboard")
+    }
+  }, [session, status, router])
 
   return (
     <div className="min-h-screen bg-altea-navy flex items-center justify-center">

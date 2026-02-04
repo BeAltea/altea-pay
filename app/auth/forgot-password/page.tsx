@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useState } from "react"
 import { Mail, ArrowLeft, CheckCircle } from "lucide-react"
+import { forgotPasswordAction } from "@/app/actions/auth-actions"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -22,17 +22,12 @@ export default function ForgotPasswordPage() {
     setError(null)
 
     try {
-      const supabase = createClient()
+      const result = await forgotPasswordAction(email)
 
-      // Usa a URL base do site para o redirect
-      // O Supabase vai redirecionar para esta URL com os tokens no hash
-      // O componente RecoveryRedirect na página inicial vai detectar e redirecionar para /auth/reset-password
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
-      })
-
-      if (error) {
-        throw error
+      if (!result.success) {
+        setError(result.error || "Erro ao enviar email de recuperação")
+        setIsLoading(false)
+        return
       }
 
       setIsSuccess(true)
