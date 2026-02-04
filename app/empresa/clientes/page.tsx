@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Users, Mail, Phone, MapPin, FileText } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
@@ -16,12 +15,12 @@ interface Customer {
   email: string | null
   phone: string | null
   document: string | null
-  document_type: string | null
+  documentType: string | null
   address: string | null
   city: string | null
   state: string | null
-  zip_code: string | null
-  created_at: string
+  zipCode: string | null
+  createdAt: string
 }
 
 export default function EmpresaClientesPage() {
@@ -31,7 +30,6 @@ export default function EmpresaClientesPage() {
   const [loading, setLoading] = useState(true)
   const { profile } = useAuth()
   const { toast } = useToast()
-  const supabase = createBrowserClient()
 
   useEffect(() => {
     if (profile?.company_id) {
@@ -59,20 +57,29 @@ export default function EmpresaClientesPage() {
       setLoading(true)
       console.log("[v0] Loading customers for company:", profile?.company_id)
 
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("company_id", profile?.company_id)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        console.error("[v0] Error loading customers:", error)
-        throw error
+      const response = await fetch(`/api/company-customers?companyId=${profile?.company_id}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch customers")
       }
 
-      console.log("[v0] Customers loaded:", data?.length || 0)
-      setCustomers(data || [])
-      setFilteredCustomers(data || [])
+      const data = await response.json()
+      const formattedCustomers = (data.customers || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        phone: c.phone,
+        document: c.document,
+        documentType: c.documentType,
+        address: c.address,
+        city: c.city,
+        state: c.state,
+        zipCode: c.zipCode,
+        createdAt: c.createdAt,
+      }))
+
+      console.log("[v0] Customers loaded:", formattedCustomers.length)
+      setCustomers(formattedCustomers)
+      setFilteredCustomers(formattedCustomers)
     } catch (error: any) {
       console.error("[v0] Error loading customers:", error)
       toast({
@@ -160,9 +167,9 @@ export default function EmpresaClientesPage() {
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm">{customer.document}</span>
-                            {customer.document_type && (
+                            {customer.documentType && (
                               <Badge variant="outline" className="text-xs">
-                                {customer.document_type}
+                                {customer.documentType}
                               </Badge>
                             )}
                           </div>
@@ -206,7 +213,7 @@ export default function EmpresaClientesPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {new Date(customer.created_at).toLocaleDateString("pt-BR")}
+                          {new Date(customer.createdAt).toLocaleDateString("pt-BR")}
                         </span>
                       </TableCell>
                     </TableRow>

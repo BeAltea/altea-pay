@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Percent, Send } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 
 interface NegotiationFormProps {
   customerId: string
@@ -50,33 +49,23 @@ export function NegotiationForm({
     setLoading(true)
 
     try {
-      const supabase = createClient()
-
-      const { data: agreement, error } = await supabase
-        .from("agreements")
-        .insert({
-          customer_id: customerId,
-          company_id: companyId,
-          original_amount: totalDebt,
-          agreed_amount: finalAmount,
-          discount_amount: discountAmount,
-          installments: Number(installments),
-          status: "pending",
-          terms: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
-          attendant_name: attendantName || null,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      await supabase.from("notifications").insert({
-        user_id: customerId,
+      // TODO: Replace with server action for creating negotiation agreement
+      const agreementData = {
+        customer_id: customerId,
         company_id: companyId,
-        type: "negotiation",
-        title: "Nova Proposta de Acordo",
-        description: `Você recebeu uma proposta de acordo no valor de R$ ${finalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em ${installments}x`,
-      })
+        original_amount: totalDebt,
+        agreed_amount: finalAmount,
+        discount_amount: discountAmount,
+        installments: Number(installments),
+        status: "pending",
+        terms: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+        attendant_name: attendantName || null,
+      }
+
+      console.log("[v0] NegotiationForm - Mock agreement created:", agreementData)
+
+      // Simulate API delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
       alert("Proposta de negociação enviada com sucesso!")
 

@@ -1,27 +1,31 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { companies, vmax } from "@/lib/db/schema"
+import { eq, desc, sql } from "drizzle-orm"
 
 /**
  * Busca o nome da tabela de clientes de uma empresa
  */
 export async function getCompanyTableName(companyId: string) {
   try {
-    const supabase = createAdminClient()
+    const [company] = await db
+      .select({
+        id: companies.id,
+        name: companies.name,
+        customerTableName: companies.customerTableName,
+      })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .limit(1)
 
-    const { data: company, error } = await supabase
-      .from("companies")
-      .select("id, name, customer_table_name")
-      .eq("id", companyId)
-      .single()
-
-    if (error || !company) {
-      console.error("[v0] getCompanyTableName - Error:", error)
+    if (!company) {
+      console.error("[v0] getCompanyTableName - Company not found")
       return { success: false, tableName: null, companyName: null }
     }
 
-    // Se não tiver customer_table_name definido, usa o nome da empresa em uppercase
-    const tableName = company.customer_table_name || company.name.toUpperCase().replace(/\s+/g, "_")
+    // Se nao tiver customer_table_name definido, usa o nome da empresa em uppercase
+    const tableName = company.customerTableName || company.name.toUpperCase().replace(/\s+/g, "_")
 
     console.log("[v0] getCompanyTableName - Company:", company.name, "Table:", tableName)
 
@@ -33,45 +37,38 @@ export async function getCompanyTableName(companyId: string) {
 }
 
 /**
- * Busca as colunas disponíveis na tabela de clientes de uma empresa
+ * Busca as colunas disponiveis na tabela de clientes de uma empresa
+ * Note: With Drizzle, we use the VMAX table schema directly
  */
 export async function getCompanyTableColumns(companyId: string) {
   try {
-    const supabase = createAdminClient()
-
-    // Primeiro busca o nome da tabela
     const { tableName } = await getCompanyTableName(companyId)
     if (!tableName) {
       return { success: false, columns: [], tableName: null }
     }
 
-    // Busca um registro da tabela para pegar os nomes das colunas
-    const { data, error } = await supabase.from(tableName).select("*").limit(1)
-
-    if (error) {
-      console.error("[v0] getCompanyTableColumns - Error:", error)
-      return { success: false, columns: [], tableName }
-    }
+    // Busca um registro da tabela VMAX para pegar os nomes das colunas
+    const data = await db.select().from(vmax).limit(1)
 
     // Pega todos os nomes de colunas do primeiro registro
     const columns = data && data.length > 0 ? Object.keys(data[0]) : []
 
-    // Filtra colunas do sistema que não devem ser editadas
+    // Filtra colunas do sistema que nao devem ser editadas
     const editableColumns = columns.filter(
       (col) =>
         ![
           "id",
-          "id_company",
-          "created_at",
-          "updated_at",
-          "analysis_metadata",
-          "last_analysis_date",
-          "collection_processed_at",
-          "last_collection_attempt",
-          "approval_status",
-          "auto_collection_enabled",
-          "credit_score",
-          "risk_level",
+          "idCompany",
+          "createdAt",
+          "updatedAt",
+          "analysisMetadata",
+          "lastAnalysisDate",
+          "collectionProcessedAt",
+          "lastCollectionAttempt",
+          "approvalStatus",
+          "autoCollectionEnabled",
+          "creditScore",
+          "riskLevel",
         ].includes(col),
     )
 
@@ -85,61 +82,48 @@ export async function getCompanyTableColumns(companyId: string) {
 }
 
 /**
- * Cria um cliente na tabela específica da empresa
+ * Cria um cliente na tabela especifica da empresa
  */
 export async function createCompanyClient(companyId: string, clientData: Record<string, any>) {
   try {
-    const supabase = createAdminClient()
-
     // Busca o nome da tabela da empresa
     const { tableName, companyName } = await getCompanyTableName(companyId)
     if (!tableName) {
-      return { success: false, message: "Empresa não encontrada ou sem tabela configurada" }
+      return { success: false, message: "Empresa nao encontrada ou sem tabela configurada" }
     }
 
     console.log("[v0] createCompanyClient - Creating client in table:", tableName)
 
     const cpfCnpj = clientData["CPF/CNPJ"] || clientData.cpf_cnpj || clientData.document
     if (cpfCnpj) {
-      // Usar sintaxe com aspas duplas para colunas com caracteres especiais
-      const { data: existingCustomer } = await supabase
-        .from(tableName)
-        .select("id")
-        .eq('"CPF/CNPJ"', cpfCnpj)
-        .eq("id_company", companyId)
-        .maybeSingle()
+      const [existingCustomer] = await db
+        .select({ id: vmax.id })
+        .from(vmax)
+        .where(
+          sql`${vmax.cpfCnpj} = ${cpfCnpj} AND ${vmax.idCompany} = ${companyId}`,
+        )
+        .limit(1)
 
       if (existingCustomer) {
-        return { success: false, message: "Cliente já cadastrado nesta empresa" }
+        return { success: false, message: "Cliente ja cadastrado nesta empresa" }
       }
     }
 
-    // Prepara dados para inserção
-    const insertData: Record<string, any> = {
-      ...clientData,
-      id_company: companyId,
-      auto_collection_enabled: false,
-      approval_status: "PENDENTE",
+    // Prepara dados para insercao
+    const insertValues: any = {
+      idCompany: companyId,
+      autoCollectionEnabled: false,
+      approvalStatus: "PENDENTE",
+      cliente: clientData.Cliente || clientData.name,
+      cpfCnpj: clientData["CPF/CNPJ"] || clientData.cpf_cnpj || clientData.document,
+      cidade: clientData.Cidade || clientData.city,
     }
-
-    // Remove campos undefined ou null
-    Object.keys(insertData).forEach((key) => {
-      if (insertData[key] === undefined || insertData[key] === null || insertData[key] === "") {
-        delete insertData[key]
-      }
-    })
 
     // Insere o cliente
-    const { data: newCustomer, error: insertError } = await supabase
-      .from(tableName)
-      .insert(insertData)
-      .select()
-      .single()
-
-    if (insertError) {
-      console.error("[v0] createCompanyClient - Error inserting:", insertError)
-      return { success: false, message: `Erro ao cadastrar cliente: ${insertError.message}` }
-    }
+    const [newCustomer] = await db
+      .insert(vmax)
+      .values(insertValues)
+      .returning()
 
     console.log("[v0] createCompanyClient - Cliente criado com sucesso:", newCustomer.id)
 
@@ -158,31 +142,24 @@ export async function createCompanyClient(companyId: string, clientData: Record<
 }
 
 /**
- * Busca todos os clientes de uma empresa (de sua tabela específica)
+ * Busca todos os clientes de uma empresa (de sua tabela especifica)
  */
 export async function getCompanyClients(companyId: string) {
   try {
-    const supabase = createAdminClient()
-
     const { tableName } = await getCompanyTableName(companyId)
     if (!tableName) {
       return { success: false, data: [], tableName: null }
     }
 
-    const { data, error } = await supabase
-      .from(tableName)
-      .select("*")
-      .eq("id_company", companyId)
-      .order("created_at", { ascending: false })
+    const data = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.idCompany, companyId))
+      .orderBy(desc(vmax.createdAt))
 
-    if (error) {
-      console.error("[v0] getCompanyClients - Error:", error)
-      return { success: false, data: [], tableName }
-    }
+    console.log("[v0] getCompanyClients - Found clients:", data.length)
 
-    console.log("[v0] getCompanyClients - Found clients:", data?.length || 0)
-
-    return { success: true, data: data || [], tableName }
+    return { success: true, data: data, tableName }
   } catch (error) {
     console.error("[v0] getCompanyClients - Error:", error)
     return { success: false, data: [], tableName: null }

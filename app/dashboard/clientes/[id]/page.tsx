@@ -1,4 +1,7 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax, creditProfiles } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { redirect, notFound } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,62 +27,66 @@ import { toast } from "sonner"
 export const dynamic = "force-dynamic"
 
 export default async function ClienteDetalhesPage({ params }: { params: { id: string } }) {
-  const supabase = await createServerClient()
+  const session = await auth()
+  const user = session?.user
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  if (userError || !user) {
+  if (!user) {
     redirect("/auth/login")
   }
 
-  const { data: profile } = await supabase.from("profiles").select("company_id, role").eq("id", user.id).single()
+  const [profile] = await db
+    .select({ companyId: profiles.companyId, role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.id, user.id))
+    .limit(1)
 
-  if (!profile?.company_id) {
+  if (!profile?.companyId) {
     return <div className="p-8">Empresa não encontrada</div>
   }
 
-  const { data: cliente } = await supabase.from("VMAX").select("*").eq("id", params.id).single()
+  const [cliente] = await db
+    .select()
+    .from(vmax)
+    .where(eq(vmax.id, params.id))
+    .limit(1)
 
   if (
     !cliente ||
-    cliente.id_company?.toString().toLowerCase().trim() !== profile.company_id.toString().toLowerCase().trim()
+    cliente.idCompany?.toString().toLowerCase().trim() !== profile.companyId.toString().toLowerCase().trim()
   ) {
     notFound()
   }
 
-  const assertiva_data = cliente.analysis_metadata || null
+  const assertiva_data = cliente.analysisMetadata || null
 
-  const cleanCpfCnpj = cliente["CPF/CNPJ"]?.replace(/\D/g, "")
-  const { data: behavioralAnalysis } = await supabase
-    .from("credit_profiles")
-    .select("*")
-    .eq("cpf", cleanCpfCnpj)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const cleanCpfCnpj = (cliente.cpfCnpj as string)?.replace(/\D/g, "")
+  const [behavioralAnalysis] = cleanCpfCnpj
+    ? await db
+        .select()
+        .from(creditProfiles)
+        .where(eq(creditProfiles.cpf, cleanCpfCnpj))
+        .orderBy(desc(creditProfiles.createdAt))
+        .limit(1)
+    : [undefined]
 
-
-
-  const behavioralData = behavioralAnalysis?.data || behavioralAnalysis?.data_assertiva || null
+  const behavioralData = (behavioralAnalysis?.data as any) || null
 
   const handleDelete = async () => {
     "use server"
-    const supabase = await createServerClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
     if (!user) redirect("/auth/signin")
 
-    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+    const [profile] = await db
+      .select({ companyId: profiles.companyId })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1)
 
-    if (!profile?.company_id) redirect("/dashboard")
+    if (!profile?.companyId) redirect("/dashboard")
 
-    const result = await deleteCustomer(params.id, profile.company_id)
+    const result = await deleteCustomer(params.id, profile.companyId)
 
     if (result.success) {
       redirect("/dashboard/clientes")
@@ -98,10 +105,10 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         </Button>
         <div className="flex-1 min-w-0 w-full">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight break-words">
-            Análise Restritiva Completa
+            Analise Restritiva Completa
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
-            Dados completos da análise restritiva do cliente
+            Dados completos da analise restritiva do cliente
           </p>
         </div>
         <div className="flex gap-2">
@@ -117,28 +124,28 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               Excluir
             </Button>
           </form>
-          <ExportCustomerPDFButton customerId={cliente.id} customerName={cliente.Cliente} />
+          <ExportCustomerPDFButton customerId={cliente.id} customerName={cliente.cliente} />
         </div>
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 w-full">
-        {/* Score de Crédito */}
+        {/* Score de Credito */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
               <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">SCORE DE CRÉDITO</span>
+              <span className="truncate">SCORE DE CREDITO</span>
             </CardTitle>
-            <CardDescription className="text-xs truncate">Análise Restritiva</CardDescription>
+            <CardDescription className="text-xs truncate">Analise Restritiva</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {(() => {
-                const creditoScore = assertiva_data?.credito?.resposta?.score?.pontos
-                const displayScore = creditoScore === 0 ? 5 : creditoScore || cliente.credit_score || 0
-                const scoreClass = assertiva_data?.credito?.resposta?.score?.classe || "N/A"
-                const scoreFaixa = assertiva_data?.credito?.resposta?.score?.faixa?.titulo || "N/A"
-                const scoreFaixaDescricao = assertiva_data?.credito?.resposta?.score?.faixa?.descricao || ""
+                const creditoScore = (assertiva_data as any)?.credito?.resposta?.score?.pontos
+                const displayScore = creditoScore === 0 ? 5 : creditoScore || Number(cliente.creditScore) || 0
+                const scoreClass = (assertiva_data as any)?.credito?.resposta?.score?.classe || "N/A"
+                const scoreFaixa = (assertiva_data as any)?.credito?.resposta?.score?.faixa?.titulo || "N/A"
+                const scoreFaixaDescricao = (assertiva_data as any)?.credito?.resposta?.score?.faixa?.descricao || ""
 
                 return (
                   <>
@@ -161,34 +168,34 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           </CardContent>
         </Card>
 
-        {/* Sanções CEIS */}
+        {/* Sancoes CEIS */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">Sanções CEIS</span>
+              <span className="truncate">Sancoes CEIS</span>
             </CardTitle>
-            <CardDescription className="text-xs truncate">Empresas Inidôneas</CardDescription>
+            <CardDescription className="text-xs truncate">Empresas Inidoneas</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-4xl sm:text-5xl font-bold text-red-600 dark:text-red-400">
-              {assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
+              {(assertiva_data as any)?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
             </div>
           </CardContent>
         </Card>
 
-        {/* Punições CNEP */}
+        {/* Punicoes CNEP */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <Shield className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">Punições CNEP</span>
+              <span className="truncate">Punicoes CNEP</span>
             </CardTitle>
             <CardDescription className="text-xs truncate">Empresas Punidas</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-4xl sm:text-5xl font-bold text-orange-600 dark:text-orange-400">
-              {assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
+              {(assertiva_data as any)?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
             </div>
           </CardContent>
         </Card>
@@ -206,25 +213,23 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
                   <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
-                  <span className="truncate">Análise Comportamental</span>
+                  <span className="truncate">Analise Comportamental</span>
                 </CardTitle>
-                {/* Data da última análise - usa updated_at se existir, senão created_at */}
-                {(behavioralAnalysis?.updated_at || behavioralAnalysis?.created_at) && (
+                {(behavioralAnalysis?.updatedAt || behavioralAnalysis?.createdAt) && (
                   <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
-                    {new Date(behavioralAnalysis.updated_at || behavioralAnalysis.created_at).toLocaleDateString("pt-BR")}
+                    {new Date(behavioralAnalysis.updatedAt || behavioralAnalysis.createdAt).toLocaleDateString("pt-BR")}
                   </Badge>
                 )}
               </div>
               <CardDescription className="text-xs sm:text-sm">
-                Dados consolidados da análise comportamental do cliente
+                Dados consolidados da analise comportamental do cliente
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                {/* Score de Crédito Comportamental */}
                 {creditScore && (
                   <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Crédito</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Credito</p>
                     <div className="flex items-end gap-3">
                       <div className="text-3xl sm:text-4xl font-bold text-blue-600 dark:text-blue-400">
                         {creditScore.pontos}
@@ -246,10 +251,9 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
                   </div>
                 )}
 
-                {/* Score de Recuperação Comportamental */}
                 {recoveryScore && (
                   <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Recuperação</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Recuperacao</p>
                     <div className="flex items-end gap-3">
                       <div className="text-3xl sm:text-4xl font-bold text-orange-600 dark:text-orange-400">
                         {recoveryScore.pontos}
@@ -272,7 +276,6 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
                 )}
               </div>
 
-              {/* Protestos da Análise Comportamental */}
               {behavioralData?.acoes?.resposta?.protestos && (
                 <div className="p-4 rounded-lg bg-white dark:bg-gray-900 border">
                   <div className="flex items-center gap-2 mb-3 sm:mb-4">
@@ -301,7 +304,6 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
                 </div>
               )}
 
-              {/* Faturamento Estimado da Análise Comportamental */}
               {behavioralData?.credito?.resposta?.faturamentoEstimado?.valor && (
                 <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
                   <p className="text-xs sm:text-sm text-muted-foreground mb-2">Faturamento Estimado</p>
@@ -327,51 +329,51 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         <CardHeader className="pb-3">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Building2 className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Informações do Cliente</span>
+            <span className="truncate">Informacoes do Cliente</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
           <div className="min-w-0">
             <p className="text-xs sm:text-sm text-muted-foreground mb-1">NOME COMPLETO</p>
-            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente.Cliente}</p>
+            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente.cliente}</p>
           </div>
           <div className="min-w-0">
             <p className="text-xs sm:text-sm text-muted-foreground mb-1">CPF/CNPJ</p>
-            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente["CPF/CNPJ"]}</p>
+            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente.cpfCnpj}</p>
           </div>
         </CardContent>
       </Card>
 
-      {assertiva_data?.recupere?.resposta?.score && (
+      {(assertiva_data as any)?.recupere?.resposta?.score && (
         <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
               <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
               <span className="truncate">Score Recupere</span>
             </CardTitle>
-            <CardDescription className="text-xs truncate">Probabilidade de negociação e recuperação</CardDescription>
+            <CardDescription className="text-xs truncate">Probabilidade de negociacao e recuperacao</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex-1">
                 <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
-                  {assertiva_data.recupere.resposta.score.pontos}
+                  {(assertiva_data as any).recupere.resposta.score.pontos}
                 </div>
                 <p className="text-xs sm:text-sm font-medium text-foreground mt-2">
-                  Classe {assertiva_data.recupere.resposta.score.classe}
+                  Classe {(assertiva_data as any).recupere.resposta.score.classe}
                 </p>
               </div>
               <Badge
                 variant="outline"
                 className="text-xs sm:text-base px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700 shrink-0"
               >
-                {assertiva_data.recupere.resposta.score.faixa?.titulo || "Índice de acordo"}
+                {(assertiva_data as any).recupere.resposta.score.faixa?.titulo || "Indice de acordo"}
               </Badge>
             </div>
-            {assertiva_data.recupere.resposta.score.faixa?.descricao && (
+            {(assertiva_data as any).recupere.resposta.score.faixa?.descricao && (
               <div className="bg-white dark:bg-gray-900 rounded-lg p-3 sm:p-4 border border-purple-200 dark:border-purple-800">
                 <p className="text-xs sm:text-sm text-foreground leading-relaxed break-words">
-                  {assertiva_data.recupere.resposta.score.faixa.descricao}
+                  {(assertiva_data as any).recupere.resposta.score.faixa.descricao}
                 </p>
               </div>
             )}
@@ -379,7 +381,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         </Card>
       )}
 
-      {assertiva_data?.credito?.resposta?.faturamentoEstimado !== undefined && (
+      {(assertiva_data as any)?.credito?.resposta?.faturamentoEstimado !== undefined && (
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -390,18 +392,18 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
-              {typeof assertiva_data.credito.resposta.faturamentoEstimado.valor === "number" &&
-              assertiva_data.credito.resposta.faturamentoEstimado.valor > 0
+              {typeof (assertiva_data as any).credito.resposta.faturamentoEstimado.valor === "number" &&
+              (assertiva_data as any).credito.resposta.faturamentoEstimado.valor > 0
                 ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    assertiva_data.credito.resposta.faturamentoEstimado.valor,
+                    (assertiva_data as any).credito.resposta.faturamentoEstimado.valor,
                   )
-                : "Não informado"}
+                : "Nao informado"}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {assertiva_data?.credito?.resposta?.rendaPresumida?.valor && (
+      {(assertiva_data as any)?.credito?.resposta?.rendaPresumida?.valor && (
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -413,11 +415,11 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
           <CardContent>
             <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
               {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                assertiva_data.credito.resposta.rendaPresumida.valor,
+                (assertiva_data as any).credito.resposta.rendaPresumida.valor,
               )}
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground mt-2 break-words">
-              Faixa: {assertiva_data.credito.resposta.rendaPresumida.faixa || "N/A"}
+              Faixa: {(assertiva_data as any).credito.resposta.rendaPresumida.faixa || "N/A"}
             </p>
           </CardContent>
         </Card>
@@ -427,31 +429,31 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         <CardHeader className="pb-3">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Protestos Públicos</span>
+            <span className="truncate">Protestos Publicos</span>
           </CardTitle>
-          <CardDescription className="text-xs truncate">Protestos registrados em cartório</CardDescription>
+          <CardDescription className="text-xs truncate">Protestos registrados em cartorio</CardDescription>
         </CardHeader>
         <CardContent>
-          {assertiva_data?.acoes?.resposta?.protestos?.list &&
-          assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
+          {(assertiva_data as any)?.acoes?.resposta?.protestos?.list &&
+          (assertiva_data as any).acoes.resposta.protestos.list.length > 0 ? (
             <div className="space-y-3 sm:space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                 <span className="text-xs sm:text-sm font-medium">Total de Protestos:</span>
                 <Badge variant="destructive" className="text-sm sm:text-base">
-                  {assertiva_data.acoes.resposta.protestos.qtdProtestos}
+                  {(assertiva_data as any).acoes.resposta.protestos.qtdProtestos}
                 </Badge>
               </div>
               <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                 <span className="text-xs sm:text-sm font-medium">Valor Total:</span>
                 <span className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    assertiva_data.acoes.resposta.protestos.valorTotal,
+                    (assertiva_data as any).acoes.resposta.protestos.valorTotal,
                   )}
                 </span>
               </div>
               <Separator />
               <div className="space-y-2 sm:space-y-3 max-h-64 overflow-y-auto">
-                {assertiva_data.acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
+                {(assertiva_data as any).acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
                   <div
                     key={idx}
                     className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
@@ -472,7 +474,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               </div>
             </div>
           ) : (
-            <p className="text-xs sm:text-sm text-muted-foreground">Informação não disponível</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Informacao nao disponivel</p>
           )}
         </CardContent>
       </Card>
@@ -481,26 +483,26 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
         <CardHeader className="pb-3">
           <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Débitos</span>
+            <span className="truncate">Debitos</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
-          assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
+          {(assertiva_data as any)?.credito?.resposta?.registrosDebitos?.list &&
+          (assertiva_data as any).credito.resposta.registrosDebitos.list.length > 0 ? (
             <div className="space-y-3 sm:space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3 sm:mb-4">
                 <p className="text-xs sm:text-sm font-medium">
-                  Total: {assertiva_data.credito.resposta.registrosDebitos.qtdDebitos} débito(s)
+                  Total: {(assertiva_data as any).credito.resposta.registrosDebitos.qtdDebitos} debito(s)
                 </p>
                 <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
-                  {typeof assertiva_data.credito.resposta.registrosDebitos.valorTotal === "number"
+                  {typeof (assertiva_data as any).credito.resposta.registrosDebitos.valorTotal === "number"
                     ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                        assertiva_data.credito.resposta.registrosDebitos.valorTotal,
+                        (assertiva_data as any).credito.resposta.registrosDebitos.valorTotal,
                       )
                     : "N/A"}
                 </p>
               </div>
-              {assertiva_data.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
+              {(assertiva_data as any).credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
                 <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
                     <div className="flex-1 min-w-0">
@@ -531,12 +533,12 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               ))}
             </div>
           ) : (
-            <p className="text-xs sm:text-sm text-muted-foreground">Nenhum débito encontrado</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Nenhum debito encontrado</p>
           )}
         </CardContent>
       </Card>
 
-      {assertiva_data?.credito?.resposta?.chequesSemFundoCCF && (
+      {(assertiva_data as any)?.credito?.resposta?.chequesSemFundoCCF && (
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
@@ -545,24 +547,24 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
+            {(assertiva_data as any).credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                   <p className="text-xs sm:text-sm font-medium">
-                    Total: {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias} ocorrência(s)
+                    Total: {(assertiva_data as any).credito.resposta.chequesSemFundoCCF.qtdOcorrencias} ocorrencia(s)
                   </p>
                   <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
-                    {assertiva_data.credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
+                    {(assertiva_data as any).credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
                   </p>
                 </div>
-                {assertiva_data.credito.resposta.chequesSemFundoCCF.list?.map((cheque: any, idx: number) => (
+                {(assertiva_data as any).credito.resposta.chequesSemFundoCCF.list?.map((cheque: any, idx: number) => (
                   <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
                     <p className="font-medium text-xs sm:text-sm text-foreground break-words">
                       Banco: {cheque.banco || "N/A"}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                       <div>
-                        <p className="text-muted-foreground">Agência</p>
+                        <p className="text-muted-foreground">Agencia</p>
                         <p className="text-foreground break-words">{cheque.agencia || "N/A"}</p>
                       </div>
                       <div>
@@ -575,7 +577,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
               </div>
             ) : (
               <p className="text-xs sm:text-sm text-green-600 dark:text-green-400">
-                ✓ Nenhum cheque sem fundo encontrado
+                Nenhum cheque sem fundo encontrado
               </p>
             )}
           </CardContent>

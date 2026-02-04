@@ -1,18 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { dataImports } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -40,24 +38,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Create import record
-    const { data: importRecord, error: importError } = await supabase
-      .from("data_imports")
-      .insert({
-        user_id: user.id,
-        filename: file.name,
-        file_type: file.type,
+    const [importRecord] = await db
+      .insert(dataImports)
+      .values({
+        companyId: user.companyId,
+        fileName: file.name,
+        importType: file.type,
         status: "processing",
-        total_records: 0,
-        successful_records: 0,
-        failed_records: 0,
+        totalRecords: 0,
+        processedRecords: 0,
+        failedRecords: 0,
       })
-      .select()
-      .single()
-
-    if (importError) {
-      console.error("Error creating import record:", importError)
-      return NextResponse.json({ error: "Failed to create import record" }, { status: 500 })
-    }
+      .returning()
 
     // In a real implementation, you would:
     // 1. Parse the file content based on its type
@@ -68,16 +60,19 @@ export async function POST(request: NextRequest) {
 
     // For now, simulate processing
     setTimeout(async () => {
-      const supabaseUpdate = await createClient()
-      await supabaseUpdate
-        .from("data_imports")
-        .update({
-          status: "completed",
-          total_records: 100,
-          successful_records: 95,
-          failed_records: 5,
-        })
-        .eq("id", importRecord.id)
+      try {
+        await db
+          .update(dataImports)
+          .set({
+            status: "completed",
+            totalRecords: 100,
+            processedRecords: 95,
+            failedRecords: 5,
+          })
+          .where(eq(dataImports.id, importRecord.id))
+      } catch (e) {
+        console.error("Error updating import record:", e)
+      }
     }, 3000)
 
     return NextResponse.json({
@@ -93,28 +88,18 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Get import history
-    const { data: imports, error } = await supabase
-      .from("data_imports")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("Error fetching imports:", error)
-      return NextResponse.json({ error: "Failed to fetch imports" }, { status: 500 })
-    }
+    const imports = await db
+      .select()
+      .from(dataImports)
+      .where(eq(dataImports.companyId, user.companyId!))
+      .orderBy(desc(dataImports.createdAt))
 
     return NextResponse.json({ imports })
   } catch (error) {

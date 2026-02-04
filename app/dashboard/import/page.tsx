@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Upload, FileText, AlertTriangle, X, Download, Eye, RefreshCw, CheckCircle2 } from "lucide-react"
 import { importCustomers, importDebts, type ImportResult } from "@/app/actions/import-data"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -41,25 +41,13 @@ export default function ImportPage() {
   const [companyId, setCompanyId] = useState<string>("")
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [showResult, setShowResult] = useState(false)
+  const { companyId: authCompanyId } = useAuth()
 
   useEffect(() => {
-    async function fetchUserCompany() {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
-        const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
-
-        if (profile?.company_id) {
-          setCompanyId(profile.company_id)
-        }
-      }
+    if (authCompanyId) {
+      setCompanyId(authCompanyId)
     }
-
-    fetchUserCompany()
-  }, [])
+  }, [authCompanyId])
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]

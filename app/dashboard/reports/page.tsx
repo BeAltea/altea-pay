@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TrendingUp, DollarSign, Users, Clock, CheckCircle, AlertTriangle, FileText, Download } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -37,27 +37,25 @@ export default function ReportsPage() {
   useEffect(() => {
     async function fetchRealData() {
       setLoading(true)
-      const supabase = createBrowserClient()
 
       try {
-        // Buscar todos os dados da tabela VMAX
-        const { data: vmaxData, error } = await supabase.from("VMAX").select("*")
+        const response = await fetch("/api/vmax-data")
+        if (!response.ok) throw new Error("Failed to fetch VMAX data")
+        const vmaxData = await response.json()
 
-        if (error) throw error
-
-        if (vmaxData) {
+        if (vmaxData && vmaxData.length > 0) {
           // Calcular KPIs reais
-          const totalClientes = new Set(vmaxData.map((c) => c["CPF/CNPJ"])).size
-          const aprovados = vmaxData.filter((c) => c.approval_status === "ACEITA").length
-          const rejeitados = vmaxData.filter((c) => c.approval_status === "REJEITA").length
-          const inadimplentes = vmaxData.filter((c) => {
-            const dias = c["Dias Inad."]
+          const totalClientes = new Set(vmaxData.map((c: any) => c.cpfCnpj)).size
+          const aprovados = vmaxData.filter((c: any) => c.approvalStatus === "ACEITA").length
+          const rejeitados = vmaxData.filter((c: any) => c.approvalStatus === "REJEITA").length
+          const inadimplentes = vmaxData.filter((c: any) => {
+            const dias = c.maiorAtraso
             return dias && Number.parseInt(String(dias).replace(/\D/g, "")) > 0
           }).length
 
           // Calcular total vencido
-          const totalVencido = vmaxData.reduce((sum, cliente) => {
-            const vencido = cliente["Vencido"]
+          const totalVencido = vmaxData.reduce((sum: number, cliente: any) => {
+            const vencido = cliente.valorTotal
             if (vencido) {
               const valor = Number.parseFloat(
                 vencido
@@ -71,13 +69,13 @@ export default function ReportsPage() {
           }, 0)
 
           // Calcular score médio
-          const scoresValidos = vmaxData.map((c) => c.credit_score).filter((s) => s && s > 0)
+          const scoresValidos = vmaxData.map((c: any) => c.creditScore).filter((s: any) => s && s > 0)
           const scoreMedio =
-            scoresValidos.length > 0 ? scoresValidos.reduce((sum, s) => sum + s, 0) / scoresValidos.length : 0
+            scoresValidos.length > 0 ? scoresValidos.reduce((sum: number, s: number) => sum + s, 0) / scoresValidos.length : 0
 
           setKpiData({
             totalDebt: totalVencido,
-            recoveredAmount: 0, // Não temos histórico de recuperação ainda
+            recoveredAmount: 0,
             recoveryRate: 0,
             activeCustomers: totalClientes,
             overdueCustomers: inadimplentes,

@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth/config"
+import { db } from "@/lib/db"
+import { eq, desc } from "drizzle-orm"
+import { erpIntegrations, integrationLogs } from "@/lib/db/schema"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,27 +17,27 @@ interface ERPIntegrationPageProps {
 }
 
 export default async function ERPIntegrationPage({ params }: ERPIntegrationPageProps) {
-  const supabase = await createClient()
+  const session = await auth()
 
-  // Busca integrações da empresa
-  const { data: integrations, error } = await supabase
-    .from("erp_integrations")
-    .select("*")
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Fetch integrations using Drizzle ORM
+  const integrations = await db
+    .select()
+    .from(erpIntegrations)
+    .where(eq(erpIntegrations.companyId, params.id))
+    .orderBy(desc(erpIntegrations.createdAt))
 
-  // Busca logs recentes
-  const { data: logs } = await supabase
-    .from("integration_logs")
-    .select("*")
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Fetch recent logs using Drizzle ORM
+  const logs = await db
+    .select()
+    .from(integrationLogs)
+    .where(eq(integrationLogs.companyId, params.id))
+    .orderBy(desc(integrationLogs.createdAt))
     .limit(10)
 
-  // Mock data para empresa
+  // Mock data for company (should be fetched)
   const company = {
     id: params.id,
-    name: "Enel Distribuição São Paulo",
+    name: "Enel Distribuicao Sao Paulo",
   }
 
   return (
@@ -50,13 +53,13 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
               </Link>
             </Button>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Integração ERP</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Integracao ERP</h1>
           <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{company.name}</p>
         </div>
         <Button asChild>
           <Link href={`/super-admin/companies/${params.id}/erp-integration/new`}>
             <Plus className="mr-2 h-4 w-4" />
-            Nova Integração
+            Nova Integracao
           </Link>
         </Button>
       </div>
@@ -65,30 +68,30 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Integrações Ativas</CardTitle>
+            <CardTitle className="text-sm font-medium">Integracoes Ativas</CardTitle>
             <Plug className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{integrations?.filter((i) => i.is_active).length || 0}</div>
+            <div className="text-2xl font-bold">{integrations?.filter((i) => i.isActive).length || 0}</div>
             <p className="text-xs text-muted-foreground">de {integrations?.length || 0} total</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Última Sincronização</CardTitle>
+            <CardTitle className="text-sm font-medium">Ultima Sincronizacao</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {integrations?.[0]?.last_sync_at
-                ? new Date(integrations[0].last_sync_at).toLocaleDateString("pt-BR")
+              {integrations?.[0]?.lastSyncAt
+                ? new Date(integrations[0].lastSyncAt).toLocaleDateString("pt-BR")
                 : "Nunca"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {integrations?.[0]?.last_sync_at
-                ? new Date(integrations[0].last_sync_at).toLocaleTimeString("pt-BR")
-                : "Nenhuma sincronização"}
+              {integrations?.[0]?.lastSyncAt
+                ? new Date(integrations[0].lastSyncAt).toLocaleTimeString("pt-BR")
+                : "Nenhuma sincronizacao"}
             </p>
           </CardContent>
         </Card>
@@ -100,10 +103,10 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {logs?.reduce((acc, log) => acc + (log.records_success || 0), 0) || 0}
+              {logs?.reduce((acc, log) => acc + (log.recordsProcessed || 0), 0) || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              {logs?.reduce((acc, log) => acc + (log.records_failed || 0), 0) || 0} falhas
+              {logs?.reduce((acc, log) => acc + (log.recordsFailed || 0), 0) || 0} falhas
             </p>
           </CardContent>
         </Card>
@@ -115,7 +118,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {integrations?.some((i) => i.is_active) ? "Operacional" : "Inativo"}
+              {integrations?.some((i) => i.isActive) ? "Operacional" : "Inativo"}
             </div>
             <p className="text-xs text-muted-foreground">
               {logs?.filter((l) => l.status === "success").length || 0} sucessos recentes
@@ -124,24 +127,24 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
         </Card>
       </div>
 
-      {/* Integrações Configuradas */}
+      {/* Integracoes Configuradas */}
       <Card>
         <CardHeader>
-          <CardTitle>Integrações Configuradas</CardTitle>
-          <CardDescription>Gerencie as integrações com ERPs externos</CardDescription>
+          <CardTitle>Integracoes Configuradas</CardTitle>
+          <CardDescription>Gerencie as integracoes com ERPs externos</CardDescription>
         </CardHeader>
         <CardContent>
           {!integrations || integrations.length === 0 ? (
             <div className="text-center py-12">
               <Plug className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Nenhuma integração configurada</h3>
+              <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Nenhuma integracao configurada</h3>
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Comece criando uma nova integração com um ERP externo.
+                Comece criando uma nova integracao com um ERP externo.
               </p>
               <Button asChild className="mt-6">
                 <Link href={`/super-admin/companies/${params.id}/erp-integration/new`}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Criar Primeira Integração
+                  Criar Primeira Integracao
                 </Link>
               </Button>
             </div>
@@ -161,23 +164,25 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="font-medium text-gray-900 dark:text-white">{integration.erp_name}</h3>
-                          <Badge variant={integration.is_active ? "default" : "secondary"} className="text-xs">
-                            {integration.is_active ? "Ativo" : "Inativo"}
+                          <h3 className="font-medium text-gray-900 dark:text-white">{integration.name}</h3>
+                          <Badge variant={integration.isActive ? "default" : "secondary"} className="text-xs">
+                            {integration.isActive ? "Ativo" : "Inativo"}
                           </Badge>
                           <Badge variant="outline" className="text-xs uppercase">
-                            {integration.erp_type}
+                            {integration.erpType}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{integration.base_url}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                          {(integration.config as any)?.baseUrl || "URL nao configurada"}
+                        </p>
                         <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
                           <span>
-                            Última sync:{" "}
-                            {integration.last_sync_at
-                              ? new Date(integration.last_sync_at).toLocaleString("pt-BR")
+                            Ultima sync:{" "}
+                            {integration.lastSyncAt
+                              ? new Date(integration.lastSyncAt).toLocaleString("pt-BR")
                               : "Nunca"}
                           </span>
-                          <span>Frequência: {integration.sync_frequency}</span>
+                          <span>Frequencia: {(integration.config as any)?.syncFrequency || "manual"}</span>
                         </div>
                       </div>
                     </div>
@@ -207,8 +212,8 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
       {logs && logs.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Logs de Sincronização</CardTitle>
-            <CardDescription>Histórico das últimas operações de integração</CardDescription>
+            <CardTitle>Logs de Sincronizacao</CardTitle>
+            <CardDescription>Historico das ultimas operacoes de integracao</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -239,22 +244,21 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
-                        {log.operation_type.replace(/_/g, " ")}
+                        {log.action?.replace(/_/g, " ") || "Operacao"}
                       </p>
                       <Badge variant="outline" className="text-xs">
                         {log.status}
                       </Badge>
                     </div>
                     <div className="flex items-center space-x-4 text-xs text-gray-600 dark:text-gray-400">
-                      <span>{log.records_processed} processados</span>
-                      <span className="text-green-600 dark:text-green-400">{log.records_success} sucesso</span>
-                      {log.records_failed > 0 && (
-                        <span className="text-red-600 dark:text-red-400">{log.records_failed} falhas</span>
+                      <span>{log.recordsProcessed || 0} processados</span>
+                      <span className="text-green-600 dark:text-green-400">{(log.recordsProcessed || 0) - (log.recordsFailed || 0)} sucesso</span>
+                      {(log.recordsFailed || 0) > 0 && (
+                        <span className="text-red-600 dark:text-red-400">{log.recordsFailed} falhas</span>
                       )}
-                      <span>{log.duration_ms}ms</span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {new Date(log.created_at).toLocaleString("pt-BR")}
+                      {log.createdAt ? new Date(log.createdAt).toLocaleString("pt-BR") : "N/A"}
                     </p>
                   </div>
                 </div>

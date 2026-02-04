@@ -1,27 +1,26 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { creditProfiles } from "@/lib/db/schema"
+import { eq, and, desc, inArray, isNotNull } from "drizzle-orm"
 
 export async function getPendingAnalyses() {
   try {
-    const supabase = createAdminClient()
-
-    const { data, error } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("source", "assertiva")
-      .eq("analysis_type", "detailed")
-      .not("external_id", "is", null) // Apenas análises assíncronas
-      .in("status", ["pending", "completed", "failed"])
-      .order("created_at", { ascending: false })
+    const data = await db
+      .select()
+      .from(creditProfiles)
+      .where(
+        and(
+          eq(creditProfiles.provider, "assertiva"),
+          eq(creditProfiles.analysisType, "detailed"),
+          isNotNull(creditProfiles.metadata), // Apenas analises assincronas (with external_id in metadata)
+          inArray(creditProfiles.status, ["pending", "completed", "failed"]),
+        ),
+      )
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(50)
 
-    if (error) {
-      console.error("Error fetching pending analyses:", error)
-      return { success: false, error: error.message, data: [] }
-    }
-
-    return { success: true, data: data || [], error: null }
+    return { success: true, data: data, error: null }
   } catch (error: any) {
     console.error("Exception in getPendingAnalyses:", error)
     return { success: false, error: error.message, data: [] }

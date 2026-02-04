@@ -1,6 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { vmax, collectionTasks, customers } from "@/lib/db/schema"
+import { eq, isNotNull, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 /**
@@ -10,25 +12,18 @@ import { revalidatePath } from "next/cache"
  * para usar o Score de Recuperação (Recupere) ao invés do Score de Crédito
  *
  * Novo critério:
- * - Recovery Score >= 294 (Classes C, B, A) → Cobrança Automática
- * - Recovery Score < 294 (Classes D, E, F) → Cobrança Manual
+ * - Recovery Score >= 294 (Classes C, B, A) -> Cobrança Automática
+ * - Recovery Score < 294 (Classes D, E, F) -> Cobrança Manual
  */
 export async function migrateToRecoveryScore() {
   try {
-    const supabase = await createClient()
-
     console.log("[v0] Iniciando migração para Score de Recuperação...")
 
     // Passo 1: Buscar todos os registros VMAX com analysis_metadata
-    const { data: vmaxRecords, error: fetchError } = await supabase
-      .from("VMAX")
-      .select("id, analysis_metadata, 'CPF/CNPJ'")
-      .not("analysis_metadata", "is", null)
-
-    if (fetchError) {
-      console.error("[v0] Erro ao buscar registros VMAX:", fetchError)
-      return { success: false, error: fetchError.message }
-    }
+    const vmaxRecords = await db
+      .select({ id: vmax.id, analysisMetadata: vmax.analysisMetadata, cpfCnpj: vmax.cpfCnpj })
+      .from(vmax)
+      .where(isNotNull(vmax.analysisMetadata))
 
     console.log(`[v0] Encontrados ${vmaxRecords?.length || 0} registros VMAX com dados de análise`)
 
@@ -40,7 +35,7 @@ export async function migrateToRecoveryScore() {
     for (const record of vmaxRecords || []) {
       try {
         // Extrai recovery_score do JSON
-        const recupereData = record.analysis_metadata?.recupere?.resposta?.score
+        const recupereData = (record.analysisMetadata as any)?.recupere?.resposta?.score
 
         if (!recupereData?.pontos) {
           console.log(`[v0] Registro ${record.id} não tem dados de recuperação`)
@@ -55,17 +50,20 @@ export async function migrateToRecoveryScore() {
         const autoCollectionEnabled = recoveryScore >= 294
 
         // Atualiza registro VMAX
-        const { error: updateError } = await supabase
-          .from("VMAX")
-          .update({
-            recovery_score: recoveryScore,
-            recovery_class: recoveryClass,
-            recovery_description: recoveryDescription,
-            auto_collection_enabled: autoCollectionEnabled,
-          })
-          .eq("id", record.id)
-
-        if (updateError) {
+        try {
+          await db
+            .update(vmax)
+            .set({
+              autoCollectionEnabled: autoCollectionEnabled,
+              analysisMetadata: {
+                ...(record.analysisMetadata as any),
+                recovery_score: recoveryScore,
+                recovery_class: recoveryClass,
+                recovery_description: recoveryDescription,
+              },
+            })
+            .where(eq(vmax.id, record.id))
+        } catch (updateError) {
           console.error(`[v0] Erro ao atualizar VMAX ${record.id}:`, updateError)
           continue
         }
@@ -86,59 +84,62 @@ export async function migrateToRecoveryScore() {
     }
 
     // Passo 3: Atualizar tarefas pendentes
-    const { data: tasksData, error: tasksError } = await supabase
-      .from("collection_tasks")
-      .select("id, customer_id, metadata")
-      .in("status", ["pending", "in_progress"])
+    try {
+      const tasksData = await db
+        .select({ id: collectionTasks.id, customerId: collectionTasks.customerId, metadata: collectionTasks.metadata })
+        .from(collectionTasks)
+        .where(inArray(collectionTasks.status, ["pending", "in_progress"]))
 
-    if (tasksError) {
-      console.error("[v0] Erro ao buscar tarefas:", tasksError)
-    } else {
       console.log(`[v0] Atualizando ${tasksData?.length || 0} tarefas pendentes...`)
 
       for (const task of tasksData || []) {
         try {
           // Busca o cliente associado
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("document")
-            .eq("id", task.customer_id)
-            .single()
+          if (!task.customerId) continue
+
+          const [customer] = await db
+            .select({ document: customers.document })
+            .from(customers)
+            .where(eq(customers.id, task.customerId))
+            .limit(1)
 
           if (!customer?.document) continue
 
           // Busca o recovery_score do VMAX
-          const { data: vmaxData } = await supabase
-            .from("VMAX")
-            .select("recovery_score, recovery_class")
-            .eq("CPF/CNPJ", customer.document)
-            .single()
+          const [vmaxData] = await db
+            .select({ analysisMetadata: vmax.analysisMetadata, autoCollectionEnabled: vmax.autoCollectionEnabled })
+            .from(vmax)
+            .where(eq(vmax.cpfCnpj, customer.document))
+            .limit(1)
 
-          if (!vmaxData?.recovery_score) continue
+          const recoveryScore = (vmaxData?.analysisMetadata as any)?.recovery_score
+          const recoveryClass = (vmaxData?.analysisMetadata as any)?.recovery_class
+
+          if (!recoveryScore) continue
 
           // Atualiza metadata da tarefa
           const updatedMetadata = {
-            ...(task.metadata || {}),
-            recovery_score: vmaxData.recovery_score,
-            recovery_class: vmaxData.recovery_class,
+            ...((task.metadata as any) || {}),
+            recovery_score: recoveryScore,
+            recovery_class: recoveryClass,
             migration_note: "Migrado para usar Score de Recuperação",
+            auto_dispatch_blocked: recoveryScore < 294,
           }
 
-          const autoDispatchBlocked = vmaxData.recovery_score < 294
-
-          await supabase
-            .from("collection_tasks")
-            .update({
+          await db
+            .update(collectionTasks)
+            .set({
               metadata: updatedMetadata,
-              auto_dispatch_blocked: autoDispatchBlocked,
             })
-            .eq("id", task.id)
+            .where(eq(collectionTasks.id, task.id))
 
           console.log(`[v0] ✓ Tarefa ${task.id} atualizada`)
         } catch (error) {
           console.error(`[v0] Erro ao atualizar tarefa ${task.id}:`, error)
         }
       }
+    } catch (tasksError) {
+      console.error("[v0] Erro ao buscar tarefas:", tasksError)
     }
 
     // Revalidar caches

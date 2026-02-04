@@ -1,49 +1,55 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { vmax, agreements, debts, payments, notifications, collectionTasks, customers } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 export async function deleteCustomer(customerId: string, companyId: string) {
   try {
-    const supabase = await createClient()
-
     // Verificar se o cliente existe
-    const { data: customer, error: fetchError } = await supabase
-      .from("VMAX")
-      .select("id, Cliente")
-      .eq("id", customerId)
-      .eq("id_company", companyId)
-      .single()
+    const [customer] = await db
+      .select({ id: vmax.id, cliente: vmax.cliente })
+      .from(vmax)
+      .where(
+        and(
+          eq(vmax.id, customerId),
+          eq(vmax.idCompany, companyId),
+        ),
+      )
+      .limit(1)
 
-    if (fetchError || !customer) {
-      return { success: false, message: "Cliente não encontrado" }
+    if (!customer) {
+      return { success: false, message: "Cliente nao encontrado" }
     }
 
     // Deletar acordos relacionados
-    await supabase.from("agreements").delete().eq("customer_id", customerId)
+    await db.delete(agreements).where(eq(agreements.customerId, customerId))
 
-    // Deletar dívidas relacionadas
-    await supabase.from("debts").delete().eq("customer_id", customerId)
+    // Deletar dividas relacionadas
+    await db.delete(debts).where(eq(debts.customerId, customerId))
 
     // Deletar pagamentos relacionados
-    await supabase.from("payments").delete().eq("customer_id", customerId)
+    await db.delete(payments).where(eq(payments.customerId, customerId))
 
-    // Deletar notificações relacionadas
-    await supabase.from("notifications").delete().eq("customer_id", customerId)
+    // Deletar notificacoes relacionadas
+    await db.delete(notifications).where(eq(notifications.customerId, customerId))
 
-    // Deletar tarefas de cobrança relacionadas
-    await supabase.from("collection_tasks").delete().eq("customer_id", customerId)
+    // Deletar tarefas de cobranca relacionadas
+    await db.delete(collectionTasks).where(eq(collectionTasks.customerId, customerId))
 
     // Deletar o registro do cliente na tabela customers (se existir)
-    await supabase.from("customers").delete().eq("id", customerId)
+    await db.delete(customers).where(eq(customers.id, customerId))
 
     // Deletar o registro VMAX (fonte principal)
-    const { error: deleteError } = await supabase.from("VMAX").delete().eq("id", customerId).eq("id_company", companyId)
-
-    if (deleteError) {
-      console.error("[v0] Erro ao deletar cliente:", deleteError)
-      return { success: false, message: `Erro ao deletar cliente: ${deleteError.message}` }
-    }
+    await db
+      .delete(vmax)
+      .where(
+        and(
+          eq(vmax.id, customerId),
+          eq(vmax.idCompany, companyId),
+        ),
+      )
 
     revalidatePath("/dashboard/clientes")
     revalidatePath(`/super-admin/companies/${companyId}`)
@@ -51,7 +57,7 @@ export async function deleteCustomer(customerId: string, companyId: string) {
 
     return {
       success: true,
-      message: `Cliente ${customer.Cliente} e todos os dados relacionados foram excluídos permanentemente`,
+      message: `Cliente ${customer.cliente} e todos os dados relacionados foram excluidos permanentemente`,
     }
   } catch (error) {
     console.error("[v0] Erro inesperado ao deletar cliente:", error)

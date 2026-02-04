@@ -1,6 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax, customers, debts, agreements, notifications } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj } from "@/lib/asaas"
 
 export async function createAgreementWithAsaas(params: {
@@ -12,106 +15,112 @@ export async function createAgreementWithAsaas(params: {
   terms?: string
 }) {
   try {
-    const supabase = await createClient()
-
     // Get authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) throw new Error("Não autenticado")
+    const session = await auth()
+    const user = session?.user
+    if (!user) throw new Error("Nao autenticado")
 
     // Get user profile to get company
-    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+    const [profile] = await db
+      .select({ companyId: profiles.companyId })
+      .from(profiles)
+      .where(eq(profiles.id, user.id!))
+      .limit(1)
 
-    if (!profile?.company_id) throw new Error("Empresa não encontrada")
+    if (!profile?.companyId) throw new Error("Empresa nao encontrada")
 
     // Get VMAX record
-    const { data: vmaxRecord, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("id", params.vmaxId)
-      .single()
+    const [vmaxRecord] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.id, params.vmaxId))
+      .limit(1)
 
-    if (vmaxError || !vmaxRecord) {
-      throw new Error("Registro não encontrado")
+    if (!vmaxRecord) {
+      throw new Error("Registro nao encontrado")
     }
 
     // Step 1: Create or get customer in our database
-    const cpfCnpj = vmaxRecord["CPF/CNPJ"]?.replace(/[^\d]/g, "") || ""
-    const customerName = vmaxRecord.Cliente || "Cliente"
-    const customerPhone = vmaxRecord.Telefone?.replace(/[^\d]/g, "") || ""
-    const customerEmail = vmaxRecord.Email || ""
+    const cpfCnpj = vmaxRecord.cpfCnpj?.replace(/[^\d]/g, "") || ""
+    const customerName = vmaxRecord.cliente || "Cliente"
+    const customerPhone = ""
+    const customerEmail = ""
 
     let customerId: string
-    let customerUserId: string | null = null
 
-    const { data: existingCustomer } = await supabase
-      .from("customers")
-      .select("id, user_id")
-      .eq("document", cpfCnpj)
-      .eq("company_id", profile.company_id)
-      .single()
+    const [existingCustomer] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(
+        and(
+          eq(customers.document, cpfCnpj),
+          eq(customers.companyId, profile.companyId),
+        ),
+      )
+      .limit(1)
 
     if (existingCustomer) {
       customerId = existingCustomer.id
-      customerUserId = existingCustomer.user_id
     } else {
       // Search for user_id in profiles by cpf_cnpj
-      const { data: profileData } = await supabase.from("profiles").select("id").eq("cpf_cnpj", cpfCnpj).single()
+      const [profileData] = await db
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(eq(profiles.cpfCnpj, cpfCnpj))
+        .limit(1)
 
-      const { data: newCustomer, error: customerError } = await supabase
-        .from("customers")
-        .insert({
+      const [newCustomer] = await db
+        .insert(customers)
+        .values({
           name: customerName,
           document: cpfCnpj,
-          document_type: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
+          documentType: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
           phone: customerPhone,
           email: customerEmail,
-          company_id: profile.company_id,
-          source_system: "VMAX",
-          external_id: params.vmaxId,
-          user_id: profileData?.id || null,
+          companyId: profile.companyId,
+          sourceSystem: "VMAX",
+          externalId: params.vmaxId,
         })
-        .select("id, user_id")
-        .single()
+        .returning({ id: customers.id })
 
-      if (customerError) throw customerError
       customerId = newCustomer.id
-      customerUserId = newCustomer.user_id
     }
 
     // Step 2: Create or get debt
-    const originalAmount = Number.parseFloat(vmaxRecord.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
+    const originalAmount = Number.parseFloat(
+      (vmaxRecord as any).Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0",
+    )
 
     let debtId: string
 
-    const { data: existingDebt } = await supabase
-      .from("debts")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("company_id", profile.company_id)
-      .eq("external_id", params.vmaxId)
-      .single()
+    const [existingDebt] = await db
+      .select({ id: debts.id })
+      .from(debts)
+      .where(
+        and(
+          eq(debts.customerId, customerId),
+          eq(debts.companyId, profile.companyId),
+          eq(debts.externalId, params.vmaxId),
+        ),
+      )
+      .limit(1)
 
     if (existingDebt) {
       debtId = existingDebt.id
     } else {
-      const { data: newDebt, error: debtError } = await supabase
-        .from("debts")
-        .insert({
-          customer_id: customerId,
-          company_id: profile.company_id,
-          amount: originalAmount,
-          description: `Dívida de ${customerName}`,
+      const [newDebt] = await db
+        .insert(debts)
+        .values({
+          customerId: customerId,
+          companyId: profile.companyId,
+          amount: String(originalAmount),
+          description: `Divida de ${customerName}`,
           status: "in_negotiation",
-          source_system: "VMAX",
-          external_id: params.vmaxId,
-          user_id: customerUserId,
+          source: "VMAX",
+          externalId: params.vmaxId,
         })
-        .select("id")
-        .single()
+        .returning({ id: debts.id })
 
-      if (debtError) throw debtError
       debtId = newDebt.id
     }
 
@@ -141,7 +150,7 @@ export async function createAgreementWithAsaas(params: {
       billingType: "UNDEFINED", // Let customer choose payment method
       value: params.installments > 1 ? installmentAmount : params.agreedAmount,
       dueDate: params.dueDate,
-      description: `Acordo de negociação - ${customerName}${
+      description: `Acordo de negociacao - ${customerName}${
         params.installments > 1 ? ` (Parcela 1/${params.installments})` : ""
       }`,
       externalReference: `agreement_${params.vmaxId}`,
@@ -152,46 +161,42 @@ export async function createAgreementWithAsaas(params: {
     })
 
     // Step 5: Create agreement in our database
-    const { data: agreement, error: agreementError } = await supabase
-      .from("agreements")
-      .insert({
-        debt_id: debtId,
-        customer_id: customerId,
-        user_id: customerUserId,
-        company_id: profile.company_id,
-        original_amount: originalAmount,
-        agreed_amount: params.agreedAmount,
-        discount_amount: originalAmount - params.agreedAmount,
-        discount_percentage: discountPercentage,
+    const [agreement] = await db
+      .insert(agreements)
+      .values({
+        debtId: debtId,
+        customerId: customerId,
+        companyId: profile.companyId,
+        originalAmount: String(originalAmount),
+        negotiatedAmount: String(params.agreedAmount),
+        discountPercentage: String(discountPercentage),
         installments: params.installments,
-        installment_amount: installmentAmount,
-        due_date: params.dueDate,
+        installmentAmount: String(installmentAmount),
+        dueDate: params.dueDate,
         status: "active",
-        attendant_name: params.attendantName,
-        terms: params.terms,
-        // Save Asaas data directly to columns
-        asaas_customer_id: asaasCustomerId,
-        asaas_payment_id: asaasPayment.id,
-        asaas_payment_url: asaasPayment.invoiceUrl || null,
-        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
-        asaas_boleto_url: asaasPayment.bankSlipUrl || null,
-        payment_status: "pending",
+        notes: params.terms,
+        paymentLink: asaasPayment.invoiceUrl || null,
+        invoiceUrl: asaasPayment.invoiceUrl || null,
+        metadata: {
+          attendant_name: params.attendantName,
+          asaas_customer_id: asaasCustomerId,
+          asaas_payment_id: asaasPayment.id,
+          asaas_payment_url: asaasPayment.invoiceUrl || null,
+          asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
+          asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+          payment_status: "pending",
+          discount_amount: originalAmount - params.agreedAmount,
+        },
       })
-      .select()
-      .single()
+      .returning()
 
-    if (agreementError) throw agreementError
-
-    // Step 6: Create notification for customer if they have user_id
-    if (customerUserId) {
-      await supabase.from("notifications").insert({
-        user_id: customerUserId,
-        company_id: profile.company_id,
-        type: "agreement",
-        title: "Nova Proposta de Acordo",
-        description: `Você recebeu uma proposta de acordo no valor de R$ ${params.agreedAmount.toFixed(2)} em ${params.installments}x de R$ ${installmentAmount.toFixed(2)}`,
-      })
-    }
+    // Step 6: Create notification for customer
+    await db.insert(notifications).values({
+      companyId: profile.companyId,
+      type: "agreement",
+      title: "Nova Proposta de Acordo",
+      message: `Voce recebeu uma proposta de acordo no valor de R$ ${params.agreedAmount.toFixed(2)} em ${params.installments}x de R$ ${installmentAmount.toFixed(2)}`,
+    })
 
     return {
       success: true,

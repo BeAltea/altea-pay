@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { payments, debts } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -8,42 +11,51 @@ import { PaymentFilters } from "@/components/user-dashboard/payment-filters"
 import { PaymentChart } from "@/components/user-dashboard/payment-chart"
 
 export default async function UserPaymentsPage() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await auth()
+  const user = session?.user
 
   if (!user) return null
 
   // Get user's payments with debt information
-  const { data: payments } = await supabase
-    .from("payments")
-    .select(`
-      *,
-      debts (
-        description,
-        due_date,
-        user_id
-      )
-    `)
-    .eq("debts.user_id", user.id)
-    .order("payment_date", { ascending: false })
+  const paymentsList = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.customerId, user.id))
+    .orderBy(desc(payments.paidAt))
+
+  // Get debts for the user to match with payments
+  const debtsList = await db
+    .select()
+    .from(debts)
+    .where(eq(debts.customerId, user.id))
+
+  // Map payments with debt info
+  const paymentsWithDebts = paymentsList.map((payment) => {
+    const debt = debtsList.find((d) => d.id === payment.debtId)
+    return {
+      ...payment,
+      debts: debt ? {
+        description: debt.description,
+        due_date: debt.dueDate,
+        user_id: debt.customerId,
+      } : null,
+    }
+  })
 
   // Get payment statistics
-  const totalPayments = payments?.length || 0
-  const completedPayments = payments?.filter((p) => p.status === "completed") || []
-  const pendingPayments = payments?.filter((p) => p.status === "pending") || []
-  const failedPayments = payments?.filter((p) => p.status === "failed") || []
+  const totalPayments = paymentsWithDebts?.length || 0
+  const completedPayments = paymentsWithDebts?.filter((p) => p.status === "completed") || []
+  const pendingPayments = paymentsWithDebts?.filter((p) => p.status === "pending") || []
+  const failedPayments = paymentsWithDebts?.filter((p) => p.status === "failed") || []
 
   const totalPaidAmount = completedPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)
   const totalPendingAmount = pendingPayments.reduce((sum, payment) => sum + Number(payment.amount), 0)
 
   // Calculate monthly payment data for chart
-  const monthlyData = payments?.reduce(
+  const monthlyData = paymentsWithDebts?.reduce(
     (acc, payment) => {
-      if (payment.status === "completed") {
-        const month = new Date(payment.payment_date).toLocaleDateString("pt-BR", {
+      if (payment.status === "completed" && payment.paidAt) {
+        const month = new Date(payment.paidAt).toLocaleDateString("pt-BR", {
           year: "numeric",
           month: "short",
         })
@@ -59,10 +71,10 @@ export default async function UserPaymentsPage() {
     .slice(-6) // Last 6 months
 
   // Payment method distribution
-  const paymentMethods = payments?.reduce(
+  const paymentMethods = paymentsWithDebts?.reduce(
     (acc, payment) => {
-      if (payment.status === "completed") {
-        acc[payment.payment_method] = (acc[payment.payment_method] || 0) + 1
+      if (payment.status === "completed" && payment.method) {
+        acc[payment.method] = (acc[payment.method] || 0) + 1
       }
       return acc
     },
@@ -174,7 +186,7 @@ export default async function UserPaymentsPage() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(paymentMethods).map(([method, count]) => {
-                const methodNames = {
+                const methodNames: Record<string, string> = {
                   pix: "PIX",
                   boleto: "Boleto",
                   cartao: "Cartão",
@@ -184,7 +196,7 @@ export default async function UserPaymentsPage() {
                   <div key={method} className="text-center">
                     <div className="text-2xl font-bold">{count}</div>
                     <p className="text-sm text-muted-foreground">
-                      {methodNames[method as keyof typeof methodNames] || method}
+                      {methodNames[method] || method}
                     </p>
                   </div>
                 )
@@ -206,8 +218,8 @@ export default async function UserPaymentsPage() {
 
       {/* Payments List */}
       <div className="space-y-4">
-        {payments && payments.length > 0 ? (
-          payments.map((payment) => <PaymentCard key={payment.id} payment={payment} />)
+        {paymentsWithDebts && paymentsWithDebts.length > 0 ? (
+          paymentsWithDebts.map((payment) => <PaymentCard key={payment.id} payment={payment} />)
         ) : (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -220,13 +232,13 @@ export default async function UserPaymentsPage() {
       </div>
 
       {/* Summary Footer */}
-      {payments && payments.length > 0 && (
+      {paymentsWithDebts && paymentsWithDebts.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                Exibindo {payments.length} pagamento{payments.length > 1 ? "s" : ""} • Total pago: R${" "}
-                {totalPaidAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} • Taxa de sucesso:{" "}
+                Exibindo {paymentsWithDebts.length} pagamento{paymentsWithDebts.length > 1 ? "s" : ""} - Total pago: R${" "}
+                {totalPaidAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} - Taxa de sucesso:{" "}
                 {totalPayments > 0 ? ((completedPayments.length / totalPayments) * 100).toFixed(1) : 0}%
               </p>
             </div>

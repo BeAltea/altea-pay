@@ -1,6 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, customers, debts } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import Papa from "papaparse"
 import * as XLSX from "xlsx"
 
@@ -136,20 +139,21 @@ function processXML(content: string): any[] {
 
 export async function importCustomers(file: File, companyId: string): Promise<ImportResult> {
   try {
-    const supabase = await createClient()
-
     // Verificar autenticação e permissões
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
     if (!user) {
       return { success: false, message: "Não autenticado", imported: 0, errors: [], duplicates: 0 }
     }
 
     // Verificar se o usuário pertence à empresa
-    const { data: profile } = await supabase.from("profiles").select("company_id, role").eq("id", user.id).single()
+    const [profile] = await db
+      .select({ companyId: profiles.companyId, role: profiles.role })
+      .from(profiles)
+      .where(eq(profiles.id, user.id!))
+      .limit(1)
 
-    if (!profile || (profile.company_id !== companyId && profile.role !== "super_admin")) {
+    if (!profile || (profile.companyId !== companyId && profile.role !== "super_admin")) {
       return {
         success: false,
         message: "Sem permissão para importar dados desta empresa",
@@ -231,12 +235,11 @@ export async function importCustomers(file: File, companyId: string): Promise<Im
         }
 
         // Verificar duplicata
-        const { data: existing } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("document", customerData.document)
-          .single()
+        const [existing] = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.companyId, companyId), eq(customers.document, customerData.document)))
+          .limit(1)
 
         if (existing) {
           duplicates++
@@ -244,28 +247,28 @@ export async function importCustomers(file: File, companyId: string): Promise<Im
         }
 
         // Inserir no banco
-        const { error: insertError } = await supabase.from("customers").insert({
-          company_id: companyId,
-          name: customerData.name,
-          document: customerData.document,
-          document_type: customerData.document_type,
-          email: customerData.email,
-          phone: customerData.phone,
-          address: customerData.address,
-          city: customerData.city,
-          state: customerData.state,
-          zip_code: customerData.zip_code,
-          source_system: "manual",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        try {
+          await db.insert(customers).values({
+            companyId: companyId,
+            name: customerData.name,
+            document: customerData.document,
+            documentType: customerData.document_type,
+            email: customerData.email,
+            phone: customerData.phone,
+            address: customerData.address,
+            city: customerData.city,
+            state: customerData.state,
+            zipCode: customerData.zip_code,
+            sourceSystem: "manual",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
 
-        if (insertError) {
+          imported++
+        } catch (insertError: any) {
           errors.push(`Linha ${i + 1}: Erro ao inserir - ${insertError.message}`)
           continue
         }
-
-        imported++
       } catch (error: any) {
         errors.push(`Linha ${i + 1}: ${error.message}`)
       }
@@ -291,19 +294,20 @@ export async function importCustomers(file: File, companyId: string): Promise<Im
 
 export async function importDebts(file: File, companyId: string): Promise<ImportResult> {
   try {
-    const supabase = await createClient()
-
     // Verificar autenticação e permissões
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
     if (!user) {
       return { success: false, message: "Não autenticado", imported: 0, errors: [], duplicates: 0 }
     }
 
-    const { data: profile } = await supabase.from("profiles").select("company_id, role").eq("id", user.id).single()
+    const [profile] = await db
+      .select({ companyId: profiles.companyId, role: profiles.role })
+      .from(profiles)
+      .where(eq(profiles.id, user.id!))
+      .limit(1)
 
-    if (!profile || (profile.company_id !== companyId && profile.role !== "super_admin")) {
+    if (!profile || (profile.companyId !== companyId && profile.role !== "super_admin")) {
       return {
         success: false,
         message: "Sem permissão para importar dados desta empresa",
@@ -369,12 +373,11 @@ export async function importDebts(file: File, companyId: string): Promise<Import
         }
 
         // Buscar cliente
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("document", debtData.customer_document)
-          .single()
+        const [customer] = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.companyId, companyId), eq(customers.document, debtData.customer_document)))
+          .limit(1)
 
         if (!customer) {
           errors.push(`Linha ${i + 1}: Cliente não encontrado (${debtData.customer_document})`)
@@ -382,40 +385,44 @@ export async function importDebts(file: File, companyId: string): Promise<Import
         }
 
         // Verificar duplicata (mesmo cliente, mesmo valor, mesma data)
-        const { data: existing } = await supabase
-          .from("debts")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("customer_id", customer.id)
-          .eq("amount", debtData.amount)
-          .eq("due_date", debtData.due_date)
-          .single()
+        const [existingDebt] = await db
+          .select({ id: debts.id })
+          .from(debts)
+          .where(
+            and(
+              eq(debts.companyId, companyId),
+              eq(debts.customerId, customer.id),
+              eq(debts.amount, String(debtData.amount)),
+              eq(debts.dueDate, debtData.due_date),
+            ),
+          )
+          .limit(1)
 
-        if (existing) {
+        if (existingDebt) {
           duplicates++
           continue
         }
 
         // Inserir dívida
-        const { error: insertError } = await supabase.from("debts").insert({
-          company_id: companyId,
-          customer_id: customer.id,
-          amount: debtData.amount,
-          due_date: debtData.due_date,
-          description: debtData.description,
-          status: "pending",
-          classification: debtData.classification,
-          source_system: "manual",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        try {
+          await db.insert(debts).values({
+            companyId: companyId,
+            customerId: customer.id,
+            amount: String(debtData.amount),
+            dueDate: debtData.due_date,
+            description: debtData.description,
+            status: "pending",
+            classification: debtData.classification,
+            source: "manual",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
 
-        if (insertError) {
+          imported++
+        } catch (insertError: any) {
           errors.push(`Linha ${i + 1}: Erro ao inserir - ${insertError.message}`)
           continue
         }
-
-        imported++
       } catch (error: any) {
         errors.push(`Linha ${i + 1}: ${error.message}`)
       }

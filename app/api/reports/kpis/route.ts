@@ -1,18 +1,16 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { debts, payments, customers, collectionActions } from "@/lib/db/schema"
+import { eq, and, gte, gt, sql } from "drizzle-orm"
 import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -41,71 +39,57 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total debt amount
-    const { data: totalDebtData, error: totalDebtError } = await supabase
-      .from("debts")
-      .select("current_amount")
-      .eq("user_id", user.id)
-      .eq("status", "pending")
+    const totalDebtData = await db
+      .select({ amount: debts.amount })
+      .from(debts)
+      .where(and(eq(debts.companyId, user.companyId!), eq(debts.status, "pending")))
 
-    if (totalDebtError) {
-      console.error("Error fetching total debt:", totalDebtError)
-      return NextResponse.json({ error: "Failed to fetch debt data" }, { status: 500 })
-    }
-
-    const totalDebt = totalDebtData?.reduce((sum, debt) => sum + Number(debt.current_amount), 0) || 0
+    const totalDebt = totalDebtData?.reduce((sum, debt) => sum + Number(debt.amount), 0) || 0
 
     // Get recovered amount (paid debts)
-    const { data: recoveredData, error: recoveredError } = await supabase
-      .from("payments")
-      .select("amount")
-      .eq("user_id", user.id)
-      .gte("payment_date", startDate.toISOString().split("T")[0])
-
-    if (recoveredError) {
-      console.error("Error fetching recovered amount:", recoveredError)
-      return NextResponse.json({ error: "Failed to fetch payment data" }, { status: 500 })
-    }
+    const recoveredData = await db
+      .select({ amount: payments.amount })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.companyId, user.companyId!),
+          gte(payments.paidAt, startDate)
+        )
+      )
 
     const recoveredAmount = recoveredData?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0
 
     // Get customer counts
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("user_id", user.id)
-
-    if (customersError) {
-      console.error("Error fetching customers:", customersError)
-      return NextResponse.json({ error: "Failed to fetch customer data" }, { status: 500 })
-    }
+    const customersData = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(eq(customers.companyId, user.companyId!))
 
     const activeCustomers = customersData?.length || 0
 
-    // Get overdue customers (debts with days_overdue > 0)
-    const { data: overdueData, error: overdueError } = await supabase
-      .from("debts")
-      .select("customer_id")
-      .eq("user_id", user.id)
-      .gt("days_overdue", 0)
+    // Get overdue customers (debts past due date)
+    const overdueData = await db
+      .select({ customerId: debts.customerId })
+      .from(debts)
+      .where(
+        and(
+          eq(debts.companyId, user.companyId!),
+          gt(sql`CURRENT_DATE - ${debts.dueDate}::date`, 0)
+        )
+      )
 
-    if (overdueError) {
-      console.error("Error fetching overdue data:", overdueError)
-      return NextResponse.json({ error: "Failed to fetch overdue data" }, { status: 500 })
-    }
-
-    const overdueCustomers = new Set(overdueData?.map((d) => d.customer_id)).size || 0
+    const overdueCustomers = new Set(overdueData?.map((d) => d.customerId)).size || 0
 
     // Get collection actions count
-    const { data: actionsData, error: actionsError } = await supabase
-      .from("collection_actions")
-      .select("status")
-      .eq("user_id", user.id)
-      .gte("created_at", startDate.toISOString())
-
-    if (actionsError) {
-      console.error("Error fetching actions:", actionsError)
-      return NextResponse.json({ error: "Failed to fetch actions data" }, { status: 500 })
-    }
+    const actionsData = await db
+      .select({ status: collectionActions.status })
+      .from(collectionActions)
+      .where(
+        and(
+          eq(collectionActions.companyId, user.companyId!),
+          gte(collectionActions.createdAt, startDate)
+        )
+      )
 
     const totalActions = actionsData?.length || 0
     const successfulActions =

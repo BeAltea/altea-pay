@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { TrendingUp, AlertCircle, Users, Clock, CheckCircle } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { runCreditAnalysis } from "@/app/actions/credit-actions"
@@ -31,7 +30,6 @@ export default function EmpresaDashboardPage() {
   const [runningAnalysis, setRunningAnalysis] = useState(false)
   const { profile } = useAuth()
   const { toast } = useToast()
-  const supabase = createBrowserClient()
 
   useEffect(() => {
     if (profile?.company_id) {
@@ -43,35 +41,19 @@ export default function EmpresaDashboardPage() {
     try {
       setLoading(true)
 
-      const [customersResult, analysesResult, profilesResult] = await Promise.all([
-        supabase.from("customers").select("id", { count: "exact" }).eq("company_id", profile?.company_id),
-        supabase
-          .from("credit_profiles")
-          .select("*", { count: "exact" })
-          .eq("company_id", profile?.company_id)
-          .eq("status", "pending"),
-        supabase
-          .from("credit_profiles")
-          .select("score, risk_level")
-          .eq("company_id", profile?.company_id)
-          .eq("status", "completed"),
-      ])
+      const response = await fetch(`/api/company-dashboard?companyId=${profile?.company_id}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard data")
+      }
 
-      const totalCustomers = customersResult.count || 0
-      const pendingAnalyses = analysesResult.count || 0
-      const profiles = profilesResult.data || []
-
-      const analyzedCustomers = profiles.length
-      const highRiskCustomers = profiles.filter((p) => p.risk_level === "high" || p.risk_level === "very_high").length
-      const averageScore =
-        profiles.length > 0 ? profiles.reduce((sum, p) => sum + (p.score || 0), 0) / profiles.length : 0
+      const data = await response.json()
 
       setStats({
-        totalCustomers,
-        analyzedCustomers,
-        pendingAnalyses,
-        highRiskCustomers,
-        averageScore: Math.round(averageScore),
+        totalCustomers: data.totalCustomers || 0,
+        analyzedCustomers: data.analyzedCustomers || 0,
+        pendingAnalyses: data.pendingAnalyses || 0,
+        highRiskCustomers: data.highRiskCustomers || 0,
+        averageScore: data.averageScore || 0,
       })
     } catch (error: any) {
       console.error("[v0] Error loading dashboard data:", error)

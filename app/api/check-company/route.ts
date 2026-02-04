@@ -1,4 +1,5 @@
-import { createClient } from "@supabase/supabase-js"
+import { db } from "@/lib/db"
+import { companies } from "@/lib/db/schema"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
@@ -7,29 +8,11 @@ export async function POST(request: Request) {
 
     console.log("[API] Buscando empresa por email/CNPJ:", { email, cnpj })
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
-
-    // Fetch all companies (service role bypasses RLS)
-    const { data: allCompanies, error } = await supabase
-      .from("companies")
-      .select("*")
-
-    if (error) {
-      console.error("[API] Erro ao buscar companies:", error)
-      return NextResponse.json({ company: null, error: error.message })
-    }
+    // Fetch all companies
+    const allCompanies = await db.select().from(companies)
 
     console.log("[API] Total de empresas encontradas:", allCompanies?.length || 0)
-    
+
     if (allCompanies && allCompanies.length > 0) {
       console.log("[API] Empresas no banco:", allCompanies.map((c: any) => ({
         name: c.name,
@@ -44,7 +27,7 @@ export async function POST(request: Request) {
       const inputCnpj = cnpj?.replace(/\D/g, "")
       const cnpjMatch = companyCnpj === inputCnpj
       const emailMatch = comp.email?.toLowerCase() === email?.toLowerCase()
-      
+
       console.log("[API] Comparando:", {
         company: comp.name,
         companyCnpj,
@@ -54,7 +37,7 @@ export async function POST(request: Request) {
         inputEmail: email,
         emailMatch
       })
-      
+
       return cnpjMatch || emailMatch
     })
 

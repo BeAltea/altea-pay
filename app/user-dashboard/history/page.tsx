@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,12 +80,14 @@ export default function HistoryPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistory | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
-
-  const supabase = createClient()
+  const { session } = useAuth()
+  const user = session?.user
 
   useEffect(() => {
-    fetchPaymentHistory()
-  }, [])
+    if (user) {
+      fetchPaymentHistory()
+    }
+  }, [user])
 
   useEffect(() => {
     filterAndSortPayments()
@@ -93,45 +95,31 @@ export default function HistoryPage() {
 
   const fetchPaymentHistory = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data: realPayments, error } = await supabase
-        .from("payments")
-        .select(`
-          *,
-          debt:debts(
-            description,
-            customer:customers(name)
-          )
-        `)
-        .eq("user_id", user.id)
-        .order("payment_date", { ascending: false })
-
-      if (error) {
-        console.error("Error fetching payment history:", error)
-        setPayments([])
-      } else {
-        const formattedPayments = (realPayments || []).map((payment) => ({
-          id: payment.id,
-          debt_id: payment.debt_id,
-          amount: Number(payment.amount),
-          payment_date: payment.payment_date,
-          payment_method: payment.payment_method,
-          status: payment.status,
-          reference_number: payment.transaction_id || `REF-${payment.id.slice(0, 8)}`,
-          debt: {
-            description: payment.debt?.description || "",
-            customer: {
-              name: payment.debt?.customer?.name || "",
-            },
-          },
-        }))
-
-        setPayments(formattedPayments)
+      const response = await fetch(`/api/user-payments?userId=${user.id}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch payment history")
       }
+
+      const data = await response.json()
+      const formattedPayments = (data.payments || []).map((payment: any) => ({
+        id: payment.id,
+        debt_id: payment.debtId,
+        amount: Number(payment.amount),
+        payment_date: payment.paidAt || payment.createdAt,
+        payment_method: payment.method,
+        status: payment.status,
+        reference_number: payment.transactionId || `REF-${payment.id.slice(0, 8)}`,
+        debt: {
+          description: payment.debtDescription || "",
+          customer: {
+            name: payment.customerName || "",
+          },
+        },
+      }))
+
+      setPayments(formattedPayments)
     } catch (error) {
       console.error("Error fetching payment history:", error)
       toast({

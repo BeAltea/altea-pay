@@ -8,19 +8,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
 import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2 } from "lucide-react"
 import { UserFilters } from "@/components/super-admin/user-filters"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 interface User {
   id: string
   email: string
-  full_name: string
+  fullName: string
   role: "super_admin" | "admin" | "user"
-  company_name?: string
-  company_id?: string
+  companyName?: string
+  companyId?: string
   status: "active" | "inactive" | "suspended"
-  last_login: string
-  created_at: string
-  total_logins: number
+  lastLogin: string
+  createdAt: string
+  totalLogins: number
 }
 
 export default function UsersPage() {
@@ -32,48 +31,19 @@ export default function UsersPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const supabase = createBrowserClient()
+        const response = await fetch("/api/super-admin/users")
 
-        const { data: profiles, error } = await supabase
-          .from("profiles")
-          .select(`
-            id,
-            email,
-            full_name,
-            role,
-            company_id,
-            created_at,
-            companies (
-              name
-            )
-          `)
-          .order("created_at", { ascending: false })
-
-        if (error) {
-          console.error("[v0] Erro ao buscar profiles:", error)
-          throw error
+        if (!response.ok) {
+          throw new Error("Failed to fetch users")
         }
 
-        console.log("[v0] Total de usuários carregados:", profiles?.length || 0)
+        const users = await response.json()
 
-        // Transform to User format
-        const users: User[] = (profiles || []).map((profile: any) => ({
-          id: profile.id,
-          email: profile.email || "",
-          full_name: profile.full_name || "Sem nome",
-          role: profile.role || "user",
-          company_name: profile.companies?.name,
-          company_id: profile.company_id,
-          status: "active",
-          last_login: new Date().toISOString(),
-          created_at: profile.created_at,
-          total_logins: 0,
-        }))
-
+        console.log("[v0] Total de usuarios carregados:", users?.length || 0)
         setAllUsers(users)
-        console.log("[v0] Usuários carregados com sucesso:", users.length)
+        console.log("[v0] Usuarios carregados com sucesso:", users.length)
       } catch (error) {
-        console.error("[v0] Erro ao carregar usuários:", error)
+        console.error("[v0] Erro ao carregar usuarios:", error)
       } finally {
         setLoading(false)
       }
@@ -96,9 +66,9 @@ export default function UsersPage() {
       const searchLower = filters.search.toLowerCase()
       filtered = filtered.filter(
         (user) =>
-          user.full_name.toLowerCase().includes(searchLower) ||
+          user.fullName.toLowerCase().includes(searchLower) ||
           user.email.toLowerCase().includes(searchLower) ||
-          (user.company_name && user.company_name.toLowerCase().includes(searchLower)),
+          (user.companyName && user.companyName.toLowerCase().includes(searchLower)),
       )
     }
 
@@ -112,7 +82,7 @@ export default function UsersPage() {
       filtered = filtered.filter((user) => user.status === filters.status)
     }
 
-    console.log("[v0] Usuários filtrados:", filtered.length, "de", allUsers.length)
+    console.log("[v0] Usuarios filtrados:", filtered.length, "de", allUsers.length)
     setFilteredUsers(filtered)
     setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null)
   }
@@ -140,16 +110,16 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Gerenciamento de Usuários</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Gerenciamento de Usuarios</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
-            Gerencie todos os usuários do sistema Altea Pay.
+            Gerencie todos os usuarios do sistema Altea Pay.
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild className="w-full sm:w-auto">
             <Link href="/super-admin/users/new">
               <Plus className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Novo Usuário</span>
+              <span className="hidden sm:inline">Novo Usuario</span>
               <span className="sm:hidden">Novo</span>
             </Link>
           </Button>
@@ -160,7 +130,7 @@ export default function UsersPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
+            <CardTitle className="text-sm font-medium">Total de Usuarios</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -193,7 +163,7 @@ export default function UsersPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Regulares</CardTitle>
+            <CardTitle className="text-sm font-medium">Usuarios Regulares</CardTitle>
             <UserX className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -204,12 +174,12 @@ export default function UsersPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium">Usuarios Ativos</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalStats.activeUsers}</div>
-            <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
+            <p className="text-xs text-muted-foreground">Ultimos 30 dias</p>
           </CardContent>
         </Card>
       </div>
@@ -220,11 +190,11 @@ export default function UsersPage() {
       {/* Users List */}
       <Card>
         <CardHeader>
-          <CardTitle>Usuários do Sistema</CardTitle>
+          <CardTitle>Usuarios do Sistema</CardTitle>
           <CardDescription>
             {isFiltered
-              ? `${displayUsers.length} usuários encontrados (de ${allUsers.length} total)`
-              : "Lista completa de todos os usuários cadastrados"}
+              ? `${displayUsers.length} usuarios encontrados (de ${allUsers.length} total)`
+              : "Lista completa de todos os usuarios cadastrados"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -232,9 +202,9 @@ export default function UsersPage() {
             {displayUsers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Nenhum usuário encontrado</h3>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Nenhum usuario encontrado</h3>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Tente ajustar os filtros para encontrar os usuários desejados.
+                  Tente ajustar os filtros para encontrar os usuarios desejados.
                 </p>
               </div>
             ) : (
@@ -246,9 +216,9 @@ export default function UsersPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-4 mb-3 lg:mb-0">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src={`/generic-placeholder-icon.png`} alt={user.full_name} />
+                        <AvatarImage src={`/generic-placeholder-icon.png`} alt={user.fullName} />
                         <AvatarFallback className="bg-altea-gold/10 text-altea-navy">
-                          {user.full_name
+                          {user.fullName
                             .split(" ")
                             .map((n) => n[0])
                             .join("")
@@ -257,7 +227,7 @@ export default function UsersPage() {
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.full_name}</h3>
+                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.fullName}</h3>
                           <Badge
                             className={
                               user.role === "super_admin"
@@ -271,7 +241,7 @@ export default function UsersPage() {
                               ? "Super Admin"
                               : user.role === "admin"
                                 ? "Administrador"
-                                : "Usuário"}
+                                : "Usuario"}
                           </Badge>
                           <Badge
                             className={
@@ -287,12 +257,12 @@ export default function UsersPage() {
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-500 dark:text-gray-400">
                           <span>{user.email}</span>
-                          {user.company_name && (
+                          {user.companyName && (
                             <>
-                              <span className="hidden sm:inline">•</span>
+                              <span className="hidden sm:inline">-</span>
                               <div className="flex items-center space-x-1">
                                 <Building2 className="h-3 w-3" />
-                                <span>{user.company_name}</span>
+                                <span>{user.companyName}</span>
                               </div>
                             </>
                           )}
@@ -305,7 +275,7 @@ export default function UsersPage() {
                     <div className="grid grid-cols-2 sm:flex sm:space-x-6 gap-4 sm:gap-0">
                       <div className="text-center sm:text-right">
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {new Date(user.created_at).toLocaleDateString("pt-BR")}
+                          {new Date(user.createdAt).toLocaleDateString("pt-BR")}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Criado em</p>
                       </div>

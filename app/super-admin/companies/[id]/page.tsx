@@ -1,4 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { eq, desc, sql } from "drizzle-orm"
+import { companies, profiles, vmax, payments, debts } from "@/lib/db/schema"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,67 +36,42 @@ interface CompanyDetailsProps {
 
 export default async function CompanyDetailsPage({ params }: CompanyDetailsProps) {
   console.log("[v0] === COMPANY DETAILS PAGE v2 - WITH PAGINATION ===")
-  const supabase = createAdminClient()
 
-  const { data: companyData, error: companyError } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("id", params.id)
-    .single()
+  // Fetch company using Drizzle ORM
+  const [companyData] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, params.id))
+    .limit(1)
 
-  if (companyError || !companyData) {
-    console.error("[v0] Error fetching company:", companyError)
+  if (!companyData) {
+    console.error("[v0] Error fetching company: not found")
     notFound()
   }
 
-  // SOMENTE dados da tabela VMAX (tabelas customers, debts e payments foram descontinuadas)
+  // Fetch admins for this company using Drizzle ORM
+  const adminsData = await db
+    .select()
+    .from(profiles)
+    .where(sql`${profiles.companyId} = ${params.id} AND ${profiles.role} = 'admin'`)
 
-  const { data: adminsData } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("company_id", params.id)
-    .eq("role", "admin")
+  // Fetch VMAX data for this company using Drizzle ORM
+  const vmaxData = await db
+    .select()
+    .from(vmax)
+    .where(eq(vmax.idCompany, params.id))
 
-  // Buscar TODOS os registros VMAX para esta empresa (paginação para superar limite de 1000)
-  let vmaxData: any[] = []
-  let page = 0
-  const pageSize = 1000
-  let hasMore = true
+  console.log("[v0] TOTAL VMAX records for company:", vmaxData.length)
 
-  while (hasMore) {
-    const { data: vmaxPage, error: vmaxPageError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("id_company", params.id)
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (vmaxPageError) {
-      console.log("[v0] VMAX page error:", vmaxPageError.message)
-      break
-    }
-
-    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
-
-    if (vmaxPage && vmaxPage.length > 0) {
-      vmaxData = [...vmaxData, ...vmaxPage]
-      page++
-      hasMore = vmaxPage.length === pageSize
-    } else {
-      hasMore = false
-    }
-  }
-
-  console.log("[v0] TOTAL VMAX records for company (after pagination):", vmaxData.length)
-
-  // SOMENTE dados da tabela VMAX
+  // Calculate stats from VMAX data
   const totalCustomers = vmaxData.length
-  const totalDebts = vmaxData.filter((v) => !v["DT Cancelamento"]).length
+  const totalDebts = vmaxData.length // All VMAX records are debts
 
   const vmaxTotalAmount =
     vmaxData?.reduce((sum, v) => {
-      const vencidoStr = String(v.Vencido || "0")
+      const valorStr = String(v.valorTotal || "0")
       // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
-      const cleanValue = vencidoStr
+      const cleanValue = valorStr
         .replace(/R\$/g, "")
         .replace(/\s/g, "")
         .replace(/\./g, "") // Remove dots used as thousands separator
@@ -103,26 +80,26 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       return sum + value
     }, 0) || 0
 
-  // SOMENTE dados VMAX
+  // Only VMAX data
   const totalAmount = vmaxTotalAmount
-  const recoveredAmount = 0 // Não há dados de pagamentos na VMAX ainda
+  const recoveredAmount = 0 // No payment data in VMAX yet
   const recoveryRate = 0
 
   const vmaxOverdueDebts =
     vmaxData?.filter((v) => {
-      const diasInadStr = String(v["Dias Inad."] || "0")
-      // Remove ponto usado como separador de milhar no formato brasileiro
-      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
-      return diasInad > 0
+      const atrasoStr = String(v.maiorAtraso || "0")
+      // Remove dot used as thousands separator in Brazilian format
+      const atraso = Number(atrasoStr.replace(/\./g, "")) || 0
+      return atraso > 0
     }).length || 0
   const totalOverdueDebts = vmaxOverdueDebts
 
   const admins = adminsData?.length || 0
 
   const daysOverdueData = vmaxData?.map((v) => {
-    const diasStr = String(v["Dias Inad."] || "0")
-    // Remove ponto usado como separador de milhar no formato brasileiro
-    return Number(diasStr.replace(/\./g, "")) || 0
+    const atrasoStr = String(v.maiorAtraso || "0")
+    // Remove dot used as thousands separator in Brazilian format
+    return Number(atrasoStr.replace(/\./g, "")) || 0
   }) || []
   const avgDaysOverdue =
     daysOverdueData.length > 0 ? daysOverdueData.reduce((sum, days) => sum + days, 0) / daysOverdueData.length : 0
@@ -132,18 +109,20 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const debts61to90 = daysOverdueData.filter((d) => d > 60 && d <= 90).length
   const debtsOver90 = daysOverdueData.filter((d) => d > 90).length
 
-  const { data: recentPayments } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Fetch recent payments using Drizzle ORM
+  const recentPayments = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.companyId, params.id))
+    .orderBy(desc(payments.createdAt))
     .limit(2)
 
-  const { data: recentDebts } = await supabase
-    .from("debts")
-    .select("*")
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Fetch recent debts using Drizzle ORM
+  const recentDebtsData = await db
+    .select()
+    .from(debts)
+    .where(eq(debts.companyId, params.id))
+    .orderBy(desc(debts.createdAt))
     .limit(2)
 
   const recentActivity = [
@@ -153,16 +132,16 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       description: `Pagamento de ${new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
-      }).format(payment.amount)} recebido`,
-      amount: payment.amount,
-      time: new Date(payment.created_at).toLocaleDateString("pt-BR"),
+      }).format(Number(payment.amount))} recebido`,
+      amount: Number(payment.amount),
+      time: payment.createdAt ? new Date(payment.createdAt).toLocaleDateString("pt-BR") : "N/A",
       status: "success",
     })),
-    ...(recentDebts || []).map((debt) => ({
+    ...(recentDebtsData || []).map((debt) => ({
       id: debt.id,
       type: "debt_added",
-      description: `Nova dívida adicionada`,
-      time: new Date(debt.created_at).toLocaleDateString("pt-BR"),
+      description: `Nova divida adicionada`,
+      time: debt.createdAt ? new Date(debt.createdAt).toLocaleDateString("pt-BR") : "N/A",
       status: "info",
     })),
   ]
@@ -179,6 +158,8 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     })
   }
 
+  const combinedTotalAmount = totalAmount
+
   const company = {
     id: companyData.id,
     name: companyData.name,
@@ -186,10 +167,10 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     email: companyData.email || "N/A",
     phone: companyData.phone || "N/A",
     status: companyData.status || "active",
-    created_at: companyData.created_at,
-    description: companyData.description || "",
-    address: typeof companyData.address === "string" ? companyData.address : companyData.address || "N/A",
-    segment: companyData.segment || "N/A",
+    createdAt: companyData.createdAt,
+    description: "",
+    address: companyData.address || "N/A",
+    segment: companyData.sector || "N/A",
     totalCustomers,
     totalDebts: totalDebts + (vmaxData?.length || 0),
     totalAmount: combinedTotalAmount,
@@ -197,7 +178,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     recoveryRate,
     overdueDebts: totalOverdueDebts,
     admins,
-    lastActivity: companyData.updated_at || companyData.created_at,
+    lastActivity: companyData.updatedAt || companyData.createdAt,
   }
 
   console.log("[v0] Company details:", {
@@ -223,7 +204,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
           </Button>
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={companyData.logo_url || ""} alt={companyData.name} />
+              <AvatarImage src={companyData.logoUrl || ""} alt={companyData.name} />
               <AvatarFallback className="text-lg font-bold">
                 {companyData.name
                   .split(" ")
@@ -293,7 +274,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Dívidas</CardTitle>
+            <CardTitle className="text-sm font-medium">Total de Dividas</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -317,7 +298,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa de Recuperação</CardTitle>
+            <CardTitle className="text-sm font-medium">Taxa de Recuperacao</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -345,7 +326,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             >
               {Math.round(avgDaysOverdue)}
             </div>
-            <p className="text-xs text-muted-foreground">Média de atraso</p>
+            <p className="text-xs text-muted-foreground">Media de atraso</p>
           </CardContent>
         </Card>
       </div>
@@ -356,7 +337,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
         <div className="xl:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Informações da Empresa</CardTitle>
+              <CardTitle>Informacoes da Empresa</CardTitle>
               <CardDescription>Dados cadastrais e de contato</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -380,18 +361,18 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               <div className="flex items-start space-x-3">
                 <MapPin className="h-4 w-4 text-gray-400 mt-1" />
                 <div>
-                  <p className="text-sm font-medium">Endereço</p>
+                  <p className="text-sm font-medium">Endereco</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     {typeof company.address === "string"
                       ? company.address
-                      : `${company.address.street}, ${company.address.neighborhood}, ${company.address.city} - ${company.address.state}, ${company.address.cep}`}
+                      : `${company.address}`}
                   </p>
                 </div>
               </div>
 
               {company.description && (
                 <div>
-                  <p className="text-sm font-medium mb-2">Descrição</p>
+                  <p className="text-sm font-medium mb-2">Descricao</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">{company.description}</p>
                 </div>
               )}
@@ -402,7 +383,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
           <Card>
             <CardHeader>
               <CardTitle>Atividade Recente</CardTitle>
-              <CardDescription>Últimas ações e eventos da empresa</CardDescription>
+              <CardDescription>Ultimas acoes e eventos da empresa</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -446,8 +427,8 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
           <Card>
             <CardHeader>
-              <CardTitle>Distribuição de Atrasos</CardTitle>
-              <CardDescription>Classificação por dias de inadimplência</CardDescription>
+              <CardTitle>Distribuicao de Atrasos</CardTitle>
+              <CardDescription>Classificacao por dias de inadimplencia</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -496,7 +477,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                   <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium text-green-900 dark:text-green-100 text-sm">Sistema Operacional</p>
-                    <p className="text-xs text-green-700 dark:text-green-300">Última atividade: há 2 horas</p>
+                    <p className="text-xs text-green-700 dark:text-green-300">Ultima atividade: ha 2 horas</p>
                   </div>
                 </div>
               </div>
@@ -509,7 +490,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
                       <p className="font-medium text-orange-900 dark:text-orange-100 text-sm">
                         {company.overdueDebts} Casos em Atraso
                       </p>
-                      <p className="text-xs text-orange-700 dark:text-orange-300">Requerem atenção</p>
+                      <p className="text-xs text-orange-700 dark:text-orange-300">Requerem atencao</p>
                     </div>
                   </div>
                 </div>
@@ -519,7 +500,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
           <Card>
             <CardHeader>
-              <CardTitle>Ações Rápidas</CardTitle>
+              <CardTitle>Acoes Rapidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button asChild className="w-full bg-transparent" variant="outline">
@@ -537,7 +518,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/users`}>
                   <Users className="mr-2 h-4 w-4" />
-                  Gerenciar Usuários
+                  Gerenciar Usuarios
                 </Link>
               </Button>
               <Button asChild className="w-full" variant="default">
@@ -549,19 +530,19 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/erp-integration`}>
                   <Plug className="mr-2 h-4 w-4" />
-                  Integração ERP
+                  Integracao ERP
                 </Link>
               </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/reports`}>
                   <BarChart3 className="mr-2 h-4 w-4" />
-                  Ver Relatórios
+                  Ver Relatorios
                 </Link>
               </Button>
               <Button asChild className="w-full bg-transparent" variant="outline">
                 <Link href={`/super-admin/companies/${company.id}/settings`}>
                   <Settings className="mr-2 h-4 w-4" />
-                  Configurações
+                  Configuracoes
                 </Link>
               </Button>
             </CardContent>

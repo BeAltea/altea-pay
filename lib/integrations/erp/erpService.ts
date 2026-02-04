@@ -1,86 +1,90 @@
-// Serviço genérico para integração com ERPs
+// Servico generico para integracao com ERPs
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { eq, and, gte } from "drizzle-orm"
+import { erpIntegrations, erpIntegrationLogs, customers, debts, payments, creditProfiles } from "@/lib/db/schema"
 import type { ERPConnectionConfig, SyncResult, IntegrationLog } from "./types"
 import { getConnector } from "./connectors"
 import { normalizeCustomerData, normalizeDebtData } from "@/lib/utils/normalizeData"
 import { analyzeCreditFree, analyzeCreditAssertiva } from "@/services/creditAnalysisService"
 
 export class ERPService {
-  private async getSupabase() {
-    return await createClient()
-  }
-
-  // Testa conexão com o ERP
+  // Testa conexao com o ERP
   async testConnection(integrationId: string): Promise<boolean> {
     const startTime = Date.now()
 
     try {
       console.log("Testing ERP connection:", integrationId)
 
-      const supabase = await this.getSupabase()
+      const integrationRecords = await db
+        .select()
+        .from(erpIntegrations)
+        .where(eq(erpIntegrations.id, integrationId))
+        .limit(1)
 
-      const { data: integration, error } = await supabase
-        .from("erp_integrations")
-        .select("*")
-        .eq("id", integrationId)
-        .single()
+      const integration = integrationRecords[0]
 
-      if (error || !integration) {
+      if (!integration) {
         throw new Error("Integration not found")
       }
 
-      const connector = getConnector(integration.erp_type)
+      const connector = getConnector(integration.erpType)
       if (!connector) {
-        throw new Error(`Connector not found for type: ${integration.erp_type}`)
+        throw new Error(`Connector not found for type: ${integration.erpType}`)
       }
 
+      // Build config from integration data - using config and credentials jsonb fields
+      const integrationConfig = integration.config as any || {}
+      const integrationCredentials = integration.credentials as any || {}
+
       const config: ERPConnectionConfig = {
-        base_url: integration.base_url,
-        auth_token: integration.auth_token,
-        auth_type: integration.auth_type,
-        customers_endpoint: integration.customers_endpoint,
-        debts_endpoint: integration.debts_endpoint,
-        sync_endpoint: integration.sync_endpoint,
-        config: integration.config,
+        base_url: integrationConfig.base_url || "",
+        auth_token: integrationCredentials.auth_token || "",
+        auth_type: integrationConfig.auth_type || "bearer",
+        customers_endpoint: integrationConfig.customers_endpoint || "",
+        debts_endpoint: integrationConfig.debts_endpoint || "",
+        sync_endpoint: integrationConfig.sync_endpoint || "",
+        config: integrationConfig,
       }
 
       const isConnected = await connector.testConnection(config)
 
       await this.createLog({
-        integration_id: integrationId,
-        company_id: integration.company_id,
-        operation_type: "test_connection",
+        integrationId: integrationId,
+        companyId: integration.companyId,
+        action: "test_connection",
         status: isConnected ? "success" : "error",
-        records_processed: 0,
-        records_success: 0,
-        records_failed: 0,
-        duration_ms: Date.now() - startTime,
+        details: {
+          records_processed: 0,
+          records_success: 0,
+          records_failed: 0,
+          duration_ms: Date.now() - startTime,
+        },
       })
 
       return isConnected
     } catch (error) {
       console.error("Error testing connection:", error)
 
-      const supabase = await this.getSupabase()
-
       await this.createLog({
-        integration_id: integrationId,
-        company_id: "",
-        operation_type: "test_connection",
+        integrationId: integrationId,
+        companyId: "",
+        action: "test_connection",
         status: "error",
-        records_processed: 0,
-        records_success: 0,
-        records_failed: 0,
-        error_message: error instanceof Error ? error.message : "Unknown error",
-        duration_ms: Date.now() - startTime,
+        error: error instanceof Error ? error.message : "Unknown error",
+        details: {
+          records_processed: 0,
+          records_success: 0,
+          records_failed: 0,
+          duration_ms: Date.now() - startTime,
+        },
       })
 
       return false
     }
   }
 
-  // Sincroniza clientes do ERP para o Supabase
+  // Sincroniza clientes do ERP para o banco
   async syncCustomers(integrationId: string): Promise<SyncResult> {
     const startTime = Date.now()
     const errors: Array<{ record: any; error: string }> = []
@@ -88,31 +92,35 @@ export class ERPService {
     try {
       console.log("Syncing customers from ERP:", integrationId)
 
-      const supabase = await this.getSupabase()
+      const integrationRecords = await db
+        .select()
+        .from(erpIntegrations)
+        .where(eq(erpIntegrations.id, integrationId))
+        .limit(1)
 
-      const { data: integration, error } = await supabase
-        .from("erp_integrations")
-        .select("*")
-        .eq("id", integrationId)
-        .single()
+      const integration = integrationRecords[0]
 
-      if (error || !integration) {
+      if (!integration) {
         throw new Error("Integration not found")
       }
 
-      const connector = getConnector(integration.erp_type)
+      const connector = getConnector(integration.erpType)
       if (!connector) {
-        throw new Error(`Connector not found for type: ${integration.erp_type}`)
+        throw new Error(`Connector not found for type: ${integration.erpType}`)
       }
 
+      // Build config from integration data
+      const integrationConfig = integration.config as any || {}
+      const integrationCredentials = integration.credentials as any || {}
+
       const config: ERPConnectionConfig = {
-        base_url: integration.base_url,
-        auth_token: integration.auth_token,
-        auth_type: integration.auth_type,
-        customers_endpoint: integration.customers_endpoint,
-        debts_endpoint: integration.debts_endpoint,
-        sync_endpoint: integration.sync_endpoint,
-        config: integration.config,
+        base_url: integrationConfig.base_url || "",
+        auth_token: integrationCredentials.auth_token || "",
+        auth_type: integrationConfig.auth_type || "bearer",
+        customers_endpoint: integrationConfig.customers_endpoint || "",
+        debts_endpoint: integrationConfig.debts_endpoint || "",
+        sync_endpoint: integrationConfig.sync_endpoint || "",
+        config: integrationConfig,
       }
 
       // Busca clientes do ERP
@@ -125,7 +133,7 @@ export class ERPService {
       // Processa cada cliente
       for (const rawCustomer of rawCustomers) {
         try {
-          const normalized = normalizeCustomerData(rawCustomer, integration.erp_type, integration.company_id)
+          const normalized = normalizeCustomerData(rawCustomer, integration.erpType, integration.companyId)
 
           if (!normalized) {
             failedCount++
@@ -133,60 +141,66 @@ export class ERPService {
             continue
           }
 
-          // Verifica se cliente já existe
-          const { data: existing } = await supabase
-            .from("customers")
-            .select("id")
-            .eq("external_id", normalized.external_id)
-            .eq("company_id", normalized.company_id)
-            .single()
+          // Verifica se cliente ja existe
+          const existingRecords = await db
+            .select({ id: customers.id })
+            .from(customers)
+            .where(
+              and(
+                eq(customers.externalId, normalized.external_id),
+                eq(customers.companyId, normalized.company_id)
+              )
+            )
+            .limit(1)
+
+          const existing = existingRecords[0]
 
           if (existing) {
             // Atualiza cliente existente
-            const { error: updateError } = await supabase
-              .from("customers")
-              .update({
+            try {
+              await db
+                .update(customers)
+                .set({
+                  name: normalized.name,
+                  document: normalized.cpfCnpj,
+                  email: normalized.email,
+                  phone: normalized.phone,
+                  address: normalized.address,
+                  city: normalized.city,
+                  state: normalized.state,
+                  zipCode: normalized.zip_code,
+                  sourceSystem: normalized.source_system,
+                  updatedAt: new Date(),
+                })
+                .where(eq(customers.id, existing.id))
+
+              successCount++
+            } catch (updateError: any) {
+              failedCount++
+              errors.push({ record: rawCustomer, error: updateError.message })
+            }
+          } else {
+            // Cria novo cliente
+            try {
+              await db.insert(customers).values({
+                externalId: normalized.external_id,
                 name: normalized.name,
                 document: normalized.cpfCnpj,
+                documentType: normalized.cpfCnpj.length === 11 ? "CPF" : "CNPJ",
                 email: normalized.email,
                 phone: normalized.phone,
                 address: normalized.address,
                 city: normalized.city,
                 state: normalized.state,
-                zip_code: normalized.zip_code,
-                source_system: normalized.source_system,
-                updated_at: new Date().toISOString(),
+                zipCode: normalized.zip_code,
+                sourceSystem: normalized.source_system,
+                companyId: normalized.company_id,
               })
-              .eq("id", existing.id)
 
-            if (updateError) {
-              failedCount++
-              errors.push({ record: rawCustomer, error: updateError.message })
-            } else {
               successCount++
-            }
-          } else {
-            // Cria novo cliente
-            const { error: insertError } = await supabase.from("customers").insert({
-              external_id: normalized.external_id,
-              name: normalized.name,
-              document: normalized.cpfCnpj,
-              document_type: normalized.cpfCnpj.length === 11 ? "CPF" : "CNPJ",
-              email: normalized.email,
-              phone: normalized.phone,
-              address: normalized.address,
-              city: normalized.city,
-              state: normalized.state,
-              zip_code: normalized.zip_code,
-              source_system: normalized.source_system,
-              company_id: normalized.company_id,
-            })
-
-            if (insertError) {
+            } catch (insertError: any) {
               failedCount++
               errors.push({ record: rawCustomer, error: insertError.message })
-            } else {
-              successCount++
             }
           }
         } catch (error) {
@@ -207,20 +221,25 @@ export class ERPService {
         duration_ms: Date.now() - startTime,
       }
 
-      // Atualiza última sincronização
-      await supabase.from("erp_integrations").update({ last_sync_at: new Date().toISOString() }).eq("id", integrationId)
+      // Atualiza ultima sincronizacao
+      await db
+        .update(erpIntegrations)
+        .set({ lastSyncAt: new Date() })
+        .where(eq(erpIntegrations.id, integrationId))
 
       // Cria log
       await this.createLog({
-        integration_id: integrationId,
-        company_id: integration.company_id,
-        operation_type: "sync_customers",
+        integrationId: integrationId,
+        companyId: integration.companyId,
+        action: "sync_customers",
         status: result.success ? "success" : failedCount < rawCustomers.length ? "warning" : "error",
-        records_processed: result.records_processed,
-        records_success: result.records_success,
-        records_failed: result.records_failed,
-        error_message: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
-        duration_ms: result.duration_ms,
+        error: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
+        details: {
+          records_processed: result.records_processed,
+          records_success: result.records_success,
+          records_failed: result.records_failed,
+          duration_ms: result.duration_ms,
+        },
       })
 
       return result
@@ -240,7 +259,7 @@ export class ERPService {
     }
   }
 
-  // Sincroniza dívidas do ERP para o Supabase
+  // Sincroniza dividas do ERP para o banco
   async syncDebts(integrationId: string): Promise<SyncResult> {
     const startTime = Date.now()
     const errors: Array<{ record: any; error: string }> = []
@@ -248,44 +267,48 @@ export class ERPService {
     try {
       console.log("Syncing debts from ERP:", integrationId)
 
-      const supabase = await this.getSupabase()
+      const integrationRecords = await db
+        .select()
+        .from(erpIntegrations)
+        .where(eq(erpIntegrations.id, integrationId))
+        .limit(1)
 
-      const { data: integration, error } = await supabase
-        .from("erp_integrations")
-        .select("*")
-        .eq("id", integrationId)
-        .single()
+      const integration = integrationRecords[0]
 
-      if (error || !integration) {
+      if (!integration) {
         throw new Error("Integration not found")
       }
 
-      const connector = getConnector(integration.erp_type)
+      const connector = getConnector(integration.erpType)
       if (!connector) {
-        throw new Error(`Connector not found for type: ${integration.erp_type}`)
+        throw new Error(`Connector not found for type: ${integration.erpType}`)
       }
+
+      // Build config from integration data
+      const integrationConfig = integration.config as any || {}
+      const integrationCredentials = integration.credentials as any || {}
 
       const config: ERPConnectionConfig = {
-        base_url: integration.base_url,
-        auth_token: integration.auth_token,
-        auth_type: integration.auth_type,
-        customers_endpoint: integration.customers_endpoint,
-        debts_endpoint: integration.debts_endpoint,
-        sync_endpoint: integration.sync_endpoint,
-        config: integration.config,
+        base_url: integrationConfig.base_url || "",
+        auth_token: integrationCredentials.auth_token || "",
+        auth_type: integrationConfig.auth_type || "bearer",
+        customers_endpoint: integrationConfig.customers_endpoint || "",
+        debts_endpoint: integrationConfig.debts_endpoint || "",
+        sync_endpoint: integrationConfig.sync_endpoint || "",
+        config: integrationConfig,
       }
 
-      // Busca dívidas do ERP
+      // Busca dividas do ERP
       const rawDebts = await connector.fetchDebts(config)
       console.log("Fetched debts from ERP:", rawDebts.length)
 
       let successCount = 0
       let failedCount = 0
 
-      // Processa cada dívida
+      // Processa cada divida
       for (const rawDebt of rawDebts) {
         try {
-          const normalized = normalizeDebtData(rawDebt, integration.erp_type, integration.company_id)
+          const normalized = normalizeDebtData(rawDebt, integration.erpType, integration.companyId)
 
           if (!normalized) {
             failedCount++
@@ -294,12 +317,18 @@ export class ERPService {
           }
 
           // Busca o customer_id pelo external_id
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("id")
-            .eq("external_id", normalized.customer_external_id)
-            .eq("company_id", normalized.company_id)
-            .single()
+          const customerRecords = await db
+            .select({ id: customers.id })
+            .from(customers)
+            .where(
+              and(
+                eq(customers.externalId, normalized.customer_external_id),
+                eq(customers.companyId, normalized.company_id)
+              )
+            )
+            .limit(1)
+
+          const customer = customerRecords[0]
 
           if (!customer) {
             failedCount++
@@ -307,54 +336,60 @@ export class ERPService {
             continue
           }
 
-          // Verifica se dívida já existe
-          const { data: existing } = await supabase
-            .from("debts")
-            .select("id")
-            .eq("external_id", normalized.external_id)
-            .eq("company_id", normalized.company_id)
-            .single()
+          // Verifica se divida ja existe
+          const existingRecords = await db
+            .select({ id: debts.id })
+            .from(debts)
+            .where(
+              and(
+                eq(debts.externalId, normalized.external_id),
+                eq(debts.companyId, normalized.company_id)
+              )
+            )
+            .limit(1)
+
+          const existing = existingRecords[0]
 
           if (existing) {
-            // Atualiza dívida existente
-            const { error: updateError } = await supabase
-              .from("debts")
-              .update({
-                amount: normalized.amount,
-                due_date: normalized.due_date,
+            // Atualiza divida existente
+            try {
+              await db
+                .update(debts)
+                .set({
+                  amount: String(normalized.amount),
+                  dueDate: normalized.due_date,
+                  description: normalized.description,
+                  status: normalized.status,
+                  classification: normalized.classification,
+                  source: normalized.source_system,
+                  updatedAt: new Date(),
+                })
+                .where(eq(debts.id, existing.id))
+
+              successCount++
+            } catch (updateError: any) {
+              failedCount++
+              errors.push({ record: rawDebt, error: updateError.message })
+            }
+          } else {
+            // Cria nova divida
+            try {
+              await db.insert(debts).values({
+                externalId: normalized.external_id,
+                customerId: customer.id,
+                amount: String(normalized.amount),
+                dueDate: normalized.due_date,
                 description: normalized.description,
                 status: normalized.status,
                 classification: normalized.classification,
-                source_system: normalized.source_system,
-                updated_at: new Date().toISOString(),
+                source: normalized.source_system,
+                companyId: normalized.company_id,
               })
-              .eq("id", existing.id)
 
-            if (updateError) {
-              failedCount++
-              errors.push({ record: rawDebt, error: updateError.message })
-            } else {
               successCount++
-            }
-          } else {
-            // Cria nova dívida
-            const { error: insertError } = await supabase.from("debts").insert({
-              external_id: normalized.external_id,
-              customer_id: customer.id,
-              amount: normalized.amount,
-              due_date: normalized.due_date,
-              description: normalized.description,
-              status: normalized.status,
-              classification: normalized.classification,
-              source_system: normalized.source_system,
-              company_id: normalized.company_id,
-            })
-
-            if (insertError) {
+            } catch (insertError: any) {
               failedCount++
               errors.push({ record: rawDebt, error: insertError.message })
-            } else {
-              successCount++
             }
           }
         } catch (error) {
@@ -375,20 +410,25 @@ export class ERPService {
         duration_ms: Date.now() - startTime,
       }
 
-      // Atualiza última sincronização
-      await supabase.from("erp_integrations").update({ last_sync_at: new Date().toISOString() }).eq("id", integrationId)
+      // Atualiza ultima sincronizacao
+      await db
+        .update(erpIntegrations)
+        .set({ lastSyncAt: new Date() })
+        .where(eq(erpIntegrations.id, integrationId))
 
       // Cria log
       await this.createLog({
-        integration_id: integrationId,
-        company_id: integration.company_id,
-        operation_type: "sync_debts",
+        integrationId: integrationId,
+        companyId: integration.companyId,
+        action: "sync_debts",
         status: result.success ? "success" : failedCount < rawDebts.length ? "warning" : "error",
-        records_processed: result.records_processed,
-        records_success: result.records_success,
-        records_failed: result.records_failed,
-        error_message: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
-        duration_ms: result.duration_ms,
+        error: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
+        details: {
+          records_processed: result.records_processed,
+          records_success: result.records_success,
+          records_failed: result.records_failed,
+          duration_ms: result.duration_ms,
+        },
       })
 
       return result
@@ -415,41 +455,58 @@ export class ERPService {
     try {
       console.log("Syncing results to ERP:", integrationId)
 
-      const supabase = await this.getSupabase()
+      const integrationRecords = await db
+        .select()
+        .from(erpIntegrations)
+        .where(eq(erpIntegrations.id, integrationId))
+        .limit(1)
 
-      const { data: integration, error } = await supabase
-        .from("erp_integrations")
-        .select("*")
-        .eq("id", integrationId)
-        .single()
+      const integration = integrationRecords[0]
 
-      if (error || !integration) {
+      if (!integration) {
         throw new Error("Integration not found")
       }
 
-      const connector = getConnector(integration.erp_type)
+      const connector = getConnector(integration.erpType)
       if (!connector) {
-        throw new Error(`Connector not found for type: ${integration.erp_type}`)
+        throw new Error(`Connector not found for type: ${integration.erpType}`)
       }
+
+      // Build config from integration data
+      const integrationConfig = integration.config as any || {}
+      const integrationCredentials = integration.credentials as any || {}
 
       const config: ERPConnectionConfig = {
-        base_url: integration.base_url,
-        auth_token: integration.auth_token,
-        auth_type: integration.auth_type,
-        customers_endpoint: integration.customers_endpoint,
-        debts_endpoint: integration.debts_endpoint,
-        sync_endpoint: integration.sync_endpoint,
-        config: integration.config,
+        base_url: integrationConfig.base_url || "",
+        auth_token: integrationCredentials.auth_token || "",
+        auth_type: integrationConfig.auth_type || "bearer",
+        customers_endpoint: integrationConfig.customers_endpoint || "",
+        debts_endpoint: integrationConfig.debts_endpoint || "",
+        sync_endpoint: integrationConfig.sync_endpoint || "",
+        config: integrationConfig,
       }
 
-      // Busca pagamentos das últimas 24h
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("*, debt:debts(external_id)")
-        .eq("company_id", integration.company_id)
-        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      // Busca pagamentos das ultimas 24h
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-      if (!payments || payments.length === 0) {
+      const paymentsData = await db
+        .select({
+          id: payments.id,
+          amount: payments.amount,
+          paidAt: payments.paidAt,
+          status: payments.status,
+          method: payments.method,
+          debtId: payments.debtId,
+        })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.companyId, integration.companyId),
+            gte(payments.createdAt, twentyFourHoursAgo)
+          )
+        )
+
+      if (!paymentsData || paymentsData.length === 0) {
         const result: SyncResult = {
           success: true,
           records_processed: 0,
@@ -460,27 +517,41 @@ export class ERPService {
         }
 
         await this.createLog({
-          integration_id: integrationId,
-          company_id: integration.company_id,
-          operation_type: "sync_results",
+          integrationId: integrationId,
+          companyId: integration.companyId,
+          action: "sync_results",
           status: "success",
-          records_processed: 0,
-          records_success: 0,
-          records_failed: 0,
-          duration_ms: result.duration_ms,
+          details: {
+            records_processed: 0,
+            records_success: 0,
+            records_failed: 0,
+            duration_ms: result.duration_ms,
+          },
         })
 
         return result
       }
 
+      // Get debt external_ids for the payments
+      const debtIds = paymentsData.map(p => p.debtId).filter((id): id is string => id !== null)
+
+      const debtsData = debtIds.length > 0
+        ? await db
+            .select({ id: debts.id, externalId: debts.externalId })
+            .from(debts)
+            .where(eq(debts.companyId, integration.companyId))
+        : []
+
+      const debtExternalIdMap = new Map(debtsData.map(d => [d.id, d.externalId]))
+
       // Formata dados para envio
-      const dataToSync = payments.map((payment) => ({
-        external_id: payment.debt?.external_id,
+      const dataToSync = paymentsData.map((payment) => ({
+        external_id: payment.debtId ? debtExternalIdMap.get(payment.debtId) : undefined,
         payment_id: payment.id,
         amount: payment.amount,
-        payment_date: payment.payment_date,
+        payment_date: payment.paidAt?.toISOString(),
         status: payment.status,
-        payment_method: payment.payment_method,
+        payment_method: payment.method,
       }))
 
       // Envia para o ERP
@@ -496,15 +567,17 @@ export class ERPService {
       }
 
       await this.createLog({
-        integration_id: integrationId,
-        company_id: integration.company_id,
-        operation_type: "sync_results",
+        integrationId: integrationId,
+        companyId: integration.companyId,
+        action: "sync_results",
         status: result.success ? "success" : "error",
-        records_processed: result.records_processed,
-        records_success: result.records_success,
-        records_failed: result.records_failed,
-        error_message: result.success ? undefined : "Failed to sync results to ERP",
-        duration_ms: result.duration_ms,
+        error: result.success ? undefined : "Failed to sync results to ERP",
+        details: {
+          records_processed: result.records_processed,
+          records_success: result.records_success,
+          records_failed: result.records_failed,
+          duration_ms: result.duration_ms,
+        },
       })
 
       return result
@@ -541,54 +614,67 @@ export class ERPService {
         return syncResult
       }
 
-      const supabase = await this.getSupabase()
+      // Busca a integracao para pegar o company_id
+      const integrationRecords = await db
+        .select({ companyId: erpIntegrations.companyId })
+        .from(erpIntegrations)
+        .where(eq(erpIntegrations.id, integrationId))
+        .limit(1)
 
-      // Busca a integração para pegar o company_id
-      const { data: integration } = await supabase
-        .from("erp_integrations")
-        .select("company_id")
-        .eq("id", integrationId)
-        .single()
+      const integration = integrationRecords[0]
 
       if (!integration) {
         throw new Error("Integration not found")
       }
 
-      // Busca clientes recém-sincronizados (últimos 5 minutos)
-      const { data: customers } = await supabase
-        .from("customers")
-        .select("id, name, document, email, phone")
-        .eq("company_id", integration.company_id)
-        .gte("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+      // Busca clientes recem-sincronizados (ultimos 5 minutos)
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
 
-      if (!customers || customers.length === 0) {
+      const customersData = await db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          document: customers.document,
+          email: customers.email,
+          phone: customers.phone,
+        })
+        .from(customers)
+        .where(
+          and(
+            eq(customers.companyId, integration.companyId),
+            gte(customers.createdAt, fiveMinutesAgo)
+          )
+        )
+
+      if (!customersData || customersData.length === 0) {
         return syncResult
       }
 
-      console.log("Running credit analysis for", customers.length, "new customers")
+      console.log("Running credit analysis for", customersData.length, "new customers")
 
       let analysisSuccess = 0
       let analysisFailed = 0
 
-      // Executa análise de crédito para cada cliente novo
-      for (const customer of customers) {
+      // Executa analise de credito para cada cliente novo
+      for (const customer of customersData) {
         try {
           const analysisResult =
             analysisType === "free"
-              ? await analyzeCreditFree(customer.document, customer.name)
-              : await analyzeCreditAssertiva(customer.document, customer.name)
+              ? await analyzeCreditFree(customer.document || "", customer.name || "")
+              : await analyzeCreditAssertiva(customer.document || "", customer.name || "")
 
           if (analysisResult.success) {
-            // Salva resultado da análise
-            await supabase.from("credit_profiles").insert({
-              customer_id: customer.id,
-              company_id: integration.company_id,
-              document: customer.document,
-              score: analysisResult.score,
-              risk_level: analysisResult.risk_level,
-              analysis_type: analysisType,
-              analysis_data: analysisResult.data,
-              analyzed_at: new Date().toISOString(),
+            // Salva resultado da analise
+            await db.insert(creditProfiles).values({
+              customerId: customer.id,
+              companyId: integration.companyId,
+              cpf: customer.document,
+              score: analysisResult.score ? String(analysisResult.score) : null,
+              riskLevel: analysisResult.risk_level,
+              analysisType: analysisType,
+              data: analysisResult.details,
+              createdAt: new Date(),
+              updatedAt: new Date(),
             })
 
             analysisSuccess++
@@ -607,17 +693,19 @@ export class ERPService {
 
       console.log("Credit analysis completed:", analysisSuccess, "success,", analysisFailed, "failed")
 
-      // Cria log da operação de análise
+      // Cria log da operacao de analise
       await this.createLog({
-        integration_id: integrationId,
-        company_id: integration.company_id,
-        operation_type: "credit_analysis",
-        status: analysisFailed === 0 ? "success" : analysisFailed < customers.length ? "warning" : "error",
-        records_processed: customers.length,
-        records_success: analysisSuccess,
-        records_failed: analysisFailed,
-        error_message: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
-        duration_ms: Date.now() - startTime,
+        integrationId: integrationId,
+        companyId: integration.companyId,
+        action: "credit_analysis",
+        status: analysisFailed === 0 ? "success" : analysisFailed < customersData.length ? "warning" : "error",
+        error: errors.length > 0 ? JSON.stringify(errors.slice(0, 5)) : undefined,
+        details: {
+          records_processed: customersData.length,
+          records_success: analysisSuccess,
+          records_failed: analysisFailed,
+          duration_ms: Date.now() - startTime,
+        },
       })
 
       return {
@@ -640,17 +728,29 @@ export class ERPService {
     }
   }
 
-  // Cria log de integração
-  private async createLog(log: Omit<IntegrationLog, "id" | "created_at">): Promise<void> {
+  // Cria log de integracao
+  private async createLog(log: {
+    integrationId: string
+    companyId: string
+    action: string
+    status: string
+    error?: string
+    details?: any
+  }): Promise<void> {
     try {
-      const supabase = await this.getSupabase()
-
-      await supabase.from("erp_integration_logs").insert(log)
+      await db.insert(erpIntegrationLogs).values({
+        integrationId: log.integrationId,
+        companyId: log.companyId,
+        action: log.action,
+        status: log.status,
+        error: log.error,
+        details: log.details,
+      })
     } catch (error) {
       console.error("Error creating log:", error)
     }
   }
 }
 
-// Exporta instância singleton
+// Exporta instancia singleton
 export const erpService = new ERPService()

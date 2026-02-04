@@ -1,4 +1,7 @@
-import { createAdminClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth/config"
+import { db } from "@/lib/db"
+import { eq } from "drizzle-orm"
+import { vmax, companies } from "@/lib/db/schema"
 import { redirect } from "next/navigation"
 import { NegotiationForm } from "@/components/super-admin/negotiation-form"
 import { Card, CardContent } from "@/components/ui/card"
@@ -12,22 +15,42 @@ export default async function SuperAdminNegotiatePage({
 }: {
   params: { id: string; customerId: string }
 }) {
-  const supabase = createAdminClient()
+  const session = await auth()
+  const user = session?.user
 
-  // Get customer data
-  const { data: customer } = await supabase.from("VMAX").select("*").eq("id", params.customerId).single()
+  if (!user) {
+    redirect("/auth/login")
+  }
+
+  // Get customer data from VMAX
+  const [customer] = await db
+    .select()
+    .from(vmax)
+    .where(eq(vmax.id, params.customerId))
+    .limit(1)
 
   if (!customer) {
     redirect(`/super-admin/companies/${params.id}`)
   }
 
   // Get company data
-  const { data: company } = await supabase.from("companies").select("*").eq("id", params.id).single()
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, params.id))
+    .limit(1)
 
-  // Parse Vencido value
-  const vencidoStr = String(customer.Vencido || "0")
+  // Access metadata for additional fields
+  const metadata = customer.analysisMetadata as any
+
+  // Parse Vencido value - try valorTotal first, then metadata
+  const vencidoStr = String(customer.valorTotal || metadata?.Vencido || "0")
   const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
   const totalDebt = Number(cleanValue) || 0
+
+  // Get days overdue
+  const diasInadStr = String(customer.maiorAtraso || metadata?.["Dias Inad."] || "0")
+  const daysOverdue = Number(diasInadStr.replace(/\D/g, "")) || 0
 
   return (
     <div className="container mx-auto p-4 md:p-8 max-w-5xl space-y-6">
@@ -40,9 +63,9 @@ export default async function SuperAdminNegotiatePage({
       </Link>
 
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Nova Negociação</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Nova Negociacao</h1>
         <p className="text-muted-foreground">
-          Criar proposta de acordo para <span className="font-medium text-foreground">{customer.Cliente}</span>
+          Criar proposta de acordo para <span className="font-medium text-foreground">{customer.cliente}</span>
         </p>
       </div>
 
@@ -51,8 +74,8 @@ export default async function SuperAdminNegotiatePage({
           <CardContent className="pt-6">
             <div className="space-y-1">
               <p className="text-sm font-medium text-muted-foreground">Cliente</p>
-              <h3 className="text-xl font-bold">{customer.Cliente}</h3>
-              <p className="text-sm text-muted-foreground">{customer["CPF/CNPJ"]}</p>
+              <h3 className="text-xl font-bold">{customer.cliente}</h3>
+              <p className="text-sm text-muted-foreground">{customer.cpfCnpj}</p>
             </div>
           </CardContent>
         </Card>
@@ -73,7 +96,7 @@ export default async function SuperAdminNegotiatePage({
               <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">
                 R$ {totalDebt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </h3>
-              <p className="text-sm text-red-700 dark:text-red-400">{Number(String(customer["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias em atraso</p>
+              <p className="text-sm text-red-700 dark:text-red-400">{daysOverdue} dias em atraso</p>
             </div>
           </CardContent>
         </Card>
@@ -84,7 +107,7 @@ export default async function SuperAdminNegotiatePage({
           customerId={params.customerId}
           companyId={params.id}
           totalDebt={totalDebt}
-          customerName={customer.Cliente}
+          customerName={customer.cliente || ""}
           isSuperAdmin={true}
         />
       </div>

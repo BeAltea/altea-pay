@@ -1,4 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { companies, profiles, vmax } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -29,63 +31,27 @@ export const revalidate = 0 // Force no cache for this page
 
 async function fetchCompanies() {
   console.log("[v0] ========== COMPANIES PAGE v3 - PAGINATION ENABLED ==========")
-  
-  const supabase = createAdminClient()
 
-  const { data: companiesData, error: companiesError } = await supabase.from("companies").select("*")
-
-  if (companiesError) {
-    console.error("[v0] Error fetching companies:", companiesError)
-    return []
-  }
+  const companiesData = await db.select().from(companies)
 
   // SOMENTE dados da tabela VMAX (tabelas customers, debts e payments foram descontinuadas)
 
-  const { data: adminsData, error: adminsError } = await supabase
-    .from("profiles")
-    .select("company_id, role")
-    .eq("role", "admin")
+  const adminsData = await db
+    .select({ companyId: profiles.companyId, role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.role, "admin"))
 
-  if (adminsError) {
-    console.error("[v0] Error fetching admins:", adminsError)
-  }
+  // Buscar TODOS os registros VMAX
+  const vmaxData = await db.select().from(vmax)
 
-  // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
-  let vmaxData: any[] = []
-  let page = 0
-  const pageSize = 1000
-  let hasMore = true
+  console.log("[v0] TOTAL VMAX records loaded:", vmaxData.length)
 
-  while (hasMore) {
-    const { data: vmaxPage, error: vmaxPageError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (vmaxPageError) {
-      console.error("[v0] Error fetching VMAX page:", vmaxPageError)
-      break
-    }
-
-    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
-
-    if (vmaxPage && vmaxPage.length > 0) {
-      vmaxData = [...vmaxData, ...vmaxPage]
-      page++
-      hasMore = vmaxPage.length === pageSize
-    } else {
-      hasMore = false
-    }
-  }
-
-  console.log("[v0] TOTAL VMAX records loaded (after pagination):", vmaxData.length)
-
-  const companies: Company[] = (companiesData || []).map((company) => {
-    const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
+  const companiesList: Company[] = (companiesData || []).map((company) => {
+    const companyAdmins = adminsData?.filter((a) => a.companyId === company.id) || []
 
     // SOMENTE dados da tabela VMAX
     const companyVmaxData = vmaxData.filter((v) => {
-      const vmaxCompanyId = v.id_company?.toString().toLowerCase().trim()
+      const vmaxCompanyId = v.idCompany?.toString().toLowerCase().trim()
       const match = vmaxCompanyId === company.id.toString().toLowerCase().trim()
       return match
     })
@@ -93,13 +59,12 @@ async function fetchCompanies() {
     console.log(`[v0] Company ${company.name} - Total VMAX records:`, companyVmaxData.length)
 
     const vmaxSampleData = companyVmaxData.slice(0, 3).map((v) => ({
-      Vencido: v.Vencido,
-      DT_Cancelamento: v.DT_Cancelamento,
+      Vencido: v.valorTotal,
     }))
     console.log(`[v0] Sample VMAX data (first 3):`, JSON.stringify(vmaxSampleData))
 
     const vmaxTotalAmount = companyVmaxData.reduce((sum, v, index) => {
-      const vencidoStr = String(v.Vencido || "0")
+      const vencidoStr = String(v.valorTotal || "0")
       const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
       const value = Number(cleanValue) || 0
 
@@ -114,7 +79,7 @@ async function fetchCompanies() {
     console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
-      const diasInadStr = String(v["Dias Inad."] || "0")
+      const diasInadStr = String(v.maiorAtraso || "0")
       const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
       return diasInad > 0
     })
@@ -122,24 +87,15 @@ async function fetchCompanies() {
     const avgDaysOverdue =
       vmaxWithOverdue.length > 0
         ? vmaxWithOverdue.reduce((sum, v) => {
-            const diasInadStr = String(v["Dias Inad."] || "0")
+            const diasInadStr = String(v.maiorAtraso || "0")
             return sum + (Number(diasInadStr.replace(/\./g, "")) || 0)
           }, 0) / vmaxWithOverdue.length
         : 0
 
-    const paidAmount = companyVmaxData
-      .filter((v) => v["DT Cancelamento"])
-      .reduce((sum, v) => {
-        const vencidoStr = String(v.Vencido || "0")
-        const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-        const value = Number(cleanValue) || 0
-        return sum + value
-      }, 0)
-
     const recoveryRate = 0 // No recovery data available yet
 
     const totalCustomers = companyVmaxData.length
-    const totalDebts = companyVmaxData.filter((v) => !v["DT Cancelamento"]).length
+    const totalDebts = companyVmaxData.length
 
     console.log(
       `[v0] Company ${company.name} - totalAmount: ${vmaxTotalAmount}, VMAX records: ${companyVmaxData.length}`,
@@ -162,19 +118,19 @@ async function fetchCompanies() {
   })
 
   console.log("[v0] Super Admin Stats:")
-  const totalCustomersAllCompanies = companies.reduce((sum, c) => sum + c.totalCustomers, 0)
-  const totalAmountAllCompanies = companies.reduce((sum, c) => sum + c.totalAmount, 0)
+  const totalCustomersAllCompanies = companiesList.reduce((sum, c) => sum + c.totalCustomers, 0)
+  const totalAmountAllCompanies = companiesList.reduce((sum, c) => sum + c.totalAmount, 0)
   const avgPerClient = totalCustomersAllCompanies > 0 ? totalAmountAllCompanies / totalCustomersAllCompanies : 0
 
-  const companiesWithOverdue = companies.filter((c) => c.avgDaysOverdue > 0)
+  const companiesWithOverdue = companiesList.filter((c) => c.avgDaysOverdue > 0)
   const totalAvgDaysOverdue = companiesWithOverdue.reduce((sum, c) => sum + c.avgDaysOverdue, 0)
   const avgDaysOverdueAll = companiesWithOverdue.length > 0 ? totalAvgDaysOverdue / companiesWithOverdue.length : 0
 
   return {
-    companies,
+    companies: companiesList,
     stats: {
-      totalCompanies: companies.length,
-      totalVolume: companies.reduce((sum, c) => sum + c.totalAmount, 0),
+      totalCompanies: companiesList.length,
+      totalVolume: companiesList.reduce((sum, c) => sum + c.totalAmount, 0),
       avgPerClient: avgPerClient,
       totalCustomersAllCompanies: totalCustomersAllCompanies,
       avgDaysOverdue: Math.round(avgDaysOverdueAll),
@@ -224,13 +180,13 @@ export default async function SuperAdminCompaniesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCompactCurrency(stats.totalVolume)}</div>
-            <p className="text-xs text-muted-foreground">Em cobrança</p>
+            <p className="text-xs text-muted-foreground">Em cobranca</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Média por Cliente</CardTitle>
+            <CardTitle className="text-sm font-medium">Media por Cliente</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -246,7 +202,7 @@ export default async function SuperAdminCompaniesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.avgDaysOverdue}</div>
-            <p className="text-xs text-muted-foreground">Média geral</p>
+            <p className="text-xs text-muted-foreground">Media geral</p>
           </CardContent>
         </Card>
       </div>
@@ -356,7 +312,7 @@ export default async function SuperAdminCompaniesPage() {
                           >
                             {company.recoveryRate.toFixed(1)}%
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Recuperação</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Recuperacao</p>
                         </div>
 
                         <div className="text-center sm:text-right">
@@ -378,7 +334,7 @@ export default async function SuperAdminCompaniesPage() {
                           >
                             {company.avgDaysOverdue} dias
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Atraso Médio</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Atraso Medio</p>
                         </div>
                       </div>
 

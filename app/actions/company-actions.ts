@@ -1,7 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { companies, customers, debts, profiles } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 export interface CreateCompanyParams {
@@ -56,11 +57,9 @@ const parseCSVLine = (line: string, delimiter: string): string[] => {
 
 export async function createCompany(params: CreateCompanyParams) {
   try {
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-      .from("companies")
-      .insert({
+    const [data] = await db
+      .insert(companies)
+      .values({
         name: params.name,
         cnpj: params.cnpj,
         email: params.email,
@@ -70,10 +69,7 @@ export async function createCompany(params: CreateCompanyParams) {
         state: params.state || null,
         zipcode: params.zipcode || null,
       })
-      .select()
-      .single()
-
-    if (error) throw error
+      .returning()
 
     revalidatePath("/super-admin/companies")
 
@@ -94,11 +90,9 @@ export async function createCompany(params: CreateCompanyParams) {
 
 export async function updateCompany(params: UpdateCompanyParams) {
   try {
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-      .from("companies")
-      .update({
+    const [data] = await db
+      .update(companies)
+      .set({
         name: params.name,
         cnpj: params.cnpj,
         email: params.email,
@@ -108,11 +102,8 @@ export async function updateCompany(params: UpdateCompanyParams) {
         state: params.state || null,
         zipcode: params.zipcode || null,
       })
-      .eq("id", params.id)
-      .select()
-      .single()
-
-    if (error) throw error
+      .where(eq(companies.id, params.id))
+      .returning()
 
     revalidatePath("/super-admin/companies")
     revalidatePath(`/super-admin/companies/${params.id}`)
@@ -134,10 +125,12 @@ export async function updateCompany(params: UpdateCompanyParams) {
 
 export async function deleteCompany(params: DeleteCompanyParams) {
   try {
-    const supabase = await createClient()
-
     // Check if company has users or data
-    const { data: users } = await supabase.from("profiles").select("id").eq("company_id", params.id).limit(1)
+    const users = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(eq(profiles.companyId, params.id))
+      .limit(1)
 
     if (users && users.length > 0) {
       return {
@@ -146,9 +139,7 @@ export async function deleteCompany(params: DeleteCompanyParams) {
       }
     }
 
-    const { error } = await supabase.from("companies").delete().eq("id", params.id)
-
-    if (error) throw error
+    await db.delete(companies).where(eq(companies.id, params.id))
 
     revalidatePath("/super-admin/companies")
 
@@ -166,11 +157,9 @@ export async function deleteCompany(params: DeleteCompanyParams) {
   }
 }
 
-export async function createCompanyWithCustomers(formData: FormData, customers?: any[]) {
+export async function createCompanyWithCustomers(formData: FormData, customersParam?: any[]) {
   try {
     console.log("🚀 [TESTE] Iniciando criação de empresa")
-
-    const adminClient = createAdminClient()
 
     const companyData = {
       name: formData.get("name") as string,
@@ -180,21 +169,20 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
       address: (formData.get("address") as string) || null,
       city: (formData.get("city") as string) || null,
       state: (formData.get("state") as string) || null,
-      zip_code: (formData.get("zip_code") as string) || null,
+      zipCode: (formData.get("zip_code") as string) || null,
       sector: (formData.get("sector") as string) || null,
     }
 
     console.log("🏢 [TESTE] Criando empresa:", companyData.name)
 
-    const { data: company, error: companyError } = await adminClient
-      .from("companies")
-      .insert(companyData)
-      .select()
-      .single()
+    const [company] = await db
+      .insert(companies)
+      .values(companyData)
+      .returning()
 
-    if (companyError) {
-      console.error("❌ [TESTE] ERRO ao criar empresa:", companyError)
-      throw companyError
+    if (!company) {
+      console.error("❌ [TESTE] ERRO ao criar empresa")
+      throw new Error("Failed to create company")
     }
 
     console.log("✅ [TESTE] Empresa criada - ID:", company.id)
@@ -203,26 +191,26 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 
     const testCustomers = [
       {
-        company_id: company.id,
+        companyId: company.id,
         name: "Cliente Teste 1",
         document: "11111111111",
-        document_type: "CPF",
+        documentType: "CPF",
         email: "teste1@example.com",
         phone: "(11) 99999-1111",
       },
       {
-        company_id: company.id,
+        companyId: company.id,
         name: "Cliente Teste 2",
         document: "22222222222",
-        document_type: "CPF",
+        documentType: "CPF",
         email: "teste2@example.com",
         phone: "(11) 99999-2222",
       },
       {
-        company_id: company.id,
+        companyId: company.id,
         name: "Cliente Teste 3",
         document: "33333333333",
-        document_type: "CPF",
+        documentType: "CPF",
         email: "teste3@example.com",
         phone: "(11) 99999-3333",
       },
@@ -230,15 +218,14 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 
     console.log("📋 [TESTE] Dados dos clientes:", JSON.stringify(testCustomers, null, 2))
 
-    const { data: insertedCustomers, error: customersError } = await adminClient
-      .from("customers")
-      .insert(testCustomers)
-      .select()
+    const insertedCustomers = await db
+      .insert(customers)
+      .values(testCustomers)
+      .returning()
 
-    if (customersError) {
-      console.error("❌ [TESTE] ERRO ao inserir clientes:", customersError)
-      console.error("❌ [TESTE] Detalhes:", JSON.stringify(customersError, null, 2))
-      throw customersError
+    if (!insertedCustomers || insertedCustomers.length === 0) {
+      console.error("❌ [TESTE] ERRO ao inserir clientes")
+      throw new Error("Failed to insert customers")
     }
 
     console.log("✅ [TESTE] Clientes inseridos:", insertedCustomers?.length)
@@ -248,33 +235,32 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     )
     console.log(
       "✅ [TESTE] Company IDs dos clientes:",
-      insertedCustomers?.map((c) => c.company_id),
+      insertedCustomers?.map((c) => c.companyId),
     )
 
     console.log("💰 [TESTE] Inserindo 3 dívidas de teste...")
 
     const today = new Date()
-    const dueDate = new Date(today.setDate(today.getDate() + 30))
-    const dueDateString = dueDate.toISOString().split("T")[0]
+    const dueDateObj = new Date(today.setDate(today.getDate() + 30))
+    const dueDateString = dueDateObj.toISOString().split("T")[0]
 
     const testDebts = insertedCustomers!.map((customer, index) => ({
-      company_id: company.id,
-      customer_id: customer.id,
-      amount: (index + 1) * 100,
+      companyId: company.id,
+      customerId: customer.id,
+      amount: ((index + 1) * 100).toString(),
       status: "pending",
       description: `Dívida teste ${index + 1}`,
-      due_date: dueDateString,
-      classification: "low", // Valores válidos: 'low', 'medium', 'high', 'critical'
+      dueDate: dueDateString,
+      classification: "low" as const,
     }))
 
     console.log("📋 [TESTE] Dados das dívidas:", JSON.stringify(testDebts, null, 2))
 
-    const { data: insertedDebts, error: debtsError } = await adminClient.from("debts").insert(testDebts).select()
+    const insertedDebts = await db.insert(debts).values(testDebts).returning()
 
-    if (debtsError) {
-      console.error("❌ [TESTE] ERRO ao inserir dívidas:", debtsError)
-      console.error("❌ [TESTE] Detalhes:", JSON.stringify(debtsError, null, 2))
-      throw debtsError
+    if (!insertedDebts || insertedDebts.length === 0) {
+      console.error("❌ [TESTE] ERRO ao inserir dívidas")
+      throw new Error("Failed to insert debts")
     }
 
     console.log("✅ [TESTE] Dívidas inseridas:", insertedDebts?.length)
@@ -284,20 +270,20 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
     )
     console.log(
       "✅ [TESTE] Company IDs das dívidas:",
-      insertedDebts?.map((d) => d.company_id),
+      insertedDebts?.map((d) => d.companyId),
     )
 
     console.log("🔍 [TESTE] Verificando dados no banco...")
 
-    const { data: customersCheck, error: customersCheckError } = await adminClient
-      .from("customers")
-      .select("*")
-      .eq("company_id", company.id)
+    const customersCheck = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.companyId, company.id))
 
-    const { data: debtsCheck, error: debtsCheckError } = await adminClient
-      .from("debts")
-      .select("*")
-      .eq("company_id", company.id)
+    const debtsCheck = await db
+      .select()
+      .from(debts)
+      .where(eq(debts.companyId, company.id))
 
     console.log("📊 [TESTE] Clientes no banco:", customersCheck?.length || 0)
     console.log("📊 [TESTE] Dívidas no banco:", debtsCheck?.length || 0)
@@ -336,10 +322,9 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
   }
 }
 
-export async function importCustomersToCompany(companyId: string, customers: any[]) {
+export async function importCustomersToCompany(companyId: string, customersParam: any[]) {
   try {
     console.log("[v0] ===== INICIANDO IMPORTAÇÃO DE CLIENTES =====")
-    const supabase = await createClient()
 
     if (!companyId) {
       return {
@@ -351,7 +336,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
       }
     }
 
-    if (!customers || customers.length === 0) {
+    if (!customersParam || customersParam.length === 0) {
       return {
         success: false,
         error: "Nenhum cliente fornecido",
@@ -362,16 +347,16 @@ export async function importCustomersToCompany(companyId: string, customers: any
     }
 
     console.log("[v0] Company ID:", companyId)
-    console.log("[v0] Total de clientes a importar:", customers.length)
+    console.log("[v0] Total de clientes a importar:", customersParam.length)
 
-    const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id, name")
-      .eq("id", companyId)
-      .single()
+    const [company] = await db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .limit(1)
 
-    if (companyError || !company) {
-      console.error("[v0] Empresa não encontrada:", companyError)
+    if (!company) {
+      console.error("[v0] Empresa não encontrada")
       return {
         success: false,
         error: "Empresa não encontrada",
@@ -386,9 +371,9 @@ export async function importCustomersToCompany(companyId: string, customers: any
     const validCustomers: any[] = []
     const errors: string[] = []
 
-    for (let i = 0; i < customers.length; i++) {
+    for (let i = 0; i < customersParam.length; i++) {
       try {
-        const customer = customers[i]
+        const customer = customersParam[i]
 
         if (!customer.name && !customer.document) {
           console.log(`[v0] Cliente ${i + 1} ignorado - sem nome e sem documento`)
@@ -397,10 +382,10 @@ export async function importCustomersToCompany(companyId: string, customers: any
         }
 
         const validCustomer: any = {
-          company_id: companyId,
+          companyId: companyId,
           name: String(customer.name || "").trim(),
           document: String(customer.document || customer.cpf || "").trim(),
-          document_type: customer.document_type || "CPF",
+          documentType: customer.document_type || "CPF",
         }
 
         if (customer.email) validCustomer.email = String(customer.email)
@@ -408,9 +393,9 @@ export async function importCustomersToCompany(companyId: string, customers: any
         if (customer.address) validCustomer.address = String(customer.address)
         if (customer.city) validCustomer.city = String(customer.city)
         if (customer.state) validCustomer.state = String(customer.state)
-        if (customer.zip_code) validCustomer.zip_code = String(customer.zip_code)
-        if (customer.external_id) validCustomer.external_id = String(customer.external_id)
-        if (customer.source_system) validCustomer.source_system = String(customer.source_system)
+        if (customer.zip_code) validCustomer.zipCode = String(customer.zip_code)
+        if (customer.external_id) validCustomer.externalId = String(customer.external_id)
+        if (customer.source_system) validCustomer.sourceSystem = String(customer.source_system)
 
         validCustomers.push(validCustomer)
       } catch (error) {
@@ -429,20 +414,19 @@ export async function importCustomersToCompany(companyId: string, customers: any
     if (validCustomers.length > 0) {
       console.log("[v0] Inserindo clientes no banco de dados...")
 
-      const adminClient = createAdminClient()
-      const { data: insertedCustomers, error: customersError } = await adminClient
-        .from("customers")
-        .insert(validCustomers)
-        .select()
+      try {
+        const insertedCustomers = await db
+          .insert(customers)
+          .values(validCustomers)
+          .returning()
 
-      if (customersError) {
-        console.error("[v0] ✗ ERRO ao importar clientes:", customersError)
-        console.error("[v0] Detalhes do erro:", JSON.stringify(customersError, null, 2))
-        failedCount += validCustomers.length
-        errors.push(`Erro no banco: ${customersError.message}`)
-      } else {
         importedCount = insertedCustomers?.length || 0
         console.log("[v0] ✓ Clientes importados com sucesso:", importedCount)
+      } catch (insertError: any) {
+        console.error("[v0] ✗ ERRO ao importar clientes:", insertError)
+        console.error("[v0] Detalhes do erro:", JSON.stringify(insertError, null, 2))
+        failedCount += validCustomers.length
+        errors.push(`Erro no banco: ${insertError.message}`)
       }
     } else {
       console.log("[v0] ⚠ Nenhum cliente válido para importar")

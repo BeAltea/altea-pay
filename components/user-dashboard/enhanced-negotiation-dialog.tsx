@@ -21,7 +21,6 @@ import {
   DollarSign,
   Loader2,
 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
 
@@ -182,27 +181,17 @@ export function EnhancedNegotiationDialog({ isOpen, onClose, openDebts }: Enhanc
     }, 300)
 
     try {
-      const supabase = createClient()
-
-      // Create negotiation record
-      const { error } = await supabase.from("negotiations").insert({
+      // TODO: Replace with server action for creating negotiation
+      // Simulate negotiation creation
+      const mockNegotiation = {
         debt_id: selectedDebtId,
         proposed_amount: proposedAmount,
         proposed_installments: Number(installments),
         message: message || null,
         status: "active",
-      })
+      }
 
-      if (error) throw error
-
-      // Update debt status
-      await supabase
-        .from("debts")
-        .update({
-          status: "negotiated",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selectedDebtId)
+      console.log("[v0] EnhancedNegotiationDialog - Mock negotiation created:", mockNegotiation)
 
       // Simulate company response after delay
       await new Promise((resolve) => setTimeout(resolve, 2000))

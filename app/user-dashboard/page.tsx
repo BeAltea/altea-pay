@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, companies, vmax, payments, agreements } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -52,28 +55,24 @@ function DashboardSkeleton() {
 
 export default async function UserDashboardPage() {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
     if (!user) {
       redirect("/auth/login")
     }
 
-    let profile = null
+    let profile: any = null
     try {
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle()
+      const [profileData] = await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.id, user.id))
+        .limit(1)
 
-      if (profileError) {
-        console.error("Error fetching profile:", profileError)
+      if (!profileData) {
         profile = {
-          full_name: user.email?.split("@")[0] || "Usuário",
+          fullName: user.email?.split("@")[0] || "Usuário",
           email: user.email,
         }
       } else {
@@ -82,70 +81,37 @@ export default async function UserDashboardPage() {
     } catch (error) {
       console.error("Exception fetching profile:", error)
       profile = {
-        full_name: user.email?.split("@")[0] || "Usuário",
+        fullName: user.email?.split("@")[0] || "Usuário",
         email: user.email,
       }
     }
 
     const allDebts: any[] = []
 
-    if (profile?.cpf_cnpj) {
-      const { createServiceClient } = await import("@/lib/supabase/service")
-      const serviceSupabase = createServiceClient()
-
-      const cleanCpfCnpj = profile.cpf_cnpj.replace(/\D/g, "")
-      const formattedCpfCnpj = profile.cpf_cnpj
+    if (profile?.cpfCnpj) {
+      const cleanCpfCnpj = profile.cpfCnpj.replace(/\D/g, "")
+      const formattedCpfCnpj = profile.cpfCnpj
 
       try {
-        // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
-        let allRecords: any[] = []
-        let page = 0
-        const pageSize = 1000
-        let hasMore = true
-
-        while (hasMore) {
-          const { data: vmaxPage, error: vmaxPageError } = await serviceSupabase
-            .from("VMAX")
-            .select("*")
-            .range(page * pageSize, (page + 1) * pageSize - 1)
-
-          if (vmaxPageError) break
-
-          if (vmaxPage && vmaxPage.length > 0) {
-            allRecords = [...allRecords, ...vmaxPage]
-            page++
-            hasMore = vmaxPage.length === pageSize
-          } else {
-            hasMore = false
-          }
-        }
+        // Buscar TODOS os registros VMAX
+        const allRecords = await db.select().from(vmax)
 
         if (allRecords.length > 0) {
           const matchingRecords = allRecords.filter((record: any) => {
-            const possibleColumns = ["CPF/CNPJ", "cpf_cnpj", "cpf", "cnpj", "document"]
-
-            for (const col of possibleColumns) {
-              if (!record[col]) continue
-
-              const value = String(record[col])
-              const cleanValue = value.replace(/\D/g, "")
-
-              if (cleanValue === cleanCpfCnpj || value === formattedCpfCnpj) {
-                return true
-              }
-            }
-            return false
+            const value = String(record.cpfCnpj || "")
+            const cleanValue = value.replace(/\D/g, "")
+            return cleanValue === cleanCpfCnpj || value === formattedCpfCnpj
           })
 
           if (matchingRecords.length > 0) {
-            let companyId = profile.company_id
+            let companyId = profile.companyId
             let companyName = "VMAX"
 
-            const { data: vmaxCompany } = await serviceSupabase
-              .from("companies")
-              .select("id, name")
-              .eq("name", "VMAX")
-              .single()
+            const [vmaxCompany] = await db
+              .select({ id: companies.id, name: companies.name })
+              .from(companies)
+              .where(eq(companies.name, "VMAX"))
+              .limit(1)
 
             if (vmaxCompany) {
               companyId = vmaxCompany.id
@@ -154,26 +120,22 @@ export default async function UserDashboardPage() {
 
             const formattedDebts = matchingRecords.map((debt) => {
               let amount = 0
-              if (debt.Vencido) {
-                const vencidoStr = String(debt.Vencido)
+              if (debt.valorTotal) {
+                const vencidoStr = String(debt.valorTotal)
                 const cleanValue = vencidoStr
                   .replace(/R\$/g, "")
                   .replace(/\s/g, "")
                   .replace(/\./g, "")
                   .replace(",", ".")
                 amount = Number.parseFloat(cleanValue) || 0
-              } else if (debt.amount) {
-                amount = Number.parseFloat(debt.amount) || 0
               }
 
               let daysOverdue = 0
-              if (debt["Dias Inad."]) {
-                daysOverdue = Number.parseInt(String(debt["Dias Inad."]).replace(/\D/g, "")) || 0
-              } else if (debt.days_overdue) {
-                daysOverdue = debt.days_overdue
+              if (debt.maiorAtraso) {
+                daysOverdue = Number.parseInt(String(debt.maiorAtraso).replace(/\D/g, "")) || 0
               }
 
-              const dueDate = debt.Vecto || debt.due_date || new Date().toISOString()
+              const dueDate = debt.primeiraVencida || new Date().toISOString()
 
               return {
                 id: debt.id || `VMAX-${Math.random()}`,
@@ -182,7 +144,7 @@ export default async function UserDashboardPage() {
                 amount: amount,
                 due_date: dueDate,
                 status: daysOverdue > 0 ? "overdue" : "open",
-                description: `Fatura - ${debt.Cliente || debt.name || "Sem descrição"}`,
+                description: `Fatura - ${debt.cliente || "Sem descrição"}`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 propensity_payment_score: 0,
@@ -204,17 +166,17 @@ export default async function UserDashboardPage() {
       }
     }
 
-    const { data: payments } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
+    const paymentsList = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.customerId, user.id))
+      .orderBy(desc(payments.createdAt))
 
-    const { data: agreements } = await supabase
-      .from("agreements")
-      .select("*")
-      .eq("customer_id", user.id)
-      .order("created_at", { ascending: false })
+    const agreementsList = await db
+      .select()
+      .from(agreements)
+      .where(eq(agreements.customerId, user.id))
+      .orderBy(desc(agreements.createdAt))
 
     const getOpenDebts = (debts: any[]) =>
       debts?.filter((debt) => ["open", "overdue", "in_collection"].includes(debt.status)) || []
@@ -252,17 +214,17 @@ export default async function UserDashboardPage() {
     const avgPaymentScore = getAveragePaymentScore(allDebts || [])
     const avgLoanScore = getAverageLoanScore(allDebts || [])
 
-    const recentActivity = []
+    const recentActivity: any[] = []
 
-    if (payments && payments.length > 0) {
-      payments.slice(0, 2).forEach((payment) => {
-        const debt = allDebts?.find((d) => d.id === payment.debt_id)
+    if (paymentsList && paymentsList.length > 0) {
+      paymentsList.slice(0, 2).forEach((payment) => {
+        const debt = allDebts?.find((d) => d.id === payment.debtId)
         recentActivity.push({
           id: `payment-${payment.id}`,
           type: "payment",
           message: `Pagamento ${payment.status === "completed" ? "concluído" : payment.status === "pending" ? "pendente" : "falhou"} - ${debt?.description || "Dívida"}`,
           amount: payment.status === "completed" ? Number(payment.amount) : null,
-          date: new Date(payment.created_at).toLocaleDateString("pt-BR"),
+          date: new Date(payment.createdAt).toLocaleDateString("pt-BR"),
           icon: payment.status === "completed" ? CheckCircle : payment.status === "pending" ? Clock : AlertCircle,
           color:
             payment.status === "completed"
@@ -274,14 +236,14 @@ export default async function UserDashboardPage() {
       })
     }
 
-    if (agreements && agreements.length > 0) {
-      agreements.slice(0, 1).forEach((agreement) => {
-        const debt = allDebts?.find((d) => d.id === agreement.debt_id)
+    if (agreementsList && agreementsList.length > 0) {
+      agreementsList.slice(0, 1).forEach((agreement) => {
+        const debt = allDebts?.find((d) => d.id === agreement.debtId)
         recentActivity.push({
           id: `agreement-${agreement.id}`,
           type: "negotiation",
           message: `Negociação ${agreement.status === "accepted" ? "aceita" : agreement.status === "pending" ? "pendente" : "em análise"} - ${debt?.description || "Dívida"}`,
-          date: new Date(agreement.created_at).toLocaleDateString("pt-BR"),
+          date: new Date(agreement.createdAt).toLocaleDateString("pt-BR"),
           icon: MessageSquare,
           color: agreement.status === "accepted" ? "text-green-600" : "text-blue-600",
         })
@@ -308,7 +270,7 @@ export default async function UserDashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
-                Olá, {profile?.full_name || "Usuário"}! 👋
+                Olá, {profile?.fullName || "Usuário"}!
               </h1>
               <p className="text-muted-foreground text-xs sm:text-sm lg:text-base">
                 Acompanhe suas dívidas, histórico de pagamentos e negocie acordos.

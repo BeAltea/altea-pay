@@ -1,7 +1,9 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { customers, vmax, creditProfiles, companies, profiles, collectionActions } from "@/lib/db/schema"
+import { eq, and, ilike, desc, inArray, sql } from "drizzle-orm"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS } from "@/lib/notifications/sms"
 import { createCustomerWithAnalysis } from "./create-customer-with-analysis"
@@ -84,8 +86,6 @@ export async function updateCustomer(params: UpdateCustomerParams) {
   console.log("[v0] updateCustomer - Starting", params)
 
   try {
-    const supabase = await createServerClient()
-
     // Validate required fields
     if (!params.id || !params.companyId) {
       return {
@@ -96,34 +96,30 @@ export async function updateCustomer(params: UpdateCustomerParams) {
 
     // Build update data
     const updateData: any = {
-      updated_at: new Date().toISOString(),
+      updatedAt: new Date(),
     }
 
     if (params.name) updateData.name = params.name
     if (params.email) updateData.email = params.email
     if (params.document) {
       updateData.document = params.document
-      updateData.document_type = params.document.replace(/\D/g, "").length === 11 ? "cpf" : "cnpj"
+      updateData.documentType = params.document.replace(/\D/g, "").length === 11 ? "cpf" : "cnpj"
     }
     if (params.phone !== undefined) updateData.phone = params.phone
 
     console.log("[v0] updateCustomer - Update data:", updateData)
 
     // Update customer
-    const { data, error } = await supabase
-      .from("customers")
-      .update(updateData)
-      .eq("id", params.id)
-      .eq("company_id", params.companyId)
-      .select()
-      .single()
+    const [data] = await db
+      .update(customers)
+      .set(updateData)
+      .where(and(eq(customers.id, params.id), eq(customers.companyId, params.companyId)))
+      .returning()
 
-    if (error) {
-      console.error("[v0] updateCustomer - Error:", error)
+    if (!data) {
       return {
         success: false,
-        message: `Erro ao atualizar cliente: ${error.message}`,
-        error: error.message,
+        message: "Erro ao atualizar cliente: registro não encontrado",
       }
     }
 
@@ -148,8 +144,6 @@ export async function deleteCustomer(params: DeleteCustomerParams) {
   console.log("[v0] deleteCustomer - Starting", params)
 
   try {
-    const supabase = await createServerClient()
-
     // Validate required fields
     if (!params.id || !params.companyId) {
       return {
@@ -159,16 +153,9 @@ export async function deleteCustomer(params: DeleteCustomerParams) {
     }
 
     // Delete customer
-    const { error } = await supabase.from("customers").delete().eq("id", params.id).eq("company_id", params.companyId)
-
-    if (error) {
-      console.error("[v0] deleteCustomer - Error:", error)
-      return {
-        success: false,
-        message: `Erro ao excluir cliente: ${error.message}`,
-        error: error.message,
-      }
-    }
+    await db
+      .delete(customers)
+      .where(and(eq(customers.id, params.id), eq(customers.companyId, params.companyId)))
 
     console.log("[v0] deleteCustomer - Success")
 
@@ -226,14 +213,13 @@ export async function sendCustomerNotification(payload: any) {
     console.log("[sendCustomerNotification] Resposta do provedor:", response)
 
     if (response.success) {
-      const supabase = await createServerClient()
-      await supabase.from("collection_actions").insert({
-        customer_id: payload.customer_id,
-        company_id: payload.company_id,
-        action_type: "notification",
+      await db.insert(collectionActions).values({
+        customerId: payload.customer_id,
+        companyId: payload.company_id,
+        actionType: "notification",
         channel: payload.channel,
         status: "completed",
-        created_at: new Date().toISOString(),
+        createdAt: new Date(),
       })
     }
 
@@ -246,46 +232,42 @@ export async function sendCustomerNotification(payload: any) {
 
 export async function getCustomerDetails(companyId: string, document: string) {
   try {
-    const supabase = createAdminClient()
-
     // Remove formatação do documento
     const cleanDocument = document.replace(/\D/g, "")
 
     // Buscar na tabela VMAX
-    const { data: vmaxData } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("id_company", companyId)
-      .ilike("CPF/CNPJ", `%${cleanDocument}%`)
-      .single()
+    const [vmaxData] = await db
+      .select()
+      .from(vmax)
+      .where(and(eq(vmax.idCompany, companyId), ilike(vmax.cpfCnpj, `%${cleanDocument}%`)))
+      .limit(1)
 
     if (!vmaxData) {
       return { success: false, error: "Cliente não encontrado" }
     }
 
     // Buscar análises de crédito
-    const { data: creditProfiles } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("company_id", companyId)
-      .eq("cpf", cleanDocument)
-      .order("created_at", { ascending: false })
+    const creditProfilesData = await db
+      .select()
+      .from(creditProfiles)
+      .where(and(eq(creditProfiles.companyId, companyId), eq(creditProfiles.cpf, cleanDocument)))
+      .orderBy(desc(creditProfiles.createdAt))
 
-    const latestProfile = creditProfiles?.[0]
+    const latestProfile = creditProfilesData?.[0]
 
     return {
       success: true,
       data: {
         id: vmaxData.id,
-        name: vmaxData.Cliente || vmaxData.cliente || "N/A",
-        document: vmaxData["CPF/CNPJ"] || vmaxData.cpf_cnpj || cleanDocument,
-        city: vmaxData.Cidade || vmaxData.cidade || null,
+        name: vmaxData.cliente || "N/A",
+        document: vmaxData.cpfCnpj || cleanDocument,
+        city: vmaxData.cidade || null,
         email: null,
         phone: null,
-        created_at: vmaxData.Vecto || vmaxData.primeira_vencida || new Date().toISOString(),
+        created_at: vmaxData.createdAt || new Date().toISOString(),
         score: latestProfile?.score || null,
         analysis_data: latestProfile?.data || null,
-        analysis_history: creditProfiles || [],
+        analysis_history: creditProfilesData || [],
       },
     }
   } catch (error: any) {
@@ -298,54 +280,19 @@ export async function getAllCustomers() {
   try {
     console.log("[SERVER] getAllCustomers - Starting...")
 
-    const supabase = createAdminClient()
-
     // Fetch from customers table
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document, company_id")
-      .order("name")
-
-    if (customersError) {
-      console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
-      throw customersError
-    }
+    const customersData = await db
+      .select({ id: customers.id, name: customers.name, document: customers.document, companyId: customers.companyId })
+      .from(customers)
+      .orderBy(customers.name)
 
     console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
 
-    // Fetch from VMAX table - buscar TODOS os registros
-    let allVmaxData: any[] = []
-    let page = 0
-    const pageSize = 1000
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: vmaxPage, error: vmaxPageError } = await supabase
-        .from("VMAX")
-        .select('id, Cliente, "CPF/CNPJ", id_company, Cidade')
-        .order("Cliente")
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (vmaxPageError) {
-        console.error("[SERVER] getAllCustomers - Error loading VMAX page:", vmaxPageError)
-        break
-      }
-
-      if (vmaxPage && vmaxPage.length > 0) {
-        allVmaxData = [...allVmaxData, ...vmaxPage]
-        page++
-        hasMore = vmaxPage.length === pageSize
-      } else {
-        hasMore = false
-      }
-    }
-
-    const vmaxData = allVmaxData
-    const vmaxError = null
-
-    if (vmaxError) {
-      console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
-    }
+    // Fetch from VMAX table
+    const vmaxData = await db
+      .select({ id: vmax.id, cliente: vmax.cliente, cpfCnpj: vmax.cpfCnpj, idCompany: vmax.idCompany, cidade: vmax.cidade })
+      .from(vmax)
+      .orderBy(vmax.cliente)
 
     console.log("[SERVER] getAllCustomers - VMAX records loaded:", vmaxData?.length || 0)
 
@@ -355,16 +302,16 @@ export async function getAllCustomers() {
         id: c.id,
         name: c.name,
         document: c.document,
-        company_id: c.company_id,
+        company_id: c.companyId,
         city: "N/A",
         source_table: "customers" as const,
       })),
       ...(vmaxData || []).map((v) => ({
         id: v.id,
-        name: v.Cliente,
-        document: v["CPF/CNPJ"],
-        company_id: v.id_company,
-        city: v.Cidade || "N/A",
+        name: v.cliente,
+        document: v.cpfCnpj,
+        company_id: v.idCompany,
+        city: v.cidade || "N/A",
         source_table: "vmax" as const,
       })),
     ]
@@ -372,15 +319,22 @@ export async function getAllCustomers() {
     console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)
 
     // Fetch company names
-    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
-    const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
+    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))] as string[]
 
-    const companiesMap = new Map(companiesData?.map((c) => [c.id, c.name]) || [])
+    let companiesMap = new Map<string, string>()
+    if (companyIds.length > 0) {
+      const companiesData = await db
+        .select({ id: companies.id, name: companies.name })
+        .from(companies)
+        .where(inArray(companies.id, companyIds))
+
+      companiesMap = new Map(companiesData?.map((c) => [c.id, c.name]) || [])
+    }
 
     // Add company names to customers
     const customersWithCompanies = allCustomers.map((customer) => ({
       ...customer,
-      company_name: companiesMap.get(customer.company_id) || "N/A",
+      company_name: companiesMap.get(customer.company_id!) || "N/A",
     }))
 
     console.log("[SERVER] getAllCustomers - Customers with company names:", customersWithCompanies.length)

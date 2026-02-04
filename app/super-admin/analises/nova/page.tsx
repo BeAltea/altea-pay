@@ -1,20 +1,24 @@
 import { Suspense } from "react"
 import { redirect } from "next/navigation"
-import { createServerClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth/config"
+import { db } from "@/lib/db"
+import { eq } from "drizzle-orm"
+import { profiles } from "@/lib/db/schema"
 import NewAnalysisForm from "@/components/super-admin/new-analysis-form"
 
 export default async function NovaAnalisePage() {
-  const supabase = await createServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await auth()
+  const user = session?.user
 
   if (!user) {
     redirect("/auth/login")
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  const [profile] = await db
+    .select({ role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.id, user.id))
+    .limit(1)
 
   if (profile?.role !== "super_admin") {
     redirect("/dashboard")
@@ -23,9 +27,9 @@ export default async function NovaAnalisePage() {
   return (
     <div className="container mx-auto py-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Nova Análise Assertiva</h1>
+        <h1 className="text-3xl font-bold mb-6">Nova Analise Assertiva</h1>
         <p className="text-muted-foreground mb-8">
-          Execute análise comportamental completa (assíncrona) para CPF ou CNPJ. O resultado será processado em 2-5
+          Execute analise comportamental completa (assincrona) para CPF ou CNPJ. O resultado sera processado em 2-5
           minutos.
         </p>
 

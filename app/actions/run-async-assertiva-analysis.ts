@@ -1,6 +1,8 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { customers, vmax, creditProfiles, integrationLogs } from "@/lib/db/schema"
+import { eq, desc, sql } from "drizzle-orm"
 
 interface AsyncAnalysisParams {
   documento: string
@@ -9,7 +11,7 @@ interface AsyncAnalysisParams {
   customerId?: string
   companyId?: string
   consultasAdicionais?: string[]
-  analysisType?: "restrictive" | "behavioral" // Tipo de análise: restritiva ou comportamental
+  analysisType?: "restrictive" | "behavioral" // Tipo de analise: restritiva ou comportamental
 }
 
 export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
@@ -23,65 +25,57 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
     let finalCompanyId = companyId
 
     if (!finalCompanyId && customerId) {
-      const supabaseAdmin = createAdminClient()
-
       // Primeiro tentar na tabela customers
-      const { data: customerData, error: customerError } = await supabaseAdmin
-        .from("customers")
-        .select("company_id")
-        .eq("id", customerId)
-        .maybeSingle()
+      const [customerData] = await db
+        .select({ companyId: customers.companyId })
+        .from(customers)
+        .where(eq(customers.id, customerId))
+        .limit(1)
 
-      if (customerData?.company_id) {
-        finalCompanyId = customerData.company_id
+      if (customerData?.companyId) {
+        finalCompanyId = customerData.companyId
         console.log("[RUN ASYNC ANALYSIS] company_id found in customers:", finalCompanyId)
       }
 
-      // Se não encontrou, buscar na tabela VMAX pelo ID
+      // Se nao encontrou, buscar na tabela VMAX pelo ID
       if (!finalCompanyId) {
-        const { data: vmaxData, error: vmaxError } = await supabaseAdmin
-          .from("VMAX")
-          .select("id_company")
-          .eq("id", customerId)
-          .maybeSingle()
+        const [vmaxData] = await db
+          .select({ idCompany: vmax.idCompany })
+          .from(vmax)
+          .where(eq(vmax.id, customerId))
+          .limit(1)
 
-        if (vmaxData?.id_company) {
-          finalCompanyId = vmaxData.id_company
+        if (vmaxData?.idCompany) {
+          finalCompanyId = vmaxData.idCompany
           console.log("[RUN ASYNC ANALYSIS] company_id found in VMAX:", finalCompanyId)
-        } else if (vmaxError) {
-          console.error("[RUN ASYNC ANALYSIS] VMAX query error:", vmaxError)
         }
       }
     }
 
     // Tentar buscar na tabela customers primeiro
     if (!finalCompanyId) {
-      const supabaseAdmin = createAdminClient()
+      const [customerData] = await db
+        .select({ companyId: customers.companyId })
+        .from(customers)
+        .where(eq(customers.document, cleanDoc))
+        .limit(1)
 
-      const { data: customerData, error: customerError } = await supabaseAdmin
-        .from("customers")
-        .select("company_id")
-        .eq("document", cleanDoc)
-        .maybeSingle()
-
-      if (customerData?.company_id) {
-        finalCompanyId = customerData.company_id
+      if (customerData?.companyId) {
+        finalCompanyId = customerData.companyId
         console.log("[RUN ASYNC ANALYSIS] company_id found in customers:", finalCompanyId)
       }
 
-      // Se não encontrou, buscar na tabela VMAX
+      // Se nao encontrou, buscar na tabela VMAX
       if (!finalCompanyId) {
-        const { data: vmaxData, error: vmaxError } = await supabaseAdmin
-          .from("VMAX")
-          .select('id_company, "CPF/CNPJ"')
-          .eq('"CPF/CNPJ"', cleanDoc)
-          .maybeSingle()
+        const [vmaxData] = await db
+          .select({ idCompany: vmax.idCompany })
+          .from(vmax)
+          .where(eq(vmax.cpfCnpj, cleanDoc))
+          .limit(1)
 
-        if (vmaxData?.id_company) {
-          finalCompanyId = vmaxData.id_company
+        if (vmaxData?.idCompany) {
+          finalCompanyId = vmaxData.idCompany
           console.log("[RUN ASYNC ANALYSIS] company_id found in VMAX:", finalCompanyId)
-        } else if (vmaxError) {
-          console.error("[RUN ASYNC ANALYSIS] VMAX query error:", vmaxError)
         }
       }
     }
@@ -89,15 +83,15 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
     console.log("[RUN ASYNC ANALYSIS] Final company_id:", finalCompanyId)
 
     if (!finalCompanyId) {
-      throw new Error("Cliente não encontrado no sistema. Importe o cliente antes de fazer a análise.")
+      throw new Error("Cliente nao encontrado no sistema. Importe o cliente antes de fazer a analise.")
     }
 
     // Validar documento
     if (tipo === "pf" && cleanDoc.length !== 11) {
-      throw new Error("CPF inválido")
+      throw new Error("CPF invalido")
     }
     if (tipo === "pj" && cleanDoc.length !== 14) {
-      throw new Error("CNPJ inválido")
+      throw new Error("CNPJ invalido")
     }
 
     const baseUrl = process.env.ASSERTIVA_BASE_URL
@@ -106,7 +100,7 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://alteapay.com"
 
     if (!baseUrl || !clientId || !clientSecret) {
-      throw new Error("Credenciais da Assertiva não configuradas")
+      throw new Error("Credenciais da Assertiva nao configuradas")
     }
 
     console.log("[RUN ASYNC ANALYSIS] Generating OAuth token...")
@@ -164,7 +158,7 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
     console.log("[RUN ASYNC ANALYSIS] API Response:", JSON.stringify(result, null, 2))
 
     if (!result?.success || !Array.isArray(result.body) || !result.body[0]?.uuid) {
-      throw new Error("Falha ao enviar análise para fila")
+      throw new Error("Falha ao enviar analise para fila")
     }
 
     const uuid = result.body[0].uuid
@@ -174,13 +168,10 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
 
     console.log("[RUN ASYNC ANALYSIS] Analysis queued successfully. UUID:", uuid)
 
-    const supabaseAdmin = createAdminClient()
-
     console.log("[RUN ASYNC ANALYSIS] Saving to integration_logs...")
-    await supabaseAdmin.from("integration_logs").insert({
-      company_id: finalCompanyId,
-      cpf: cleanDoc,
-      operation: `assertiva_${tipo}_async`,
+    await db.insert(integrationLogs).values({
+      companyId: finalCompanyId,
+      action: `assertiva_${tipo}_async`,
       status: "success",
       details: {
         uuid,
@@ -189,54 +180,45 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
         tipo,
         documento: cleanDoc,
         endpoint,
+        cpf: cleanDoc,
+        duration_ms: duration,
       },
-      duration_ms: duration,
     })
     console.log("[RUN ASYNC ANALYSIS] integration_logs saved successfully")
 
     console.log("[RUN ASYNC ANALYSIS] Saving to credit_profiles...")
     console.log("[RUN ASYNC ANALYSIS] Data:", {
-      company_id: finalCompanyId,
-      customer_id: customerId || null,
+      companyId: finalCompanyId,
+      customerId: customerId || null,
       cpf: cleanDoc,
       document_type: tipo === "pf" ? "CPF" : "CNPJ",
-      external_id: identificadorResponse,
     })
 
-    const { data: profileData, error: profileError } = await supabaseAdmin
-      .from("credit_profiles")
-      .upsert(
-        {
-          company_id: finalCompanyId,
-          customer_id: customerId || null,
-          cpf: cleanDoc,
+    await db
+      .insert(creditProfiles)
+      .values({
+        companyId: finalCompanyId,
+        customerId: customerId || null,
+        cpf: cleanDoc,
+        provider: "assertiva",
+        analysisType: "detailed",
+        status: "pending",
+        metadata: {
+          uuid,
+          identificador: identificadorResponse,
+          queued_at: new Date().toISOString(),
+          analysis_category: analysisType,
           document_type: tipo === "pf" ? "CPF" : "CNPJ",
-          source: "assertiva",
-          analysis_type: "detailed",
-          status: "pending",
           external_id: identificadorResponse,
-          data_assertiva: {
-            uuid,
-            identificador: identificadorResponse,
-            queued_at: new Date().toISOString(),
-            analysis_category: analysisType, // Salva o tipo de análise para uso no callback
-          },
         },
-        {
-          onConflict: "company_id,cpf,source,analysis_type",
-        },
-      )
-      .select()
+      })
+      .onConflictDoNothing()
 
-    if (profileError) {
-      console.error("[RUN ASYNC ANALYSIS] Error saving credit_profiles:", profileError)
-    } else {
-      console.log("[RUN ASYNC ANALYSIS] credit_profiles saved successfully:", profileData)
-    }
+    console.log("[RUN ASYNC ANALYSIS] credit_profiles saved successfully")
 
     return {
       success: true,
-      message: "Análise enviada para processamento assíncrono",
+      message: "Analise enviada para processamento assincrono",
       uuid,
       identificador: identificadorResponse,
       estimatedTime: "2-5 minutos",
@@ -252,17 +234,18 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
 
 export async function checkAsyncAnalysisStatus(identificador: string) {
   try {
-    const supabase = createAdminClient()
-
-    const { data: profile, error } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("external_id", identificador)
-      .order("created_at", { ascending: false })
+    const [profile] = await db
+      .select()
+      .from(creditProfiles)
+      .where(
+        sql`${creditProfiles.metadata}->>'external_id' = ${identificador}`,
+      )
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(1)
-      .single()
 
-    if (error) throw error
+    if (!profile) {
+      throw new Error("Analysis not found")
+    }
 
     return {
       success: true,

@@ -1,25 +1,20 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { creditProfiles } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 
 export async function getAllBehavioralAnalyses() {
   try {
-    const supabase = createAdminClient()
+    const data = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.provider, "assertiva"))
+      .orderBy(desc(creditProfiles.createdAt))
 
-    const { data, error } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("source", "assertiva")
-      .order("created_at", { ascending: false })
+    console.log(`[v0] getAllBehavioralAnalyses found ${data.length} analyses`)
 
-    if (error) {
-      console.error("[getAllBehavioralAnalyses] Error:", error)
-      return { success: false, error: error.message, data: [] }
-    }
-
-    console.log(`[v0] getAllBehavioralAnalyses found ${data?.length || 0} analyses`)
-
-    return { success: true, data: data || [] }
+    return { success: true, data: data }
   } catch (error: any) {
     console.error("[getAllBehavioralAnalyses] Exception:", error)
     return { success: false, error: error.message, data: [] }

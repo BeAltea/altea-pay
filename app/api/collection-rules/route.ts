@@ -1,42 +1,35 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { collectionRules } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch collection rules for the user
-    const { data: rules, error } = await supabase
-      .from("collection_rules")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("Error fetching collection rules:", error)
-      return NextResponse.json({ error: "Failed to fetch collection rules" }, { status: 500 })
-    }
+    // Fetch collection rules for the user's company
+    const rules = await db
+      .select()
+      .from(collectionRules)
+      .where(eq(collectionRules.companyId, user.companyId!))
+      .orderBy(desc(collectionRules.createdAt))
 
     // Transform rules to match frontend interface
     const transformedRules = rules.map((rule) => ({
       id: rule.id,
       name: rule.name,
       description: rule.description,
-      isActive: rule.is_active,
-      steps: rule.rules || [], // rules column contains the steps array
-      createdAt: rule.created_at,
-      updatedAt: rule.updated_at,
+      isActive: rule.isActive,
+      steps: rule.conditions || [], // conditions column contains the steps array
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt,
     }))
 
     return NextResponse.json({ rules: transformedRules })
@@ -48,13 +41,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -67,32 +56,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert new collection rule
-    const { data: rule, error } = await supabase
-      .from("collection_rules")
-      .insert({
-        user_id: user.id,
+    const [rule] = await db
+      .insert(collectionRules)
+      .values({
+        companyId: user.companyId!,
         name,
         description: description || "",
-        is_active: true,
-        rules: steps,
+        isActive: true,
+        conditions: steps,
       })
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error creating collection rule:", error)
-      return NextResponse.json({ error: "Failed to create collection rule" }, { status: 500 })
-    }
+      .returning()
 
     // Transform rule to match frontend interface
     const transformedRule = {
       id: rule.id,
       name: rule.name,
       description: rule.description,
-      isActive: rule.is_active,
-      steps: rule.rules || [],
-      createdAt: rule.created_at,
-      updatedAt: rule.updated_at,
+      isActive: rule.isActive,
+      steps: rule.conditions || [],
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt,
     }
 
     return NextResponse.json({ rule: transformedRule }, { status: 201 })

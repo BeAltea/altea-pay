@@ -3,45 +3,47 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { ArrowLeft, Users, UserCheck, UserX, AlertTriangle } from "lucide-react"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { eq, desc } from "drizzle-orm"
+import { companies, profiles } from "@/lib/db/schema"
 import { notFound } from "next/navigation"
 
 export default async function ManageUsersPage({ params }: { params: { id: string } }) {
-  const supabase = createAdminClient()
+  // Fetch company using Drizzle ORM
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, params.id))
+    .limit(1)
 
-  const { data: company, error: companyError } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("id", params.id)
-    .single()
-
-  if (companyError || !company) {
+  if (!company) {
     notFound()
   }
 
-  const { data: users } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Fetch users for this company using Drizzle ORM
+  const users = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.companyId, params.id))
+    .orderBy(desc(profiles.createdAt))
 
   const usersList = (users || []).map((user) => ({
     id: user.id,
-    name: user.full_name || user.email?.split("@")[0] || "Sem nome",
+    name: user.fullName || user.email?.split("@")[0] || "Sem nome",
     email: user.email || "N/A",
-    document: user.document || "N/A",
+    document: user.cpfCnpj || "N/A",
     phone: user.phone || "-",
-    role: user.role === "admin" ? "Administrador" : user.role === "user" ? "Usuário" : "Visualizador",
+    role: user.role === "admin" ? "Administrador" : user.role === "user" ? "Usuario" : "Visualizador",
     status: (user.status || "active") as "ativo" | "inativo" | "suspenso",
-    lastLogin: user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString("pt-BR") : "-",
-    createdAt: user.created_at,
+    lastLogin: "-", // lastSignInAt not available in profiles
+    createdAt: user.createdAt,
     accessLevel: user.role === "admin" ? "critico" : user.role === "user" ? "medio" : "baixo",
   }))
 
   const totalUsers = usersList.length
-  const activeUsers = usersList.filter((u) => u.status === "ativo").length
-  const inactiveUsers = usersList.filter((u) => u.status === "inativo").length
-  const suspendedUsers = usersList.filter((u) => u.status === "suspenso").length
+  const activeUsers = usersList.filter((u) => u.status === "ativo" || u.status === "active").length
+  const inactiveUsers = usersList.filter((u) => u.status === "inativo" || u.status === "inactive").length
+  const suspendedUsers = usersList.filter((u) => u.status === "suspenso" || u.status === "suspended").length
   const criticalAccess = usersList.filter((u) => u.accessLevel === "critico").length
   const highAccess = usersList.filter((u) => u.accessLevel === "alto").length
   const mediumAccess = usersList.filter((u) => u.accessLevel === "medio").length
@@ -50,10 +52,13 @@ export default async function ManageUsersPage({ params }: { params: { id: string
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ativo":
+      case "active":
         return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Ativo</Badge>
       case "inativo":
+      case "inactive":
         return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">Inativo</Badge>
       case "suspenso":
+      case "suspended":
         return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Suspenso</Badge>
       default:
         return (
@@ -67,11 +72,11 @@ export default async function ManageUsersPage({ params }: { params: { id: string
   const getAccessBadge = (level: string) => {
     switch (level) {
       case "critico":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">Crítico</Badge>
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">Critico</Badge>
       case "alto":
         return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs">Alto</Badge>
       case "medio":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Médio</Badge>
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Medio</Badge>
       case "baixo":
         return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Baixo</Badge>
       default:
@@ -99,7 +104,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
           {company.name}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm lg:text-base">
-          Gestão de usuários do sistema • CNPJ: {company.cnpj || "N/A"}
+          Gestao de usuarios do sistema - CNPJ: {company.cnpj || "N/A"}
         </p>
       </div>
 
@@ -109,10 +114,10 @@ export default async function ManageUsersPage({ params }: { params: { id: string
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Total de Usuários
+                  Total de Usuarios
                 </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">{totalUsers}</p>
-                <p className="text-xs text-gray-500 mt-1">Usuários cadastrados</p>
+                <p className="text-xs text-gray-500 mt-1">Usuarios cadastrados</p>
               </div>
               <Users className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-500" />
             </div>
@@ -123,7 +128,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
           <CardContent className="p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Usuários Ativos</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Usuarios Ativos</p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{activeUsers}</p>
                 <p className="text-xs text-gray-500 mt-1">Com acesso ativo</p>
               </div>
@@ -137,7 +142,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Usuários Inativos
+                  Usuarios Inativos
                 </p>
                 <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600">{inactiveUsers}</p>
                 <p className="text-xs text-gray-500 mt-1">Sem acesso ao sistema</p>
@@ -164,9 +169,9 @@ export default async function ManageUsersPage({ params }: { params: { id: string
       <Card>
         <CardContent className="p-0">
           <div className="p-3 sm:p-4 lg:p-6 border-b">
-            <h3 className="text-base sm:text-lg font-semibold">Usuários do Sistema - {company.name}</h3>
+            <h3 className="text-base sm:text-lg font-semibold">Usuarios do Sistema - {company.name}</h3>
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-              Lista completa de usuários com acesso ao sistema
+              Lista completa de usuarios com acesso ao sistema
             </p>
           </div>
 
@@ -174,8 +179,8 @@ export default async function ManageUsersPage({ params }: { params: { id: string
             {usersList.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Nenhum usuário cadastrado</p>
-                <p className="text-sm text-gray-400 mt-2">Adicione usuários para começar</p>
+                <p className="text-gray-500">Nenhum usuario cadastrado</p>
+                <p className="text-sm text-gray-400 mt-2">Adicione usuarios para comecar</p>
               </div>
             ) : (
               usersList.map((user) => (
@@ -192,7 +197,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
                         <p className="text-xs sm:text-sm text-gray-500 mb-1">{user.email}</p>
                         <p className="text-xs sm:text-sm text-gray-500 mb-1">CPF: {user.document}</p>
                         <p className="text-xs sm:text-sm text-gray-500 mb-2">
-                          {user.phone !== "-" ? user.phone : "Telefone não informado"}
+                          {user.phone !== "-" ? user.phone : "Telefone nao informado"}
                         </p>
 
                         <div className="flex flex-wrap gap-2 mb-3">
@@ -203,7 +208,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
                         </div>
 
                         <p className="text-xs text-gray-500">
-                          Último login: {user.lastLogin !== "-" ? user.lastLogin : "Nunca"}
+                          Ultimo login: {user.lastLogin !== "-" ? user.lastLogin : "Nunca"}
                         </p>
                       </div>
                     </div>

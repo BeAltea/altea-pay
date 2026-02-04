@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -11,61 +10,27 @@ export const dynamic = "force-dynamic"
 export default function CreateUsersPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState("")
-  const supabase = createBrowserClient()
 
   const createDefaultUsers = async () => {
     setLoading(true)
     setMessage("")
 
     try {
-      // Criar usuário admin
-      const { data: adminData, error: adminError } = await supabase.auth.admin.createUser({
-        email: "admin@admin.com",
-        password: "admin123",
-        email_confirm: true,
-        user_metadata: {
-          full_name: "Administrador",
-        },
+      // Call the API endpoint to create users
+      const response = await fetch("/api/create-default-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       })
 
-      if (adminError) {
-        console.error("Erro ao criar admin:", adminError)
-      } else {
-        // Atualizar perfil do admin
-        await supabase.from("profiles").upsert({
-          id: adminData.user.id,
-          email: "admin@admin.com",
-          full_name: "Administrador",
-          role: "admin",
-        })
-      }
-
-      // Criar usuário cliente
-      const { data: clientData, error: clientError } = await supabase.auth.admin.createUser({
-        email: "cliente@cliente.com",
-        password: "cliente123",
-        email_confirm: true,
-        user_metadata: {
-          full_name: "Cliente Teste",
-        },
-      })
-
-      if (clientError) {
-        console.error("Erro ao criar cliente:", clientError)
-      } else {
-        // Atualizar perfil do cliente
-        await supabase.from("profiles").upsert({
-          id: clientData.user.id,
-          email: "cliente@cliente.com",
-          full_name: "Cliente Teste",
-          role: "user",
-        })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to create users")
       }
 
       setMessage("Usuários criados com sucesso!")
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro:", error)
-      setMessage("Erro ao criar usuários. Verifique o console.")
+      setMessage(error.message || "Erro ao criar usuários. Verifique o console.")
     } finally {
       setLoading(false)
     }

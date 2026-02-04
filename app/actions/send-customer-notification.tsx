@@ -1,6 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { customers, companies, debts, collectionActions } from "@/lib/db/schema"
+import { eq, and, inArray, asc } from "drizzle-orm"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS } from "@/lib/notifications/sms"
 
@@ -28,40 +30,35 @@ export async function sendCustomerNotification({
   try {
     console.log("[v0] sendCustomerNotification - Starting", { customerId, channel, companyId })
 
-    const supabase = await createClient()
-
     // Get customer details
-    const { data: customer, error: customerError } = await supabase
-      .from("customers")
-      .select("id, name, email, phone")
-      .eq("id", customerId)
-      .eq("company_id", companyId)
-      .single()
+    const [customer] = await db
+      .select({ id: customers.id, name: customers.name, email: customers.email, phone: customers.phone })
+      .from(customers)
+      .where(and(eq(customers.id, customerId), eq(customers.companyId, companyId)))
+      .limit(1)
 
-    if (customerError || !customer) {
-      console.error("[v0] sendCustomerNotification - Customer not found:", customerError)
+    if (!customer) {
+      console.error("[v0] sendCustomerNotification - Customer not found")
       return {
         success: false,
         message: "Cliente não encontrado",
-        error: customerError?.message,
       }
     }
 
     console.log("[v0] sendCustomerNotification - Customer found:", customer.name)
 
     // Get company details
-    const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id, name")
-      .eq("id", companyId)
-      .single()
+    const [company] = await db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .limit(1)
 
-    if (companyError || !company) {
-      console.error("[v0] sendCustomerNotification - Company not found:", companyError)
+    if (!company) {
+      console.error("[v0] sendCustomerNotification - Company not found")
       return {
         success: false,
         message: "Empresa não encontrada",
-        error: companyError?.message,
       }
     }
 
@@ -83,15 +80,19 @@ export async function sendCustomerNotification({
     }
 
     // Get customer's debts for the notification
-    const { data: debts } = await supabase
-      .from("debts")
-      .select("id, amount, due_date, status")
-      .eq("customer_id", customerId)
-      .eq("company_id", companyId)
-      .in("status", ["pending", "in_collection"])
-      .order("due_date", { ascending: true })
+    const customerDebts = await db
+      .select({ id: debts.id, amount: debts.amount, dueDate: debts.dueDate, status: debts.status })
+      .from(debts)
+      .where(
+        and(
+          eq(debts.customerId, customerId),
+          eq(debts.companyId, companyId),
+          inArray(debts.status, ["pending", "in_collection"])
+        )
+      )
+      .orderBy(asc(debts.dueDate))
 
-    const totalDebt = debts?.reduce((sum, debt) => sum + Number(debt.amount || 0), 0) || 0
+    const totalDebt = customerDebts?.reduce((sum, debt) => sum + Number(debt.amount || 0), 0) || 0
 
     console.log("[v0] sendCustomerNotification - Total debt:", totalDebt)
 
@@ -161,13 +162,12 @@ export async function sendCustomerNotification({
 
     // Log the notification action
     if (result.success) {
-      await supabase.from("collection_actions").insert({
-        customer_id: customerId,
-        action_type: channel,
+      await db.insert(collectionActions).values({
+        customerId: customerId,
+        actionType: channel,
         status: "sent",
-        message_id: result.messageId,
-        company_id: companyId,
-        created_at: new Date().toISOString(),
+        companyId: companyId,
+        metadata: { messageId: result.messageId },
       })
 
       console.log("[v0] sendCustomerNotification - Action logged successfully")

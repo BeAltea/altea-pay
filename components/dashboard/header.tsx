@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bell, Search, Sun, Moon, User, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
@@ -64,20 +64,9 @@ export function Header({ user }: HeaderProps) {
 
     const fetchNotifications = async () => {
       try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from("notifications")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(5)
-
-        if (error) throw error
-
-        if (data) {
-          setNotifications(data)
-          setUnreadCount(data.filter((n) => !n.read).length)
-        }
+        // TODO: Replace with server action or API route for notifications
+        setNotifications([])
+        setUnreadCount(0)
       } catch (error) {
         console.error("Error fetching notifications:", error)
       }
@@ -104,24 +93,12 @@ export function Header({ user }: HeaderProps) {
 
   const handleSignOut = async () => {
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        toast({
-          title: "Erro",
-          description: "Erro ao fazer logout. Tente novamente.",
-          variant: "destructive",
-        })
-        return
-      }
-
       toast({
         title: "Logout realizado",
         description: "Você foi desconectado com sucesso.",
       })
 
-      window.location.href = "/auth/login"
+      await signOut({ callbackUrl: "/auth/login" })
     } catch (error) {
       toast({
         title: "Erro",
@@ -141,9 +118,7 @@ export function Header({ user }: HeaderProps) {
 
   const handleNotificationClick = async (notificationId: string) => {
     try {
-      const supabase = createClient()
-      await supabase.from("notifications").update({ read: true }).eq("id", notificationId)
-
+      // TODO: Replace with server action or API route to mark notification as read
       setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
       setUnreadCount((prev) => Math.max(0, prev - 1))
     } catch (error) {

@@ -1,59 +1,16 @@
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+// DEPRECATED: This module has been replaced by Drizzle ORM + NextAuth.
+// Use `import { db } from "@/lib/db"` for database queries
+// Use `import { auth } from "@/lib/auth/config"` for authentication
 
-/**
- * Especially important if using Fluid compute: Don't put this client in a
- * global variable. Always create a new client within each function when using
- * it.
- */
+/** @deprecated Use `import { db } from "@/lib/db"` and `import { auth } from "@/lib/auth/config"` instead */
 export async function createClient() {
-  try {
-    const cookieStore = await cookies()
-
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      throw new Error("Missing Supabase environment variables")
-    }
-
-    const client = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          } catch {
-            // Ignorar erro esperado em Server Components
-          }
-        },
-      },
-    })
-
-    return client
-  } catch (error) {
-    throw error
-  }
+  throw new Error("createClient() from @/lib/supabase/server is deprecated. Use db from @/lib/db and auth from @/lib/auth/config")
 }
 
+/** @deprecated Use `import { db } from "@/lib/db"` instead */
 export function createAdminClient() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable")
-  }
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable")
-  }
-
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-    cookies: {
-      getAll() {
-        return []
-      },
-      setAll() {
-        // No-op for admin client
-      },
-    },
-  })
+  throw new Error("createAdminClient() from @/lib/supabase/server is deprecated. Use db from @/lib/db")
 }
 
-export { createClient as createServerClient }
+/** @deprecated Use `import { db } from "@/lib/db"` and `import { auth } from "@/lib/auth/config"` instead */
+export const createServerClient = createClient

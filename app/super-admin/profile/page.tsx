@@ -10,15 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 import { User, Shield, Calendar, Edit3, Save, X } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 
 interface ProfileData {
   id: string
-  full_name: string
+  fullName: string
   email: string
   phone: string | null
-  created_at: string
-  updated_at: string
+  createdAt: string
+  updatedAt: string
   role: string
 }
 
@@ -30,7 +29,7 @@ export default function SuperAdminProfilePage() {
   const [editing, setEditing] = useState(false)
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [formData, setFormData] = useState({
-    full_name: "",
+    fullName: "",
     phone: "",
   })
 
@@ -43,12 +42,11 @@ export default function SuperAdminProfilePage() {
   const fetchProfile = async () => {
     try {
       setLoading(true)
-      const supabase = createClient()
 
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", user?.id).single()
+      const response = await fetch("/api/super-admin/profile")
 
-      if (error) {
-        console.error("Error fetching profile:", error)
+      if (!response.ok) {
+        console.error("Error fetching profile")
         toast({
           title: "Erro",
           description: "Erro ao carregar perfil.",
@@ -57,9 +55,11 @@ export default function SuperAdminProfilePage() {
         return
       }
 
+      const data = await response.json()
+
       setProfile(data)
       setFormData({
-        full_name: data.full_name || "",
+        fullName: data.fullName || "",
         phone: data.phone || "",
       })
     } catch (error) {
@@ -77,19 +77,17 @@ export default function SuperAdminProfilePage() {
   const handleSave = async () => {
     try {
       setSaving(true)
-      const supabase = createClient()
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: formData.full_name,
-          phone: formData.phone,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user?.id)
+      const response = await fetch("/api/super-admin/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
 
-      if (error) {
-        console.error("Error updating profile:", error)
+      if (!response.ok) {
+        console.error("Error updating profile")
         toast({
           title: "Erro",
           description: "Erro ao salvar perfil.",
@@ -119,7 +117,7 @@ export default function SuperAdminProfilePage() {
 
   const handleCancel = () => {
     setFormData({
-      full_name: profile?.full_name || "",
+      fullName: profile?.fullName || "",
       phone: profile?.phone || "",
     })
     setEditing(false)
@@ -136,8 +134,8 @@ export default function SuperAdminProfilePage() {
   }
 
   const getUserInitials = () => {
-    if (profile?.full_name) {
-      return profile.full_name
+    if (profile?.fullName) {
+      return profile.fullName
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -177,7 +175,7 @@ export default function SuperAdminProfilePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meu Perfil</h1>
-            <p className="text-gray-500 dark:text-gray-400">Gerencie suas informações pessoais</p>
+            <p className="text-gray-500 dark:text-gray-400">Gerencie suas informacoes pessoais</p>
           </div>
           <div className="flex items-center space-x-2">
             {editing ? (
@@ -205,9 +203,9 @@ export default function SuperAdminProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <User className="h-5 w-5" />
-              <span>Informações Pessoais</span>
+              <span>Informacoes Pessoais</span>
             </CardTitle>
-            <CardDescription>Suas informações básicas de perfil</CardDescription>
+            <CardDescription>Suas informacoes basicas de perfil</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-start space-x-6">
@@ -218,22 +216,22 @@ export default function SuperAdminProfilePage() {
               <div className="flex-1 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="full_name">Nome Completo</Label>
+                    <Label htmlFor="fullName">Nome Completo</Label>
                     {editing ? (
                       <Input
-                        id="full_name"
-                        value={formData.full_name}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, full_name: e.target.value }))}
+                        id="fullName"
+                        value={formData.fullName}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
                         placeholder="Digite seu nome completo"
                       />
                     ) : (
-                      <p className="text-sm font-medium mt-1">{profile.full_name || "Não informado"}</p>
+                      <p className="text-sm font-medium mt-1">{profile.fullName || "Nao informado"}</p>
                     )}
                   </div>
                   <div>
                     <Label htmlFor="email">Email</Label>
                     <p className="text-sm font-medium mt-1 text-gray-500">{profile.email}</p>
-                    <p className="text-xs text-gray-400 mt-1">Email não pode ser alterado</p>
+                    <p className="text-xs text-gray-400 mt-1">Email nao pode ser alterado</p>
                   </div>
                   <div>
                     <Label htmlFor="phone">Telefone</Label>
@@ -245,11 +243,11 @@ export default function SuperAdminProfilePage() {
                         placeholder="Digite seu telefone"
                       />
                     ) : (
-                      <p className="text-sm font-medium mt-1">{profile.phone || "Não informado"}</p>
+                      <p className="text-sm font-medium mt-1">{profile.phone || "Nao informado"}</p>
                     )}
                   </div>
                   <div>
-                    <Label>Função</Label>
+                    <Label>Funcao</Label>
                     <div className="mt-1">
                       <Badge className="bg-altea-gold text-altea-navy">
                         <Shield className="h-3 w-3 mr-1" />
@@ -268,7 +266,7 @@ export default function SuperAdminProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Calendar className="h-5 w-5" />
-              <span>Informações da Conta</span>
+              <span>Informacoes da Conta</span>
             </CardTitle>
             <CardDescription>Detalhes sobre sua conta no sistema</CardDescription>
           </CardHeader>
@@ -276,18 +274,18 @@ export default function SuperAdminProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium text-gray-500">Conta criada em</Label>
-                <p className="text-sm font-medium">{formatDate(profile.created_at)}</p>
+                <p className="text-sm font-medium">{formatDate(profile.createdAt)}</p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-500">Última atualização</Label>
-                <p className="text-sm font-medium">{formatDate(profile.updated_at)}</p>
+                <Label className="text-sm font-medium text-gray-500">Ultima atualizacao</Label>
+                <p className="text-sm font-medium">{formatDate(profile.updatedAt)}</p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-500">ID do usuário</Label>
+                <Label className="text-sm font-medium text-gray-500">ID do usuario</Label>
                 <p className="text-sm font-mono text-gray-600 dark:text-gray-400">{profile.id}</p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-500">Nível de acesso</Label>
+                <Label className="text-sm font-medium text-gray-500">Nivel de acesso</Label>
                 <p className="text-sm font-medium text-altea-navy dark:text-altea-gold">Acesso total ao sistema</p>
               </div>
             </div>
@@ -299,9 +297,9 @@ export default function SuperAdminProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Shield className="h-5 w-5" />
-              <span>Permissões de Sistema</span>
+              <span>Permissoes de Sistema</span>
             </CardTitle>
-            <CardDescription>Suas permissões como Super Administrador</CardDescription>
+            <CardDescription>Suas permissoes como Super Administrador</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -311,15 +309,15 @@ export default function SuperAdminProfilePage() {
               </div>
               <div className="flex items-center space-x-2">
                 <div className="h-2 w-2 bg-green-500 rounded-full" />
-                <span className="text-sm">Gerenciar todos os usuários</span>
+                <span className="text-sm">Gerenciar todos os usuarios</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="h-2 w-2 bg-green-500 rounded-full" />
-                <span className="text-sm">Acessar relatórios globais</span>
+                <span className="text-sm">Acessar relatorios globais</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="h-2 w-2 bg-green-500 rounded-full" />
-                <span className="text-sm">Configurações do sistema</span>
+                <span className="text-sm">Configuracoes do sistema</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="h-2 w-2 bg-green-500 rounded-full" />
@@ -327,7 +325,7 @@ export default function SuperAdminProfilePage() {
               </div>
               <div className="flex items-center space-x-2">
                 <div className="h-2 w-2 bg-green-500 rounded-full" />
-                <span className="text-sm">Analytics avançados</span>
+                <span className="text-sm">Analytics avancados</span>
               </div>
             </div>
           </CardContent>

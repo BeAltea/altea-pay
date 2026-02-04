@@ -1,70 +1,71 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { vmax, creditProfiles, companies } from "@/lib/db/schema"
+import { eq, desc, asc, isNotNull, or, inArray, sql } from "drizzle-orm"
 
 export async function getAnalysesData() {
   try {
     console.log("[SERVER] getAnalysesData - Starting (VMAX ONLY)...")
 
-    const supabase = createAdminClient()
-
     // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
-    // Buscar registros com análise RESTRITIVA (restrictive_analysis_logs ou analysis_metadata antigo)
-    const { data: vmaxData, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date',
+    // Buscar registros com analise RESTRITIVA (restrictive_analysis_logs ou analysis_metadata antigo)
+    const vmaxData = await db
+      .select()
+      .from(vmax)
+      .where(
+        or(
+          isNotNull(sql`${vmax.analysisMetadata}->'restrictive_analysis_logs'`),
+          isNotNull(vmax.analysisMetadata),
+        ),
       )
-      .or("restrictive_analysis_logs.not.is.null,analysis_metadata.not.is.null") // Com análise restritiva
-      .order("restrictive_analysis_date", { ascending: false, nullsFirst: false })
+      .orderBy(desc(vmax.lastAnalysisDate))
 
-    if (vmaxError) {
-      console.error("[SERVER] Error loading VMAX:", vmaxError)
-    }
+    console.log("[SERVER] getAnalysesData - VMAX records loaded:", vmaxData.length)
 
-    console.log("[SERVER] getAnalysesData - VMAX records loaded:", vmaxData?.length || 0)
+    const profilesData = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.provider, "assertiva"))
+      .orderBy(desc(creditProfiles.createdAt))
 
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("source", "assertiva")
-      .order("created_at", { ascending: false })
-
-    if (profilesError) {
-      console.error("[SERVER] Error loading profiles:", profilesError)
-    }
+    console.log("[SERVER] getAnalysesData - Profiles loaded:", profilesData.length)
 
     const allAnalyses = [
-      ...(vmaxData || []).map((v) => ({
-        id: v.id,
-        customer_id: v.id,
-        name: v.Cliente,
-        document: v["CPF/CNPJ"],
-        company_id: v.id_company,
-        city: v.Cidade || "N/A",
-        source_table: "vmax" as const,
-        dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
-        credit_score: v.credit_score,
-        risk_level: v.risk_level,
-        approval_status: v.approval_status,
-        // Usar restrictive_analysis_logs se existir, senão analysis_metadata (compatibilidade)
-        analysis_metadata: v.restrictive_analysis_logs || v.analysis_metadata,
-        last_analysis_date: v.restrictive_analysis_date || v.last_analysis_date,
-      })),
-      ...(profilesData || []).map((p) => ({
+      ...vmaxData.map((v) => {
+        const metadata = v.analysisMetadata as any
+        const restrictiveLogs = metadata?.restrictive_analysis_logs
+        const restrictiveDate = metadata?.restrictive_analysis_date
+        return {
+          id: v.id,
+          customer_id: v.id,
+          name: v.cliente,
+          document: v.cpfCnpj,
+          company_id: v.idCompany,
+          city: v.cidade || "N/A",
+          source_table: "vmax" as const,
+          dias_inad: Number(String(v.maiorAtraso || "0").replace(/\D/g, "")) || 0,
+          credit_score: v.creditScore,
+          risk_level: v.riskLevel,
+          approval_status: v.approvalStatus,
+          analysis_metadata: restrictiveLogs || v.analysisMetadata,
+          last_analysis_date: restrictiveDate || v.lastAnalysisDate,
+        }
+      }),
+      ...profilesData.map((p) => ({
         id: p.id,
-        customer_id: p.customer_id,
+        customer_id: p.customerId,
         name: p.name || "N/A",
         document: "N/A",
-        company_id: p.company_id,
-        city: p.city || "N/A",
+        company_id: p.companyId,
+        city: "N/A",
         source_table: "credit_profiles" as const,
         dias_inad: 0,
         credit_score: p.score,
-        risk_level: p.risk_level,
+        risk_level: p.riskLevel,
         approval_status: null,
-        analysis_metadata: p.assertiva_data,
-        last_analysis_date: p.created_at,
+        analysis_metadata: p.metadata,
+        last_analysis_date: p.createdAt,
       })),
     ]
 
@@ -74,13 +75,15 @@ export async function getAnalysesData() {
       return { success: true, data: [] }
     }
 
-    const companyIds = [...new Set(allAnalyses.map((c) => c.company_id).filter(Boolean))]
-    const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
+    const companyIds = [...new Set(allAnalyses.map((c) => c.company_id).filter(Boolean))] as string[]
+    const companiesData = companyIds.length > 0
+      ? await db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, companyIds))
+      : []
 
-    const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
+    const companiesMap = new Map(companiesData.map((c) => [c.id, c]))
 
     const formattedAnalyses = allAnalyses.map((analysis) => {
-      const company = companiesMap.get(analysis.company_id)
+      const company = companiesMap.get(analysis.company_id!)
 
       return {
         id: analysis.id,
@@ -96,7 +99,7 @@ export async function getAnalysesData() {
         company_name: company?.name || "N/A",
         source_table: analysis.source_table,
         data: analysis.analysis_metadata,
-        assertiva_data: analysis.analysis_metadata?.assertiva_data || analysis.analysis_metadata,
+        assertiva_data: (analysis.analysis_metadata as any)?.assertiva_data || analysis.analysis_metadata,
         dias_inad: analysis.dias_inad,
         risk_level: analysis.risk_level,
         approval_status: analysis.approval_status,
@@ -116,50 +119,64 @@ export async function getCustomerDetails(customerId: string) {
   try {
     console.log("[SERVER] getCustomerDetails - Starting for customer:", customerId)
 
-    const supabase = createAdminClient()
+    const [customerData] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.id, customerId))
+      .limit(1)
 
-    const { data: customerData, error: customerError } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("id", customerId)
-      .single()
-
-    let customer = customerData
+    let customer: any = customerData
     let isVMAX = false
 
-    if (customerError || !customerData) {
-      const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*").eq("id", customerId).single()
+    if (!customerData) {
+      // Try customers table - but since it's been discontinued, use VMAX
+      const [vmaxData] = await db
+        .select()
+        .from(vmax)
+        .where(eq(vmax.id, customerId))
+        .limit(1)
 
-      if (vmaxError || !vmaxData) {
-        throw new Error("Cliente não encontrado")
+      if (!vmaxData) {
+        throw new Error("Cliente nao encontrado")
       }
 
       customer = {
         id: vmaxData.id,
-        name: vmaxData.Cliente,
-        document: vmaxData["CPF/CNPJ"],
-        company_id: vmaxData.id_company,
-        city: vmaxData.Cidade,
-        dias_inad: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
+        name: vmaxData.cliente,
+        document: vmaxData.cpfCnpj,
+        company_id: vmaxData.idCompany,
+        city: vmaxData.cidade,
+        dias_inad: Number(String(vmaxData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
+      }
+      isVMAX = true
+    } else {
+      customer = {
+        id: customerData.id,
+        name: customerData.cliente,
+        document: customerData.cpfCnpj,
+        company_id: customerData.idCompany,
+        city: customerData.cidade,
+        dias_inad: Number(String(customerData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
       }
       isVMAX = true
     }
 
-    const { data: profileData } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
+    const [profileData] = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.customerId, customerId))
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(1)
-      .single()
 
-    const { data: companyData } = await supabase.from("companies").select("*").eq("id", customer.company_id).single()
+    const companyData = customer.company_id
+      ? (await db.select().from(companies).where(eq(companies.id, customer.company_id)).limit(1))[0]
+      : undefined
 
-    const { data: analysisHistory } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
+    const analysisHistory = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.customerId, customerId))
+      .orderBy(desc(creditProfiles.createdAt))
 
     return {
       success: true,
@@ -181,24 +198,20 @@ export async function runAnalysis(customerId: string, document: string) {
   try {
     console.log("[SERVER] runAnalysis - Starting for customer:", customerId, "document:", document)
 
-    const supabase = createAdminClient()
-
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data: recentProfile } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", customerId)
-      .gte("created_at", oneDayAgo)
-      .order("created_at", { ascending: false })
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const [recentProfile] = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.customerId, customerId))
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(1)
-      .single()
 
-    if (recentProfile) {
+    if (recentProfile && recentProfile.createdAt >= oneDayAgo) {
       console.log("[SERVER] runAnalysis - Recent analysis found, returning existing data")
       return {
         success: true,
         data: recentProfile,
-        message: "Análise recente encontrada (últimas 24 horas)",
+        message: "Analise recente encontrada (ultimas 24 horas)",
       }
     }
 
@@ -207,7 +220,7 @@ export async function runAnalysis(customerId: string, document: string) {
     const clientSecret = process.env.ASSERTIVA_CLIENT_SECRET
 
     if (!assertivaUrl || !clientId || !clientSecret) {
-      throw new Error("Credenciais da API restritiva não configuradas")
+      throw new Error("Credenciais da API restritiva nao configuradas")
     }
 
     const response = await fetch(`${assertivaUrl}/credit-analysis`, {
@@ -228,118 +241,87 @@ export async function runAnalysis(customerId: string, document: string) {
 
     const analysisData = await response.json()
 
-    const { data: newProfile, error: insertError } = await supabase
-      .from("credit_profiles")
-      .insert({
-        customer_id: customerId,
-        score: analysisData.score || 0,
-        source: "assertiva",
-        analysis_type: "credit_check",
+    const [newProfile] = await db
+      .insert(creditProfiles)
+      .values({
+        customerId: customerId,
+        score: String(analysisData.score || 0),
+        provider: "assertiva",
+        analysisType: "credit_check",
         data: analysisData,
       })
-      .select()
-      .single()
-
-    if (insertError) {
-      throw insertError
-    }
+      .returning()
 
     console.log("[SERVER] runAnalysis - Analysis completed successfully")
 
     return {
       success: true,
       data: newProfile,
-      message: "Análise restritiva realizada com sucesso",
+      message: "Analise restritiva realizada com sucesso",
     }
   } catch (error: any) {
     console.error("[SERVER] runAnalysis - Error:", error)
     return {
       success: false,
       error: error.message,
-      message: "Erro ao realizar análise restritiva",
+      message: "Erro ao realizar analise restritiva",
     }
   }
 }
 
 export async function getAllCustomers() {
   try {
-    const supabase = createAdminClient()
     // Buscar TODOS os registros VMAX (sem limite)
-    let allVmaxData: any[] = []
-    let page = 0
-    const pageSize = 1000
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: vmaxPage, error: vmaxPageError } = await supabase
-        .from("VMAX")
-        .select(
-          'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date, behavioral_analysis_logs, behavioral_analysis_date',
-        )
-        .order("Cliente")
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (vmaxPageError) {
-        console.error("[SERVER] getAllCustomers - Error loading VMAX page:", vmaxPageError)
-        break
-      }
-
-      if (vmaxPage && vmaxPage.length > 0) {
-        allVmaxData = [...allVmaxData, ...vmaxPage]
-        page++
-        hasMore = vmaxPage.length === pageSize
-      } else {
-        hasMore = false
-      }
-    }
-
-    const vmaxData = allVmaxData
-    const vmaxError = null
+    const vmaxData = await db
+      .select()
+      .from(vmax)
+      .orderBy(asc(vmax.cliente))
 
     // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
-    const allCustomers = (vmaxData || []).map((v) => {
-        let score = v.credit_score
-        
-        // Usar logs restritivos se existir, senão analysis_metadata (compatibilidade)
-        const analysisLogs = v.restrictive_analysis_logs || v.analysis_metadata
-        const analysisDate = v.restrictive_analysis_date || v.last_analysis_date
+    const allCustomers = vmaxData.map((v) => {
+      let score = v.creditScore
 
-        if (!score && analysisLogs) {
-          try {
-            const metadata = analysisLogs as any
-            score =
-              metadata?.assertiva_data?.credito?.resposta?.score?.pontos ||
-              metadata?.credito?.resposta?.score?.pontos ||
-              null
-          } catch (e) {
-            console.error("[SERVER] Error extracting score from metadata:", e)
-          }
+      const metadata = v.analysisMetadata as any
+      // Usar logs restritivos se existir, senao analysis_metadata (compatibilidade)
+      const analysisLogs = metadata?.restrictive_analysis_logs || v.analysisMetadata
+      const analysisDate = metadata?.restrictive_analysis_date || v.lastAnalysisDate
+
+      if (!score && analysisLogs) {
+        try {
+          const meta = analysisLogs as any
+          score =
+            meta?.assertiva_data?.credito?.resposta?.score?.pontos ||
+            meta?.credito?.resposta?.score?.pontos ||
+            null
+        } catch (e) {
+          console.error("[SERVER] Error extracting score from metadata:", e)
         }
+      }
 
-        if (score === 0) {
-          score = 5
-        }
+      if (score === "0" || score === 0) {
+        score = "5"
+      }
 
-        return {
-          id: v.id,
-          name: v.Cliente,
-          document: v["CPF/CNPJ"],
-          company_id: v.id_company,
-          city: v.Cidade || "N/A",
-          source_table: "VMAX" as const,
-          dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
-          credit_score: score,
-          risk_level: v.risk_level,
-          approval_status: v.approval_status,
-          analysis_metadata: analysisLogs,
-          last_analysis_date: analysisDate,
-          recovery_score: v.recovery_score,
-          recovery_class: v.recovery_class,
-          // Novos campos separados
-          restrictive_analysis_logs: v.restrictive_analysis_logs,
-          restrictive_analysis_date: v.restrictive_analysis_date,
-          behavioral_analysis_logs: v.behavioral_analysis_logs,
-          behavioral_analysis_date: v.behavioral_analysis_date,
+      return {
+        id: v.id,
+        name: v.cliente,
+        document: v.cpfCnpj,
+        company_id: v.idCompany,
+        city: v.cidade || "N/A",
+        source_table: "VMAX" as const,
+        dias_inad: Number(String(v.maiorAtraso || "0").replace(/\D/g, "")) || 0,
+        credit_score: score,
+        risk_level: v.riskLevel,
+        approval_status: v.approvalStatus,
+        analysis_metadata: analysisLogs,
+        last_analysis_date: analysisDate,
+        recovery_score: metadata?.recovery_score || null,
+        recovery_class: metadata?.recovery_class || null,
+        // Novos campos separados
+        restrictive_analysis_logs: metadata?.restrictive_analysis_logs || null,
+        restrictive_analysis_date: metadata?.restrictive_analysis_date || null,
+        behavioral_analysis_logs: metadata?.behavioral_analysis_logs || null,
+        behavioral_analysis_date: metadata?.behavioral_analysis_date || null,
       }
     })
 
@@ -349,10 +331,12 @@ export async function getAllCustomers() {
       return { success: true, data: [] }
     }
 
-    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))]
-    const { data: companiesData } = await supabase.from("companies").select("id, name").in("id", companyIds)
+    const companyIds = [...new Set(allCustomers.map((c) => c.company_id).filter(Boolean))] as string[]
+    const companiesData = companyIds.length > 0
+      ? await db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, companyIds))
+      : []
 
-    const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
+    const companiesMap = new Map(companiesData.map((c) => [c.id, c]))
 
     const formattedCustomers = allCustomers.map((customer: any) => {
       const company = companiesMap.get(customer.company_id)
@@ -373,7 +357,7 @@ export async function getAllCustomers() {
         last_analysis_date: customer.last_analysis_date,
         recovery_score: customer.recovery_score,
         recovery_class: customer.recovery_class,
-        // Novos campos separados para cada tipo de análise
+        // Novos campos separados para cada tipo de analise
         restrictive_analysis_logs: customer.restrictive_analysis_logs,
         restrictive_analysis_date: customer.restrictive_analysis_date,
         behavioral_analysis_logs: customer.behavioral_analysis_logs,
@@ -394,21 +378,14 @@ export async function getAllCompanies() {
   try {
     console.log("[SERVER] getAllCompanies - Starting...")
 
-    const supabase = createAdminClient()
+    const companiesData = await db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .orderBy(asc(companies.name))
 
-    const { data: companiesData, error: companiesError } = await supabase
-      .from("companies")
-      .select("id, name")
-      .order("name")
+    console.log("[SERVER] getAllCompanies - Companies loaded:", companiesData.length)
 
-    if (companiesError) {
-      console.error("[SERVER] getAllCompanies - Error loading companies:", companiesError)
-      throw companiesError
-    }
-
-    console.log("[SERVER] getAllCompanies - Companies loaded:", companiesData?.length || 0)
-
-    return { success: true, data: companiesData || [] }
+    return { success: true, data: companiesData }
   } catch (error: any) {
     console.error("[SERVER] getAllCompanies - Error:", error)
     return { success: false, error: error.message, data: [] }
@@ -416,55 +393,52 @@ export async function getAllCompanies() {
 }
 
 export async function getAutomaticCollectionStats() {
-  const supabase = createAdminClient()
-
   try {
     console.log("[v0] getAutomaticCollectionStats - Starting...")
 
-    const { data: allVmax, error: allVmaxError } = await supabase
-      .from("VMAX")
-      .select("id, Cliente, approval_status, auto_collection_enabled, collection_processed_at")
+    const allVmax = await db
+      .select({
+        id: vmax.id,
+        cliente: vmax.cliente,
+        approvalStatus: vmax.approvalStatus,
+        autoCollectionEnabled: vmax.autoCollectionEnabled,
+        collectionProcessedAt: vmax.collectionProcessedAt,
+      })
+      .from(vmax)
 
-    if (allVmaxError) throw allVmaxError
-
-    console.log("[v0] Total VMAX records:", allVmax?.length || 0)
-    console.log("[v0] VMAX with ACEITA status:", allVmax?.filter((v) => v.approval_status === "ACEITA").length || 0)
+    console.log("[v0] Total VMAX records:", allVmax.length)
+    console.log("[v0] VMAX with ACEITA status:", allVmax.filter((v) => v.approvalStatus === "ACEITA").length)
     console.log(
       "[v0] VMAX with auto_collection_enabled:",
-      allVmax?.filter((v) => v.auto_collection_enabled).length || 0,
+      allVmax.filter((v) => v.autoCollectionEnabled).length,
     )
 
-    // Buscar clientes elegíveis para régua automática (ACEITA + auto_collection_enabled)
-    const { data: eligible, error: eligibleError } = await supabase
-      .from("VMAX")
-      .select("id, Cliente, Vencido, collection_count, last_collection_attempt, collection_processed_at")
-      .eq("approval_status", "ACEITA")
-      .eq("auto_collection_enabled", true)
+    // Buscar clientes elegiveis para regua automatica (ACEITA + auto_collection_enabled)
+    const eligible = allVmax.filter(
+      (v) => v.approvalStatus === "ACEITA" && v.autoCollectionEnabled,
+    )
 
-    if (eligibleError) throw eligibleError
+    console.log("[v0] Eligible for auto collection:", eligible.length)
 
-    console.log("[v0] Eligible for auto collection:", eligible?.length || 0)
-
-    // Buscar últimas ações de cobrança automática
-    const { data: recentActions, error: actionsError } = await supabase
-      .from("collection_actions")
-      .select("*")
-      .eq("action_type", "auto_collection")
-      .order("created_at", { ascending: false })
+    // Buscar ultimas acoes de cobranca automatica
+    const { collectionActions } = await import("@/lib/db/schema")
+    const recentActions = await db
+      .select()
+      .from(collectionActions)
+      .where(eq(collectionActions.actionType, "auto_collection"))
+      .orderBy(desc(collectionActions.createdAt))
       .limit(10)
 
-    if (actionsError) throw actionsError
+    console.log("[v0] Recent auto collection actions:", recentActions.length)
 
-    console.log("[v0] Recent auto collection actions:", recentActions?.length || 0)
-
-    // Calcular estatísticas
-    const notProcessed = eligible?.filter((d) => !d.collection_processed_at) || []
-    const alreadyProcessed = eligible?.filter((d) => d.collection_processed_at) || []
-    const lastExecution = recentActions?.[0]?.created_at || null
+    // Calcular estatisticas
+    const notProcessed = eligible.filter((d) => !d.collectionProcessedAt)
+    const alreadyProcessed = eligible.filter((d) => d.collectionProcessedAt)
+    const lastExecution = recentActions[0]?.createdAt || null
 
     console.log(
       "[v0] Stats - eligible:",
-      eligible?.length || 0,
+      eligible.length,
       "notProcessed:",
       notProcessed.length,
       "alreadyProcessed:",
@@ -472,10 +446,10 @@ export async function getAutomaticCollectionStats() {
     )
 
     return {
-      eligible: eligible?.length || 0,
+      eligible: eligible.length,
       notProcessed: notProcessed.length,
       alreadyProcessed: alreadyProcessed.length,
-      recentActions: recentActions || [],
+      recentActions: recentActions,
       lastExecution,
     }
   } catch (error) {

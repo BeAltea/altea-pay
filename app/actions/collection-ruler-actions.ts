@@ -1,6 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { collectionRules, collectionRuleSteps, collectionRuleExecutions } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 interface CollectionRuleStep {
@@ -27,48 +30,48 @@ interface CreateCollectionRuleData {
 }
 
 export async function createCollectionRule(data: CreateCollectionRuleData) {
-  const supabase = await createClient()
-
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
 
     // 1. Criar a régua
-    const { data: rule, error: ruleError } = await supabase
-      .from("collection_rules")
-      .insert({
+    const [rule] = await db
+      .insert(collectionRules)
+      .values({
         name: data.name,
         description: data.description,
-        is_active: data.is_active,
-        company_id: data.company_id,
-        user_id: user.id,
-        rule_version: data.rule_version || 2,
-        execution_mode: data.execution_mode || "automatic",
-        start_date_field: data.start_date_field || "due_date",
-        is_default_for_company: data.is_default_for_company || false,
-        requires_approval_status: data.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"],
+        isActive: data.is_active,
+        companyId: data.company_id,
+        metadata: {
+          userId: user.id,
+          ruleVersion: data.rule_version || 2,
+          executionMode: data.execution_mode || "automatic",
+          startDateField: data.start_date_field || "due_date",
+          isDefaultForCompany: data.is_default_for_company || false,
+          requiresApprovalStatus: data.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"],
+        },
       })
-      .select()
-      .single()
-
-    if (ruleError) throw ruleError
+      .returning()
 
     // 2. Criar os steps
     if (data.steps && data.steps.length > 0) {
       const stepsToInsert = data.steps.map((step) => ({
-        rule_id: rule.id,
-        ...step,
-        execution_time: step.execution_time || "09:00:00",
-        is_enabled: step.is_enabled !== false,
+        ruleId: rule.id,
+        stepOrder: step.step_order,
+        actionType: step.action_type,
+        messageTemplate: step.template_content,
+        delayDays: step.days_after_due,
+        metadata: {
+          templateSubject: step.template_subject,
+          executionTime: step.execution_time || "09:00:00",
+          isEnabled: step.is_enabled !== false,
+        },
       }))
 
-      const { error: stepsError } = await supabase.from("collection_rule_steps").insert(stepsToInsert)
-
-      if (stepsError) throw stepsError
+      await db.insert(collectionRuleSteps).values(stepsToInsert)
     }
 
     revalidatePath("/dashboard/collection-rulers")
@@ -81,48 +84,49 @@ export async function createCollectionRule(data: CreateCollectionRuleData) {
 }
 
 export async function updateCollectionRule(ruleId: string, data: Partial<CreateCollectionRuleData>) {
-  const supabase = await createClient()
-
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
 
     // 1. Atualizar a régua
-    const { error: ruleError } = await supabase
-      .from("collection_rules")
-      .update({
+    await db
+      .update(collectionRules)
+      .set({
         name: data.name,
         description: data.description,
-        is_active: data.is_active,
-        execution_mode: data.execution_mode,
-        start_date_field: data.start_date_field,
-        is_default_for_company: data.is_default_for_company,
-        requires_approval_status: data.requires_approval_status,
+        isActive: data.is_active,
+        metadata: {
+          executionMode: data.execution_mode,
+          startDateField: data.start_date_field,
+          isDefaultForCompany: data.is_default_for_company,
+          requiresApprovalStatus: data.requires_approval_status,
+        },
       })
-      .eq("id", ruleId)
-
-    if (ruleError) throw ruleError
+      .where(eq(collectionRules.id, ruleId))
 
     // 2. Atualizar steps se fornecidos
     if (data.steps) {
       // Deletar steps antigos
-      await supabase.from("collection_rule_steps").delete().eq("rule_id", ruleId)
+      await db.delete(collectionRuleSteps).where(eq(collectionRuleSteps.ruleId, ruleId))
 
       // Inserir novos steps
       const stepsToInsert = data.steps.map((step) => ({
-        rule_id: ruleId,
-        ...step,
-        execution_time: step.execution_time || "09:00:00",
-        is_enabled: step.is_enabled !== false,
+        ruleId: ruleId,
+        stepOrder: step.step_order,
+        actionType: step.action_type,
+        messageTemplate: step.template_content,
+        delayDays: step.days_after_due,
+        metadata: {
+          templateSubject: step.template_subject,
+          executionTime: step.execution_time || "09:00:00",
+          isEnabled: step.is_enabled !== false,
+        },
       }))
 
-      const { error: stepsError } = await supabase.from("collection_rule_steps").insert(stepsToInsert)
-
-      if (stepsError) throw stepsError
+      await db.insert(collectionRuleSteps).values(stepsToInsert)
     }
 
     revalidatePath("/dashboard/collection-rulers")
@@ -135,19 +139,14 @@ export async function updateCollectionRule(ruleId: string, data: Partial<CreateC
 }
 
 export async function deleteCollectionRule(ruleId: string) {
-  const supabase = await createClient()
-
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
 
-    const { error } = await supabase.from("collection_rules").delete().eq("id", ruleId)
-
-    if (error) throw error
+    await db.delete(collectionRules).where(eq(collectionRules.id, ruleId))
 
     revalidatePath("/dashboard/collection-rulers")
 
@@ -159,12 +158,8 @@ export async function deleteCollectionRule(ruleId: string) {
 }
 
 export async function toggleCollectionRule(ruleId: string, isActive: boolean) {
-  const supabase = await createClient()
-
   try {
-    const { error } = await supabase.from("collection_rules").update({ is_active: isActive }).eq("id", ruleId)
-
-    if (error) throw error
+    await db.update(collectionRules).set({ isActive }).where(eq(collectionRules.id, ruleId))
 
     revalidatePath("/dashboard/collection-rulers")
 
@@ -176,21 +171,26 @@ export async function toggleCollectionRule(ruleId: string, isActive: boolean) {
 }
 
 export async function getCollectionRules(companyId: string) {
-  const supabase = await createClient()
-
   try {
-    const { data, error } = await supabase
-      .from("collection_rules")
-      .select(`
-        *,
-        steps:collection_rule_steps(*)
-      `)
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false })
+    const rules = await db
+      .select()
+      .from(collectionRules)
+      .where(eq(collectionRules.companyId, companyId))
+      .orderBy(desc(collectionRules.createdAt))
 
-    if (error) throw error
+    // Fetch steps for each rule
+    const rulesWithSteps = await Promise.all(
+      rules.map(async (rule) => {
+        const steps = await db
+          .select()
+          .from(collectionRuleSteps)
+          .where(eq(collectionRuleSteps.ruleId, rule.id))
 
-    return { success: true, data: data || [] }
+        return { ...rule, steps }
+      })
+    )
+
+    return { success: true, data: rulesWithSteps || [] }
   } catch (error: any) {
     console.error("[v0] Error fetching collection rules:", error)
     return { success: false, error: error.message, data: [] }
@@ -198,12 +198,11 @@ export async function getCollectionRules(companyId: string) {
 }
 
 export async function getCollectionRuleStats(ruleId: string) {
-  const supabase = await createClient()
-
   try {
-    const { data, error } = await supabase.from("collection_rule_executions").select("status").eq("rule_id", ruleId)
-
-    if (error) throw error
+    const data = await db
+      .select({ status: collectionRuleExecutions.status })
+      .from(collectionRuleExecutions)
+      .where(eq(collectionRuleExecutions.ruleId, ruleId))
 
     const stats = {
       total: data?.length || 0,

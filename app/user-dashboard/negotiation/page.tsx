@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -86,93 +86,49 @@ export default function NegotiationPage() {
   const [loading, setLoading] = useState(true)
   const [showResponseSimulator, setShowResponseSimulator] = useState(false)
   const [selectedNegotiation, setSelectedNegotiation] = useState<Negotiation | null>(null)
+  const { session } = useAuth()
+  const user = session?.user
 
   useEffect(() => {
-    fetchNegotiations()
-    fetchAvailableDebts()
-  }, [])
+    if (user) {
+      fetchNegotiations()
+      fetchAvailableDebts()
+    }
+  }, [user])
 
   const fetchNegotiations = async () => {
     setLoading(true)
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data: realNegotiations, error } = await supabase
-        .from("agreements")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        console.error("Error fetching negotiations:", error)
-        setNegotiations([])
-        setFilteredNegotiations([])
-      } else {
-        const negotiationsWithDetails = await Promise.all(
-          (realNegotiations || []).map(async (neg) => {
-            let debtData = null
-            let customerData = null
-            let companyData = null
-
-            // Fetch debt details
-            if (neg.debt_id) {
-              const { data: debt } = await supabase
-                .from("debts")
-                .select("id, description, amount, due_date, status")
-                .eq("id", neg.debt_id)
-                .single()
-              debtData = debt
-            }
-
-            // Fetch customer details
-            if (neg.customer_id) {
-              const { data: customer } = await supabase
-                .from("customers")
-                .select("id, name")
-                .eq("id", neg.customer_id)
-                .single()
-              customerData = customer
-            }
-
-            // Fetch company details
-            if (neg.company_id) {
-              const { data: company } = await supabase
-                .from("companies")
-                .select("id, name")
-                .eq("id", neg.company_id)
-                .single()
-              companyData = company
-            }
-
-            return {
-              id: neg.id,
-              status: neg.status,
-              original_amount: Number(neg.original_amount) || Number(debtData?.amount) || 0,
-              proposed_amount: Number(neg.agreed_amount || neg.original_amount),
-              discount_amount: Number(neg.discount_amount || 0),
-              discount_percentage: Number(neg.discount_percentage || 0),
-              installments: neg.installments || 1,
-              installment_amount: Number(neg.installment_amount || 0),
-              payment_method: neg.payment_method || "boleto",
-              terms: neg.terms || "",
-              attendant_name: neg.attendant_name || "Sistema",
-              company_name: companyData?.name || "N/A",
-              customer_name: customerData?.name || "N/A",
-              due_date: neg.due_date || debtData?.due_date || null,
-              created_at: neg.created_at,
-              updated_at: neg.updated_at,
-              debt_description: debtData?.description || "Dívida",
-            }
-          }),
-        )
-
-        setNegotiations(negotiationsWithDetails)
-        setFilteredNegotiations(negotiationsWithDetails)
+      const response = await fetch(`/api/user-agreements?userId=${user.id}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch negotiations")
       }
+
+      const data = await response.json()
+      const negotiationsWithDetails = (data.agreements || []).map((neg: any) => ({
+        id: neg.id,
+        status: neg.status,
+        original_amount: Number(neg.originalAmount) || 0,
+        proposed_amount: Number(neg.agreedAmount || neg.originalAmount),
+        discount_amount: Number(neg.discountAmount || 0),
+        discount_percentage: Number(neg.discountPercentage || 0),
+        installments: neg.installments || 1,
+        installment_amount: Number(neg.installmentAmount || 0),
+        payment_method: neg.paymentMethod || "boleto",
+        terms: neg.terms || "",
+        attendant_name: neg.attendantName || "Sistema",
+        company_name: neg.companyName || "N/A",
+        customer_name: neg.customerName || "N/A",
+        due_date: neg.dueDate || null,
+        created_at: neg.createdAt,
+        updated_at: neg.updatedAt,
+        debt_description: neg.debtDescription || "Dívida",
+      }))
+
+      setNegotiations(negotiationsWithDetails)
+      setFilteredNegotiations(negotiationsWithDetails)
     } catch (error) {
       console.error("Error fetching negotiations:", error)
       toast({
@@ -189,26 +145,18 @@ export default function NegotiationPage() {
 
   const fetchAvailableDebts = async () => {
     try {
-      const {
-        data: { user },
-      } = await createClient().auth.getUser()
       if (!user) return
 
-      const { data: debts, error } = await createClient()
-        .from("debts")
-        .select("*")
-        .eq("user_id", user.id)
-        .in("status", ["open", "overdue", "in_collection"])
-
-      if (error) {
-        console.error("Error fetching available debts:", error)
-        setAvailableDebts([])
-      } else {
-        const debtsWithoutNegotiations = (debts || []).filter(
-          (debt) => !negotiations.some((neg) => neg.debt_id === debt.id),
-        )
-        setAvailableDebts(debtsWithoutNegotiations)
+      const response = await fetch(`/api/user-debts?userId=${user.id}&status=open,overdue,in_collection`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch available debts")
       }
+
+      const data = await response.json()
+      const debtsWithoutNegotiations = (data.debts || []).filter(
+        (debt: any) => !negotiations.some((neg: any) => neg.debt_id === debt.id),
+      )
+      setAvailableDebts(debtsWithoutNegotiations)
     } catch (error) {
       console.error("Error fetching available debts:", error)
       setAvailableDebts([])
@@ -325,16 +273,16 @@ export default function NegotiationPage() {
             Exportar
           </Button>
           <CreateNegotiationDialog
-            openDebts={availableDebts.map((debt) => ({
+            openDebts={availableDebts.map((debt: any) => ({
               id: debt.id,
               description: debt.description,
               amount: debt.amount.toString(),
-              due_date: debt.due_date,
+              due_date: debt.dueDate,
               status: debt.status,
               classification: debt.classification,
-              propensity_payment_score: debt.propensity_payment_score.toString(),
-              propensity_loan_score: debt.propensity_loan_score.toString(),
-              created_at: debt.created_at,
+              propensity_payment_score: debt.propensityPaymentScore?.toString() || "0",
+              propensity_loan_score: debt.propensityLoanScore?.toString() || "0",
+              created_at: debt.createdAt,
             }))}
             triggerButton={
               <Button className="bg-blue-600 hover:bg-blue-700">
@@ -455,16 +403,16 @@ export default function NegotiationPage() {
                 Comece uma nova negociação para encontrar a melhor solução para suas dívidas.
               </p>
               <CreateNegotiationDialog
-                openDebts={availableDebts.map((debt) => ({
+                openDebts={availableDebts.map((debt: any) => ({
                   id: debt.id,
                   description: debt.description,
                   amount: debt.amount.toString(),
-                  due_date: debt.due_date,
+                  due_date: debt.dueDate,
                   status: debt.status,
                   classification: debt.classification,
-                  propensity_payment_score: debt.propensity_payment_score.toString(),
-                  propensity_loan_score: debt.propensity_loan_score.toString(),
-                  created_at: debt.created_at,
+                  propensity_payment_score: debt.propensityPaymentScore?.toString() || "0",
+                  propensity_loan_score: debt.propensityLoanScore?.toString() || "0",
+                  created_at: debt.createdAt,
                 }))}
                 triggerButton={
                   <Button className="bg-blue-600 hover:bg-blue-700">

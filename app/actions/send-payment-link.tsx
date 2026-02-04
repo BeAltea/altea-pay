@@ -1,29 +1,32 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { agreements, customers, companies, vmax } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function sendPaymentLink(agreementId: string, channel: "email" | "sms" | "whatsapp") {
   try {
-    const supabase = await createClient()
+    // Fetch agreement with customer and company joins
+    const [result] = await db
+      .select()
+      .from(agreements)
+      .innerJoin(customers, eq(agreements.customerId, customers.id))
+      .innerJoin(companies, eq(agreements.companyId, companies.id))
+      .where(eq(agreements.id, agreementId))
+      .limit(1)
 
-    const { data: agreement, error: agreementError } = await supabase
-      .from("agreements")
-      .select(`
-        *,
-        customers!inner(id, name, document, email, phone),
-        companies!inner(id, name, cnpj)
-      `)
-      .eq("id", agreementId)
-      .single()
-
-    if (agreementError || !agreement) {
+    if (!result) {
       return { success: false, error: "Acordo não encontrado" }
     }
 
-    const paymentUrl = agreement.asaas_payment_url
+    const agreement = result.agreements
+    const customer = result.customers
+    const company = result.companies
+
+    const paymentUrl = (agreement.metadata as any)?.asaas_payment_url || agreement.paymentLink
 
     if (!paymentUrl) {
       return {
@@ -32,23 +35,21 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
       }
     }
 
-    const customer = agreement.customers as any
-    const company = agreement.companies as any
     const customerName = customer?.name || "Cliente"
     let customerEmail = customer?.email
     let customerPhone = customer?.phone
 
     if (!customerEmail || !customerPhone) {
       const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
-      const { data: vmaxRecord } = await supabase
-        .from("VMAX")
-        .select("Email, Telefone")
-        .eq('"CPF/CNPJ"', cleanedDocument)
-        .single()
+      const [vmaxRecord] = await db
+        .select()
+        .from(vmax)
+        .where(eq(vmax.cpfCnpj, cleanedDocument))
+        .limit(1)
 
       if (vmaxRecord) {
-        customerEmail = customerEmail || vmaxRecord.Email
-        customerPhone = customerPhone || vmaxRecord.Telefone
+        customerEmail = customerEmail || (vmaxRecord as any).Email
+        customerPhone = customerPhone || (vmaxRecord as any).Telefone
       }
     }
 
@@ -57,10 +58,10 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
         return { success: false, error: "Cliente não possui e-mail cadastrado" }
       }
 
-      const originalValue = agreement.original_amount || 0
-      const finalValue = agreement.agreed_amount || 0
+      const originalValue = Number(agreement.originalAmount) || 0
+      const finalValue = Number(agreement.negotiatedAmount) || 0
       const discount = originalValue - finalValue
-      const installments = agreement.installments || 1
+      const installmentsCount = agreement.installments || 1
 
       const emailHtml = `
         <!DOCTYPE html>
@@ -111,7 +112,7 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
                 </tr>
                 <tr>
                   <td>Parcelas</td>
-                  <td>${installments}x de R$ ${(finalValue / installments).toFixed(2)}</td>
+                  <td>${installmentsCount}x de R$ ${(finalValue / installmentsCount).toFixed(2)}</td>
                 </tr>
               </table>
               <p style="text-align: center;">

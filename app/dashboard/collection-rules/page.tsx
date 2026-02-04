@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -72,8 +71,8 @@ export default function CollectionRulesPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const { user, companyId, role } = useAuth()
-  const supabase = createClient()
+  const { user, companyId, profile } = useAuth()
+  const role = profile?.role
 
   const isReadOnly = role === "admin"
 
@@ -88,49 +87,29 @@ export default function CollectionRulesPage() {
     }
 
     try {
-      const { data: rulesData, error } = await supabase
-        .from("collection_rules")
-        .select(`
-          id,
-          name,
-          description,
-          is_active,
-          created_at,
-          updated_at,
-          collection_rule_steps (
-            id,
-            step_order,
-            days_after_due,
-            action_type,
-            template_subject,
-            template_content,
-            is_active
-          )
-        `)
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
+      const response = await fetch(`/api/collection-rules?companyId=${companyId}`)
+      if (!response.ok) throw new Error("Failed to fetch rules")
+      const rulesData = await response.json()
 
       const formattedRules: CollectionRule[] =
-        rulesData?.map((rule) => ({
+        (rulesData || []).map((rule: any) => ({
           id: rule.id,
           name: rule.name,
           description: rule.description || "",
-          isActive: rule.is_active,
-          createdAt: rule.created_at,
-          updatedAt: rule.updated_at,
+          isActive: rule.isActive,
+          createdAt: rule.createdAt,
+          updatedAt: rule.updatedAt,
           steps:
-            rule.collection_rule_steps?.map((step) => ({
+            rule.steps?.map((step: any) => ({
               id: step.id,
-              stepOrder: step.step_order,
-              daysAfterDue: step.days_after_due,
-              actionType: step.action_type as CollectionRuleStep["actionType"],
-              templateSubject: step.template_subject,
-              templateContent: step.template_content,
-              isActive: step.is_active,
+              stepOrder: step.stepOrder,
+              daysAfterDue: step.delayDays,
+              actionType: step.actionType as CollectionRuleStep["actionType"],
+              templateSubject: step.messageTemplate,
+              templateContent: step.messageTemplate,
+              isActive: true,
             })) || [],
-        })) || []
+        }))
 
       setRules(formattedRules)
     } catch (error) {

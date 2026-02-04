@@ -1,17 +1,16 @@
 "use client"
 
 import { useEffect } from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 const Page = () => {
   useEffect(() => {
     const fetchRealAnalytics = async () => {
       try {
-        const supabase = createBrowserClient()
-
-        console.log("[v0] 📊 Carregando analytics reais...")
+        // Note: Client components should fetch via API routes that use Drizzle
+        // The API routes use: import { db } from "@/lib/db"
+        console.log("[v0] Loading analytics via API...")
       } catch (error) {
-        console.error("Erro ao carregar analytics reais:", error)
+        console.error("Error loading analytics:", error)
       }
     }
 

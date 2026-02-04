@@ -1,5 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
-import { createServiceClient } from "@/lib/supabase/service"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { redirect } from "next/navigation"
 import { NegotiationFormClient } from "@/components/dashboard/negotiation-form-client"
 import { Button } from "@/components/ui/button"
@@ -11,31 +13,30 @@ export default async function NegotiatePage({
 }: {
   params: { id: string }
 }) {
-  const supabase = await createClient()
-  const serviceClient = createServiceClient()
-
-  // Get authenticated user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await auth()
+  const user = session?.user
 
   if (!user) {
     redirect("/auth/login")
   }
 
   // Get user profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id, full_name, role")
-    .eq("id", user.id)
-    .single()
+  const [profile] = await db
+    .select({ companyId: profiles.companyId, fullName: profiles.fullName, role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.id, user.id))
+    .limit(1)
 
-  if (!profile || !profile.company_id) {
+  if (!profile || !profile.companyId) {
     redirect("/dashboard")
   }
 
-  // Get customer data from VMAX table using service client
-  const { data: customerData } = await serviceClient.from("VMAX").select("*").eq("id", params.id).single()
+  // Get customer data from VMAX table
+  const [customerData] = await db
+    .select()
+    .from(vmax)
+    .where(eq(vmax.id, params.id))
+    .limit(1)
 
   if (!customerData) {
     redirect("/dashboard/clientes")
@@ -44,10 +45,10 @@ export default async function NegotiatePage({
   // Format customer data
   const customer = {
     id: customerData.id,
-    name: customerData.Cliente || customerData.name,
-    cpf: customerData["CPF/CNPJ"] || customerData.cpf,
-    debtAmount: Number.parseFloat(customerData.Vencido || customerData.debt_amount || "0"),
-    daysOverdue: Number.parseInt(String(customerData["Dias Inad."] || customerData.days_overdue || "0").replace(/\D/g, "")) || 0,
+    name: customerData.cliente || "",
+    cpf: customerData.cpfCnpj || "",
+    debtAmount: Number.parseFloat(customerData.valorTotal || "0"),
+    daysOverdue: Number.parseInt(String(customerData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
   }
 
   return (
@@ -60,7 +61,7 @@ export default async function NegotiatePage({
               Voltar para Clientes
             </Link>
           </Button>
-          <h1 className="text-3xl font-bold">Nova Negociação</h1>
+          <h1 className="text-3xl font-bold">Nova Negociacao</h1>
           <p className="text-muted-foreground">Crie uma proposta de acordo para o cliente</p>
         </div>
 

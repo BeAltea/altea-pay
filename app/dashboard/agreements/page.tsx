@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -73,7 +72,6 @@ export default function AgreementsPage() {
   const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(false)
   const { profile, loading: authLoading } = useAuth()
   const { toast } = useToast()
-  const supabase = createClient()
 
   useEffect(() => {
     if (authLoading) return
@@ -119,20 +117,9 @@ export default function AgreementsPage() {
 
     console.log("[v0] Fetching agreements for company:", profile.company_id)
 
-    const { data, error } = await supabase
-      .from("agreements")
-      .select(`
-        *,
-        customer:customers(name, document),
-        debt:debts(description, due_date)
-      `)
-      .eq("company_id", profile.company_id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("[v0] Error fetching agreements:", error)
-      throw error
-    }
+    const response = await fetch(`/api/agreements?companyId=${profile.company_id}`)
+    if (!response.ok) throw new Error("Failed to fetch agreements")
+    const data = await response.json()
 
     console.log("[v0] Fetched agreements:", data?.length || 0)
     setAgreements(data || [])
@@ -146,20 +133,9 @@ export default function AgreementsPage() {
 
     console.log("[v0] Fetching payments for company:", profile.company_id)
 
-    const { data, error } = await supabase
-      .from("payments")
-      .select(`
-        *,
-        customer:customers(name, document),
-        debt:debts(description)
-      `)
-      .eq("company_id", profile.company_id)
-      .order("payment_date", { ascending: false })
-
-    if (error) {
-      console.error("[v0] Error fetching payments:", error)
-      throw error
-    }
+    const response = await fetch(`/api/payments?companyId=${profile.company_id}`)
+    if (!response.ok) throw new Error("Failed to fetch payments")
+    const data = await response.json()
 
     console.log("[v0] Fetched payments:", data?.length || 0)
     setPayments(data || [])

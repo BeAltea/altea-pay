@@ -1,114 +1,53 @@
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
-
-export async function createSupabaseServerClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-        } catch {
-          // The "setAll" method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
-          // user sessions.
-        }
-      },
-    },
-  })
-}
-
-export async function createSupabaseServiceClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Service role bypassa RLS
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          } catch {
-            // Ignorar erros de cookie em Server Components
-          }
-        },
-      },
-    },
-  )
-}
+import { auth } from "@/lib/auth/config"
+import { db } from "@/lib/db"
+import { profiles, companies } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 
 export async function getCurrentUser() {
-  const supabase = await createSupabaseServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
+  const session = await auth()
+  if (!session?.user) return null
+  return {
+    id: session.user.id,
+    email: session.user.email,
+    user_metadata: {
+      full_name: session.user.fullName ?? session.user.name,
+    },
+  }
 }
 
 export async function getCurrentUserProfile() {
-  console.log("[v0] Getting current user profile")
-  const user = await getCurrentUser()
+  const session = await auth()
+  if (!session?.user) return null
 
-  if (!user) {
-    console.log("[v0] No user found")
-    return null
+  const [profile] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, session.user.id))
+    .limit(1)
+
+  if (!profile) return null
+
+  let companyData = null
+  if (profile.companyId) {
+    const [c] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.id, profile.companyId))
+      .limit(1)
+    companyData = c ?? null
   }
 
-  console.log("[v0] User found, fetching profile for ID:", user.id)
-
-  try {
-    const supabase = await createSupabaseServiceClient()
-
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("*, companies(name)")
-      .eq("id", user.id)
-      .single()
-
-    if (error) {
-      console.log("[v0] Profile fetch error:", error)
-
-      if (error.code === "PGRST116") {
-        // No rows found
-        console.log("[v0] Creating profile for user:", user.email)
-
-        const { data: newProfile, error: insertError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            email: user.email,
-            role: "user", // Default role
-            full_name: user.user_metadata?.full_name || null,
-            company_id: null,
-          })
-          .select("*, companies(name)")
-          .single()
-
-        if (insertError) {
-          console.log("[v0] Error creating profile:", insertError)
-          return null
-        }
-
-        console.log("[v0] Profile created successfully:", newProfile)
-        return newProfile
-      }
-
-      return null
-    }
-
-    console.log("[v0] Profile found:", profile)
-    return profile
-  } catch (error) {
-    console.log("[v0] Profile fetch exception:", error)
-    return null
+  return {
+    ...profile,
+    // Provide snake_case aliases for backward compat
+    company_id: profile.companyId,
+    full_name: profile.fullName,
+    cpf_cnpj: profile.cpfCnpj,
+    person_type: profile.personType,
+    avatar_url: profile.avatarUrl,
+    created_at: profile.createdAt,
+    updated_at: profile.updatedAt,
+    companies: companyData ? { name: companyData.name } : null,
   }
 }
 
@@ -172,37 +111,42 @@ export async function redirectBasedOnRole() {
 
 export async function getUserCompany() {
   const profile = await getCurrentUserProfile()
-  if (!profile?.company_id) return null
+  if (!profile?.companyId) return null
 
-  const supabase = await createSupabaseServerClient()
-  const { data: company } = await supabase.from("companies").select("*").eq("id", profile.company_id).single()
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, profile.companyId))
+    .limit(1)
 
-  return company
+  return company ?? null
 }
 
 export async function canAccessCompany(companyId: string) {
   const profile = await getCurrentUserProfile()
 
-  // Super admins can access all companies
   if (profile?.role === "super_admin") {
     return true
   }
 
-  // Regular admins and users can only access their own company
-  return profile?.company_id === companyId
+  return profile?.companyId === companyId
 }
 
 export async function getAccessibleCompanies() {
   const profile = await getCurrentUserProfile()
-  const supabase = await createSupabaseServerClient()
 
   if (profile?.role === "super_admin") {
-    // Super admins can see all companies
-    const { data: companies } = await supabase.from("companies").select("*").order("name")
-    return companies || []
-  } else if (profile?.company_id) {
-    // Regular users can only see their own company
-    const { data: company } = await supabase.from("companies").select("*").eq("id", profile.company_id).single()
+    const allCompanies = await db
+      .select()
+      .from(companies)
+      .orderBy(companies.name)
+    return allCompanies
+  } else if (profile?.companyId) {
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.id, profile.companyId))
+      .limit(1)
     return company ? [company] : []
   }
 

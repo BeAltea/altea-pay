@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -22,32 +21,32 @@ import { Plus, Edit, Trash2, Building2, Check, X, Users, AlertCircle, Timer, Clo
 import { useToast } from "@/hooks/use-toast"
 import { fetchAllCustomers } from "@/app/actions/fetch-customers-action"
 import { getAutomaticCollectionStats } from "@/app/actions/analyses-actions"
-import { getCollectionRulerStats } from "@/app/actions/ruler-actions" // Import getCollectionRulerStats
+import { getCollectionRulerStats } from "@/app/actions/ruler-actions"
 
 interface CollectionRule {
   id: string
   name: string
   description: string | null
-  is_active: boolean
-  created_at: string
+  isActive: boolean
+  createdAt: string
   steps: CollectionRuleStep[]
-  active_for_companies: string[] | null
-  active_for_customers: string[] | null
-  min_score: number
-  max_score: number
-  process_type: string
+  activeForCompanies: string[] | null
+  activeForCustomers: string[] | null
+  minScore: number
+  maxScore: number
+  processType: string
   priority: string
-  rule_type: string
+  ruleType: string
 }
 
 interface CollectionRuleStep {
   id: string
-  rule_id: string
-  step_order: number
-  days_after_due: number
+  ruleId: string
+  stepOrder: number
+  daysAfterDue: number
   channel: string
   template: string
-  created_at: string
+  createdAt: string
 }
 
 interface Company {
@@ -60,7 +59,7 @@ interface Customer {
   id: string
   name: string
   document: string
-  company_id: string
+  companyId: string
 }
 
 export default function SuperAdminCollectionRulesPage() {
@@ -74,22 +73,21 @@ export default function SuperAdminCollectionRulesPage() {
   const [showDialog, setShowDialog] = useState(false)
   const [editingRule, setEditingRule] = useState<CollectionRule | null>(null)
   const { toast } = useToast()
-  const supabase = createClient()
 
   // Form state
   const [formData, setFormData] = useState<any>({
     name: "",
     description: "",
-    is_active: true,
+    isActive: true,
     steps: [],
-    assignment_mode: "companies",
-    assigned_companies: [],
-    assigned_customers: [],
-    min_score: 0,
-    max_score: 1000,
-    process_type: "automatic",
+    assignmentMode: "companies",
+    assignedCompanies: [],
+    assignedCustomers: [],
+    minScore: 0,
+    maxScore: 1000,
+    processType: "automatic",
     priority: "medium",
-    rule_type: "custom",
+    ruleType: "custom",
   })
 
   useEffect(() => {
@@ -118,22 +116,16 @@ export default function SuperAdminCollectionRulesPage() {
 
   async function fetchRules() {
     try {
-      const { data: rulesData, error: rulesError } = await supabase
-        .from("collection_rules")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-      if (rulesError) throw rulesError
+      // Fetch rules via API route that uses Drizzle ORM
+      const response = await fetch("/api/collection-rules")
+      if (!response.ok) throw new Error("Failed to fetch rules")
+      const rulesData = await response.json()
 
       // Fetch steps for each rule
       const rulesWithSteps = await Promise.all(
-        (rulesData || []).map(async (rule) => {
-          const { data: stepsData } = await supabase
-            .from("collection_rule_steps")
-            .select("*")
-            .eq("rule_id", rule.id)
-            .order("step_order")
-
+        (rulesData || []).map(async (rule: any) => {
+          const stepsResponse = await fetch(`/api/collection-rules/${rule.id}/steps`)
+          const stepsData = stepsResponse.ok ? await stepsResponse.json() : []
           return { ...rule, steps: stepsData || [] }
         }),
       )
@@ -141,7 +133,7 @@ export default function SuperAdminCollectionRulesPage() {
       setRules(rulesWithSteps)
     } catch (error: any) {
       toast({
-        title: "Erro ao carregar réguas",
+        title: "Erro ao carregar reguas",
         description: error.message,
         variant: "destructive",
       })
@@ -152,9 +144,10 @@ export default function SuperAdminCollectionRulesPage() {
 
   async function fetchCompanies() {
     try {
-      const { data, error } = await supabase.from("companies").select("id, name, cnpj").order("name")
-
-      if (error) throw error
+      // Fetch companies via API route that uses Drizzle ORM
+      const response = await fetch("/api/companies")
+      if (!response.ok) throw new Error("Failed to fetch companies")
+      const data = await response.json()
       setCompanies(data || [])
     } catch (error: any) {
       console.error("Error fetching companies:", error)
@@ -183,93 +176,55 @@ export default function SuperAdminCollectionRulesPage() {
 
   async function handleSaveRule() {
     try {
+      const payload = {
+        name: formData.name,
+        description: formData.description,
+        isActive: formData.isActive,
+        activeForCompanies:
+          formData.assignmentMode === "companies" && formData.assignedCompanies.length > 0
+            ? formData.assignedCompanies
+            : formData.assignmentMode === "customers"
+              ? formData.assignedCompanies
+              : null,
+        activeForCustomers:
+          formData.assignmentMode === "customers" && formData.assignedCustomers.length > 0
+            ? formData.assignedCustomers
+            : null,
+        minScore: formData.minScore,
+        maxScore: formData.maxScore,
+        processType: formData.processType,
+        priority: formData.priority,
+        ruleType: formData.ruleType,
+        steps: formData.steps,
+      }
+
       if (editingRule) {
-        // Update existing rule
-        const { error: ruleError } = await supabase
-          .from("collection_rules")
-          .update({
-            name: formData.name,
-            description: formData.description,
-            is_active: formData.is_active,
-            active_for_companies:
-              formData.assignment_mode === "companies" && formData.assigned_companies.length > 0
-                ? formData.assigned_companies
-                : formData.assignment_mode === "customers"
-                  ? formData.assigned_companies
-                  : null,
-            active_for_customers:
-              formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
-                ? formData.assigned_customers
-                : null,
-            min_score: formData.min_score,
-            max_score: formData.max_score,
-            process_type: formData.process_type,
-            priority: formData.priority,
-            rule_type: formData.rule_type,
-          })
-          .eq("id", editingRule.id)
+        // Update existing rule via API
+        const response = await fetch(`/api/collection-rules/${editingRule.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
 
-        if (ruleError) throw ruleError
-
-        // Delete old steps
-        await supabase.from("collection_rule_steps").delete().eq("rule_id", editingRule.id)
-
-        // Insert new steps
-        const stepsToInsert = formData.steps.map((step) => ({
-          rule_id: editingRule.id,
-          ...step,
-        }))
-
-        const { error: stepsError } = await supabase.from("collection_rule_steps").insert(stepsToInsert)
-
-        if (stepsError) throw stepsError
+        if (!response.ok) throw new Error("Failed to update rule")
 
         toast({
-          title: "Régua atualizada",
-          description: "A régua de cobrança foi atualizada com sucesso.",
+          title: "Regua atualizada",
+          description: "A regua de cobranca foi atualizada com sucesso.",
         })
       } else {
-        // Create new rule
-        const { data: newRule, error: ruleError } = await supabase
-          .from("collection_rules")
-          .insert({
-            name: formData.name,
-            description: formData.description,
-            is_active: formData.is_active,
-            active_for_companies:
-              formData.assignment_mode === "companies" && formData.assigned_companies.length > 0
-                ? formData.assigned_companies
-                : formData.assignment_mode === "customers"
-                  ? formData.assigned_companies
-                  : null,
-            active_for_customers:
-              formData.assignment_mode === "customers" && formData.assigned_customers.length > 0
-                ? formData.assigned_customers
-                : null,
-            min_score: formData.min_score,
-            max_score: formData.max_score,
-            process_type: formData.process_type,
-            priority: formData.priority,
-            rule_type: formData.rule_type,
-          })
-          .select()
-          .single()
+        // Create new rule via API
+        const response = await fetch("/api/collection-rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
 
-        if (ruleError) throw ruleError
-
-        // Insert steps
-        const stepsToInsert = formData.steps.map((step) => ({
-          rule_id: newRule.id,
-          ...step,
-        }))
-
-        const { error: stepsError } = await supabase.from("collection_rule_steps").insert(stepsToInsert)
-
-        if (stepsError) throw stepsError
+        if (!response.ok) throw new Error("Failed to create rule")
 
         toast({
-          title: "Régua criada",
-          description: "A régua de cobrança foi criada com sucesso.",
+          title: "Regua criada",
+          description: "A regua de cobranca foi criada com sucesso.",
         })
       }
 
@@ -277,10 +232,10 @@ export default function SuperAdminCollectionRulesPage() {
       setEditingRule(null)
       resetForm()
       fetchRules()
-      fetchRulerStats() // Refresh ruler stats after saving
+      fetchRulerStats()
     } catch (error: any) {
       toast({
-        title: "Erro ao salvar régua",
+        title: "Erro ao salvar regua",
         description: error.message,
         variant: "destructive",
       })
@@ -288,23 +243,25 @@ export default function SuperAdminCollectionRulesPage() {
   }
 
   async function handleDeleteRule(ruleId: string) {
-    if (!confirm("Tem certeza que deseja excluir esta régua?")) return
+    if (!confirm("Tem certeza que deseja excluir esta regua?")) return
 
     try {
-      const { error } = await supabase.from("collection_rules").delete().eq("id", ruleId)
+      const response = await fetch(`/api/collection-rules/${ruleId}`, {
+        method: "DELETE",
+      })
 
-      if (error) throw error
+      if (!response.ok) throw new Error("Failed to delete rule")
 
       toast({
-        title: "Régua excluída",
-        description: "A régua de cobrança foi excluída com sucesso.",
+        title: "Regua excluida",
+        description: "A regua de cobranca foi excluida com sucesso.",
       })
 
       fetchRules()
-      fetchRulerStats() // Refresh ruler stats after deleting
+      fetchRulerStats()
     } catch (error: any) {
       toast({
-        title: "Erro ao excluir régua",
+        title: "Erro ao excluir regua",
         description: error.message,
         variant: "destructive",
       })
@@ -313,17 +270,21 @@ export default function SuperAdminCollectionRulesPage() {
 
   async function handleToggleActive(rule: CollectionRule) {
     try {
-      const { error } = await supabase.from("collection_rules").update({ is_active: !rule.is_active }).eq("id", rule.id)
+      const response = await fetch(`/api/collection-rules/${rule.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !rule.isActive }),
+      })
 
-      if (error) throw error
+      if (!response.ok) throw new Error("Failed to toggle rule status")
 
       toast({
-        title: rule.is_active ? "Régua desativada" : "Régua ativada",
-        description: `A régua foi ${rule.is_active ? "desativada" : "ativada"} com sucesso.`,
+        title: rule.isActive ? "Regua desativada" : "Regua ativada",
+        description: `A regua foi ${rule.isActive ? "desativada" : "ativada"} com sucesso.`,
       })
 
       fetchRules()
-      fetchRulerStats() // Refresh ruler stats after toggling active
+      fetchRulerStats()
     } catch (error: any) {
       toast({
         title: "Erro ao alterar status",
@@ -343,21 +304,21 @@ export default function SuperAdminCollectionRulesPage() {
     setFormData({
       name: rule.name,
       description: rule.description || "",
-      is_active: rule.is_active,
+      isActive: rule.isActive,
       steps: rule.steps.map((step) => ({
-        step_order: step.step_order,
-        days_after_due: step.days_after_due,
+        stepOrder: step.stepOrder,
+        daysAfterDue: step.daysAfterDue,
         channel: step.channel,
         template: step.template,
       })),
-      assignment_mode: rule.active_for_customers && rule.active_for_customers.length > 0 ? "customers" : "companies",
-      assigned_companies: rule.active_for_companies || [],
-      assigned_customers: rule.active_for_customers || [],
-      min_score: rule.min_score || 0,
-      max_score: rule.max_score || 1000,
-      process_type: rule.process_type || "automatic",
+      assignmentMode: rule.activeForCustomers && rule.activeForCustomers.length > 0 ? "customers" : "companies",
+      assignedCompanies: rule.activeForCompanies || [],
+      assignedCustomers: rule.activeForCustomers || [],
+      minScore: rule.minScore || 0,
+      maxScore: rule.maxScore || 1000,
+      processType: rule.processType || "automatic",
       priority: rule.priority || "medium",
-      rule_type: rule.rule_type || "custom",
+      ruleType: rule.ruleType || "custom",
     })
     setEditingRule(rule)
     setShowDialog(true)
@@ -367,16 +328,16 @@ export default function SuperAdminCollectionRulesPage() {
     setFormData({
       name: "",
       description: "",
-      is_active: true,
+      isActive: true,
       steps: [],
-      assignment_mode: "companies",
-      assigned_companies: [],
-      assigned_customers: [],
-      min_score: 0,
-      max_score: 1000,
-      process_type: "automatic",
+      assignmentMode: "companies",
+      assignedCompanies: [],
+      assignedCustomers: [],
+      minScore: 0,
+      maxScore: 1000,
+      processType: "automatic",
       priority: "medium",
-      rule_type: "custom",
+      ruleType: "custom",
     })
   }
 
@@ -386,8 +347,8 @@ export default function SuperAdminCollectionRulesPage() {
       steps: [
         ...formData.steps,
         {
-          step_order: formData.steps.length + 1,
-          days_after_due: 0,
+          stepOrder: formData.steps.length + 1,
+          daysAfterDue: 0,
           channel: "email",
           template: "",
         },
@@ -396,10 +357,10 @@ export default function SuperAdminCollectionRulesPage() {
   }
 
   function removeStep(index: number) {
-    const newSteps = formData.steps.filter((_, i) => i !== index)
+    const newSteps = formData.steps.filter((_: any, i: number) => i !== index)
     setFormData({
       ...formData,
-      steps: newSteps.map((step, i) => ({ ...step, step_order: i + 1 })),
+      steps: newSteps.map((step: any, i: number) => ({ ...step, stepOrder: i + 1 })),
     })
   }
 
@@ -410,38 +371,38 @@ export default function SuperAdminCollectionRulesPage() {
   }
 
   function toggleCompanySelection(companyId: string) {
-    setFormData((prev) => ({
+    setFormData((prev: any) => ({
       ...prev,
-      assigned_companies: prev.assigned_companies.includes(companyId)
-        ? prev.assigned_companies.filter((id) => id !== companyId)
-        : [...prev.assigned_companies, companyId],
+      assignedCompanies: prev.assignedCompanies.includes(companyId)
+        ? prev.assignedCompanies.filter((id: string) => id !== companyId)
+        : [...prev.assignedCompanies, companyId],
     }))
   }
 
   function toggleCustomerSelection(customerId: string) {
-    setFormData((prev) => ({
+    setFormData((prev: any) => ({
       ...prev,
-      assigned_customers: prev.assigned_customers.includes(customerId)
-        ? prev.assigned_customers.filter((id) => id !== customerId)
-        : [...prev.assigned_customers, customerId],
+      assignedCustomers: prev.assignedCustomers.includes(customerId)
+        ? prev.assignedCustomers.filter((id: string) => id !== customerId)
+        : [...prev.assignedCustomers, customerId],
     }))
   }
 
   // Filter customers based on selected companies
   useEffect(() => {
-    if (formData.assigned_companies.length > 0) {
-      setFilteredCustomers(customers.filter((customer) => formData.assigned_companies.includes(customer.company_id)))
+    if (formData.assignedCompanies.length > 0) {
+      setFilteredCustomers(customers.filter((customer) => formData.assignedCompanies.includes(customer.companyId)))
     } else {
       setFilteredCustomers(customers)
     }
-  }, [formData.assigned_companies, customers])
+  }, [formData.assignedCompanies, customers])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando réguas...</p>
+          <p className="text-muted-foreground">Carregando reguas...</p>
         </div>
       </div>
     )
@@ -451,12 +412,12 @@ export default function SuperAdminCollectionRulesPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Réguas de Cobrança</h1>
-          <p className="text-muted-foreground">Gerencie réguas de cobrança e atribua a empresas</p>
+          <h1 className="text-3xl font-bold">Reguas de Cobranca</h1>
+          <p className="text-muted-foreground">Gerencie reguas de cobranca e atribua a empresas</p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" />
-          Nova Régua Customizada
+          Nova Regua Customizada
         </Button>
       </div>
 
@@ -465,25 +426,25 @@ export default function SuperAdminCollectionRulesPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Timer className="h-5 w-5 text-blue-600" />
-              <CardTitle>Régua 1 - Análise de Score (Assertiva)</CardTitle>
+              <CardTitle>Regua 1 - Analise de Score (Assertiva)</CardTitle>
             </div>
             <Badge variant={automaticStats?.eligible > 0 ? "default" : "secondary"}>
               {automaticStats?.eligible > 0 ? "Funcionando" : "Sem clientes"}
             </Badge>
           </div>
-          <CardDescription>Régua automática baseada no Score de Recuperação da Assertiva (Classes A-F)</CardDescription>
+          <CardDescription>Regua automatica baseada no Score de Recuperacao da Assertiva (Classes A-F)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Status Cards */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Clientes Elegíveis</CardDescription>
+                <CardDescription>Clientes Elegiveis</CardDescription>
                 <CardTitle className="text-2xl text-blue-600">{automaticStats?.eligible || 0}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground">
-                  Total de clientes com status ACEITA e Recovery Score ≥ 294 (Classe C ou superior)
+                  Total de clientes com status ACEITA e Recovery Score &gt;= 294 (Classe C ou superior)
                 </p>
               </CardContent>
             </Card>
@@ -494,17 +455,17 @@ export default function SuperAdminCollectionRulesPage() {
                 <CardTitle className="text-2xl text-orange-600">{automaticStats?.notProcessed || 0}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Serão processados na próxima execução automática</p>
+                <p className="text-xs text-muted-foreground">Serao processados na proxima execucao automatica</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Já Processados</CardDescription>
+                <CardDescription>Ja Processados</CardDescription>
                 <CardTitle className="text-2xl text-green-600">{automaticStats?.alreadyProcessed || 0}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Cobranças já enviadas automaticamente</p>
+                <p className="text-xs text-muted-foreground">Cobrancas ja enviadas automaticamente</p>
               </CardContent>
             </Card>
           </div>
@@ -515,15 +476,15 @@ export default function SuperAdminCollectionRulesPage() {
               <Info className="h-4 w-4 text-blue-600 mt-0.5" />
               <div className="space-y-1 text-sm text-blue-900 dark:text-blue-100">
                 <p>
-                  <strong>Como funciona:</strong> Quando você importa ou analisa um cliente, o sistema busca dados da
-                  Assertiva e verifica o Score de Recuperação automaticamente.
+                  <strong>Como funciona:</strong> Quando voce importa ou analisa um cliente, o sistema busca dados da
+                  Assertiva e verifica o Score de Recuperacao automaticamente.
                 </p>
                 <p>
-                  <strong>Critérios de Cobrança Automática:</strong> Recovery Score ≥ 294 (Classes C, B, A) → Cobrança
-                  automática permitida | Recovery Score &lt; 294 (Classes D, E, F) → Cobrança manual obrigatória
+                  <strong>Criterios de Cobranca Automatica:</strong> Recovery Score &gt;= 294 (Classes C, B, A) - Cobranca
+                  automatica permitida | Recovery Score &lt; 294 (Classes D, E, F) - Cobranca manual obrigatoria
                 </p>
                 <p>
-                  <strong>Status:</strong> 100% Funcional baseado no Score de Recuperação da Assertiva
+                  <strong>Status:</strong> 100% Funcional baseado no Score de Recuperacao da Assertiva
                 </p>
               </div>
             </div>
@@ -536,15 +497,15 @@ export default function SuperAdminCollectionRulesPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-purple-600" />
-              <CardTitle>Régua 2 - Cobrança Customizável</CardTitle>
+              <CardTitle>Regua 2 - Cobranca Customizavel</CardTitle>
             </div>
             <Badge variant={rulerStats?.activeRulers > 0 ? "default" : "secondary"}>
-              {rulerStats?.activeRulers > 0 ? "Funcionando" : "Aguardando configuração"}
+              {rulerStats?.activeRulers > 0 ? "Funcionando" : "Aguardando configuracao"}
             </Badge>
           </div>
           <CardDescription>
-            Régua customizável baseada no Score de Recuperação. Permite configurar dias e canais personalizados de
-            cobrança
+            Regua customizavel baseada no Score de Recuperacao. Permite configurar dias e canais personalizados de
+            cobranca
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -552,43 +513,43 @@ export default function SuperAdminCollectionRulesPage() {
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Réguas Ativas</CardDescription>
+                <CardDescription>Reguas Ativas</CardDescription>
                 <CardTitle className="text-2xl text-purple-600">{rulerStats?.activeRulers || 0}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Réguas customizadas criadas e ativas no sistema</p>
+                <p className="text-xs text-muted-foreground">Reguas customizadas criadas e ativas no sistema</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Clientes Elegíveis</CardDescription>
+                <CardDescription>Clientes Elegiveis</CardDescription>
                 <CardTitle className="text-2xl text-blue-600">{rulerStats?.eligibleClients || 0}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Clientes que podem receber cobrança customizada</p>
+                <p className="text-xs text-muted-foreground">Clientes que podem receber cobranca customizada</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Execuções Hoje</CardDescription>
+                <CardDescription>Execucoes Hoje</CardDescription>
                 <CardTitle className="text-2xl text-green-600">{rulerStats?.successfulToday || 0}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Cobranças enviadas com sucesso hoje</p>
+                <p className="text-xs text-muted-foreground">Cobrancas enviadas com sucesso hoje</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-3">
-                <CardDescription>Última Execução</CardDescription>
+                <CardDescription>Ultima Execucao</CardDescription>
                 <CardTitle className="text-sm">
                   {rulerStats?.lastExecution ? new Date(rulerStats.lastExecution).toLocaleTimeString("pt-BR") : "Nunca"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Horário da última execução automática</p>
+                <p className="text-xs text-muted-foreground">Horario da ultima execucao automatica</p>
               </CardContent>
             </Card>
           </div>
@@ -596,16 +557,16 @@ export default function SuperAdminCollectionRulesPage() {
           {/* Recent Executions */}
           {rulerStats?.recentExecutions?.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">Últimas Execuções Automáticas</h4>
+              <h4 className="text-sm font-medium">Ultimas Execucoes Automaticas</h4>
               <div className="space-y-2">
                 {rulerStats.recentExecutions.slice(0, 5).map((execution: any) => (
                   <div key={execution.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">
-                        Régua: {execution.ruler_name} - {execution.actions_taken} ações enviadas
+                        Regua: {execution.rulerName} - {execution.actionsTaken} acoes enviadas
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(execution.executed_at).toLocaleString("pt-BR")}
+                        {new Date(execution.executedAt).toLocaleString("pt-BR")}
                       </p>
                     </div>
                     <Badge variant={execution.status === "success" ? "default" : "destructive"}>
@@ -623,18 +584,18 @@ export default function SuperAdminCollectionRulesPage() {
               <Info className="h-4 w-4 text-purple-600 mt-0.5" />
               <div className="space-y-1 text-sm text-purple-900 dark:text-purple-100">
                 <p>
-                  <strong>Como funciona:</strong> A régua customizável executa automaticamente a cada hora via Vercel
-                  Cron Job processando clientes baseado em days_after_due.
+                  <strong>Como funciona:</strong> A regua customizavel executa automaticamente a cada hora via Vercel
+                  Cron Job processando clientes baseado em daysAfterDue.
                 </p>
                 <p>
-                  <strong>Configuração:</strong> Cada empresa pode criar réguas com dias específicos (D0, D2, D5, D7) e
-                  múltiplos canais (Email, SMS, WhatsApp, Ligação).
+                  <strong>Configuracao:</strong> Cada empresa pode criar reguas com dias especificos (D0, D2, D5, D7) e
+                  multiplos canais (Email, SMS, WhatsApp, Ligacao).
                 </p>
                 <p>
-                  <strong>Próxima execução:</strong> No início da próxima hora (às XX:00)
+                  <strong>Proxima execucao:</strong> No inicio da proxima hora (as XX:00)
                 </p>
                 <p>
-                  <strong>Status:</strong> 100% Funcional - Sistema pronto para uso. Clique em "Nova Régua Customizada"
+                  <strong>Status:</strong> 100% Funcional - Sistema pronto para uso. Clique em "Nova Regua Customizada"
                   acima para criar.
                 </p>
               </div>
@@ -650,25 +611,25 @@ export default function SuperAdminCollectionRulesPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <h3 className="text-xl font-semibold">{rule.name}</h3>
-                  <Badge variant={rule.is_active ? "default" : "secondary"}>
-                    {rule.is_active ? "Ativa" : "Inativa"}
+                  <Badge variant={rule.isActive ? "default" : "secondary"}>
+                    {rule.isActive ? "Ativa" : "Inativa"}
                   </Badge>
                 </div>
                 {rule.description && <p className="text-sm text-muted-foreground mb-3">{rule.description}</p>}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4" />
-                    <span>{rule.active_for_companies?.length || 0} empresa(s)</span>
+                    <span>{rule.activeForCompanies?.length || 0} empresa(s)</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    <span>{rule.active_for_customers?.length || 0} cliente(s)</span>
+                    <span>{rule.activeForCustomers?.length || 0} cliente(s)</span>
                   </div>
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => handleToggleActive(rule)}>
-                  {rule.is_active ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                  {rule.isActive ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => openEditDialog(rule)}>
                   <Edit className="h-4 w-4" />
@@ -683,8 +644,8 @@ export default function SuperAdminCollectionRulesPage() {
               <h4 className="font-medium text-sm">Etapas:</h4>
               {rule.steps.map((step) => (
                 <div key={step.id} className="flex items-center gap-4 text-sm p-3 bg-muted rounded-lg">
-                  <Badge variant="outline">Etapa {step.step_order}</Badge>
-                  <span>{step.days_after_due} dias após vencimento</span>
+                  <Badge variant="outline">Etapa {step.stepOrder}</Badge>
+                  <span>{step.daysAfterDue} dias apos vencimento</span>
                   <Badge>{step.channel}</Badge>
                   <span className="text-muted-foreground truncate flex-1">{step.template.substring(0, 50)}...</span>
                 </div>
@@ -695,10 +656,10 @@ export default function SuperAdminCollectionRulesPage() {
 
         {rules.length === 0 && (
           <Card className="p-12 text-center">
-            <p className="text-muted-foreground mb-4">Nenhuma régua de cobrança cadastrada</p>
+            <p className="text-muted-foreground mb-4">Nenhuma regua de cobranca cadastrada</p>
             <Button onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" />
-              Criar Primeira Régua Customizada
+              Criar Primeira Regua Customizada
             </Button>
           </Card>
         )}
@@ -708,25 +669,25 @@ export default function SuperAdminCollectionRulesPage() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingRule ? "Editar Régua" : "Nova Régua Customizada"}</DialogTitle>
+            <DialogTitle>{editingRule ? "Editar Regua" : "Nova Regua Customizada"}</DialogTitle>
             <DialogDescription>
-              Configure uma régua de cobrança personalizada com score e critérios específicos
+              Configure uma regua de cobranca personalizada com score e criterios especificos
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Informações Básicas */}
+            {/* Informacoes Basicas */}
             <div className="space-y-4">
-              <h4 className="font-semibold text-sm">Informações Básicas</h4>
+              <h4 className="font-semibold text-sm">Informacoes Basicas</h4>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="name">Nome da Régua *</Label>
+                  <Label htmlFor="name">Nome da Regua *</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Ex: Régua Premium Score 600+"
+                    placeholder="Ex: Regua Premium Score 600+"
                   />
                 </div>
 
@@ -741,7 +702,7 @@ export default function SuperAdminCollectionRulesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Baixa</SelectItem>
-                      <SelectItem value="medium">Média</SelectItem>
+                      <SelectItem value="medium">Media</SelectItem>
                       <SelectItem value="high">Alta</SelectItem>
                       <SelectItem value="urgent">Urgente</SelectItem>
                     </SelectContent>
@@ -750,58 +711,58 @@ export default function SuperAdminCollectionRulesPage() {
               </div>
 
               <div>
-                <Label htmlFor="description">Descrição</Label>
+                <Label htmlFor="description">Descricao</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descreva o objetivo desta régua customizada"
+                  placeholder="Descreva o objetivo desta regua customizada"
                   rows={2}
                 />
               </div>
             </div>
 
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-              <h4 className="font-semibold text-sm">Critérios de Score</h4>
+              <h4 className="font-semibold text-sm">Criterios de Score</h4>
               <p className="text-xs text-muted-foreground">
-                Defina a faixa de score para aplicar esta régua (diferente da régua padrão 350/490)
+                Defina a faixa de score para aplicar esta regua (diferente da regua padrao 350/490)
               </p>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="min_score">Score Mínimo</Label>
+                  <Label htmlFor="minScore">Score Minimo</Label>
                   <Input
-                    id="min_score"
+                    id="minScore"
                     type="number"
                     min="0"
                     max="1000"
-                    value={formData.min_score}
-                    onChange={(e) => setFormData({ ...formData, min_score: Number.parseInt(e.target.value) || 0 })}
+                    value={formData.minScore}
+                    onChange={(e) => setFormData({ ...formData, minScore: Number.parseInt(e.target.value) || 0 })}
                     placeholder="Ex: 600"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Padrão sistema: 350 (médio), 490 (alto)</p>
+                  <p className="text-xs text-muted-foreground mt-1">Padrao sistema: 350 (medio), 490 (alto)</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="max_score">Score Máximo</Label>
+                  <Label htmlFor="maxScore">Score Maximo</Label>
                   <Input
-                    id="max_score"
+                    id="maxScore"
                     type="number"
                     min="0"
                     max="1000"
-                    value={formData.max_score}
-                    onChange={(e) => setFormData({ ...formData, max_score: Number.parseInt(e.target.value) || 1000 })}
+                    value={formData.maxScore}
+                    onChange={(e) => setFormData({ ...formData, maxScore: Number.parseInt(e.target.value) || 1000 })}
                     placeholder="Ex: 1000"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Máximo: 1000</p>
+                  <p className="text-xs text-muted-foreground mt-1">Maximo: 1000</p>
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="process_type">Tipo de Processo *</Label>
+                <Label htmlFor="processType">Tipo de Processo *</Label>
                 <Select
-                  value={formData.process_type}
-                  onValueChange={(value) => setFormData({ ...formData, process_type: value })}
+                  value={formData.processType}
+                  onValueChange={(value) => setFormData({ ...formData, processType: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo de processo" />
@@ -809,7 +770,7 @@ export default function SuperAdminCollectionRulesPage() {
                   <SelectContent>
                     <SelectItem value="automatic">
                       <div className="space-y-1">
-                        <div className="font-medium">Automático</div>
+                        <div className="font-medium">Automatico</div>
                         <div className="text-xs text-muted-foreground">
                           Dispara mensagens automaticamente (Email + SMS)
                         </div>
@@ -817,7 +778,7 @@ export default function SuperAdminCollectionRulesPage() {
                     </SelectItem>
                     <SelectItem value="semi_automatic">
                       <div className="space-y-1">
-                        <div className="font-medium">Semi-Automático</div>
+                        <div className="font-medium">Semi-Automatico</div>
                         <div className="text-xs text-muted-foreground">
                           Cria tarefa para operador (WhatsApp assistido)
                         </div>
@@ -826,7 +787,7 @@ export default function SuperAdminCollectionRulesPage() {
                     <SelectItem value="manual">
                       <div className="space-y-1">
                         <div className="font-medium">Manual</div>
-                        <div className="text-xs text-muted-foreground">Cobrança 100% manual, bloqueia automação</div>
+                        <div className="text-xs text-muted-foreground">Cobranca 100% manual, bloqueia automacao</div>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -836,57 +797,57 @@ export default function SuperAdminCollectionRulesPage() {
               <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  Esta régua customizada será aplicada apenas aos clientes selecionados. Os demais clientes continuarão
-                  usando a régua padrão do sistema.
+                  Esta regua customizada sera aplicada apenas aos clientes selecionados. Os demais clientes continuarao
+                  usando a regua padrao do sistema.
                 </p>
               </div>
             </div>
 
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-              <h4 className="font-semibold text-sm">Critérios de Score de Recuperação</h4>
+              <h4 className="font-semibold text-sm">Criterios de Score de Recuperacao</h4>
               <p className="text-xs text-muted-foreground">
-                Defina a faixa de Recovery Score para aplicar esta régua (sistema usa ≥ 294 como padrão para cobrança
-                automática)
+                Defina a faixa de Recovery Score para aplicar esta regua (sistema usa &gt;= 294 como padrao para cobranca
+                automatica)
               </p>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="min_score">Recovery Score Mínimo</Label>
+                  <Label htmlFor="minScore">Recovery Score Minimo</Label>
                   <Input
-                    id="min_score"
+                    id="minScore"
                     type="number"
                     min="0"
                     max="1000"
-                    value={formData.min_score}
-                    onChange={(e) => setFormData({ ...formData, min_score: Number.parseInt(e.target.value) || 0 })}
+                    value={formData.minScore}
+                    onChange={(e) => setFormData({ ...formData, minScore: Number.parseInt(e.target.value) || 0 })}
                     placeholder="Ex: 294"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Padrão sistema: 294 (Classe C), 491 (Classe B), 800+ (Classe A)
+                    Padrao sistema: 294 (Classe C), 491 (Classe B), 800+ (Classe A)
                   </p>
                 </div>
 
                 <div>
-                  <Label htmlFor="max_score">Recovery Score Máximo</Label>
+                  <Label htmlFor="maxScore">Recovery Score Maximo</Label>
                   <Input
-                    id="max_score"
+                    id="maxScore"
                     type="number"
                     min="0"
                     max="1000"
-                    value={formData.max_score}
-                    onChange={(e) => setFormData({ ...formData, max_score: Number.parseInt(e.target.value) || 1000 })}
+                    value={formData.maxScore}
+                    onChange={(e) => setFormData({ ...formData, maxScore: Number.parseInt(e.target.value) || 1000 })}
                     placeholder="Ex: 1000"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Máximo: 1000 (Classe A)</p>
+                  <p className="text-xs text-muted-foreground mt-1">Maximo: 1000 (Classe A)</p>
                 </div>
               </div>
             </div>
 
-            {/* Etapas de Cobrança */}
+            {/* Etapas de Cobranca */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-semibold text-sm">Etapas de Cobrança</h4>
+                  <h4 className="font-semibold text-sm">Etapas de Cobranca</h4>
                   <p className="text-xs text-muted-foreground">Configure as mensagens e canais para cada etapa</p>
                 </div>
                 <Button type="button" size="sm" onClick={addStep}>
@@ -895,17 +856,17 @@ export default function SuperAdminCollectionRulesPage() {
                 </Button>
               </div>
 
-              {formData.steps.map((step, index) => (
+              {formData.steps.map((step: any, index: number) => (
                 <Card key={index} className="p-4">
                   <div className="flex items-start gap-4">
                     <div className="flex-1 space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label>Dias após vencimento</Label>
+                          <Label>Dias apos vencimento</Label>
                           <Input
                             type="number"
-                            value={step.days_after_due}
-                            onChange={(e) => updateStep(index, "days_after_due", Number.parseInt(e.target.value) || 0)}
+                            value={step.daysAfterDue}
+                            onChange={(e) => updateStep(index, "daysAfterDue", Number.parseInt(e.target.value) || 0)}
                           />
                         </div>
                         <div>
@@ -918,7 +879,7 @@ export default function SuperAdminCollectionRulesPage() {
                               <SelectItem value="email">Email</SelectItem>
                               <SelectItem value="sms">SMS</SelectItem>
                               <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                              <SelectItem value="phone">Ligação</SelectItem>
+                              <SelectItem value="phone">Ligacao</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -943,17 +904,17 @@ export default function SuperAdminCollectionRulesPage() {
               ))}
             </div>
 
-            {/* Atribuição de Clientes */}
+            {/* Atribuicao de Clientes */}
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-              <h4 className="font-semibold text-sm">Atribuir Régua a Clientes Específicos</h4>
-              <p className="text-xs text-muted-foreground">Selecione os clientes que usarão esta régua customizada</p>
+              <h4 className="font-semibold text-sm">Atribuir Regua a Clientes Especificos</h4>
+              <p className="text-xs text-muted-foreground">Selecione os clientes que usarao esta regua customizada</p>
 
               <div className="flex gap-2 p-1 bg-muted/50 rounded-lg border">
                 <Button
                   type="button"
-                  variant={formData.assignment_mode === "companies" ? "default" : "ghost"}
+                  variant={formData.assignmentMode === "companies" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => setFormData({ ...formData, assignment_mode: "companies", assigned_customers: [] })}
+                  onClick={() => setFormData({ ...formData, assignmentMode: "companies", assignedCustomers: [] })}
                   className="flex-1"
                 >
                   <Building2 className="h-4 w-4 mr-2" />
@@ -961,22 +922,22 @@ export default function SuperAdminCollectionRulesPage() {
                 </Button>
                 <Button
                   type="button"
-                  variant={formData.assignment_mode === "customers" ? "default" : "ghost"}
+                  variant={formData.assignmentMode === "customers" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => setFormData({ ...formData, assignment_mode: "customers" })}
+                  onClick={() => setFormData({ ...formData, assignmentMode: "customers" })}
                   className="flex-1"
                 >
                   <Users className="h-4 w-4 mr-2" />
-                  Clientes Específicos
+                  Clientes Especificos
                 </Button>
               </div>
 
-              {formData.assignment_mode === "companies" ? (
+              {formData.assignmentMode === "companies" ? (
                 <div className="space-y-3">
                   <div>
                     <Label className="text-sm font-medium mb-2 block">Selecione as empresas</Label>
                     <p className="text-xs text-muted-foreground mb-3">
-                      A régua será aplicada a todos os clientes dessas empresas
+                      A regua sera aplicada a todos os clientes dessas empresas
                     </p>
                     <div className="max-h-60 overflow-y-auto space-y-2 p-3 border rounded-lg bg-background">
                       {companies.length === 0 ? (
@@ -990,12 +951,12 @@ export default function SuperAdminCollectionRulesPage() {
                           >
                             <div
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                                formData.assigned_companies.includes(company.id)
+                                formData.assignedCompanies.includes(company.id)
                                   ? "bg-primary border-primary"
                                   : "border-muted-foreground"
                               }`}
                             >
-                              {formData.assigned_companies.includes(company.id) && (
+                              {formData.assignedCompanies.includes(company.id) && (
                                 <Check className="h-3 w-3 text-primary-foreground" />
                               )}
                             </div>
@@ -1008,7 +969,7 @@ export default function SuperAdminCollectionRulesPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      {formData.assigned_companies.length} empresa(s) selecionada(s)
+                      {formData.assignedCompanies.length} empresa(s) selecionada(s)
                     </p>
                   </div>
                 </div>
@@ -1031,12 +992,12 @@ export default function SuperAdminCollectionRulesPage() {
                           >
                             <div
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                                formData.assigned_companies.includes(company.id)
+                                formData.assignedCompanies.includes(company.id)
                                   ? "bg-primary border-primary"
                                   : "border-muted-foreground"
                               }`}
                             >
-                              {formData.assigned_companies.includes(company.id) && (
+                              {formData.assignedCompanies.includes(company.id) && (
                                 <Check className="h-3 w-3 text-primary-foreground" />
                               )}
                             </div>
@@ -1047,18 +1008,18 @@ export default function SuperAdminCollectionRulesPage() {
                     </div>
                   </div>
 
-                  {formData.assigned_companies.length > 0 ? (
+                  {formData.assignedCompanies.length > 0 ? (
                     <div>
                       <label className="text-sm font-medium">2. Selecione os clientes</label>
                       <p className="text-xs text-muted-foreground">
-                        Escolha clientes específicos das empresas selecionadas
+                        Escolha clientes especificos das empresas selecionadas
                       </p>
                       <div className="max-h-[300px] overflow-y-auto rounded-md border p-4">
                         {filteredCustomers.length === 0 ? (
                           <div className="flex flex-col items-center justify-center py-8 text-center">
                             <Users className="mb-2 h-8 w-8 text-muted-foreground/50" />
                             <p className="text-sm text-muted-foreground">
-                              {formData.assigned_companies.length === 0
+                              {formData.assignedCompanies.length === 0
                                 ? "Selecione empresas primeiro"
                                 : "Nenhum cliente encontrado para as empresas selecionadas"}
                             </p>
@@ -1069,7 +1030,7 @@ export default function SuperAdminCollectionRulesPage() {
                               <div key={customer.id} className="flex items-start space-x-2">
                                 <Checkbox
                                   id={`customer-${customer.id}`}
-                                  checked={formData.assigned_customers.includes(customer.id)}
+                                  checked={formData.assignedCustomers.includes(customer.id)}
                                   onCheckedChange={() => toggleCustomerSelection(customer.id)}
                                 />
                                 <label
@@ -1085,7 +1046,7 @@ export default function SuperAdminCollectionRulesPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {formData.assigned_customers.length} cliente(s) selecionado(s)
+                        {formData.assignedCustomers.length} cliente(s) selecionado(s)
                       </p>
                     </div>
                   ) : (
@@ -1103,12 +1064,12 @@ export default function SuperAdminCollectionRulesPage() {
             <div className="flex items-center gap-2 pt-2">
               <input
                 type="checkbox"
-                id="is_active"
-                checked={formData.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                id="isActive"
+                checked={formData.isActive}
+                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                 className="rounded"
               />
-              <Label htmlFor="is_active">Régua ativa</Label>
+              <Label htmlFor="isActive">Regua ativa</Label>
             </div>
           </div>
 
@@ -1117,7 +1078,7 @@ export default function SuperAdminCollectionRulesPage() {
               Cancelar
             </Button>
             <Button type="button" onClick={handleSaveRule}>
-              {editingRule ? "Salvar Alterações" : "Criar Régua"}
+              {editingRule ? "Salvar Alteracoes" : "Criar Regua"}
             </Button>
           </DialogFooter>
         </DialogContent>

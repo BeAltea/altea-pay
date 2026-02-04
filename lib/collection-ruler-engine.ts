@@ -1,33 +1,40 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { collectionRules, collectionRuleSteps, collectionRuleExecutions, collectionActions, collectionTasks, vmax } from "@/lib/db/schema"
+import { eq, and, desc, inArray, isNotNull } from "drizzle-orm"
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS, sendWhatsApp } from "@/lib/notifications/sms"
 
 interface CollectionRuleStep {
   id: string
-  rule_id: string
-  step_order: number
-  days_after_due: number
-  action_type: "email" | "sms" | "whatsapp" | "call_automatic" | "call_human" | "task"
+  ruleId: string
+  stepOrder: number
+  days_after_due?: number
+  actionType: "email" | "sms" | "whatsapp" | "call_automatic" | "call_human" | "task"
   template_subject?: string
-  template_content: string
-  execution_time: string
-  is_enabled: boolean
-  retry_on_failure: boolean
-  max_retries: number
+  template_content?: string
+  execution_time?: string
+  is_enabled?: boolean
+  retry_on_failure?: boolean
+  max_retries?: number
+  delayDays: number | null
+  messageTemplate: string | null
+  conditions: any
+  metadata: any
 }
 
 interface CollectionRule {
   id: string
   name: string
-  company_id: string
-  is_active: boolean
-  rule_version: number
-  execution_mode: string
-  start_date_field: "due_date" | "first_overdue" | "analysis_date" | "custom"
-  requires_approval_status: string[]
+  companyId: string
+  isActive: boolean | null
+  execution_mode?: string
+  start_date_field?: "due_date" | "first_overdue" | "analysis_date" | "custom"
+  requires_approval_status?: string[]
   steps: CollectionRuleStep[]
+  priority: number | null
+  metadata: any
 }
 
 interface EligibleDebt {
@@ -46,41 +53,67 @@ interface EligibleDebt {
 }
 
 /**
- * Motor de Execução da Régua 2 (Régua de Cobrança Customizável)
- * Processa réguas de cobrança configuráveis por empresa
+ * Motor de Execucao da Regua 2 (Regua de Cobranca Customizavel)
+ * Processa reguas de cobranca configuraveis por empresa
  */
 export async function processCollectionRulers() {
-  const supabase = await createClient()
-
   console.log("[v0] Collection Ruler Engine - Starting...")
 
   try {
-    // 1. Buscar réguas ativas
-    const { data: rules, error: rulesError } = await supabase
-      .from("collection_rules")
-      .select(`
-        *,
-        steps:collection_rule_steps(*)
-      `)
-      .eq("is_active", true)
-      .eq("execution_mode", "automatic")
-      .order("priority", { ascending: false })
+    // 1. Buscar reguas ativas
+    const rules = await db
+      .select()
+      .from(collectionRules)
+      .where(
+        and(
+          eq(collectionRules.isActive, true),
+        )
+      )
+      .orderBy(desc(collectionRules.priority))
 
-    if (rulesError) throw rulesError
-    if (!rules || rules.length === 0) {
+    // Filter for automatic execution_mode from metadata
+    const automaticRules = rules.filter((rule: any) => {
+      const meta = rule.metadata as any
+      return meta?.execution_mode === "automatic"
+    })
+
+    if (!automaticRules || automaticRules.length === 0) {
       console.log("[v0] No active collection rules found")
       return { success: true, processed: 0 }
     }
 
-    console.log(`[v0] Found ${rules.length} active collection rules`)
+    console.log(`[v0] Found ${automaticRules.length} active collection rules`)
 
     let totalProcessed = 0
 
-    // 2. Processar cada régua
-    for (const rule of rules) {
+    // 2. Processar cada regua
+    for (const rule of automaticRules) {
       console.log(`[v0] Processing rule: ${rule.name} (${rule.id})`)
 
-      const processed = await processRuleForCompany(rule as any)
+      // Fetch steps for this rule
+      const steps = await db
+        .select()
+        .from(collectionRuleSteps)
+        .where(eq(collectionRuleSteps.ruleId, rule.id))
+
+      const ruleWithSteps: CollectionRule = {
+        ...rule,
+        execution_mode: (rule.metadata as any)?.execution_mode,
+        start_date_field: (rule.metadata as any)?.start_date_field,
+        requires_approval_status: (rule.metadata as any)?.requires_approval_status,
+        steps: steps.map((s) => ({
+          ...s,
+          days_after_due: s.delayDays ?? 0,
+          template_content: s.messageTemplate || "",
+          template_subject: (s.metadata as any)?.template_subject,
+          execution_time: (s.metadata as any)?.execution_time,
+          is_enabled: (s.metadata as any)?.is_enabled !== false,
+          retry_on_failure: (s.metadata as any)?.retry_on_failure ?? false,
+          max_retries: (s.metadata as any)?.max_retries ?? 0,
+        })),
+      }
+
+      const processed = await processRuleForCompany(ruleWithSteps)
       totalProcessed += processed
     }
 
@@ -89,7 +122,7 @@ export async function processCollectionRulers() {
     return {
       success: true,
       processed: totalProcessed,
-      rules: rules.length,
+      rules: automaticRules.length,
     }
   } catch (error: any) {
     console.error("[v0] Collection Ruler Engine - Error:", error)
@@ -102,14 +135,13 @@ export async function processCollectionRulers() {
 }
 
 /**
- * Processa uma régua específica para uma empresa
+ * Processa uma regua especifica para uma empresa
  */
 async function processRuleForCompany(rule: CollectionRule): Promise<number> {
-  const supabase = await createClient()
   const today = new Date().toISOString().split("T")[0]
 
   try {
-    // 1. Buscar dívidas elegíveis para esta régua
+    // 1. Buscar dividas elegiveis para esta regua
     const eligibleDebts = await getEligibleDebts(rule)
 
     if (eligibleDebts.length === 0) {
@@ -121,7 +153,7 @@ async function processRuleForCompany(rule: CollectionRule): Promise<number> {
 
     let actionsProcessed = 0
 
-    // 2. Para cada dívida, processar steps aplicáveis hoje
+    // 2. Para cada divida, processar steps aplicaveis hoje
     for (const debt of eligibleDebts) {
       const startDate = new Date(debt.start_date)
       const todayDate = new Date(today)
@@ -132,7 +164,7 @@ async function processRuleForCompany(rule: CollectionRule): Promise<number> {
       // 3. Encontrar steps que devem ser executados hoje (matching days_offset)
       const stepsToExecute = rule.steps
         .filter((step) => step.is_enabled && step.days_after_due === daysOffset)
-        .sort((a, b) => a.step_order - b.step_order)
+        .sort((a, b) => a.stepOrder - b.stepOrder)
 
       if (stepsToExecute.length === 0) {
         console.log(`[v0] Debt ${debt.id}: No steps to execute today (D${daysOffset})`)
@@ -141,17 +173,24 @@ async function processRuleForCompany(rule: CollectionRule): Promise<number> {
 
       console.log(`[v0] Debt ${debt.id}: ${stepsToExecute.length} steps to execute`)
 
-      // 4. Verificar se já foi executado hoje
-      const { data: existingExecution } = await supabase
-        .from("collection_rule_executions")
-        .select("id")
-        .eq("debt_id", debt.id)
-        .eq("rule_id", rule.id)
-        .eq("execution_date", today)
-        .eq("days_offset", daysOffset)
-        .single()
+      // 4. Verificar se ja foi executado hoje
+      const existingExecutions = await db
+        .select({ id: collectionRuleExecutions.id })
+        .from(collectionRuleExecutions)
+        .where(
+          and(
+            eq(collectionRuleExecutions.ruleId, rule.id),
+          )
+        )
+        .limit(1)
 
-      if (existingExecution) {
+      // Filter by debt_id and execution_date from metadata since those columns may not exist
+      const alreadyExecuted = existingExecutions.some((exec: any) => {
+        const meta = exec.metadata as any
+        return meta?.debt_id === debt.id && meta?.execution_date === today && meta?.days_offset === daysOffset
+      })
+
+      if (alreadyExecuted) {
         console.log(`[v0] Debt ${debt.id}: Already executed today, skipping`)
         continue
       }
@@ -163,14 +202,18 @@ async function processRuleForCompany(rule: CollectionRule): Promise<number> {
       }
     }
 
-    // 6. Atualizar last_execution_at da régua
-    await supabase
-      .from("collection_rules")
-      .update({
-        last_execution_at: new Date().toISOString(),
-        next_execution_at: getNextExecutionDate().toISOString(),
+    // 6. Atualizar last_execution_at da regua
+    await db
+      .update(collectionRules)
+      .set({
+        metadata: {
+          ...(rule.metadata as any),
+          last_execution_at: new Date().toISOString(),
+          next_execution_at: getNextExecutionDate().toISOString(),
+        },
+        updatedAt: new Date(),
       })
-      .eq("id", rule.id)
+      .where(eq(collectionRules.id, rule.id))
 
     return actionsProcessed
   } catch (error: any) {
@@ -180,73 +223,59 @@ async function processRuleForCompany(rule: CollectionRule): Promise<number> {
 }
 
 /**
- * Busca dívidas elegíveis para a régua
+ * Busca dividas elegiveis para a regua
  */
 async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
-  const supabase = await createClient()
-
-  // Query base: dívidas da empresa com status pendente/overdue
-  const query = supabase
-    .from("VMAX")
-    .select(`
-      id,
-      Cliente,
-      CPF/CNPJ,
-      Email,
-      "Telefone 1",
-      "Telefone 2",
-      Vencido,
-      Vecto,
-      approval_status,
-      id_company,
-      recovery_score,
-      recovery_class
-    `)
-    .eq("id_company", rule.company_id)
-    .in("approval_status", rule.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"])
-    .not("Email", "is", null)
-    .not("Telefone 1", "is", null)
-
-  const { data: vmaxDebts, error } = await query
-
-  if (error) {
-    console.error("[v0] Error fetching eligible debts:", error)
-    return []
-  }
+  // Query base: dividas da empresa com status pendente/overdue
+  const vmaxDebts = await db
+    .select()
+    .from(vmax)
+    .where(
+      eq(vmax.idCompany, rule.companyId)
+    )
 
   if (!vmaxDebts || vmaxDebts.length === 0) {
     return []
   }
 
-  // Mapear para estrutura EligibleDebt
-  const eligibleDebts: EligibleDebt[] = vmaxDebts
-    .map((debt) => {
-      let startDate = debt.Vecto || debt.due_date || new Date().toISOString().split("T")[0]
+  // Filter by approval_status and contact info in application layer
+  const requiredStatuses = rule.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"]
+  const filteredDebts = vmaxDebts.filter((debt) => {
+    return requiredStatuses.includes(debt.approvalStatus || "") &&
+      debt.cpfCnpj // has some contact info (Email/Phone stored in metadata or separate fields)
+  })
 
-      // Determinar data de referência baseado em start_date_field
+  // Mapear para estrutura EligibleDebt
+  const eligibleDebts: EligibleDebt[] = filteredDebts
+    .map((debt: any) => {
+      let startDate = debt.primeiraVencida || new Date().toISOString().split("T")[0]
+
+      // Determinar data de referencia baseado em start_date_field
       if (rule.start_date_field === "due_date") {
-        startDate = debt.Vecto || startDate
+        startDate = debt.primeiraVencida || startDate
       } else if (rule.start_date_field === "first_overdue") {
-        startDate = debt.Vecto || startDate
+        startDate = debt.primeiraVencida || startDate
       }
+
+      const meta = debt.analysisMetadata as any
 
       return {
         id: debt.id,
-        customer_id: debt.id, // Usando id da VMAX como customer_id
-        company_id: debt.id_company,
-        amount: Number.parseFloat(debt.Vencido || "0"),
-        due_date: debt.Vecto || startDate,
-        customer_name: debt.Cliente || "Cliente",
-        customer_email: debt.Email || "",
-        customer_phone: debt["Telefone 1"] || debt["Telefone 2"] || "",
-        approval_status: debt.approval_status || "",
+        customer_id: debt.id,
+        company_id: debt.idCompany || "",
+        amount: Number.parseFloat(debt.valorTotal || "0"),
+        due_date: debt.primeiraVencida || startDate,
+        customer_name: debt.cliente || "Cliente",
+        customer_email: meta?.email || "",
+        customer_phone: meta?.phone || meta?.telefone1 || "",
+        approval_status: debt.approvalStatus || "",
         start_date: startDate,
-        recovery_score: debt.recovery_score,
-        recovery_class: debt.recovery_class,
+        recovery_score: meta?.recovery_score,
+        recovery_class: meta?.recovery_class,
       }
     })
-    .filter((debt) => {
-      // Abaixo disso, apenas cobrança manual é permitida
+    .filter((debt: EligibleDebt) => {
+      // Abaixo disso, apenas cobranca manual e permitida
       const hasContact = debt.customer_email || debt.customer_phone
       const recoveryScore = debt.recovery_score || 0
       const isEligibleForAutoCollection = recoveryScore >= 294
@@ -264,7 +293,7 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
 }
 
 /**
- * Executa um step específico da régua
+ * Executa um step especifico da regua
  */
 async function executeStep(
   rule: CollectionRule,
@@ -273,48 +302,47 @@ async function executeStep(
   daysOffset: number,
   executionDate: string,
 ): Promise<boolean> {
-  const supabase = await createClient()
-
-  console.log(`[v0] Executing step ${step.step_order} (${step.action_type}) for debt ${debt.id}`)
+  console.log(`[v0] Executing step ${step.stepOrder} (${step.actionType}) for debt ${debt.id}`)
 
   try {
-    // 1. Criar registro de execução (pending)
-    const { data: execution, error: insertError } = await supabase
-      .from("collection_rule_executions")
-      .insert({
-        rule_id: rule.id,
-        debt_id: debt.id,
-        customer_id: debt.customer_id,
-        company_id: debt.company_id,
-        execution_date: executionDate,
-        days_offset: daysOffset,
-        start_date: debt.start_date,
-        step_id: step.id,
-        step_order: step.step_order,
-        action_type: step.action_type,
+    // 1. Criar registro de execucao (pending)
+    const [execution] = await db
+      .insert(collectionRuleExecutions)
+      .values({
+        ruleId: rule.id,
+        companyId: debt.company_id,
+        customerId: debt.customer_id,
         status: "processing",
+        metadata: {
+          debt_id: debt.id,
+          execution_date: executionDate,
+          days_offset: daysOffset,
+          start_date: debt.start_date,
+          step_id: step.id,
+          step_order: step.stepOrder,
+          action_type: step.actionType,
+        },
       })
-      .select()
-      .single()
+      .returning()
 
-    if (insertError) throw insertError
+    if (!execution) throw new Error("Failed to create execution record")
 
-    // 2. Preparar mensagem substituindo variáveis
-    const message = prepareMessage(step.template_content, debt)
+    // 2. Preparar mensagem substituindo variaveis
+    const message = prepareMessage(step.template_content || "", debt)
     const subject = step.template_subject ? prepareMessage(step.template_subject, debt) : undefined
 
-    // 3. Executar ação baseado no tipo
+    // 3. Executar acao baseado no tipo
     let success = false
     let errorMessage = ""
 
-    switch (step.action_type) {
+    switch (step.actionType) {
       case "email":
         if (debt.customer_email) {
           const emailResult = await sendEmail(debt.customer_email, subject || "Lembrete de Pagamento", message)
           success = emailResult.success
           errorMessage = emailResult.error || ""
         } else {
-          errorMessage = "Email não disponível"
+          errorMessage = "Email nao disponivel"
         }
         break
 
@@ -324,7 +352,7 @@ async function executeStep(
           success = smsResult.success
           errorMessage = smsResult.error || ""
         } else {
-          errorMessage = "Telefone não disponível"
+          errorMessage = "Telefone nao disponivel"
         }
         break
 
@@ -334,21 +362,21 @@ async function executeStep(
           success = whatsappResult.success
           errorMessage = whatsappResult.error || ""
         } else {
-          errorMessage = "Telefone não disponível"
+          errorMessage = "Telefone nao disponivel"
         }
         break
 
       case "call_automatic":
       case "call_human":
         // Criar tarefa para operador
-        await supabase.from("collection_tasks").insert({
-          debt_id: debt.id,
-          customer_id: debt.customer_id,
-          task_type: step.action_type === "call_automatic" ? "automatic_call" : "manual_call",
-          priority: "medium",
+        await db.insert(collectionTasks).values({
+          customerId: debt.customer_id,
+          taskType: step.actionType === "call_automatic" ? "automatic_call" : "manual_call",
           status: "pending",
-          description: message,
           metadata: {
+            debt_id: debt.id,
+            priority: "medium",
+            description: message,
             rule_id: rule.id,
             step_id: step.id,
             days_offset: daysOffset,
@@ -358,15 +386,15 @@ async function executeStep(
         break
 
       case "task":
-        // Criar tarefa genérica
-        await supabase.from("collection_tasks").insert({
-          debt_id: debt.id,
-          customer_id: debt.customer_id,
-          task_type: "follow_up",
-          priority: "medium",
+        // Criar tarefa generica
+        await db.insert(collectionTasks).values({
+          customerId: debt.customer_id,
+          taskType: "follow_up",
           status: "pending",
-          description: message,
           metadata: {
+            debt_id: debt.id,
+            priority: "medium",
+            description: message,
             rule_id: rule.id,
             step_id: step.id,
             days_offset: daysOffset,
@@ -376,34 +404,33 @@ async function executeStep(
         break
     }
 
-    // 4. Atualizar status da execução
-    await supabase
-      .from("collection_rule_executions")
-      .update({
+    // 4. Atualizar status da execucao
+    await db
+      .update(collectionRuleExecutions)
+      .set({
         status: success ? "sent" : "failed",
-        sent_at: success ? new Date().toISOString() : null,
-        error_message: errorMessage || null,
+        executedAt: success ? new Date() : null,
+        error: errorMessage || null,
       })
-      .eq("id", execution.id)
+      .where(eq(collectionRuleExecutions.id, execution.id))
 
     // 5. Criar log em collection_actions
-    await supabase.from("collection_actions").insert({
-      debt_id: debt.id,
-      customer_id: debt.customer_id,
-      company_id: debt.company_id,
-      action_type: step.action_type,
+    await db.insert(collectionActions).values({
+      customerId: debt.customer_id,
+      companyId: debt.company_id,
+      actionType: step.actionType,
       status: success ? "sent" : "failed",
       message: message,
-      sent_at: success ? new Date().toISOString() : null,
       metadata: {
         rule_id: rule.id,
         step_id: step.id,
         days_offset: daysOffset,
         execution_id: execution.id,
+        sent_at: success ? new Date().toISOString() : null,
       },
     })
 
-    console.log(`[v0] Step ${step.step_order} execution: ${success ? "SUCCESS" : "FAILED"}`)
+    console.log(`[v0] Step ${step.stepOrder} execution: ${success ? "SUCCESS" : "FAILED"}`)
 
     return success
   } catch (error: any) {
@@ -413,7 +440,7 @@ async function executeStep(
 }
 
 /**
- * Substitui variáveis no template da mensagem
+ * Substitui variaveis no template da mensagem
  */
 function prepareMessage(template: string, debt: EligibleDebt): string {
   return template
@@ -427,7 +454,7 @@ function prepareMessage(template: string, debt: EligibleDebt): string {
 }
 
 /**
- * Calcula próxima data de execução (amanhã)
+ * Calcula proxima data de execucao (amanha)
  */
 function getNextExecutionDate(): Date {
   const tomorrow = new Date()

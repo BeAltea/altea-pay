@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
@@ -65,20 +65,9 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
 
   async function fetchNotifications() {
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(10)
-
-      if (error) {
-        console.error("[v0] Error fetching notifications:", error)
-        return
-      }
-
-      setNotifications(data || [])
-      setUnreadCount(data?.filter((n) => !n.read).length || 0)
+      // TODO: Replace with server action or API route for notifications
+      setNotifications([])
+      setUnreadCount(0)
     } catch (error) {
       console.error("[v0] Exception fetching notifications:", error)
     }
@@ -87,25 +76,12 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
   const handleSignOut = async () => {
     console.log("[v0] SuperAdminHeader - Sign out initiated")
     try {
-      const supabase = createClient()
-
-      await supabase.auth.signOut({ scope: "local" })
-
-      console.log("[v0] SuperAdminHeader - Sign out successful, redirecting...")
-
       toast({
         title: "Logout realizado",
         description: "Você foi desconectado com sucesso.",
       })
 
-      // Clear any local storage
-      if (typeof window !== "undefined") {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
-
-      // Force hard redirect to login page
-      window.location.href = "/auth/login"
+      await signOut({ callbackUrl: "/auth/login" })
     } catch (error) {
       console.error("[v0] SuperAdminHeader - Sign out exception:", error)
       toast({
@@ -113,9 +89,6 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
         description: "Erro inesperado ao fazer logout.",
         variant: "destructive",
       })
-
-      // Force redirect even on error
-      window.location.href = "/auth/login"
     }
   }
 
@@ -132,10 +105,9 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
     console.log("[v0] SuperAdminHeader - Notification clicked:", notificationId)
 
     try {
-      const supabase = createClient()
-      await supabase.from("notifications").update({ read: true }).eq("id", notificationId)
-
-      await fetchNotifications()
+      // TODO: Replace with server action or API route to mark notification as read
+      setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
+      setUnreadCount((prev) => Math.max(0, prev - 1))
     } catch (error) {
       console.error("[v0] Error marking notification as read:", error)
     }

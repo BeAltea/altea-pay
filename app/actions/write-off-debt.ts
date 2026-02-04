@@ -1,6 +1,9 @@
 "use server"
 
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax, payments, collectionActions } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 
 export async function writeOffDebt(data: {
   debtId: string
@@ -10,92 +13,78 @@ export async function writeOffDebt(data: {
   notes?: string
 }) {
   try {
-    const supabase = await createServerClient()
-    const adminSupabase = createAdminClient()
-
-    // Get current user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
     if (!user) {
       return { success: false, message: "Usuário não autenticado" }
     }
 
-    const { data: profile } = await supabase.from("profiles").select("company_id, full_name").eq("id", user.id).single()
+    const [profile] = await db
+      .select({ companyId: profiles.companyId, fullName: profiles.fullName })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1)
 
-    if (!profile?.company_id) {
+    if (!profile?.companyId) {
       return { success: false, message: "Empresa não encontrada" }
     }
 
     // Get debt details from VMAX
-    const { data: debt, error: debtError } = await adminSupabase
-      .from("VMAX")
-      .select("*")
-      .eq("id", data.debtId)
-      .eq("id_company", profile.company_id)
-      .single()
+    const [debt] = await db
+      .select()
+      .from(vmax)
+      .where(and(eq(vmax.id, data.debtId), eq(vmax.idCompany, profile.companyId)))
+      .limit(1)
 
-    if (debtError || !debt) {
-      console.error("[v0] Debt not found:", debtError)
+    if (!debt) {
+      console.error("[v0] Debt not found")
       return { success: false, message: "Dívida não encontrada na base de dados" }
     }
 
     // Create payment record
-    const { error: paymentError } = await adminSupabase.from("payments").insert({
-      debt_id: data.debtId,
-      company_id: profile.company_id,
-      user_id: user.id,
-      amount: debt.Vencido ? Number.parseFloat(debt.Vencido.toString().replace(",", ".")) : 0,
-      payment_date: data.paymentDate,
-      payment_method: data.paymentMethod,
+    await db.insert(payments).values({
+      debtId: data.debtId,
+      companyId: profile.companyId,
+      amount: debt.valorTotal ? Number.parseFloat(debt.valorTotal.toString().replace(",", ".")).toString() : "0",
+      method: data.paymentMethod,
       status: "confirmed",
-      transaction_id: `WRITEOFF-${Date.now()}`,
+      externalId: `WRITEOFF-${Date.now()}`,
+      metadata: { paymentDate: data.paymentDate },
     })
 
-    if (paymentError) {
-      console.error("[v0] Error creating payment:", paymentError)
-      return { success: false, message: "Erro ao registrar pagamento" }
-    }
-
     // Update debt status in VMAX
-    const { error: updateError } = await adminSupabase
-      .from("VMAX")
-      .update({
-        approval_status: "PAID",
-        analysis_metadata: {
-          ...debt.analysis_metadata,
+    await db
+      .update(vmax)
+      .set({
+        approvalStatus: "PAID",
+        analysisMetadata: {
+          ...(debt.analysisMetadata as any),
           payment_info: {
             method: data.paymentMethod,
             channel: data.paymentChannel,
             date: data.paymentDate,
             notes: data.notes,
-            written_off_by: profile.full_name,
+            written_off_by: profile.fullName,
             written_off_at: new Date().toISOString(),
           },
         },
       })
-      .eq("id", data.debtId)
-
-    if (updateError) {
-      console.error("[v0] Error updating debt status:", updateError)
-      return { success: false, message: "Erro ao atualizar status da dívida" }
-    }
+      .where(eq(vmax.id, data.debtId))
 
     // Log the write-off action
-    await adminSupabase.from("collection_actions").insert({
-      company_id: profile.company_id,
-      debt_id: data.debtId,
-      customer_id: debt.id,
-      action_type: "write_off",
+    await db.insert(collectionActions).values({
+      companyId: profile.companyId,
+      customerId: debt.id,
+      actionType: "write_off",
       status: "sent",
       message: `Dívida baixada via ${data.paymentChannel} - ${data.paymentMethod}`,
-      sent_by: user.id,
       metadata: {
         payment_method: data.paymentMethod,
         payment_channel: data.paymentChannel,
         payment_date: data.paymentDate,
         notes: data.notes,
+        sent_by: user.id,
       },
     })
 

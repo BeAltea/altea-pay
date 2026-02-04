@@ -1,64 +1,74 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useRouter, useSearchParams } from "next/navigation"
 
 /**
- * Componente que detecta APENAS tokens de RECOVERY (recuperação de senha) na URL.
- * NÃO deve interceptar tokens de confirmação de email (signup).
+ * Component that detects password recovery tokens in the URL and redirects to the reset password page.
+ * Supports both query string tokens (NextAuth style) and legacy hash tokens (for backwards compatibility).
  */
 export function RecoveryRedirect() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [statusMessage, setStatusMessage] = useState("Redirecionando...")
 
   useEffect(() => {
-    const processAuthParams = async () => {
+    const processAuthParams = () => {
       if (typeof window === "undefined") return
 
+      // Check for token in query string (NextAuth style)
+      const queryToken = searchParams.get("token")
+      const queryType = searchParams.get("type")
+
+      if (queryToken && queryType === "recovery") {
+        setIsRedirecting(true)
+        router.replace(`/auth/reset-password?token=${encodeURIComponent(queryToken)}`)
+        return
+      }
+
+      // Legacy support: Check for tokens in hash (Supabase style)
+      // This handles any old recovery links that may still be in use
       const hash = window.location.hash
-      
-      // APENAS processa tokens no HASH que são explicitamente de RECOVERY
-      // NÃO intercepta códigos PKCE na query string - esses são para confirmação de email
+
       if (hash && hash.length > 2) {
         try {
           const hashParams = new URLSearchParams(hash.substring(1))
           const accessToken = hashParams.get("access_token")
-          const refreshToken = hashParams.get("refresh_token")
           const type = hashParams.get("type")
           const errorCode = hashParams.get("error_code")
           const errorDescription = hashParams.get("error_description")
 
-          // IMPORTANTE: Só processa se o type for EXPLICITAMENTE "recovery"
+          // Only process if the type is explicitly "recovery"
           if (type !== "recovery") {
-            return // Não é recovery, deixa o fluxo normal continuar
+            return // Not a recovery flow, let normal flow continue
           }
 
-          // Se houver erro no token de recovery
+          // If there's an error in the recovery token
           if (errorCode || errorDescription) {
             setIsRedirecting(true)
-            window.location.href = `/auth/reset-password?error=${encodeURIComponent(errorDescription || errorCode || "Token inválido")}`
+            router.replace(`/auth/reset-password?error=${encodeURIComponent(errorDescription || errorCode || "Token inválido")}`)
             return
           }
 
-          // Se for um recovery com tokens válidos
+          // If it's a recovery with valid tokens, redirect to reset password page
+          // Note: Legacy hash tokens may not work with the new NextAuth flow,
+          // but we redirect anyway to show the appropriate error message
           if (accessToken && type === "recovery") {
             setIsRedirecting(true)
-            const resetUrl = `/auth/reset-password#access_token=${accessToken}&refresh_token=${refreshToken || ""}&type=${type}`
-            window.location.href = resetUrl
+            router.replace(`/auth/reset-password?token=${encodeURIComponent(accessToken)}`)
             return
           }
-        } catch (error) {
+        } catch {
           // Silently ignore parsing errors
         }
       }
     }
 
     processAuthParams()
-  }, [router])
+  }, [router, searchParams])
 
-  // Mostra loading se estiver redirecionando
+  // Show loading if redirecting
   if (isRedirecting) {
     return (
       <div className="fixed inset-0 bg-altea-navy flex items-center justify-center z-50">

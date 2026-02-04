@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { Mail, Calendar, Save, CheckCircle, Upload } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
 export const dynamic = "force-dynamic"
@@ -32,33 +32,27 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
+  const { user: authUser, profile: authProfile, loading: authLoading } = useAuth()
 
   useEffect(() => {
-    const getUser = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    if (authLoading) return
 
-      if (user) {
-        setUser(user)
-        setProfile({
-          fullName: user.user_metadata?.full_name || "",
-          companyName: user.user_metadata?.company_name || "",
-          email: user.email || "",
-          phone: user.user_metadata?.phone || "",
-          address: user.user_metadata?.address || "",
-          city: user.user_metadata?.city || "",
-          state: user.user_metadata?.state || "",
-          zipCode: user.user_metadata?.zip_code || "",
-          description: user.user_metadata?.description || "",
-        })
-      }
-      setLoading(false)
+    if (authUser) {
+      setUser(authUser)
+      setProfile({
+        fullName: authProfile?.full_name || "",
+        companyName: "",
+        email: authUser.email || "",
+        phone: authProfile?.phone || "",
+        address: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        description: "",
+      })
     }
-
-    getUser()
-  }, [])
+    setLoading(false)
+  }, [authUser, authProfile, authLoading])
 
   const handleSave = async () => {
     console.log("[v0] ProfilePage - Save initiated with data:", profile)
@@ -74,64 +68,22 @@ export default function ProfilePage() {
     }
 
     setSaving(true)
-    const supabase = createClient()
 
     try {
-      console.log("[v0] ProfilePage - Updating user metadata...")
-
-      const { error: authError } = await supabase.auth.updateUser({
-        data: {
-          full_name: profile.fullName,
-          company_name: profile.companyName,
+      const response = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: profile.fullName,
           phone: profile.phone,
-          address: profile.address,
-          city: profile.city,
-          state: profile.state,
-          zip_code: profile.zipCode,
-          description: profile.description,
-        },
+        }),
       })
 
-      if (authError) {
-        console.error("[v0] ProfilePage - Auth update error:", authError)
-        throw authError
-      }
-
-      console.log("[v0] ProfilePage - Auth metadata updated successfully")
-
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          console.log("[v0] ProfilePage - Updating profiles table...")
-          const { error: profileError } = await supabase.from("profiles").upsert({
-            id: user.id,
-            full_name: profile.fullName,
-            company_name: profile.companyName,
-            phone: profile.phone,
-            address: profile.address,
-            city: profile.city,
-            state: profile.state,
-            zip_code: profile.zipCode,
-            description: profile.description,
-            updated_at: new Date().toISOString(),
-          })
-
-          if (profileError) {
-            console.warn("[v0] ProfilePage - Profile table update warning:", profileError)
-          } else {
-            console.log("[v0] ProfilePage - Profiles table updated successfully")
-          }
-        }
-      } catch (profileTableError) {
-        console.warn("[v0] ProfilePage - Profile table update failed:", profileTableError)
-      }
+      if (!response.ok) throw new Error("Failed to update profile")
 
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
 
-      console.log("[v0] ProfilePage - Save completed successfully")
       toast({
         title: "Sucesso",
         description: "Perfil atualizado com sucesso!",
@@ -145,7 +97,6 @@ export default function ProfilePage() {
       })
     } finally {
       setSaving(false)
-      console.log("[v0] ProfilePage - Save process completed")
     }
   }
 

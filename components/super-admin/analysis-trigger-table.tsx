@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { PlayCircle, CheckCircle, XCircle, Clock } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 interface AnalysisTrigger {
   id: string
@@ -25,46 +24,32 @@ interface AnalysisTrigger {
 export function AnalysisTriggerTable({ companyId }: { companyId: string }) {
   const [triggers, setTriggers] = useState<AnalysisTrigger[]>([])
   const [loading, setLoading] = useState(true)
-  const supabase = createBrowserClient()
 
   useEffect(() => {
     loadTriggers()
 
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel("analysis_triggers")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "analysis_triggers",
-          filter: `company_id=eq.${companyId}`,
-        },
-        () => {
-          loadTriggers()
-        },
-      )
-      .subscribe()
+    // Poll for updates every 10 seconds (replaces Supabase real-time)
+    const interval = setInterval(loadTriggers, 10000)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(interval)
     }
   }, [companyId])
 
   async function loadTriggers() {
     try {
-      const { data, error } = await supabase
-        .from("analysis_triggers")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .limit(10)
-
-      if (error) throw error
-      setTriggers(data || [])
+      // TODO: Replace with server action or API route for fetching analysis triggers
+      const response = await fetch(`/api/analysis-triggers?companyId=${companyId}&limit=10`)
+      if (response.ok) {
+        const data = await response.json()
+        setTriggers(data || [])
+      } else {
+        console.error("Error loading triggers:", response.statusText)
+        setTriggers([])
+      }
     } catch (error) {
       console.error("Error loading triggers:", error)
+      setTriggers([])
     } finally {
       setLoading(false)
     }

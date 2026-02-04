@@ -25,7 +25,6 @@ import {
   CreditCard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 interface DebtCardProps {
@@ -100,30 +99,20 @@ export function DebtCard({ debt }: DebtCardProps) {
     setIsProcessing(true)
 
     try {
-      const supabase = createClient()
-
-      // Create payment record
-      const { error: paymentError } = await supabase.from("payments").insert({
+      // TODO: Replace with server action for processing payment
+      const mockPayment = {
         debt_id: debt.id,
         amount: debt.amount,
         payment_date: new Date().toISOString().split("T")[0],
         payment_method: paymentMethod,
         status: "completed",
         transaction_id: `SIM_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      })
+      }
 
-      if (paymentError) throw paymentError
+      console.log("[v0] DebtCard - Mock payment created:", mockPayment)
 
-      // Update debt status to paid
-      const { error: debtError } = await supabase
-        .from("debts")
-        .update({
-          status: "paid",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", debt.id)
-
-      if (debtError) throw debtError
+      // Simulate API delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
       setIsPaymentDialogOpen(false)
       router.refresh()

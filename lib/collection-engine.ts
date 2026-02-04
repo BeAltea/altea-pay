@@ -1,6 +1,8 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { integrationLogs, collectionRules, debts, customers, companies, collectionActions, collectionTasks } from "@/lib/db/schema"
+import { eq, and, gte, lte, desc } from "drizzle-orm"
 import { sendEmail, generateDebtCollectionEmail } from "@/lib/notifications/email"
 import { sendSMS, generateDebtCollectionSMS } from "@/lib/notifications/sms"
 
@@ -9,8 +11,8 @@ export type TaskType = "AUTO_MESSAGE" | "ASSISTED_COLLECTION" | "MANUAL_COLLECTI
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled"
 
 /**
- * Motor de Regras de Cobrança Automática
- * Processa dívidas baseado no score de recuperação do devedor
+ * Motor de Regras de Cobranca Automatica
+ * Processa dividas baseado no score de recuperacao do devedor
  */
 export async function processCollectionByScore(params: {
   debtId: string
@@ -19,8 +21,6 @@ export async function processCollectionByScore(params: {
   amount: number
   dueDate: string
 }) {
-  const supabase = createAdminClient()
-
   try {
     // 1. Chamar endpoint /score-check para obter recovery_score
     const scoreResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/score-check`, {
@@ -34,7 +34,7 @@ export async function processCollectionByScore(params: {
     })
 
     if (!scoreResponse.ok) {
-      throw new Error("Falha ao verificar score de recuperação")
+      throw new Error("Falha ao verificar score de recuperacao")
     }
 
     const scoreData = await scoreResponse.json()
@@ -44,29 +44,32 @@ export async function processCollectionByScore(params: {
       `[v0] Collection Engine - Debt: ${params.debtId}, Recovery Score: ${recovery_score}, Recovery Class: ${recovery_class}`,
     )
 
-    // 2. Motor de Regras interpreta o score de recuperação e executa ação
+    // 2. Motor de Regras interpreta o score de recuperacao e executa acao
     let actionResult: any
 
-    // Processa réguas de cobrança (padrão + customizadas)
+    // Processa reguas de cobranca (padrao + customizadas)
     actionResult = await processCollectionRules(params.debtId, params.customerId, recovery_score)
 
     // 3. Registrar log de auditoria
-    await supabase.from("integration_logs").insert({
-      integration_name: "collection_engine",
-      operation: "auto_collection_process",
-      request_data: {
-        debt_id: params.debtId,
-        customer_id: params.customerId,
-        cpf: params.cpf,
-        amount: params.amount,
-      },
-      response_data: {
-        recovery_score,
-        recovery_class,
-        action: actionResult?.action,
-        task_id: actionResult?.taskId,
-      },
+    await db.insert(integrationLogs).values({
+      action: "auto_collection_process",
       status: "success",
+      details: {
+        integration_name: "collection_engine",
+        operation: "auto_collection_process",
+        request_data: {
+          debt_id: params.debtId,
+          customer_id: params.customerId,
+          cpf: params.cpf,
+          amount: params.amount,
+        },
+        response_data: {
+          recovery_score,
+          recovery_class,
+          action: actionResult?.action,
+          task_id: actionResult?.taskId,
+        },
+      },
     })
 
     return {
@@ -79,12 +82,15 @@ export async function processCollectionByScore(params: {
   } catch (error: any) {
     console.error("[v0] Collection Engine Error:", error)
 
-    await supabase.from("integration_logs").insert({
-      integration_name: "collection_engine",
-      operation: "auto_collection_process",
-      request_data: params,
-      response_data: { error: error.message },
+    await db.insert(integrationLogs).values({
+      action: "auto_collection_process",
       status: "error",
+      details: {
+        integration_name: "collection_engine",
+        operation: "auto_collection_process",
+        request_data: params,
+        response_data: { error: error.message },
+      },
     })
 
     return {
@@ -95,31 +101,39 @@ export async function processCollectionByScore(params: {
 }
 
 /**
- * Processa réguas de cobrança (padrão + customizadas)
+ * Processa reguas de cobranca (padrao + customizadas)
  */
 export async function processCollectionRules(debtId: string, customerId: string, recoveryScore: number) {
-  const supabase = createAdminClient()
-
   try {
-    // 1. Verificar se existe régua customizada para este cliente
-    const { data: customRules } = await supabase
-      .from("collection_rules")
-      .select("*")
-      .eq("is_active", true)
-      .eq("rule_type", "custom")
-      .contains("active_for_customers", [customerId])
-      .gte("max_score", recoveryScore)
-      .lte("min_score", recoveryScore)
-      .order("priority", { ascending: false })
+    // 1. Verificar se existe regua customizada para este cliente
+    const customRulesResult = await db
+      .select()
+      .from(collectionRules)
+      .where(
+        and(
+          eq(collectionRules.isActive, true),
+        )
+      )
+      .orderBy(desc(collectionRules.priority))
       .limit(1)
 
-    if (customRules && customRules.length > 0) {
-      // Usar régua customizada
-      console.log(`[v0] Using custom rule for customer ${customerId}:`, customRules[0].name)
-      return await applyCustomRule(debtId, customerId, customRules[0], recoveryScore)
+    // Filter by rule_type custom, score range, and active_for_customers in application layer
+    // since these columns may not exist in the Drizzle schema
+    const filteredRules = customRulesResult.filter((rule: any) => {
+      const meta = rule.metadata as any
+      return meta?.rule_type === "custom" &&
+        (meta?.active_for_customers || []).includes(customerId) &&
+        (meta?.max_score ?? Infinity) >= recoveryScore &&
+        (meta?.min_score ?? -Infinity) <= recoveryScore
+    })
+
+    if (filteredRules.length > 0) {
+      // Usar regua customizada
+      console.log(`[v0] Using custom rule for customer ${customerId}:`, filteredRules[0].name)
+      return await applyCustomRule(debtId, customerId, filteredRules[0], recoveryScore)
     }
 
-    // 2. Se não houver régua customizada, usar régua padrão baseada em recovery score
+    // 2. Se nao houver regua customizada, usar regua padrao baseada em recovery score
     console.log(`[v0] Using default rule for customer ${customerId}`)
     return await applyDefaultRule(debtId, customerId, recoveryScore)
   } catch (error) {
@@ -129,23 +143,24 @@ export async function processCollectionRules(debtId: string, customerId: string,
 }
 
 /**
- * Aplica régua customizada
+ * Aplica regua customizada
  */
 async function applyCustomRule(debtId: string, customerId: string, rule: any, recoveryScore: number) {
-  const supabase = createAdminClient()
+  const meta = rule.metadata as any
+  const processType = meta?.process_type
 
-  console.log(`[v0] Applying custom rule: ${rule.name} (${rule.process_type})`)
+  console.log(`[v0] Applying custom rule: ${rule.name} (${processType})`)
 
-  if (rule.process_type === "automatic") {
-    // Disparo automático
+  if (processType === "automatic") {
+    // Disparo automatico
     return await dispatchAutoMessage({ debtId, customerId })
-  } else if (rule.process_type === "semi_automatic") {
+  } else if (processType === "semi_automatic") {
     // Tarefa assistida
     return await createAssistedCollectionTask({
       debtId,
       customerId,
       priority: rule.priority,
-      description: `Régua customizada: ${rule.name} - Recovery Score: ${recoveryScore}`,
+      description: `Regua customizada: ${rule.name} - Recovery Score: ${recoveryScore}`,
     })
   } else {
     // Manual
@@ -153,158 +168,157 @@ async function applyCustomRule(debtId: string, customerId: string, rule: any, re
       debtId,
       customerId,
       priority: rule.priority,
-      description: `Régua customizada (manual): ${rule.name} - Recovery Score: ${recoveryScore}`,
+      description: `Regua customizada (manual): ${rule.name} - Recovery Score: ${recoveryScore}`,
     })
   }
 }
 
 /**
- * Aplica régua padrão do sistema
- * Nova lógica baseada em Recovery Score:
- * - Score >= 294 (Classes C, B, A): Cobrança automática
- * - Score < 294 (Classes D, E, F): Cobrança manual
+ * Aplica regua padrao do sistema
+ * Nova logica baseada em Recovery Score:
+ * - Score >= 294 (Classes C, B, A): Cobranca automatica
+ * - Score < 294 (Classes D, E, F): Cobranca manual
  */
 async function applyDefaultRule(debtId: string, customerId: string, recoveryScore: number) {
   if (recoveryScore >= 294) {
-    // CLASSES C, B, A - Cobrança automática permitida
+    // CLASSES C, B, A - Cobranca automatica permitida
     console.log(`[v0] Recovery Score ${recoveryScore} >= 294 - Automatic collection allowed`)
     return await dispatchAutoMessage({ debtId, customerId })
   } else {
-    // CLASSES D, E, F - Cobrança manual obrigatória
+    // CLASSES D, E, F - Cobranca manual obrigatoria
     console.log(`[v0] Recovery Score ${recoveryScore} < 294 - Manual collection required`)
     return await createManualCollectionTask({
       debtId,
       customerId,
       priority: "high",
-      description: `Cobrança manual obrigatória - Recovery Score: ${recoveryScore} (Classes D, E ou F). Disparos automáticos bloqueados.`,
+      description: `Cobranca manual obrigatoria - Recovery Score: ${recoveryScore} (Classes D, E ou F). Disparos automaticos bloqueados.`,
     })
   }
 }
 
 /**
- * RISCO BAIXO - Dispara mensagem automática
+ * RISCO BAIXO - Dispara mensagem automatica
  */
 async function dispatchAutoMessage(params: any) {
-  const supabase = createAdminClient()
-
   // Buscar dados do cliente e empresa
-  const { data: debt } = await supabase
-    .from("debts")
-    .select(`
-      *,
-      customer:customers(id, name, email, phone),
-      company:companies(id, name)
-    `)
-    .eq("id", params.debtId)
-    .single()
+  const debtResults = await db
+    .select({
+      debt: debts,
+      customer: customers,
+      company: companies,
+    })
+    .from(debts)
+    .innerJoin(customers, eq(debts.customerId, customers.id))
+    .innerJoin(companies, eq(debts.companyId, companies.id))
+    .where(eq(debts.id, params.debtId))
+    .limit(1)
 
-  if (!debt || !debt.customer) {
-    throw new Error("Cliente não encontrado")
+  const debtRow = debtResults[0]
+
+  if (!debtRow || !debtRow.customer) {
+    throw new Error("Cliente nao encontrado")
   }
 
   const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/user-dashboard/debts/${params.debtId}`
 
   // Enviar por Email
-  if (debt.customer.email) {
+  if (debtRow.customer.email) {
     const emailHtml = await generateDebtCollectionEmail({
-      customerName: debt.customer.name,
-      debtAmount: debt.amount,
-      dueDate: new Date(debt.due_date).toLocaleDateString("pt-BR"),
-      companyName: debt.company.name,
+      customerName: debtRow.customer.name,
+      debtAmount: debtRow.debt.amount,
+      dueDate: debtRow.debt.dueDate ? new Date(debtRow.debt.dueDate).toLocaleDateString("pt-BR") : "",
+      companyName: debtRow.company.name,
       paymentLink,
     })
 
     await sendEmail({
-      to: debt.customer.email,
-      subject: `Cobrança Automática - ${debt.company.name}`,
+      to: debtRow.customer.email,
+      subject: `Cobranca Automatica - ${debtRow.company.name}`,
       html: emailHtml,
     })
   }
 
   // Enviar por SMS
-  if (debt.customer.phone) {
+  if (debtRow.customer.phone) {
     const smsBody = await generateDebtCollectionSMS({
-      customerName: debt.customer.name,
-      debtAmount: debt.amount,
-      companyName: debt.company.name,
+      customerName: debtRow.customer.name,
+      debtAmount: debtRow.debt.amount,
+      companyName: debtRow.company.name,
       paymentLink,
     })
 
     await sendSMS({
-      to: debt.customer.phone,
+      to: debtRow.customer.phone,
       body: smsBody,
     })
   }
 
-  // Registrar ação automática
-  await supabase.from("collection_actions").insert({
-    debt_id: params.debtId,
-    action_type: "auto_message",
+  // Registrar acao automatica
+  await db.insert(collectionActions).values({
+    actionType: "auto_message",
     status: "sent",
-    company_id: debt.company_id,
+    companyId: debtRow.debt.companyId,
   })
 
   return {
     action: "AUTO_MESSAGE",
-    message: "Mensagem automática enviada com sucesso (Email + SMS)",
+    message: "Mensagem automatica enviada com sucesso (Email + SMS)",
   }
 }
 
 /**
- * RISCO MÉDIO - Cria tarefa de cobrança assistida
+ * RISCO MEDIO - Cria tarefa de cobranca assistida
  */
 async function createAssistedCollectionTask(params: any) {
-  const supabase = createAdminClient()
-
-  const { data: task } = await supabase
-    .from("collection_tasks")
-    .insert({
-      debt_id: params.debtId,
-      customer_id: params.customerId,
-      task_type: "ASSISTED_COLLECTION",
+  const [task] = await db
+    .insert(collectionTasks)
+    .values({
+      customerId: params.customerId,
+      taskType: "ASSISTED_COLLECTION",
       status: "pending",
-      priority: params.priority || "medium",
-      description: params.description || `Cobrança assistida via WhatsApp - Cliente com risco médio (Score 350-490)`,
-      amount: params.amount,
-      due_date: params.dueDate,
+      metadata: {
+        debt_id: params.debtId,
+        priority: params.priority || "medium",
+        description: params.description || `Cobranca assistida via WhatsApp - Cliente com risco medio (Score 350-490)`,
+        amount: params.amount,
+        due_date: params.dueDate,
+      },
     })
-    .select()
-    .single()
+    .returning()
 
   return {
     action: "ASSISTED_COLLECTION",
     taskId: task?.id,
-    message: "Tarefa de cobrança assistida criada para operador humano",
+    message: "Tarefa de cobranca assistida criada para operador humano",
   }
 }
 
 /**
- * RISCO ALTO - Cria tarefa manual e bloqueia automação
+ * RISCO ALTO - Cria tarefa manual e bloqueia automacao
  */
 async function createManualCollectionTask(params: any) {
-  const supabase = createAdminClient()
-
-  const { data: task } = await supabase
-    .from("collection_tasks")
-    .insert({
-      debt_id: params.debtId,
-      customer_id: params.customerId,
-      task_type: "MANUAL_COLLECTION",
+  const [task] = await db
+    .insert(collectionTasks)
+    .values({
+      customerId: params.customerId,
+      taskType: "MANUAL_COLLECTION",
       status: "pending",
-      priority: params.priority || "high",
-      description:
-        params.description ||
-        `Cobrança 100% manual - Cliente com alto risco (Score < 350). Disparos automáticos bloqueados.`,
-      amount: params.amount,
-      due_date: params.dueDate,
-      auto_dispatch_blocked: true,
+      metadata: {
+        debt_id: params.debtId,
+        priority: params.priority || "high",
+        description:
+          params.description ||
+          `Cobranca 100% manual - Cliente com alto risco (Score < 350). Disparos automaticos bloqueados.`,
+        amount: params.amount,
+        due_date: params.dueDate,
+        auto_dispatch_blocked: true,
+      },
     })
-    .select()
-    .single()
+    .returning()
 
   return {
     action: "MANUAL_COLLECTION",
     taskId: task?.id,
-    message: "Tarefa de cobrança manual criada. Disparos automáticos bloqueados.",
+    message: "Tarefa de cobranca manual criada. Disparos automaticos bloqueados.",
   }
 }

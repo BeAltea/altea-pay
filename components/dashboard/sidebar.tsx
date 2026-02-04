@@ -18,7 +18,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo, useCallback, memo } from "react"
 import { X } from 'lucide-react'
 import { LayoutDashboard, Users, BarChart3, Settings, CreditCard, LogOut, User, ChevronDown, FileCheck } from 'lucide-react'
-import { createClient } from "@/lib/supabase/client"
+import { signOut } from "next-auth/react"
 
 const navigation = [
   {
@@ -134,10 +134,8 @@ export const Sidebar = memo(function Sidebar({ user, isMobileMenuOpen, setIsMobi
   }, [isOpen, setIsOpen])
 
   const handleSignOut = useCallback(async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/")
-  }, [router])
+    await signOut({ callbackUrl: "/auth/login" })
+  }, [])
 
   const userInitials = useMemo(
     () =>

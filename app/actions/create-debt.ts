@@ -1,6 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { customers, debts } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 export interface CreateDebtFormData {
@@ -17,42 +19,33 @@ export async function createDebt(params: CreateDebtFormData) {
   try {
     console.log("[v0] Creating debt with params:", params)
 
-    const supabase = await createClient()
+    const [customer] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.id, params.customerId), eq(customers.companyId, params.companyId)))
+      .limit(1)
 
-    const { data: customer, error: customerError } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("id", params.customerId)
-      .eq("company_id", params.companyId)
-      .single()
-
-    if (customerError || !customer) {
-      console.error("[v0] Customer validation failed:", customerError)
+    if (!customer) {
+      console.error("[v0] Customer validation failed")
       return {
         success: false,
         message: "Cliente não encontrado ou não pertence a esta empresa",
       }
     }
 
-    const { data, error } = await supabase
-      .from("debts")
-      .insert({
-        customer_id: params.customerId,
-        amount: params.amount,
-        due_date: params.dueDate,
+    const [data] = await db
+      .insert(debts)
+      .values({
+        customerId: params.customerId,
+        amount: params.amount.toString(),
+        dueDate: params.dueDate,
         description: params.description || null,
         status: params.status,
         classification: params.classification,
-        company_id: params.companyId,
+        companyId: params.companyId,
         source: "manual",
       })
-      .select()
-      .single()
-
-    if (error) {
-      console.error("[v0] Create debt error:", error)
-      throw error
-    }
+      .returning()
 
     console.log("[v0] Debt created successfully:", data.id)
 

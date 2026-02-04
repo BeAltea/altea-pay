@@ -21,7 +21,6 @@ import {
   Activity,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 interface AIAnalysisSimulatorProps {
@@ -212,17 +211,13 @@ export function AIAnalysisSimulator({ isOpen, onClose, userId, currentData }: AI
       const analysis = generateAIAnalysis()
       setNewAnalysis(analysis)
 
-      // Update database with new scores (simulated)
-      const supabase = createClient()
-      await supabase
-        .from("profiles")
-        .update({
-          ai_payment_score: analysis.paymentScore,
-          ai_loan_score: analysis.loanScore,
-          risk_level: analysis.riskLevel,
-          last_analysis: new Date().toISOString(),
-        })
-        .eq("id", userId)
+      // TODO: Replace with server action to update profile scores
+      console.log("[v0] AIAnalysisSimulator - Simulated score update for user:", userId, {
+        ai_payment_score: analysis.paymentScore,
+        ai_loan_score: analysis.loanScore,
+        risk_level: analysis.riskLevel,
+        last_analysis: new Date().toISOString(),
+      })
 
       setAnalysisComplete(true)
 

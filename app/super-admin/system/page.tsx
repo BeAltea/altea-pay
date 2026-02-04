@@ -25,7 +25,6 @@ import {
 
 import { useToast } from "@/hooks/use-toast"
 import { useState, useEffect } from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 export default function SystemPage() {
   const { toast } = useToast()
@@ -36,54 +35,20 @@ export default function SystemPage() {
   useEffect(() => {
     const fetchDatabaseStats = async () => {
       try {
-        const supabase = createBrowserClient()
+        console.log("[v0] Carregando estatisticas reais do banco de dados...")
 
-        console.log("[v0] 🔧 Carregando estatísticas reais do banco de dados...")
+        const response = await fetch("/api/super-admin/system/stats")
 
-        // Count records in each table
-        const [
-          { count: companiesCount },
-          { count: profilesCount },
-          { count: debtsCount },
-          { count: customersCount },
-          { count: vmaxCount },
-          { count: creditProfilesCount },
-          { count: messagesCount },
-          { count: actionsCount },
-        ] = await Promise.all([
-          supabase.from("companies").select("*", { count: "exact", head: true }),
-          supabase.from("profiles").select("*", { count: "exact", head: true }),
-          supabase.from("debts").select("*", { count: "exact", head: true }),
-          supabase.from("customers").select("*", { count: "exact", head: true }),
-          supabase.from("VMAX").select("*", { count: "exact", head: true }),
-          supabase.from("credit_profiles").select("*", { count: "exact", head: true }),
-          supabase.from("messages").select("*", { count: "exact", head: true }),
-          supabase.from("collection_actions").select("*", { count: "exact", head: true }),
-        ])
-
-        const stats = {
-          companies: companiesCount || 0,
-          profiles: profilesCount || 0,
-          debts: debtsCount || 0,
-          customers: (customersCount || 0) + (vmaxCount || 0),
-          creditProfiles: creditProfilesCount || 0,
-          messages: messagesCount || 0,
-          actions: actionsCount || 0,
-          totalRecords:
-            (companiesCount || 0) +
-            (profilesCount || 0) +
-            (debtsCount || 0) +
-            (customersCount || 0) +
-            (vmaxCount || 0) +
-            (creditProfilesCount || 0) +
-            (messagesCount || 0) +
-            (actionsCount || 0),
+        if (!response.ok) {
+          throw new Error("Failed to fetch system stats")
         }
 
-        console.log("[v0] ✅ Estatísticas reais do banco:", stats)
+        const stats = await response.json()
+
+        console.log("[v0] Estatisticas reais do banco:", stats)
         setDbStats(stats)
       } catch (error) {
-        console.error("[v0] ❌ Erro ao carregar estatísticas do banco:", error)
+        console.error("[v0] Erro ao carregar estatisticas do banco:", error)
       } finally {
         setLoading(false)
       }
@@ -107,7 +72,7 @@ export default function SystemPage() {
 
       toast({
         title: "Seed executado com sucesso!",
-        description: `Criadas ${data.companies} empresas, ${data.customers} clientes e ${data.debts} dívidas.`,
+        description: `Criadas ${data.companies} empresas, ${data.customers} clientes e ${data.debts} dividas.`,
       })
 
       window.location.reload()
@@ -127,7 +92,7 @@ export default function SystemPage() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Carregando estatísticas do sistema...</p>
+          <p className="text-gray-600 dark:text-gray-400">Carregando estatisticas do sistema...</p>
         </div>
       </div>
     )
@@ -154,11 +119,11 @@ export default function SystemPage() {
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="overview">Visao Geral</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="database">Banco de Dados</TabsTrigger>
-          <TabsTrigger value="security">Segurança</TabsTrigger>
-          <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
+          <TabsTrigger value="security">Seguranca</TabsTrigger>
+          <TabsTrigger value="maintenance">Manutencao</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -188,7 +153,7 @@ export default function SystemPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Memória</CardTitle>
+                <CardTitle className="text-sm font-medium">Memoria</CardTitle>
                 <Memory className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -215,7 +180,7 @@ export default function SystemPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="h-5 w-5" />
-                  Saúde do Sistema
+                  Saude do Sistema
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -223,28 +188,28 @@ export default function SystemPage() {
                   <span className="text-sm">API Gateway</span>
                   <Badge variant="default" className="bg-green-100 text-green-800">
                     <CheckCircle className="mr-1 h-3 w-3" />
-                    Saudável
+                    Saudavel
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Banco de Dados</span>
                   <Badge variant="default" className="bg-green-100 text-green-800">
                     <CheckCircle className="mr-1 h-3 w-3" />
-                    Saudável
+                    Saudavel
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Cache Redis</span>
                   <Badge variant="default" className="bg-yellow-100 text-yellow-800">
                     <AlertTriangle className="mr-1 h-3 w-3" />
-                    Atenção
+                    Atencao
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Email Service</span>
                   <Badge variant="default" className="bg-green-100 text-green-800">
                     <CheckCircle className="mr-1 h-3 w-3" />
-                    Saudável
+                    Saudavel
                   </Badge>
                 </div>
               </CardContent>
@@ -254,7 +219,7 @@ export default function SystemPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Network className="h-5 w-5" />
-                  Tráfego de Rede
+                  Trafego de Rede
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -273,7 +238,7 @@ export default function SystemPage() {
                   <span className="text-sm font-medium">850 MB/h</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Latência Média</span>
+                  <span className="text-sm">Latencia Media</span>
                   <span className="text-sm font-medium">45ms</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -288,21 +253,21 @@ export default function SystemPage() {
           <Card>
             <CardHeader>
               <CardTitle>Alertas Recentes</CardTitle>
-              <CardDescription>Últimos eventos e notificações do sistema</CardDescription>
+              <CardDescription>Ultimos eventos e notificacoes do sistema</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Cache Redis com alta utilização</AlertTitle>
+                  <AlertTitle>Cache Redis com alta utilizacao</AlertTitle>
                   <AlertDescription>
-                    O cache Redis está utilizando 85% da memória disponível. Considere otimizar ou expandir.
+                    O cache Redis esta utilizando 85% da memoria disponivel. Considere otimizar ou expandir.
                   </AlertDescription>
                 </Alert>
                 <Alert>
                   <CheckCircle className="h-4 w-4" />
-                  <AlertTitle>Backup automático concluído</AlertTitle>
-                  <AlertDescription>Backup diário do banco de dados realizado com sucesso às 03:00.</AlertDescription>
+                  <AlertTitle>Backup automatico concluido</AlertTitle>
+                  <AlertDescription>Backup diario do banco de dados realizado com sucesso as 03:00.</AlertDescription>
                 </Alert>
               </div>
             </CardContent>
@@ -313,7 +278,7 @@ export default function SystemPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Métricas de Performance</CardTitle>
+                <CardTitle>Metricas de Performance</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -382,7 +347,7 @@ export default function SystemPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Conexões Ativas</span>
+                  <span className="text-sm">Conexoes Ativas</span>
                   <span className="text-sm font-medium">45/100</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -390,7 +355,7 @@ export default function SystemPage() {
                   <span className="text-sm font-medium">2.3 GB</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Último Backup</span>
+                  <span className="text-sm">Ultimo Backup</span>
                   <span className="text-sm font-medium">Hoje, 03:00</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -451,14 +416,14 @@ export default function SystemPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Shield className="h-5 w-5" />
-                  Status de Segurança
+                  Status de Seguranca
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">SSL Certificate</span>
                   <Badge variant="default" className="bg-green-100 text-green-800">
-                    Válido
+                    Valido
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -520,8 +485,8 @@ export default function SystemPage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">Backup Diário</p>
-                    <p className="text-xs text-muted-foreground">Todo dia às 03:00</p>
+                    <p className="text-sm font-medium">Backup Diario</p>
+                    <p className="text-xs text-muted-foreground">Todo dia as 03:00</p>
                   </div>
                   <Badge variant="default" className="bg-green-100 text-green-800">
                     Ativo
@@ -538,8 +503,8 @@ export default function SystemPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">Otimização DB</p>
-                    <p className="text-xs text-muted-foreground">Mensal, 1º dia</p>
+                    <p className="text-sm font-medium">Otimizacao DB</p>
+                    <p className="text-xs text-muted-foreground">Mensal, 1o dia</p>
                   </div>
                   <Badge variant="default" className="bg-green-100 text-green-800">
                     Ativo
@@ -550,7 +515,7 @@ export default function SystemPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Ações de Manutenção</CardTitle>
+                <CardTitle>Acoes de Manutencao</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button
@@ -564,7 +529,7 @@ export default function SystemPage() {
                 </Button>
                 <Button variant="outline" className="w-full justify-start bg-transparent">
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Reiniciar Serviços
+                  Reiniciar Servicos
                 </Button>
                 <Button variant="outline" className="w-full justify-start bg-transparent">
                   <Database className="mr-2 h-4 w-4" />

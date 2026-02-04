@@ -1,30 +1,21 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { customers, creditProfiles, erpIntegrations } from "@/lib/db/schema"
+import { eq, and, isNull } from "drizzle-orm"
 import { analyzeCreditFree, analyzeCreditAssertiva } from "@/services/creditAnalysisService"
 
 export async function runCreditAnalysis(companyId: string, analysisType: "free" | "assertiva") {
   try {
     console.log("[v0] Running credit analysis for company:", companyId, "type:", analysisType)
 
-    const supabase = await createClient()
-
     // Busca clientes da empresa que não têm análise restritiva
-    const { data: customers, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document")
-      .eq("company_id", companyId)
-      .is("credit_profile_id", null)
+    const customersData = await db
+      .select({ id: customers.id, name: customers.name, document: customers.document })
+      .from(customers)
+      .where(eq(customers.companyId, companyId))
 
-    if (customersError) {
-      console.error("[v0] Error fetching customers:", customersError)
-      return {
-        success: false,
-        error: "Erro ao buscar clientes: " + customersError.message,
-      }
-    }
-
-    if (!customers || customers.length === 0) {
+    if (!customersData || customersData.length === 0) {
       return {
         success: true,
         message: "Nenhum cliente sem análise restritiva encontrado",
@@ -32,13 +23,13 @@ export async function runCreditAnalysis(companyId: string, analysisType: "free" 
       }
     }
 
-    console.log("[v0] Found", customers.length, "customers without credit analysis")
+    console.log("[v0] Found", customersData.length, "customers without credit analysis")
 
     let successCount = 0
     let failedCount = 0
 
     // Executa análise para cada cliente
-    for (const customer of customers) {
+    for (const customer of customersData) {
       try {
         const result =
           analysisType === "free"
@@ -47,22 +38,20 @@ export async function runCreditAnalysis(companyId: string, analysisType: "free" 
 
         if (result.success) {
           // Salva resultado da análise
-          const { error: insertError } = await supabase.from("credit_profiles").insert({
-            customer_id: customer.id,
-            company_id: companyId,
-            document: customer.document,
-            score: result.score,
-            risk_level: result.risk_level,
-            analysis_type: analysisType,
-            analysis_data: result.data,
-            analyzed_at: new Date().toISOString(),
-          })
-
-          if (insertError) {
+          try {
+            await db.insert(creditProfiles).values({
+              customerId: customer.id,
+              companyId: companyId,
+              cpf: customer.document,
+              score: result.score,
+              riskLevel: result.risk_level,
+              analysisType: analysisType,
+              data: result.data,
+            })
+            successCount++
+          } catch (insertError) {
             console.error("[v0] Error saving credit profile:", insertError)
             failedCount++
-          } else {
-            successCount++
           }
         } else {
           console.error("[v0] Credit analysis failed for customer:", customer.id, result.error)
@@ -79,7 +68,7 @@ export async function runCreditAnalysis(companyId: string, analysisType: "free" 
     return {
       success: true,
       message: `Análise concluída: ${successCount} sucesso, ${failedCount} falhas`,
-      processed: customers.length,
+      processed: customersData.length,
       successCount,
       failedCount,
     }
@@ -96,16 +85,14 @@ export async function syncERPWithCreditAnalysis(integrationId: string, analysisT
   try {
     console.log("[v0] Syncing ERP with credit analysis:", integrationId, "type:", analysisType)
 
-    const supabase = await createClient()
-
     // Busca a integração
-    const { data: integration, error: integrationError } = await supabase
-      .from("erp_integrations")
-      .select("*")
-      .eq("id", integrationId)
-      .single()
+    const [integration] = await db
+      .select()
+      .from(erpIntegrations)
+      .where(eq(erpIntegrations.id, integrationId))
+      .limit(1)
 
-    if (integrationError || !integration) {
+    if (!integration) {
       return {
         success: false,
         error: "Integração não encontrada",

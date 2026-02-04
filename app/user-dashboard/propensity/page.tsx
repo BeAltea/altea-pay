@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -54,24 +54,22 @@ function PropensitySkeleton() {
 }
 
 export default function PropensityAnalysisPage() {
-  const [debts, setDebts] = useState([])
+  const [debts, setDebts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState("6months")
   const [analyzing, setAnalyzing] = useState(false)
   const [showAIAnalysis, setShowAIAnalysis] = useState(false)
-
-  const supabase = createClient()
+  const { session } = useAuth()
+  const user = session?.user
 
   useEffect(() => {
-    fetchPropensityData()
-  }, [])
+    if (user) {
+      fetchPropensityData()
+    }
+  }, [user])
 
   const fetchPropensityData = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
       if (!user) {
         console.log("[v0] No user found")
         return
@@ -79,19 +77,14 @@ export default function PropensityAnalysisPage() {
 
       console.log("[v0] Fetching propensity data for user:", user.id)
 
-      const { data: debtsData, error } = await supabase
-        .from("debts")
-        .select("*")
-        .eq("user_id", user.id)
-        .in("status", ["pending", "in_collection", "open", "overdue"])
-
-      if (error) {
-        console.error("[v0] Error fetching debts:", error)
-        setDebts([])
-      } else {
-        console.log("[v0] Fetched debts:", debtsData?.length || 0)
-        setDebts(debtsData || [])
+      const response = await fetch(`/api/user-debts?userId=${user.id}&status=pending,in_collection,open,overdue`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch debts")
       }
+
+      const data = await response.json()
+      console.log("[v0] Fetched debts:", data.debts?.length || 0)
+      setDebts(data.debts || [])
     } catch (error) {
       console.error("[v0] Error fetching propensity data:", error)
       toast({
@@ -135,10 +128,10 @@ export default function PropensityAnalysisPage() {
       ["Descrição", "Valor", "Status", "Propensão Pagamento", "Propensão Empréstimo", "Classificação"],
       ...debts.map((debt) => [
         debt.description,
-        debt.amount.toFixed(2),
+        Number(debt.amount).toFixed(2),
         debt.status,
-        debt.propensity_payment_score.toFixed(1) + "%",
-        debt.propensity_loan_score.toFixed(1) + "%",
+        Number(debt.propensityPaymentScore || 0).toFixed(1) + "%",
+        Number(debt.propensityLoanScore || 0).toFixed(1) + "%",
         debt.classification,
       ]),
     ]
@@ -167,14 +160,14 @@ export default function PropensityAnalysisPage() {
   const getAveragePaymentScore = (debts: any[]) => {
     const openDebts = getOpenDebts(debts)
     return openDebts.length
-      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_payment_score || 0), 0) / openDebts.length
+      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensityPaymentScore || 0), 0) / openDebts.length
       : 0
   }
 
   const getAverageLoanScore = (debts: any[]) => {
     const openDebts = getOpenDebts(debts)
     return openDebts.length
-      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensity_loan_score || 0), 0) / openDebts.length
+      ? openDebts.reduce((sum, debt) => sum + Number(debt.propensityLoanScore || 0), 0) / openDebts.length
       : 0
   }
 
@@ -187,7 +180,7 @@ export default function PropensityAnalysisPage() {
   const loanTrend = -2.1
 
   // Risk assessment
-  const getRiskLevel = (score) => {
+  const getRiskLevel = (score: number) => {
     if (score >= 70) return { level: "Baixo", color: "text-green-600", bgColor: "bg-green-100" }
     if (score >= 40) return { level: "Médio", color: "text-yellow-600", bgColor: "bg-yellow-100" }
     return { level: "Alto", color: "text-red-600", bgColor: "bg-red-100" }
@@ -377,8 +370,9 @@ export default function PropensityAnalysisPage() {
           <CardContent>
             <div className="space-y-4">
               {openDebts.slice(0, 5).map((debt) => {
+                const paymentScore = Number(debt.propensityPaymentScore || 0)
                 const riskLevel =
-                  debt.propensity_payment_score >= 70 ? "low" : debt.propensity_payment_score >= 40 ? "medium" : "high"
+                  paymentScore >= 70 ? "low" : paymentScore >= 40 ? "medium" : "high"
                 const riskColor =
                   riskLevel === "low" ? "text-green-600" : riskLevel === "medium" ? "text-yellow-600" : "text-red-600"
 
@@ -390,15 +384,15 @@ export default function PropensityAnalysisPage() {
                     <div className="flex-1">
                       <p className="font-medium text-sm">{debt.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        R$ {debt.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        R$ {Number(debt.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </p>
                       <Badge variant="outline" className="text-xs mt-1">
                         {debt.status === "open" ? "Em aberto" : debt.status === "overdue" ? "Em atraso" : "Em cobrança"}
                       </Badge>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-medium ${riskColor}`}>{debt.propensity_payment_score.toFixed(1)}%</p>
-                      <Progress value={debt.propensity_payment_score} className="w-16 h-2 mt-1" />
+                      <p className={`text-sm font-medium ${riskColor}`}>{paymentScore.toFixed(1)}%</p>
+                      <Progress value={paymentScore} className="w-16 h-2 mt-1" />
                       <p className="text-xs text-muted-foreground mt-1">
                         {riskLevel === "low" ? "Baixo risco" : riskLevel === "medium" ? "Médio risco" : "Alto risco"}
                       </p>
@@ -463,13 +457,13 @@ export default function PropensityAnalysisPage() {
       <AIAnalysisSimulator
         isOpen={showAIAnalysis}
         onClose={() => setShowAIAnalysis(false)}
-        userId="user-123" // This would come from auth context in real app
+        userId={user?.id || "user-123"}
         currentData={{
           paymentScore: avgPaymentScore,
           loanScore: avgLoanScore,
           riskLevel: paymentRisk.level,
           totalDebts: openDebts.length,
-          totalAmount: openDebts.reduce((sum, debt) => sum + debt.amount, 0),
+          totalAmount: openDebts.reduce((sum, debt) => sum + Number(debt.amount), 0),
         }}
       />
     </div>

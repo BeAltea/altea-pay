@@ -1,72 +1,42 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { collectionRules, collectionRuleExecutions, vmax } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 
 export async function getCollectionRulerStats() {
   try {
-    const supabase = createAdminClient()
-
     console.log("[v0] getCollectionRulerStats - Starting...")
 
-    const { data: rulers, error: rulersError } = await supabase
-      .from("collection_rules")
-      .select("*")
-      .eq("is_active", true)
+    const rulers = await db
+      .select()
+      .from(collectionRules)
+      .where(eq(collectionRules.isActive, true))
 
-    if (rulersError) {
-      console.error("[v0] Error fetching rulers:", rulersError)
-      throw rulersError
-    }
+    console.log("[v0] Active rulers found:", rulers.length)
 
-    console.log("[v0] Active rulers found:", rulers?.length || 0)
-
-    // Buscar TODOS os registros VMAX elegíveis (paginação para superar limite de 1000)
-    let vmaxRecords: any[] = []
-    let page = 0
-    const pageSize = 1000
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: vmaxPage, error: vmaxPageError } = await supabase
-        .from("VMAX")
-        .select("*")
-        .eq("approval_status", "ACEITA")
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (vmaxPageError) {
-        console.error("[v0] Error fetching VMAX page:", vmaxPageError)
-        break
-      }
-
-      if (vmaxPage && vmaxPage.length > 0) {
-        vmaxRecords = [...vmaxRecords, ...vmaxPage]
-        page++
-        hasMore = vmaxPage.length === pageSize
-      } else {
-        hasMore = false
-      }
-    }
+    // Buscar TODOS os registros VMAX elegiveis
+    const vmaxRecords = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.approvalStatus, "ACEITA"))
 
     console.log("[v0] VMAX records with ACEITA status:", vmaxRecords.length)
 
-    const { data: executions, error: executionsError } = await supabase
-      .from("collection_rule_executions")
-      .select("*")
-      .order("sent_at", { ascending: false })
+    const executions = await db
+      .select()
+      .from(collectionRuleExecutions)
+      .orderBy(desc(collectionRuleExecutions.executedAt))
       .limit(10)
 
-    if (executionsError) {
-      console.error("[v0] Error fetching executions:", executionsError)
-    }
-
     // Calculate stats
-    const activeRulers = rulers?.length || 0
-    const eligibleClients = vmaxRecords?.length || 0
-    const lastExecution = executions?.[0]?.sent_at || null
+    const activeRulers = rulers.length
+    const eligibleClients = vmaxRecords.length
+    const lastExecution = executions[0]?.executedAt || null
     const successfulToday =
-      executions?.filter((e) => {
+      executions.filter((e) => {
         const today = new Date().toDateString()
-        const execDate = new Date(e.sent_at).toDateString()
+        const execDate = e.executedAt ? new Date(e.executedAt).toDateString() : null
         return today === execDate && e.status === "success"
       }).length || 0
 
@@ -76,7 +46,7 @@ export async function getCollectionRulerStats() {
       eligibleClients,
       lastExecution,
       successfulToday,
-      recentExecutions: executions || [],
+      recentExecutions: executions,
     }
   } catch (error: any) {
     console.error("[v0] getCollectionRulerStats error:", error)

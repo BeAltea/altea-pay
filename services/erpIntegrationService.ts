@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { eq, and } from "drizzle-orm"
+import { customers, debts } from "@/lib/db/schema"
 
 export interface ERPCustomer {
   external_id: string
@@ -29,59 +31,59 @@ export interface ERPSyncResult {
 
 export class ERPIntegrationService {
   // Sincroniza clientes do ERP para o sistema
-  static async syncCustomers(companyId: string, customers: ERPCustomer[]): Promise<ERPSyncResult> {
+  static async syncCustomers(companyId: string, erpCustomers: ERPCustomer[]): Promise<ERPSyncResult> {
     console.log("[v0] ERPIntegrationService.syncCustomers - Starting", {
       companyId,
-      customersCount: customers.length,
+      customersCount: erpCustomers.length,
     })
 
-    const supabase = await createClient()
     const errors: string[] = []
     let customersSynced = 0
 
-    for (const erpCustomer of customers) {
+    for (const erpCustomer of erpCustomers) {
       try {
-        // Verifica se o cliente já existe
-        const { data: existing } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("document", erpCustomer.document)
-          .single()
+        // Verifica se o cliente ja existe
+        const existingRecords = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.companyId, companyId), eq(customers.document, erpCustomer.document)))
+          .limit(1)
+
+        const existing = existingRecords[0]
 
         if (existing) {
           // Atualiza cliente existente
-          const { error } = await supabase
-            .from("customers")
-            .update({
-              name: erpCustomer.name,
-              email: erpCustomer.email,
-              phone: erpCustomer.phone,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existing.id)
+          try {
+            await db
+              .update(customers)
+              .set({
+                name: erpCustomer.name,
+                email: erpCustomer.email,
+                phone: erpCustomer.phone,
+                updatedAt: new Date(),
+              })
+              .where(eq(customers.id, existing.id))
 
-          if (error) {
-            errors.push(`Erro ao atualizar cliente ${erpCustomer.name}: ${error.message}`)
-          } else {
             customersSynced++
+          } catch (error: any) {
+            errors.push(`Erro ao atualizar cliente ${erpCustomer.name}: ${error.message}`)
           }
         } else {
           // Cria novo cliente
-          const { error } = await supabase.from("customers").insert({
-            company_id: companyId,
-            name: erpCustomer.name,
-            document: erpCustomer.document,
-            document_type: erpCustomer.document.length === 11 ? "cpf" : "cnpj",
-            email: erpCustomer.email,
-            phone: erpCustomer.phone,
-            status: "active",
-          })
+          try {
+            await db.insert(customers).values({
+              companyId: companyId,
+              name: erpCustomer.name,
+              document: erpCustomer.document,
+              documentType: erpCustomer.document.length === 11 ? "cpf" : "cnpj",
+              email: erpCustomer.email,
+              phone: erpCustomer.phone,
+              status: "active",
+            })
 
-          if (error) {
-            errors.push(`Erro ao criar cliente ${erpCustomer.name}: ${error.message}`)
-          } else {
             customersSynced++
+          } catch (error: any) {
+            errors.push(`Erro ao criar cliente ${erpCustomer.name}: ${error.message}`)
           }
         }
       } catch (error) {
@@ -111,51 +113,57 @@ export class ERPIntegrationService {
       invoicesCount: invoices.length,
     })
 
-    const supabase = await createClient()
     const errors: string[] = []
     let invoicesSynced = 0
 
     for (const erpInvoice of invoices) {
       try {
         // Busca o cliente pelo external_id
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("document", erpInvoice.customer_external_id)
-          .single()
+        const customerRecords = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.companyId, companyId), eq(customers.document, erpInvoice.customer_external_id)))
+          .limit(1)
+
+        const customer = customerRecords[0]
 
         if (!customer) {
-          errors.push(`Cliente não encontrado para fatura ${erpInvoice.external_id}`)
+          errors.push(`Cliente nao encontrado para fatura ${erpInvoice.external_id}`)
           continue
         }
 
-        // Verifica se a fatura já existe
-        const { data: existing } = await supabase
-          .from("debts")
-          .select("id")
-          .eq("company_id", companyId)
-          .eq("customer_id", customer.id)
-          .eq("original_amount", erpInvoice.amount)
-          .eq("due_date", erpInvoice.due_date)
-          .single()
+        // Verifica se a fatura ja existe
+        const existingRecords = await db
+          .select({ id: debts.id })
+          .from(debts)
+          .where(
+            and(
+              eq(debts.companyId, companyId),
+              eq(debts.customerId, customer.id),
+              eq(debts.amount, String(erpInvoice.amount)),
+              eq(debts.dueDate, erpInvoice.due_date)
+            )
+          )
+          .limit(1)
+
+        const existing = existingRecords[0]
 
         if (!existing) {
-          // Cria nova dívida
-          const { error } = await supabase.from("debts").insert({
-            company_id: companyId,
-            customer_id: customer.id,
-            original_amount: erpInvoice.amount,
-            current_amount: erpInvoice.amount,
-            due_date: erpInvoice.due_date,
-            status: erpInvoice.status === "paid" ? "paid" : "pending",
-            description: erpInvoice.description || `Fatura ${erpInvoice.external_id}`,
-          })
+          // Cria nova divida
+          try {
+            await db.insert(debts).values({
+              companyId: companyId,
+              customerId: customer.id,
+              originalAmount: String(erpInvoice.amount),
+              amount: String(erpInvoice.amount),
+              dueDate: erpInvoice.due_date,
+              status: erpInvoice.status === "paid" ? "paid" : "pending",
+              description: erpInvoice.description || `Fatura ${erpInvoice.external_id}`,
+            })
 
-          if (error) {
-            errors.push(`Erro ao criar fatura ${erpInvoice.external_id}: ${error.message}`)
-          } else {
             invoicesSynced++
+          } catch (error: any) {
+            errors.push(`Erro ao criar fatura ${erpInvoice.external_id}: ${error.message}`)
           }
         }
       } catch (error) {
@@ -182,26 +190,24 @@ export class ERPIntegrationService {
   static async exportCustomersToCSV(companyId: string): Promise<string> {
     console.log("[v0] ERPIntegrationService.exportCustomersToCSV - Starting", { companyId })
 
-    const supabase = await createClient()
+    const customerRecords = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.companyId, companyId))
+      .orderBy(customers.name)
 
-    const { data: customers, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("company_id", companyId)
-      .order("name")
-
-    if (error) {
-      throw new Error(`Erro ao buscar clientes: ${error.message}`)
+    if (!customerRecords || customerRecords.length === 0) {
+      throw new Error("Nenhum cliente encontrado para exportacao")
     }
 
     // Gera CSV
     const headers = ["Nome", "Documento", "Email", "Telefone", "Status"]
-    const rows = customers.map((c) => [c.name, c.document, c.email || "", c.phone || "", c.status])
+    const rows = customerRecords.map((c) => [c.name, c.document || "", c.email || "", c.phone || "", c.status || ""])
 
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n")
 
     console.log("[v0] ERPIntegrationService.exportCustomersToCSV - Completed", {
-      customersCount: customers.length,
+      customersCount: customerRecords.length,
     })
 
     return csv

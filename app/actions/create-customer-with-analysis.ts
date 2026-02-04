@@ -1,6 +1,9 @@
 "use server"
 
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { runAssertivaManualAnalysis } from "@/services/creditAnalysisService"
 
 export async function createCustomerWithAnalysis(data: {
@@ -17,39 +20,38 @@ export async function createCustomerWithAnalysis(data: {
   try {
     console.log("[v0] createCustomerWithAnalysis - Starting", data)
 
-    const supabase = await createServerClient()
-    const adminSupabase = createAdminClient()
-
     let companyId = data.companyId
 
     if (!companyId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const session = await auth()
+      const user = session?.user
 
       if (!user) {
         return { success: false, message: "Usuário não autenticado" }
       }
 
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+      const [profile] = await db
+        .select({ companyId: profiles.companyId })
+        .from(profiles)
+        .where(eq(profiles.id, user.id!))
+        .limit(1)
 
-      if (!profile?.company_id) {
+      if (!profile?.companyId) {
         return { success: false, message: "Empresa não encontrada" }
       }
 
-      companyId = profile.company_id
+      companyId = profile.companyId
     }
 
     // Clean CPF/CNPJ
     const cleanDocument = data.cpf_cnpj.replace(/\D/g, "")
 
     // Check if customer already exists
-    const { data: existingCustomer } = await adminSupabase
-      .from("VMAX")
-      .select("id")
-      .eq("CPF/CNPJ", data.cpf_cnpj)
-      .eq("id_company", companyId)
-      .single()
+    const [existingCustomer] = await db
+      .select({ id: vmax.id })
+      .from(vmax)
+      .where(and(eq(vmax.cpfCnpj, data.cpf_cnpj), eq(vmax.idCompany, companyId)))
+      .limit(1)
 
     if (existingCustomer) {
       return { success: false, message: "Cliente já cadastrado nesta empresa" }
@@ -57,28 +59,24 @@ export async function createCustomerWithAnalysis(data: {
 
     console.log("[v0] Criando novo cliente na tabela VMAX...")
 
-    const { data: newCustomer, error: insertError } = await adminSupabase
-      .from("VMAX")
-      .insert({
-        Cliente: data.name,
-        "CPF/CNPJ": data.cpf_cnpj,
-        Email: data.email || null,
-        Telefone: data.phone || null,
-        Cidade: data.city || null,
-        UF: data.state || null,
-        id_company: companyId,
-        auto_collection_enabled: false,
+    const [newCustomer] = await db
+      .insert(vmax)
+      .values({
+        cliente: data.name,
+        cpfCnpj: data.cpf_cnpj,
+        cidade: data.city || null,
+        idCompany: companyId,
+        autoCollectionEnabled: false,
       })
-      .select()
-      .single()
+      .returning()
 
-    if (insertError) {
-      console.error("[v0] Error inserting customer:", insertError)
+    if (!newCustomer) {
+      console.error("[v0] Error inserting customer")
       return { success: false, message: "Erro ao cadastrar cliente no banco de dados" }
     }
 
-    console.log("[v0] ✅ Cliente criado com ID:", newCustomer.id)
-    console.log("[v0] 🔄 Iniciando análise de crédito automática com Assertiva...")
+    console.log("[v0] Cliente criado com ID:", newCustomer.id)
+    console.log("[v0] Iniciando análise de crédito automática com Assertiva...")
 
     let creditAnalysis = null
     let analysisError = null
@@ -103,18 +101,18 @@ export async function createCustomerWithAnalysis(data: {
             decision: result.decision,
             message: result.message,
           }
-          console.log("[v0] ✅ Análise de crédito concluída com sucesso:", creditAnalysis)
+          console.log("[v0] Análise de crédito concluída com sucesso:", creditAnalysis)
         } else {
           analysisError = result.error || "Erro desconhecido na análise"
-          console.error("[v0] ❌ Falha na análise:", analysisError)
+          console.error("[v0] Falha na análise:", analysisError)
         }
       } else {
         analysisError = analysisResult.error || "Nenhum resultado retornado"
-        console.error("[v0] ❌ Falha na análise:", analysisError)
+        console.error("[v0] Falha na análise:", analysisError)
       }
     } catch (error) {
       analysisError = error instanceof Error ? error.message : "Erro desconhecido"
-      console.error("[v0] ❌ Exceção na análise de crédito:", error)
+      console.error("[v0] Exceção na análise de crédito:", error)
     }
 
     return {

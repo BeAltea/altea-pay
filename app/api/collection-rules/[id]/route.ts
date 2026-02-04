@@ -1,18 +1,16 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { collectionRules } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createServerClient()
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -20,24 +18,22 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { name, description, steps, isActive } = body
 
     // Update collection rule
-    const { data: rule, error } = await supabase
-      .from("collection_rules")
-      .update({
+    const [rule] = await db
+      .update(collectionRules)
+      .set({
         name,
         description: description || "",
-        is_active: isActive,
-        rules: steps,
-        updated_at: new Date().toISOString(),
+        isActive,
+        conditions: steps,
+        updatedAt: new Date(),
       })
-      .eq("id", params.id)
-      .eq("user_id", user.id) // Ensure user can only update their own rules
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error updating collection rule:", error)
-      return NextResponse.json({ error: "Failed to update collection rule" }, { status: 500 })
-    }
+      .where(
+        and(
+          eq(collectionRules.id, params.id),
+          eq(collectionRules.companyId, user.companyId!)
+        )
+      )
+      .returning()
 
     if (!rule) {
       return NextResponse.json({ error: "Collection rule not found" }, { status: 404 })
@@ -48,10 +44,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       id: rule.id,
       name: rule.name,
       description: rule.description,
-      isActive: rule.is_active,
-      steps: rule.rules || [],
-      createdAt: rule.created_at,
-      updatedAt: rule.updated_at,
+      isActive: rule.isActive,
+      steps: rule.conditions || [],
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt,
     }
 
     return NextResponse.json({ rule: transformedRule })
@@ -63,24 +59,21 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createServerClient()
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Delete collection rule
-    const { error } = await supabase.from("collection_rules").delete().eq("id", params.id).eq("user_id", user.id) // Ensure user can only delete their own rules
-
-    if (error) {
-      console.error("Error deleting collection rule:", error)
-      return NextResponse.json({ error: "Failed to delete collection rule" }, { status: 500 })
-    }
+    await db
+      .delete(collectionRules)
+      .where(
+        and(
+          eq(collectionRules.id, params.id),
+          eq(collectionRules.companyId, user.companyId!)
+        )
+      )
 
     return NextResponse.json({ message: "Collection rule deleted successfully" })
   } catch (error) {

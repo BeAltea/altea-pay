@@ -1,28 +1,27 @@
 "use server"
 
-import { createServiceClient } from "@/lib/supabase/service"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, vmax, customers, debts, agreements, notifications } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 export async function createNegotiation(formData: FormData) {
   try {
     // Get authenticated user from server
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
-    if (userError || !user) {
+    if (!user) {
       return { success: false, error: "Usuário não autenticado" }
     }
 
     // Get user profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name, company_id")
-      .eq("id", user.id)
-      .maybeSingle()
+    const [profile] = await db
+      .select({ fullName: profiles.fullName, companyId: profiles.companyId })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1)
 
     if (!profile) {
       return { success: false, error: "Perfil não encontrado" }
@@ -42,164 +41,158 @@ export async function createNegotiation(formData: FormData) {
     const discountPercentage = originalAmount > 0 ? (discountAmount / originalAmount) * 100 : 0
     const installmentAmount = installments > 0 ? agreedAmount / installments : agreedAmount
 
-    // Use service client to bypass RLS
-    const serviceClient = createServiceClient()
-
-    const { data: vmaxCustomer } = await serviceClient.from("VMAX").select("*").eq("id", customerId).maybeSingle()
+    const [vmaxCustomer] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.id, customerId))
+      .limit(1)
 
     if (!vmaxCustomer) {
       return { success: false, error: "Cliente não encontrado na tabela VMAX" }
     }
 
-    const customerCpf = vmaxCustomer["CPF/CNPJ"]
+    const customerCpf = vmaxCustomer.cpfCnpj
     if (!customerCpf) {
       return { success: false, error: "Cliente não possui CPF/CNPJ cadastrado" }
     }
 
     const cpfSemFormatacao = customerCpf.replace(/\D/g, "")
 
-    let customerProfile = await serviceClient
-      .from("profiles")
-      .select("id")
-      .eq("cpf_cnpj", cpfSemFormatacao)
-      .maybeSingle()
+    let [customerProfile] = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(eq(profiles.cpfCnpj, cpfSemFormatacao))
+      .limit(1)
 
-    if (!customerProfile.data) {
-      customerProfile = await serviceClient.from("profiles").select("id").eq("cpf_cnpj", customerCpf).maybeSingle()
+    if (!customerProfile) {
+      [customerProfile] = await db
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(eq(profiles.cpfCnpj, customerCpf))
+        .limit(1)
     }
 
-    if (!customerProfile.data) {
-      const { data: allProfiles } = await serviceClient.from("profiles").select("id, cpf_cnpj")
+    if (!customerProfile) {
+      const allProfiles = await db
+        .select({ id: profiles.id, cpfCnpj: profiles.cpfCnpj })
+        .from(profiles)
 
       const matchingProfile = allProfiles?.find((p) => {
-        if (!p.cpf_cnpj) return false
-        const profileCpfClean = p.cpf_cnpj.replace(/\D/g, "")
+        if (!p.cpfCnpj) return false
+        const profileCpfClean = p.cpfCnpj.replace(/\D/g, "")
         return profileCpfClean === cpfSemFormatacao
       })
 
       if (matchingProfile) {
-        customerProfile = { data: { id: matchingProfile.id }, error: null }
+        customerProfile = { id: matchingProfile.id }
       }
     }
 
-    if (!customerProfile.data) {
+    if (!customerProfile) {
       return {
         success: false,
         error: `Cliente não possui cadastro no sistema. CPF: ${cpfSemFormatacao}`,
       }
     }
 
-    const customerUserId = customerProfile.data.id
+    const customerUserId = customerProfile.id
 
     let customerRecordId: string
-    const { data: existingCustomer } = await serviceClient
-      .from("customers")
-      .select("id")
-      .eq("document", cpfSemFormatacao)
-      .eq("company_id", profile.company_id)
-      .maybeSingle()
+    const [existingCustomer] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.document, cpfSemFormatacao), eq(customers.companyId, profile.companyId!)))
+      .limit(1)
 
     if (existingCustomer) {
       customerRecordId = existingCustomer.id
     } else {
       // Create customer record
-      const { data: newCustomer, error: customerError } = await serviceClient
-        .from("customers")
-        .insert({
-          company_id: profile.company_id,
-          user_id: customerUserId,
-          name: vmaxCustomer.Cliente || "Cliente",
+      const [newCustomer] = await db
+        .insert(customers)
+        .values({
+          companyId: profile.companyId!,
+          name: vmaxCustomer.cliente || "Cliente",
           document: cpfSemFormatacao,
-          document_type: cpfSemFormatacao.length === 11 ? "CPF" : "CNPJ",
-          email: vmaxCustomer.Email || null,
-          phone: vmaxCustomer.Telefone || null,
-          city: vmaxCustomer.Cidade || null,
-          source_system: "VMAX",
-          external_id: customerId,
+          documentType: cpfSemFormatacao.length === 11 ? "CPF" : "CNPJ",
+          email: null,
+          phone: null,
+          sourceSystem: "VMAX",
+          externalId: customerId,
         })
-        .select("id")
-        .single()
+        .returning()
 
-      if (customerError || !newCustomer) {
-        console.error("Error creating customer:", customerError)
-        return { success: false, error: `Erro ao criar registro de cliente: ${customerError?.message}` }
+      if (!newCustomer) {
+        return { success: false, error: "Erro ao criar registro de cliente" }
       }
 
       customerRecordId = newCustomer.id
     }
 
-    const { data: existingDebt } = await serviceClient
-      .from("debts")
-      .select("id")
-      .eq("customer_id", customerRecordId)
-      .eq("company_id", profile.company_id)
-      .maybeSingle()
+    const [existingDebt] = await db
+      .select({ id: debts.id })
+      .from(debts)
+      .where(and(eq(debts.customerId, customerRecordId), eq(debts.companyId, profile.companyId!)))
+      .limit(1)
 
     let debtId: string
 
     if (existingDebt) {
       debtId = existingDebt.id
     } else {
-      const { data: newDebt, error: debtError } = await serviceClient
-        .from("debts")
-        .insert({
-          customer_id: customerRecordId, // Use customers table ID
-          user_id: customerUserId,
-          company_id: profile.company_id,
-          amount: originalAmount,
-          due_date: dueDate,
+      const [newDebt] = await db
+        .insert(debts)
+        .values({
+          customerId: customerRecordId,
+          companyId: profile.companyId!,
+          amount: originalAmount.toString(),
+          dueDate: dueDate,
           status: "in_negotiation",
-          description: `Dívida de ${vmaxCustomer.Cliente || "cliente"}`,
-          source_system: "VMAX",
-          external_id: customerId,
+          description: `Dívida de ${vmaxCustomer.cliente || "cliente"}`,
+          source: "VMAX",
+          externalId: customerId,
         })
-        .select("id")
-        .single()
+        .returning()
 
-      if (debtError || !newDebt) {
-        console.error("Error creating debt:", debtError)
-        return { success: false, error: `Erro ao criar registro de dívida: ${debtError?.message}` }
+      if (!newDebt) {
+        return { success: false, error: "Erro ao criar registro de dívida" }
       }
 
       debtId = newDebt.id
     }
 
-    const { data: agreement, error: agreementError } = await serviceClient
-      .from("agreements")
-      .insert({
-        customer_id: customerRecordId, // Use customers table ID
-        user_id: customerUserId,
-        debt_id: debtId,
-        company_id: profile.company_id,
-        original_amount: originalAmount,
-        agreed_amount: agreedAmount,
-        discount_amount: discountAmount,
-        discount_percentage: discountPercentage,
-        installment_amount: installmentAmount,
+    const [agreement] = await db
+      .insert(agreements)
+      .values({
+        customerId: customerRecordId,
+        debtId: debtId,
+        companyId: profile.companyId!,
+        originalAmount: originalAmount.toString(),
+        negotiatedAmount: agreedAmount.toString(),
+        discountPercentage: discountPercentage.toString(),
+        installmentAmount: installmentAmount.toString(),
         installments: installments,
-        due_date: dueDate,
-        terms: terms,
-        attendant_name: attendantName,
+        dueDate: dueDate,
+        notes: terms,
         status: "active",
+        metadata: {
+          attendantName: attendantName,
+          agreedAmount: agreedAmount,
+          discountAmount: discountAmount,
+        },
       })
-      .select()
-      .maybeSingle()
+      .returning()
 
-    if (agreementError) {
-      console.error("Error creating agreement:", agreementError)
-      return { success: false, error: `Erro ao criar negociação: ${agreementError.message}` }
-    }
-
-    const { error: notificationError } = await serviceClient.from("notifications").insert({
-      user_id: customerUserId,
-      company_id: profile.company_id,
-      type: "negotiation",
-      title: "Nova Proposta de Acordo",
-      description: `Você recebeu uma proposta de acordo no valor de R$ ${agreedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em ${installments}x de R$ ${installmentAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-      read: false,
-    })
-
-    if (notificationError) {
+    try {
+      await db.insert(notifications).values({
+        userId: customerUserId,
+        companyId: profile.companyId!,
+        type: "negotiation",
+        title: "Nova Proposta de Acordo",
+        message: `Você recebeu uma proposta de acordo no valor de R$ ${agreedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em ${installments}x de R$ ${installmentAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        isRead: false,
+      })
+    } catch (notificationError) {
       console.error("Error creating notification:", notificationError)
     }
 

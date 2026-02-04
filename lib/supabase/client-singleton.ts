@@ -1,13 +1,7 @@
-import { createBrowserClient } from "@supabase/ssr"
+// DEPRECATED: This module has been replaced by NextAuth.
+// Use `import { useSession } from "next-auth/react"` for client-side auth.
 
-let browserClient: ReturnType<typeof createBrowserClient> | null = null
-
+/** @deprecated Use NextAuth useSession instead */
 export function getSupabaseBrowserClient() {
-  if (browserClient) {
-    return browserClient
-  }
-
-  browserClient = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-  return browserClient
+  throw new Error("getSupabaseBrowserClient() is deprecated. Use NextAuth useSession")
 }

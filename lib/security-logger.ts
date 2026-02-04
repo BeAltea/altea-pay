@@ -1,10 +1,13 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { securityEvents, profiles } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
 
 interface LogSecurityEventParams {
-  event_type:
+  eventType:
     | "login"
     | "logout"
     | "failed_login"
@@ -25,67 +28,58 @@ interface LogSecurityEventParams {
     | "report_generated"
   severity?: "low" | "medium" | "high" | "critical"
   action: string
-  resource_type?: string
-  resource_id?: string
+  resourceType?: string
+  resourceId?: string
   metadata?: Record<string, any>
   status?: "success" | "failed" | "blocked" | "pending"
-  user_id?: string
-  company_id?: string
+  userId?: string
+  companyId?: string
 }
 
 export async function logSecurityEvent(params: LogSecurityEventParams) {
   try {
-    const supabase = await createServerClient()
-
-    if (!supabase) {
-      console.error("[v0] ❌ Failed to create Supabase client for security logging")
-      return
-    }
-
     const headersList = await headers()
 
     // Get current user from session
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
     // Get IP and user agent from headers
-    const ip_address = headersList.get("x-forwarded-for") || headersList.get("x-real-ip") || "Unknown"
-    const user_agent = headersList.get("user-agent") || "Unknown"
+    const ipAddress = headersList.get("x-forwarded-for") || headersList.get("x-real-ip") || "Unknown"
+    const userAgent = headersList.get("user-agent") || "Unknown"
 
     // Get user profile for additional info
-    let user_email = user?.email || "system@alteapay.com"
-    let company_id = params.company_id
+    let userEmail = user?.email || "system@alteapay.com"
+    let companyId = params.companyId
 
-    if (user?.id && !company_id) {
-      const { data: profile } = await supabase.from("profiles").select("email, company_id").eq("id", user.id).single()
+    if (user?.id && !companyId) {
+      const [profile] = await db
+        .select({ email: profiles.email, companyId: profiles.companyId })
+        .from(profiles)
+        .where(eq(profiles.id, user.id))
+        .limit(1)
 
       if (profile) {
-        user_email = profile.email || user_email
-        company_id = profile.company_id
+        userEmail = profile.email || userEmail
+        companyId = profile.companyId || undefined
       }
     }
 
     // Insert security event
-    const { error } = await supabase.from("security_events").insert({
-      event_type: params.event_type,
+    await db.insert(securityEvents).values({
+      eventType: params.eventType,
       severity: params.severity || "medium",
-      user_id: params.user_id || user?.id,
-      user_email,
-      company_id,
-      ip_address,
-      user_agent,
+      userId: params.userId || user?.id,
+      ipAddress,
+      userAgent,
       action: params.action,
-      resource_type: params.resource_type,
-      resource_id: params.resource_id,
+      resource: params.resourceType,
+      resourceId: params.resourceId,
       metadata: params.metadata || {},
-      status: params.status || "success",
+      companyId,
+      details: { userEmail, status: params.status || "success" },
     })
-
-    if (error) {
-      console.error("[v0] ❌ Error logging security event:", error)
-    }
   } catch (error) {
-    console.error("[v0] ❌ Failed to log security event:", error instanceof Error ? error.message : error)
+    console.error("[v0] Failed to log security event:", error instanceof Error ? error.message : error)
   }
 }

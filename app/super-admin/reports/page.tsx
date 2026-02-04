@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrendingUp, DollarSign, Users, Building2, Download, FileText, Calendar, Settings } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 interface CompanyReport {
   id: string
@@ -20,14 +19,6 @@ interface CompanyReport {
   monthlyGrowth: number
 }
 
-interface MonthlyData {
-  month: string
-  recovered: number
-  target: number
-  companies: number
-  newDebts: number
-}
-
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("current-month")
   const [reportData, setReportData] = useState<any>(null)
@@ -38,81 +29,20 @@ export default function ReportsPage() {
   useEffect(() => {
     const fetchRealData = async () => {
       try {
-        const supabase = createBrowserClient()
+        console.log("[v0] Carregando dados reais dos relatorios...")
 
-        console.log("[v0] 📊 Carregando dados reais dos relatórios...")
+        const response = await fetch("/api/super-admin/reports")
 
-        const { data: companies, error: companiesError } = await supabase.from("companies").select("id, name")
-
-        if (companiesError) throw companiesError
-
-        const { data: customers, error: customersError } = await supabase.from("customers").select(`
-            id,
-            company_id,
-            companies (name)
-          `)
-
-        if (customersError) throw customersError
-
-        const { data: vmaxCustomers, error: vmaxError } = await supabase.from("VMAX").select("id, Empresa")
-
-        if (vmaxError) throw vmaxError
-
-        const { data: debts, error: debtsError } = await supabase
-          .from("debts")
-          .select("id, customer_id, amount, status")
-
-        if (debtsError) throw debtsError
-
-        const { data: creditProfiles, error: profilesError } = await supabase.from("credit_profiles").select("*")
-
-        if (profilesError) throw profilesError
-
-        const totalCompanies = companies?.length || 0
-        const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
-        const totalAmount = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
-        const paidDebts = debts?.filter((d) => d.status === "paid") || []
-        const totalRecovered = paidDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-
-        const companiesReport = (companies || []).map((company: any) => {
-          const companyCustomers = customers?.filter((c) => c.company_id === company.id) || []
-          const companyDebts =
-            debts?.filter((d) => {
-              const customer = customers?.find((c) => c.id === d.customer_id)
-              return customer?.company_id === company.id
-            }) || []
-
-          const companyAmount = companyDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-          const companyPaid = companyDebts.filter((d) => d.status === "paid")
-          const companyRecovered = companyPaid.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-          const recoveryRate = companyAmount > 0 ? (companyRecovered / companyAmount) * 100 : 0
-
-          return {
-            id: company.id,
-            name: company.name,
-            totalCustomers: companyCustomers.length,
-            totalDebts: companyDebts.length,
-            totalAmount: companyAmount,
-            recoveredAmount: companyRecovered,
-            recoveryRate: recoveryRate,
-            overdueDebts: companyDebts.filter((d) => d.status === "overdue").length,
-            monthlyGrowth: 0,
-          }
-        })
-
-        const data = {
-          totalCompanies,
-          totalCustomers,
-          totalAmount,
-          totalRecovered,
-          companiesReport,
-          totalDebts: debts?.length || 0,
+        if (!response.ok) {
+          throw new Error("Failed to fetch reports data")
         }
 
-        console.log("[v0] ✅ Dados reais carregados:", data)
+        const data = await response.json()
+
+        console.log("[v0] Dados reais carregados:", data)
         setRealData(data)
       } catch (error) {
-        console.error("[v0] ❌ Erro ao carregar dados reais:", error)
+        console.error("[v0] Erro ao carregar dados reais:", error)
       } finally {
         setLoading(false)
       }
@@ -148,18 +78,9 @@ export default function ReportsPage() {
   const bottomPerformers = [...companiesReport].sort((a, b) => a.recoveryRate - b.recoveryRate).slice(0, 3)
 
   const handleExportReport = () => {
-    console.log("[v0] Exportando relatório global para o período:", selectedPeriod)
+    console.log("[v0] Exportando relatorio global para o periodo:", selectedPeriod)
 
-    const reportData = {
-      period: selectedPeriod,
-      globalStats,
-      companiesReport,
-      topPerformers,
-      bottomPerformers,
-      exportedAt: new Date().toISOString(),
-    }
-
-    const csvContent = `data:text/csv;charset=utf-8,Relatório Global - ${selectedPeriod}\\n\\nEstatísticas Globais:\\nTotal de Empresas,${globalStats.totalCompanies}\\nTotal de Clientes,${globalStats.totalCustomers}\\nVolume Total,R$ ${globalStats.totalAmount.toLocaleString("pt-BR")}\\nValor Recuperado,R$ ${globalStats.totalRecovered.toLocaleString("pt-BR")}\\nTaxa de Recuperação,${overallRecoveryRate.toFixed(1)}%\\n\\nExportado em: ${new Date().toLocaleString("pt-BR")}`
+    const csvContent = `data:text/csv;charset=utf-8,Relatorio Global - ${selectedPeriod}\n\nEstatisticas Globais:\nTotal de Empresas,${globalStats.totalCompanies}\nTotal de Clientes,${globalStats.totalCustomers}\nVolume Total,R$ ${globalStats.totalAmount.toLocaleString("pt-BR")}\nValor Recuperado,R$ ${globalStats.totalRecovered.toLocaleString("pt-BR")}\nTaxa de Recuperacao,${overallRecoveryRate.toFixed(1)}%\n\nExportado em: ${new Date().toLocaleString("pt-BR")}`
 
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement("a")
@@ -169,16 +90,16 @@ export default function ReportsPage() {
     link.click()
     document.body.removeChild(link)
 
-    alert(`Relatório global exportado com sucesso para o período: ${selectedPeriod}!`)
+    alert(`Relatorio global exportado com sucesso para o periodo: ${selectedPeriod}!`)
   }
 
   const handleGenerateReport = (reportType: string) => {
-    console.log("[v0] Gerando relatório do tipo:", reportType)
+    console.log("[v0] Gerando relatorio do tipo:", reportType)
 
     const reportTypes = {
       monthly: {
-        title: "Relatório Mensal",
-        description: "Análise detalhada do desempenho mensal",
+        title: "Relatorio Mensal",
+        description: "Analise detalhada do desempenho mensal",
         data: {
           period: selectedPeriod,
           totalRecovered: globalStats.totalRecovered,
@@ -186,61 +107,61 @@ export default function ReportsPage() {
           companiesAnalyzed: globalStats.totalCompanies,
           topPerformer: topPerformers[0],
           insights: [
-            "Taxa de recuperação 12% acima do mês anterior",
-            "Enel Distribuição mostrou maior crescimento",
-            "Redução de 8% em dívidas em atraso",
+            "Taxa de recuperacao 12% acima do mes anterior",
+            "Enel Distribuicao mostrou maior crescimento",
+            "Reducao de 8% em dividas em atraso",
             "Meta mensal atingida em 113%",
           ],
           recommendations: [
-            "Aplicar estratégias da Enel nas outras empresas",
-            "Focar em clientes com dívidas de 30-60 dias",
-            "Implementar campanhas de negociação",
+            "Aplicar estrategias da Enel nas outras empresas",
+            "Focar em clientes com dividas de 30-60 dias",
+            "Implementar campanhas de negociacao",
           ],
         },
       },
       trends: {
-        title: "Análise de Tendências",
-        description: "Identificação de padrões e tendências de recuperação",
+        title: "Analise de Tendencias",
+        description: "Identificacao de padroes e tendencias de recuperacao",
         data: {
           trendDirection: "Crescimento",
           growthRate: 0, // Historical data not available
           seasonalPatterns: [
-            "Pico de recuperação no final do mês",
-            "Queda típica nos primeiros 10 dias",
-            "Melhores resultados às terças e quartas",
+            "Pico de recuperacao no final do mes",
+            "Queda tipica nos primeiros 10 dias",
+            "Melhores resultados as tercas e quartas",
           ],
           predictedNextMonth: globalStats.totalRecovered * 1.15,
-          riskFactors: ["Aumento de 5% em inadimplentes crônicos", "Redução na taxa de contato telefônico"],
+          riskFactors: ["Aumento de 5% em inadimplentes cronicos", "Reducao na taxa de contato telefonico"],
         },
       },
       companies: {
-        title: "Relatório por Empresa",
-        description: "Análise comparativa detalhada entre empresas",
+        title: "Relatorio por Empresa",
+        description: "Analise comparativa detalhada entre empresas",
         data: {
           companiesAnalyzed: globalStats.totalCompanies,
           bestPerformer: topPerformers[0],
           worstPerformer: bottomPerformers[0],
           averageRecoveryRate: overallRecoveryRate,
-          companyComparison: companiesReport.map((company) => ({
+          companyComparison: companiesReport.map((company: CompanyReport) => ({
             name: company.name,
-            performance: company.recoveryRate > overallRecoveryRate ? "Acima da média" : "Abaixo da média",
-            trend: company.monthlyGrowth > 0 ? "Crescimento" : "Declínio",
+            performance: company.recoveryRate > overallRecoveryRate ? "Acima da media" : "Abaixo da media",
+            trend: company.monthlyGrowth > 0 ? "Crescimento" : "Declinio",
           })),
         },
       },
       custom: {
-        title: "Relatório Personalizado",
-        description: "Relatório customizado com métricas específicas",
+        title: "Relatorio Personalizado",
+        description: "Relatorio customizado com metricas especificas",
         data: {
           customMetrics: [
-            "Taxa de conversão por canal",
-            "Tempo médio de recuperação",
+            "Taxa de conversao por canal",
+            "Tempo medio de recuperacao",
             "Efetividade por faixa de valor",
-            "Performance por região",
+            "Performance por regiao",
           ],
           dateRange: selectedPeriod,
           filters: "Todas as empresas ativas",
-          specialAnalysis: "Análise de cohort de clientes",
+          specialAnalysis: "Analise de cohort de clientes",
         },
       },
     }
@@ -251,7 +172,7 @@ export default function ReportsPage() {
   }
 
   const handlePeriodChange = (newPeriod: string) => {
-    console.log("[v0] Mudando período para:", newPeriod)
+    console.log("[v0] Mudando periodo para:", newPeriod)
     setSelectedPeriod(newPeriod)
   }
 
@@ -270,19 +191,19 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Relatórios Globais</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Relatorios Globais</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
-            Análise consolidada de todas as empresas e operações de cobrança.
+            Analise consolidada de todas as empresas e operacoes de cobranca.
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Selecionar período" />
+              <SelectValue placeholder="Selecionar periodo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="current-month">Mês Atual</SelectItem>
-              <SelectItem value="last-month">Mês Anterior</SelectItem>
+              <SelectItem value="current-month">Mes Atual</SelectItem>
+              <SelectItem value="last-month">Mes Anterior</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={handleExportReport} variant="outline" className="flex items-center space-x-2 bg-transparent">
@@ -303,7 +224,7 @@ export default function ReportsPage() {
               <Building2 className="h-8 w-8 text-blue-600" />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              <span className="text-green-600">+2</span> novas este mês
+              <span className="text-green-600">+2</span> novas este mes
             </p>
           </CardContent>
         </Card>
@@ -320,7 +241,7 @@ export default function ReportsPage() {
               <Users className="h-8 w-8 text-green-600" />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              <span className="text-green-600">+0%</span> vs mês anterior
+              <span className="text-green-600">+0%</span> vs mes anterior
             </p>
           </CardContent>
         </Card>
@@ -336,7 +257,7 @@ export default function ReportsPage() {
               </div>
               <DollarSign className="h-8 w-8 text-yellow-600" />
             </div>
-            <p className="text-xs text-gray-500 mt-2">Valor total em cobrança</p>
+            <p className="text-xs text-gray-500 mt-2">Valor total em cobranca</p>
           </CardContent>
         </Card>
 
@@ -362,9 +283,9 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <FileText className="h-5 w-5" />
-            <span>Gerar Relatórios</span>
+            <span>Gerar Relatorios</span>
           </CardTitle>
-          <CardDescription>Selecione o tipo de relatório que deseja gerar com base nos dados atuais.</CardDescription>
+          <CardDescription>Selecione o tipo de relatorio que deseja gerar com base nos dados atuais.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -374,7 +295,7 @@ export default function ReportsPage() {
               className="h-20 flex-col space-y-2 bg-transparent"
             >
               <Calendar className="h-6 w-6" />
-              <span className="text-sm">Relatório Mensal</span>
+              <span className="text-sm">Relatorio Mensal</span>
             </Button>
 
             <Button
@@ -383,7 +304,7 @@ export default function ReportsPage() {
               className="h-20 flex-col space-y-2 bg-transparent"
             >
               <TrendingUp className="h-6 w-6" />
-              <span className="text-sm">Análise de Tendência</span>
+              <span className="text-sm">Analise de Tendencia</span>
             </Button>
 
             <Button
@@ -411,11 +332,11 @@ export default function ReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-green-600">Top Performers</CardTitle>
-            <CardDescription>Empresas com melhor desempenho no período</CardDescription>
+            <CardDescription>Empresas com melhor desempenho no periodo</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {topPerformers.map((company, index) => (
+              {topPerformers.map((company: CompanyReport, index: number) => (
                 <div
                   key={company.name}
                   className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg"
@@ -446,11 +367,11 @@ export default function ReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-red-600">Needs Attention</CardTitle>
-            <CardDescription>Empresas que precisam de atenção especial</CardDescription>
+            <CardDescription>Empresas que precisam de atencao especial</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {bottomPerformers.map((company, index) => (
+              {bottomPerformers.map((company: CompanyReport, index: number) => (
                 <div
                   key={company.name}
                   className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"
@@ -507,7 +428,7 @@ export default function ReportsPage() {
                       ) : typeof value === "object" ? (
                         <pre className="text-xs">{JSON.stringify(value, null, 2)}</pre>
                       ) : (
-                        <p>{value}</p>
+                        <p>{String(value)}</p>
                       )}
                     </div>
                   </div>
@@ -533,7 +454,7 @@ export default function ReportsPage() {
                   }}
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Baixar Relatório
+                  Baixar Relatorio
                 </Button>
               </div>
             </div>

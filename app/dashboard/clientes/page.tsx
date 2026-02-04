@@ -1,4 +1,7 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { profiles, companies, vmax } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { redirect } from "next/navigation"
 import { ClientesContent } from "@/components/dashboard/clientes-content"
 import { getAllBehavioralAnalyses } from "@/app/actions/get-all-behavioral-analyses"
@@ -7,46 +10,38 @@ export const dynamic = "force-dynamic"
 
 export default async function ClientesPage() {
   try {
-    const supabase = await createServerClient()
+    const session = await auth()
+    const user = session?.user
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (!user) {
       redirect("/auth/login")
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("company_id, role, full_name")
-      .eq("id", user.id)
-      .single()
+    const [profileData] = await db
+      .select({
+        companyId: profiles.companyId,
+        role: profiles.role,
+        fullName: profiles.fullName,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1)
 
-    if (!profile?.company_id) {
+    if (!profileData?.companyId) {
       return <div className="p-4 md:p-8">Empresa não encontrada para o usuário</div>
     }
 
-    const { data: company } = await supabase.from("companies").select("id, name").eq("id", profile.company_id).single()
+    const [company] = await db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(eq(companies.id, profileData.companyId))
+      .limit(1)
 
-    // Buscar TODOS os registros da empresa (sem limite de 1000)
-    let vmaxCustomers: any[] = []
-    let page = 0
-    const pageSize = 1000
-    
-    while (true) {
-      const { data: pageData, error: vmaxError } = await supabase
-        .from("VMAX")
-        .select("*")
-        .eq("id_company", profile.company_id)
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-      
-      if (vmaxError || !pageData || pageData.length === 0) break
-      vmaxCustomers = [...vmaxCustomers, ...pageData]
-      if (pageData.length < pageSize) break
-      page++
-    }
+    // Buscar TODOS os registros da empresa
+    const vmaxCustomers = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.idCompany, profileData.companyId))
 
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []

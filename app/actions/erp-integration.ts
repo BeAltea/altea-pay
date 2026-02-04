@@ -1,37 +1,34 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { erpIntegrations } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { erpService } from "@/lib/integrations/erp/erpService"
 import { revalidatePath } from "next/cache"
 
 // Cria nova integração ERP
 export async function createERPIntegration(formData: FormData) {
   try {
-    const supabase = await createClient()
-
     const data = {
-      company_id: formData.get("company_id") as string,
-      erp_type: formData.get("erp_type") as string,
-      erp_name: formData.get("erp_name") as string,
-      base_url: formData.get("base_url") as string,
-      auth_token: formData.get("auth_token") as string,
-      auth_type: formData.get("auth_type") as string,
-      customers_endpoint: formData.get("customers_endpoint") as string,
-      debts_endpoint: formData.get("debts_endpoint") as string,
-      sync_endpoint: formData.get("sync_endpoint") as string,
-      is_active: formData.get("is_active") === "true",
-      sync_frequency: formData.get("sync_frequency") as string,
-      config: formData.get("config") ? JSON.parse(formData.get("config") as string) : {},
+      companyId: formData.get("company_id") as string,
+      erpType: formData.get("erp_type") as string,
+      name: formData.get("erp_name") as string,
+      config: {
+        base_url: formData.get("base_url") as string,
+        auth_token: formData.get("auth_token") as string,
+        auth_type: formData.get("auth_type") as string,
+        customers_endpoint: formData.get("customers_endpoint") as string,
+        debts_endpoint: formData.get("debts_endpoint") as string,
+        sync_endpoint: formData.get("sync_endpoint") as string,
+        sync_frequency: formData.get("sync_frequency") as string,
+        ...(formData.get("config") ? JSON.parse(formData.get("config") as string) : {}),
+      },
+      isActive: formData.get("is_active") === "true",
     }
 
-    const { data: integration, error } = await supabase.from("erp_integrations").insert(data).select().single()
+    const [integration] = await db.insert(erpIntegrations).values(data).returning()
 
-    if (error) {
-      console.error("[v0] Error creating integration:", error)
-      return { success: false, error: error.message }
-    }
-
-    revalidatePath(`/super-admin/companies/${data.company_id}/erp-integration`)
+    revalidatePath(`/super-admin/companies/${data.companyId}/erp-integration`)
     return { success: true, data: integration }
   } catch (error) {
     console.error("[v0] Error creating integration:", error)
@@ -42,38 +39,33 @@ export async function createERPIntegration(formData: FormData) {
 // Atualiza integração ERP
 export async function updateERPIntegration(integrationId: string, formData: FormData) {
   try {
-    const supabase = await createClient()
-
     const data = {
-      erp_type: formData.get("erp_type") as string,
-      erp_name: formData.get("erp_name") as string,
-      base_url: formData.get("base_url") as string,
-      auth_token: formData.get("auth_token") as string,
-      auth_type: formData.get("auth_type") as string,
-      customers_endpoint: formData.get("customers_endpoint") as string,
-      debts_endpoint: formData.get("debts_endpoint") as string,
-      sync_endpoint: formData.get("sync_endpoint") as string,
-      is_active: formData.get("is_active") === "true",
-      sync_frequency: formData.get("sync_frequency") as string,
-      config: formData.get("config") ? JSON.parse(formData.get("config") as string) : {},
-      updated_at: new Date().toISOString(),
+      erpType: formData.get("erp_type") as string,
+      name: formData.get("erp_name") as string,
+      config: {
+        base_url: formData.get("base_url") as string,
+        auth_token: formData.get("auth_token") as string,
+        auth_type: formData.get("auth_type") as string,
+        customers_endpoint: formData.get("customers_endpoint") as string,
+        debts_endpoint: formData.get("debts_endpoint") as string,
+        sync_endpoint: formData.get("sync_endpoint") as string,
+        sync_frequency: formData.get("sync_frequency") as string,
+        ...(formData.get("config") ? JSON.parse(formData.get("config") as string) : {}),
+      },
+      isActive: formData.get("is_active") === "true",
+      updatedAt: new Date(),
     }
 
-    const { error } = await supabase.from("erp_integrations").update(data).eq("id", integrationId)
+    await db.update(erpIntegrations).set(data).where(eq(erpIntegrations.id, integrationId))
 
-    if (error) {
-      console.error("[v0] Error updating integration:", error)
-      return { success: false, error: error.message }
-    }
-
-    const { data: integration } = await supabase
-      .from("erp_integrations")
-      .select("company_id")
-      .eq("id", integrationId)
-      .single()
+    const [integration] = await db
+      .select({ companyId: erpIntegrations.companyId })
+      .from(erpIntegrations)
+      .where(eq(erpIntegrations.id, integrationId))
+      .limit(1)
 
     if (integration) {
-      revalidatePath(`/super-admin/companies/${integration.company_id}/erp-integration`)
+      revalidatePath(`/super-admin/companies/${integration.companyId}/erp-integration`)
     }
 
     return { success: true }
@@ -86,14 +78,7 @@ export async function updateERPIntegration(integrationId: string, formData: Form
 // Deleta integração ERP
 export async function deleteERPIntegration(integrationId: string, companyId: string) {
   try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("erp_integrations").delete().eq("id", integrationId)
-
-    if (error) {
-      console.error("[v0] Error deleting integration:", error)
-      return { success: false, error: error.message }
-    }
+    await db.delete(erpIntegrations).where(eq(erpIntegrations.id, integrationId))
 
     revalidatePath(`/super-admin/companies/${companyId}/erp-integration`)
     return { success: true }
@@ -203,17 +188,10 @@ export async function syncResultsToERP(integrationId: string, companyId: string)
 // Ativa/desativa integração
 export async function toggleERPIntegration(integrationId: string, companyId: string, isActive: boolean) {
   try {
-    const supabase = await createClient()
-
-    const { error } = await supabase
-      .from("erp_integrations")
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
-      .eq("id", integrationId)
-
-    if (error) {
-      console.error("[v0] Error toggling integration:", error)
-      return { success: false, error: error.message }
-    }
+    await db
+      .update(erpIntegrations)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(erpIntegrations.id, integrationId))
 
     revalidatePath(`/super-admin/companies/${companyId}/erp-integration`)
     return { success: true, message: `Integração ${isActive ? "ativada" : "desativada"} com sucesso` }

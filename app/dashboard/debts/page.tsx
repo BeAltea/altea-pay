@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,7 +42,6 @@ export default function DebtsPage() {
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
   const { profile } = useAuth()
-  const supabase = createClient()
 
   useEffect(() => {
     if (profile?.company_id) {
@@ -56,16 +54,16 @@ export default function DebtsPage() {
 
     try {
       setLoading(true)
-      const { data: vmaxData, error } = await supabase.from("VMAX").select("*").eq("id_company", profile.company_id)
+      const response = await fetch(`/api/vmax-data?companyId=${profile.company_id}`)
+      if (!response.ok) throw new Error("Failed to fetch VMAX data")
+      const vmaxData = await response.json()
 
-      if (error) throw error
-
-      const vmaxDebts = (vmaxData || []).map((record) => {
-        const diasInadStr = String(record["Dias Inad."] || "0")
+      const vmaxDebts = (vmaxData || []).map((record: any) => {
+        const diasInadStr = String(record.maiorAtraso || "0")
         const diasInadimplencia = Number(diasInadStr.replace(/\./g, "")) || 0
-        const valorVencido = record.Vencido
+        const valorVencido = record.valorTotal
           ? Number.parseFloat(
-              String(record.Vencido)
+              String(record.valorTotal)
                 .replace(/[^\d,.-]/g, "")
                 .replace(",", "."),
             )
@@ -78,17 +76,17 @@ export default function DebtsPage() {
 
         return {
           id: record.id,
-          customerName: record.Cliente || "Cliente VMAX",
-          customerDocument: record["CPF/CNPJ"] || "",
+          customerName: record.cliente || "Cliente VMAX",
+          customerDocument: record.cpfCnpj || "",
           originalAmount: valorVencido,
           currentAmount: valorVencido,
-          dueDate: record.Vecto || new Date().toISOString(),
+          dueDate: record.primeiraVencida || new Date().toISOString(),
           daysOverdue: diasInadimplencia,
           status: "in_collection" as const,
           classification,
-          approvalStatus: record.approval_status || "PENDENTE",
-          riskLevel: record.risk_level || "MEDIUM",
-          collectionCount: record.collection_count || 0,
+          approvalStatus: record.approvalStatus || "PENDENTE",
+          riskLevel: record.riskLevel || "MEDIUM",
+          collectionCount: 0,
         }
       })
 

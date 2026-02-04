@@ -3,49 +3,50 @@
 // Tipos
 export interface CreditProfile {
   id: string
-  company_id: string
+  companyId: string
   cpf: string
-  analysis_type: "free" | "detailed"
+  analysisType: "free" | "detailed"
   source: "assertiva" // Removido 'gov' e 'consolidated'
   data: any
-  data_assertiva: any // Apenas Assertiva
+  dataAssertiva: any // Apenas Assertiva
   score?: number
-  score_assertiva: number // Apenas Assertiva
-  created_at: string
-  updated_at: string
-  customer_id?: string
+  scoreAssertiva: number // Apenas Assertiva
+  createdAt: string
+  updatedAt: string
+  customerId?: string
   name?: string
   city?: string
   email?: string
   phone?: string
   status: "pending" | "running" | "completed" | "failed"
-  risk_level: "low" | "medium" | "high" | "very_high"
-  has_sanctions: boolean
-  has_public_bonds: boolean
-  sanctions_count: number
-  public_bonds_count: number
-  document_type: "CPF" | "CNPJ"
-  last_analysis_date: string
+  riskLevel: "low" | "medium" | "high" | "very_high"
+  hasSanctions: boolean
+  hasPublicBonds: boolean
+  sanctionsCount: number
+  publicBondsCount: number
+  documentType: "CPF" | "CNPJ"
+  lastAnalysisDate: string
 }
 
 export interface AnalysisTrigger {
   id: string
-  company_id: string
-  trigger_scope: "single" | "group" | "all"
+  companyId: string
+  triggerScope: "single" | "group" | "all"
   users?: string[]
-  analysis_type: "free" | "detailed"
+  analysisType: "free" | "detailed"
   status: "pending" | "running" | "completed" | "failed"
-  created_by?: string
-  created_at: string
-  completed_at?: string
-  error_message?: string
-  total_users: number
-  processed_users: number
-  failed_users?: number
+  createdBy?: string
+  createdAt: string
+  completedAt?: string
+  errorMessage?: string
+  totalUsers: number
+  processedUsers: number
+  failedUsers?: number
 }
 
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { eq, and, desc, sql } from "drizzle-orm"
+import { integrationLogs, creditProfiles, vmax, analysisTriggers, customers } from "@/lib/db/schema"
 
 // const PORTAL_API_KEY = process.env.PORTAL_TRANSPARENCIA_API_KEY || ''
 
@@ -65,7 +66,7 @@ async function searchPaginatedAPI(
   const foundRecords: any[] = []
   let pagesSearched = 0
 
-  console.log(`[v0] 🔍 Starting UNLIMITED paginated search for document: ${cleanTarget} on ${baseUrl}`)
+  console.log(`[v0] Starting UNLIMITED paginated search for document: ${cleanTarget} on ${baseUrl}`)
 
   for (let page = 1; page <= maxPages; page++) {
     pagesSearched++
@@ -75,25 +76,25 @@ async function searchPaginatedAPI(
       const response = await fetch(url, { headers })
 
       if (!response.ok) {
-        console.log(`[v0] ⚠️ Page ${page} returned status ${response.status}, stopping`)
+        console.log(`[v0] Page ${page} returned status ${response.status}, stopping`)
         break
       }
 
       const data = await response.json()
 
       if (!Array.isArray(data) || data.length === 0) {
-        console.log(`[v0] 📭 Page ${page} is empty - reached end of results, stopping pagination`)
+        console.log(`[v0] Page ${page} is empty - reached end of results, stopping pagination`)
         break
       }
 
-      console.log(`[v0] 📦 Page ${page} has ${data.length} records, searching...`)
+      console.log(`[v0] Page ${page} has ${data.length} records, searching...`)
 
       // Filter records that match the target document
       for (const item of data) {
         const itemDoc = extractDocFn(item)
         if (itemDoc === cleanTarget) {
           foundRecords.push(item)
-          console.log(`[v0] ✅ FOUND MATCH on page ${page}:`, {
+          console.log(`[v0] FOUND MATCH on page ${page}:`, {
             target: cleanTarget,
             found: itemDoc,
             name: item.sancionado?.nome || item.pessoa?.nome || item.pessoaJuridica?.nome || "N/A",
@@ -102,45 +103,43 @@ async function searchPaginatedAPI(
       }
 
       // Always continue to the next page until we hit an empty page
-      console.log(`[v0] 🔄 Found ${foundRecords.length} matches so far, continuing to next page...`)
+      console.log(`[v0] Found ${foundRecords.length} matches so far, continuing to next page...`)
 
       // Small delay between requests to avoid rate limiting
       await new Promise((resolve) => setTimeout(resolve, 100))
     } catch (error: any) {
-      console.error(`[v0] ❌ Error fetching page ${page}:`, error.message)
+      console.error(`[v0] Error fetching page ${page}:`, error.message)
       break
     }
   }
 
   console.log(
-    `[v0] 🏁 Pagination complete: ${foundRecords.length} matches found after searching ${pagesSearched} pages`,
+    `[v0] Pagination complete: ${foundRecords.length} matches found after searching ${pagesSearched} pages`,
   )
   return foundRecords
 }
 
-// Análise gratuita usando APIs públicas do governo
+// Analise gratuita usando APIs publicas do governo
 export async function analyzeFree(
   cpf: string,
   companyId?: string,
 ): Promise<{ success: boolean; data?: any; error?: string }> {
-  const supabase = createAdminClient()
-
   try {
     console.log("[v0] analyzeFree - Starting for CPF:", cpf)
 
     const cleanCpf = cpf.replace(/\D/g, "")
 
     if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
-      return { success: false, error: "CPF/CNPJ inválido" }
+      return { success: false, error: "CPF/CNPJ invalido" }
     }
 
     if (cleanCpf.length === 14) {
-      console.log("[v0] analyzeFree - CNPJ detected, using PAGINATED search on Portal da Transparência APIs")
+      console.log("[v0] analyzeFree - CNPJ detected, using PAGINATED search on Portal da Transparencia APIs")
 
       const logStartTime = Date.now()
 
       try {
-        // CEIS - Empresas Inidôneas (with pagination)
+        // CEIS - Empresas Inidoneas (with pagination)
         const ceisData = await searchPaginatedAPI(
           "https://api.portaldatransparencia.gov.br/api-de-dados/ceis",
           cleanCpf,
@@ -167,7 +166,7 @@ export async function analyzeFree(
           (item) => item.pessoaJuridica?.cnpjFormatado?.replace(/\D/g, "") || "",
         )
 
-        // CEAF - Acordo de Leniência (with pagination)
+        // CEAF - Acordo de Leniencia (with pagination)
         const ceafData = await searchPaginatedAPI(
           "https://api.portaldatransparencia.gov.br/api-de-dados/ceaf",
           cleanCpf,
@@ -204,7 +203,7 @@ export async function analyzeFree(
           // Count active/recent sanctions (last 24 months)
           const recentSanctions = sanctions.filter((s: any) => {
             const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento || s.dataReferencia
-            if (!sanctionDate || sanctionDate === "Sem informação") return false
+            if (!sanctionDate || sanctionDate === "Sem informacao") return false
 
             try {
               // Handle different date formats
@@ -226,7 +225,7 @@ export async function analyzeFree(
           // Count very recent sanctions (last 12 months)
           const veryRecentSanctions = sanctions.filter((s: any) => {
             const sanctionDate = s.dataInicioSancao || s.dataPublicacao || s.dataImpedimento || s.dataReferencia
-            if (!sanctionDate || sanctionDate === "Sem informação") return false
+            if (!sanctionDate || sanctionDate === "Sem informacao") return false
 
             try {
               let date: Date
@@ -289,20 +288,20 @@ export async function analyzeFree(
           api_consulted: true,
         }
 
-        await supabase.from("integration_logs").insert({
-          company_id: companyId || null,
-          cpf: cleanCpf,
-          operation: "GOV_API_PAGINATED_QUERY",
+        await db.insert(integrationLogs).values({
+          companyId: companyId || null,
+          action: "GOV_API_PAGINATED_QUERY",
           status: "success",
           details: {
+            cpf: cleanCpf,
             ceis_count: ceisData.length,
             cnep_count: cnepData.length,
             cepim_count: cepimData.length,
             ceaf_count: ceafData.length,
             score: score,
             used_pagination: true,
+            duration_ms: duration,
           },
-          duration_ms: duration,
         })
 
         return { success: true, data: cnpjData }
@@ -332,7 +331,7 @@ export async function analyzeFree(
       }
     }
 
-    console.log("[v0] analyzeFree - CPF detected, querying Portal da Transparência APIs")
+    console.log("[v0] analyzeFree - CPF detected, querying Portal da Transparencia APIs")
 
     // Removed API key retrieval as it's no longer supported
     // const apiKey = process.env.PORTAL_TRANSPARENCIA_API_KEY
@@ -566,7 +565,7 @@ export async function analyzeFree(
         if (recentSanctions.length > 0) {
           score = 300 // Alto risco
         } else {
-          score = 500 // Médio risco
+          score = 500 // Medio risco
         }
 
         console.log("[v0] analyzeFree - CPF has sanctions:", {
@@ -596,19 +595,19 @@ export async function analyzeFree(
         api_consulted: !hasApiError,
       }
 
-      await supabase.from("integration_logs").insert({
-        company_id: companyId || null,
-        cpf: cleanCpf,
-        operation: "GOV_API_FULL_QUERY_CPF",
+      await db.insert(integrationLogs).values({
+        companyId: companyId || null,
+        action: "GOV_API_FULL_QUERY_CPF",
         status: hasApiError ? "warning" : "success",
         details: {
+          cpf: cleanCpf,
           ceis_count: ceisData.length,
           cnep_count: cnepData.length,
           cepim_count: cepimData.length,
           ceaf_count: ceafData.length,
           score: score,
+          duration_ms: duration,
         },
-        duration_ms: duration,
       })
 
       return { success: true, data: cpfData }
@@ -639,19 +638,21 @@ export async function analyzeFree(
   } catch (error: any) {
     console.error("[v0] analyzeFree - Error:", error)
 
-    await supabase.from("integration_logs").insert({
-      company_id: companyId || null,
-      cpf: cpf.replace(/\D/g, ""),
-      operation: "PORTAL_TRANSPARENCIA_QUERY",
+    await db.insert(integrationLogs).values({
+      companyId: companyId || null,
+      action: "PORTAL_TRANSPARENCIA_QUERY",
       status: "error",
-      details: { error: error.message },
+      details: {
+        cpf: cpf.replace(/\D/g, ""),
+        error: error.message,
+      },
     })
 
     return { success: false, error: error.message }
   }
 }
 
-// Análise completa usando Assertiva Soluções
+// Analise completa usando Assertiva Solucoes
 export async function analyzeDetailed(
   cpf: string,
   companyId?: string,
@@ -702,7 +703,7 @@ export async function analyzeDetailed(
   }
 }
 
-// Armazenar resultado da análise
+// Armazenar resultado da analise
 export async function storeAnalysisResult(
   cpf: string,
   data: any,
@@ -710,12 +711,11 @@ export async function storeAnalysisResult(
   type: "free" | "detailed",
   companyId: string,
   userId?: string,
-  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de análise: restritiva ou comportamental
+  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de analise: restritiva ou comportamental
 ): Promise<{ success: boolean; error?: string }> {
   try {
     console.log("[v0] storeAnalysisResult - Starting", { cpf, source, type, companyId, userId, analysisType })
 
-    const supabase = createAdminClient()
     const cleanCpf = cpf.replace(/\D/g, "")
 
     let customerId: string | null = userId || null
@@ -724,29 +724,40 @@ export async function storeAnalysisResult(
     let customerEmail: string | null = null
     let customerPhone: string | null = null
 
-    // Se já temos o userId (ID do cliente VMAX), buscar diretamente por ID
+    // Se ja temos o userId (ID do cliente VMAX), buscar diretamente por ID
     if (userId) {
-      const { data: vmaxRecord } = await supabase
-        .from("VMAX")
-        .select('id, "CPF/CNPJ", Cliente, Cidade')
-        .eq("id", userId)
-        .maybeSingle()
+      const vmaxRecords = await db
+        .select({
+          id: vmax.id,
+          cpfCnpj: vmax.cpfCnpj,
+          cliente: vmax.cliente,
+          cidade: vmax.cidade,
+        })
+        .from(vmax)
+        .where(eq(vmax.id, userId))
+        .limit(1)
+
+      const vmaxRecord = vmaxRecords[0]
 
       if (vmaxRecord) {
         customerId = vmaxRecord.id
-        customerName = vmaxRecord.Cliente
-        customerCity = vmaxRecord.Cidade
-        console.log("[v0] storeAnalysisResult - ✅ Found customer by userId:", customerId, "for CPF:", cleanCpf)
+        customerName = vmaxRecord.cliente
+        customerCity = vmaxRecord.cidade
+        console.log("[v0] storeAnalysisResult - Found customer by userId:", customerId, "for CPF:", cleanCpf)
       }
     }
 
-    // Se não temos userId ou não encontrou, buscar pelo CPF
+    // Se nao temos userId ou nao encontrou, buscar pelo CPF
     if (!customerId) {
-      const { data: vmaxRecords } = await supabase
-        .from("VMAX")
-        .select('id, "CPF/CNPJ", Cliente, Cidade')
-        .eq("id_company", companyId)
-        .ilike("CPF/CNPJ", `%${cleanCpf.slice(0, 3)}%${cleanCpf.slice(-3)}%`)
+      const vmaxRecords = await db
+        .select({
+          id: vmax.id,
+          cpfCnpj: vmax.cpfCnpj,
+          cliente: vmax.cliente,
+          cidade: vmax.cidade,
+        })
+        .from(vmax)
+        .where(eq(vmax.idCompany, companyId))
 
       console.log("[v0] storeAnalysisResult - Query result:", {
         records_found: vmaxRecords?.length || 0,
@@ -755,21 +766,21 @@ export async function storeAnalysisResult(
 
       // Encontrar o registro exato pelo CPF limpo
       const vmaxRecord = vmaxRecords?.find((record) => {
-        const recordCpf = record["CPF/CNPJ"]?.replace(/\D/g, "")
+        const recordCpf = record.cpfCnpj?.replace(/\D/g, "")
         return recordCpf === cleanCpf
       })
 
       if (vmaxRecord) {
         customerId = vmaxRecord.id
-        customerName = vmaxRecord.Cliente
-        customerCity = vmaxRecord.Cidade
-        console.log("[v0] storeAnalysisResult - ✅ Found customer_id from VMAX by CPF:", customerId)
+        customerName = vmaxRecord.cliente
+        customerCity = vmaxRecord.cidade
+        console.log("[v0] storeAnalysisResult - Found customer_id from VMAX by CPF:", customerId)
       } else {
-        console.log("[v0] storeAnalysisResult - ⚠️ No customer_id found for CPF:", cleanCpf)
+        console.log("[v0] storeAnalysisResult - No customer_id found for CPF:", cleanCpf)
       }
     }
 
-    // Score de Crédito is the PRIMARY score, even if it's 0 (will be converted to 5)
+    // Score de Credito is the PRIMARY score, even if it's 0 (will be converted to 5)
     const creditScore = data.credito?.resposta?.score?.pontos ?? null
     const score =
       creditScore !== null
@@ -838,63 +849,47 @@ export async function storeAnalysisResult(
 
     const documentType = cleanCpf.length === 14 ? "CNPJ" : "CPF"
 
-    const { data: existingRecord } = await supabase
-      .from("credit_profiles")
-      .select("id, source, score_assertiva, score, data_assertiva, created_at")
-      .eq("cpf", cleanCpf)
-      .eq("company_id", companyId)
-      .maybeSingle()
+    // Check for existing record
+    const existingRecords = await db
+      .select({
+        id: creditProfiles.id,
+        provider: creditProfiles.provider,
+        score: creditProfiles.score,
+        data: creditProfiles.data,
+        createdAt: creditProfiles.createdAt,
+      })
+      .from(creditProfiles)
+      .where(and(eq(creditProfiles.cpf, cleanCpf), eq(creditProfiles.companyId, companyId)))
+      .limit(1)
 
-    const profileData: Partial<CreditProfile> = {
-      company_id: companyId,
+    const existingRecord = existingRecords[0]
+
+    const profileData: any = {
+      companyId: companyId,
       cpf: cleanCpf,
-      analysis_type: type,
-      source: source, // Use the provided source
+      analysisType: type,
+      provider: source, // Use provider field for source
       status: "completed",
-      risk_level: riskLevel.toLowerCase() as "low" | "medium" | "high" | "very_high", // Convert to lowercase for credit_profiles table
-      has_sanctions: hasSanctions,
-      has_public_bonds: hasPublicBonds,
-      sanctions_count: sanctionsCount,
-      public_bonds_count: publicBondsCount,
-      document_type: documentType,
-      last_analysis_date: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      riskLevel: riskLevel.toLowerCase(), // Convert to lowercase for credit_profiles table
+      data: data,
+      score: String(finalScore),
+      updatedAt: new Date(),
     }
 
-    if (source === "assertiva") {
-      profileData.data_assertiva = data // Specific Assertiva data
-      profileData.score_assertiva = finalScore // Use finalScore instead of score
-      profileData.data = data // Generic data for Assertiva
-      profileData.score = finalScore // Use finalScore instead of score
-    } else if (source === "gov") {
-      profileData.data = data // Generic data from Gov API
-      profileData.score = data.score_calculado || finalScore // Use finalScore
-      // Ensure score_assertiva and data_assertiva are not set if source is gov
-      // This will be handled by not including them in the update/insert if they are not provided
-    }
-
-    if (customerId) profileData.customer_id = customerId
+    if (customerId) profileData.customerId = customerId
     if (customerName) profileData.name = customerName
-    if (customerCity) profileData.city = customerCity
-    if (customerEmail) profileData.email = customerEmail
-    if (customerPhone) profileData.phone = customerPhone
-
-    // Conditionally add created_at only for new records
-    if (!existingRecord) {
-      profileData.created_at = new Date().toISOString()
-    }
 
     let result
     if (existingRecord) {
       console.log("[v0] storeAnalysisResult - Updating existing record:", existingRecord.id)
       // Ensure we don't overwrite existing assertiva data with gov data if source changes unexpectedly
-      if (source === "assertiva" && existingRecord.source === "gov") {
+      if (source === "assertiva" && existingRecord.provider === "gov") {
         // If existing is gov and new is assertiva, merge carefully
         // For now, we assume if it's assertiva, it should overwrite or merge as needed.
         // If the logic needs to be more complex (e.g., prefer Assertiva data), it should be handled here.
         console.log("[v0] storeAnalysisResult - Merging Assertiva data into existing Gov record.")
         // We'll update with the new Assertiva data, potentially overwriting some gov fields if they are generic
-      } else if (source === "gov" && existingRecord.source === "assertiva") {
+      } else if (source === "gov" && existingRecord.provider === "assertiva") {
         console.log(
           "[v0] storeAnalysisResult - Overwriting Assertiva data with Gov data (preserving score if possible).",
         )
@@ -904,36 +899,33 @@ export async function storeAnalysisResult(
         // However, the current logic overwrites score and data with the new source's information.
       }
 
-      result = await supabase.from("credit_profiles").update(profileData).eq("id", existingRecord.id).select()
+      await db
+        .update(creditProfiles)
+        .set(profileData)
+        .where(eq(creditProfiles.id, existingRecord.id))
     } else {
       console.log("[v0] storeAnalysisResult - Inserting new record")
-      result = await supabase
-        .from("credit_profiles")
-        .insert(profileData as CreditProfile)
-        .select() // Cast to CreditProfile for insert
+      profileData.createdAt = new Date()
+      await db.insert(creditProfiles).values(profileData)
     }
 
-    const { data: insertedData, error } = result
-
-    if (error) {
-      console.error("[v0] storeAnalysisResult - Error:", error)
-      return { success: false, error: error.message }
-    }
-
-    // Atualizar a tabela VMAX com os resultados da análise
+    // Atualizar a tabela VMAX com os resultados da analise
     if (customerId) {
-      // Preparar dados baseado no tipo de análise
+      // Preparar dados baseado no tipo de analise
       let updateData: any = {}
 
       if (analysisType === "restrictive") {
-        // Análise RESTRITIVA - salva credit_score, risk_level, approval_status
+        // Analise RESTRITIVA - salva credit_score, risk_level, approval_status
         updateData = {
-          credit_score: finalScore,
-          risk_level: riskLevel,
-          approval_status: approvalStatus,
-          auto_collection_enabled: autoCollectionEnabled,
-          restrictive_analysis_logs: data,
-          restrictive_analysis_date: new Date().toISOString(),
+          creditScore: String(finalScore),
+          riskLevel: riskLevel,
+          approvalStatus: approvalStatus,
+          autoCollectionEnabled: autoCollectionEnabled,
+          analysisMetadata: {
+            ...data,
+            restrictive_analysis_date: new Date().toISOString(),
+          },
+          lastAnalysisDate: new Date(),
         }
         console.log("[v0] storeAnalysisResult - Updating VMAX with RESTRICTIVE analysis", {
           customerId,
@@ -942,14 +934,17 @@ export async function storeAnalysisResult(
           approval_status: approvalStatus,
         })
       } else {
-        // Análise COMPORTAMENTAL - salva recovery_score, recovery_class
+        // Analise COMPORTAMENTAL - salva recovery_score, recovery_class
         const recoveryScore = data.recupere?.resposta?.score?.pontos || null
         const recoveryClass = data.recupere?.resposta?.score?.classe || null
         updateData = {
-          recovery_score: recoveryScore,
-          recovery_class: recoveryClass,
-          behavioral_analysis_logs: data,
-          behavioral_analysis_date: new Date().toISOString(),
+          analysisMetadata: {
+            ...data,
+            recovery_score: recoveryScore,
+            recovery_class: recoveryClass,
+            behavioral_analysis_date: new Date().toISOString(),
+          },
+          lastAnalysisDate: new Date(),
         }
         console.log("[v0] storeAnalysisResult - Updating VMAX with BEHAVIORAL analysis", {
           customerId,
@@ -958,29 +953,27 @@ export async function storeAnalysisResult(
         })
       }
 
-      const { error: vmaxError } = await supabase
-        .from("VMAX")
-        .update(updateData)
-        .eq("id", customerId)
-
-      if (vmaxError) {
-        console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError.message)
-      } else {
+      try {
+        await db
+          .update(vmax)
+          .set(updateData)
+          .where(eq(vmax.id, customerId))
         console.log("[v0] storeAnalysisResult - Successfully updated VMAX record:", customerId, "type:", analysisType)
+      } catch (vmaxError: any) {
+        console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError.message)
       }
     } else {
       console.log("[v0] storeAnalysisResult - No customerId, skipping VMAX update for CPF:", cleanCpf)
     }
 
-    console.log("[v0] storeAnalysisResult - ✅ Success", {
+    console.log("[v0] storeAnalysisResult - Success", {
       cpf: cleanCpf,
-      source: profileData.source,
+      source: profileData.provider,
       type,
       score: finalScore,
       risk_level: riskLevel,
       approval_status: approvalStatus,
       auto_collection_enabled: autoCollectionEnabled,
-      record_id: insertedData?.[0]?.id,
       operation: existingRecord ? "UPDATE" : "INSERT",
     })
 
@@ -994,90 +987,126 @@ export async function storeAnalysisResult(
 // Buscar resultado em cache
 export async function getCachedResult(cpf: string): Promise<CreditProfile | null> {
   try {
-    const supabase = await createClient()
     const cleanCpf = cpf.replace(/\D/g, "")
 
-    const { data, error } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("cpf", cleanCpf)
-      .order("created_at", { ascending: false })
+    const results = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.cpf, cleanCpf))
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(1)
-      .maybeSingle() // Use maybeSingle() to handle cases where no record is found gracefully
 
-    if (error || !data) return null
+    const data = results[0]
 
-    // Ensure the 'source' property is compatible with the CreditProfile interface
-    // If the data has 'source' as 'consolidated', it's fine.
-    // If it's 'gov' or 'assertiva', it's also fine.
-    // If the interface was stricter about 'source', we might need more checks here.
-    return data as CreditProfile
+    if (!data) return null
+
+    // Map the Drizzle result to the CreditProfile interface
+    return {
+      id: data.id,
+      companyId: data.companyId || "",
+      cpf: data.cpf || "",
+      analysisType: (data.analysisType as "free" | "detailed") || "free",
+      source: (data.provider as "assertiva") || "assertiva",
+      data: data.data,
+      dataAssertiva: data.data,
+      score: data.score ? Number(data.score) : undefined,
+      scoreAssertiva: data.score ? Number(data.score) : 0,
+      createdAt: data.createdAt?.toISOString() || "",
+      updatedAt: data.updatedAt?.toISOString() || "",
+      customerId: data.customerId || undefined,
+      name: data.name || undefined,
+      city: undefined,
+      email: undefined,
+      phone: undefined,
+      status: (data.status as "pending" | "running" | "completed" | "failed") || "completed",
+      riskLevel: (data.riskLevel as "low" | "medium" | "high" | "very_high") || "medium",
+      hasSanctions: false,
+      hasPublicBonds: false,
+      sanctionsCount: 0,
+      publicBondsCount: 0,
+      documentType: (cleanCpf.length === 14 ? "CNPJ" : "CPF") as "CPF" | "CNPJ",
+      lastAnalysisDate: data.updatedAt?.toISOString() || "",
+    } as CreditProfile
   } catch (error) {
     console.error("Error fetching cached result:", error)
     return null
   }
 }
 
-// Executar trigger de análise em lote
+// Executar trigger de analise em lote
 export async function runAnalysisTrigger(triggerId: string): Promise<{ success: boolean; error?: string }> {
   try {
     console.log("[v0] runAnalysisTrigger - Starting for trigger:", triggerId)
 
-    const supabase = await createClient()
-
     // Buscar trigger
-    const { data: trigger, error: triggerError } = await supabase
-      .from("analysis_triggers")
-      .select("*")
-      .eq("id", triggerId)
-      .single()
+    const triggerResults = await db
+      .select()
+      .from(analysisTriggers)
+      .where(eq(analysisTriggers.id, triggerId))
+      .limit(1)
 
-    if (triggerError || !trigger) {
-      return { success: false, error: "Trigger não encontrado" }
+    const trigger = triggerResults[0]
+
+    if (!trigger) {
+      return { success: false, error: "Trigger nao encontrado" }
     }
 
     console.log("[v0] runAnalysisTrigger - Trigger details:", {
-      scope: trigger.trigger_scope,
-      type: trigger.analysis_type,
-      company_id: trigger.company_id,
+      scope: trigger.triggerType,
+      type: trigger.triggerSource,
+      company_id: trigger.companyId,
     })
 
     // Atualizar status para running
-    await supabase
-      .from("analysis_triggers")
-      .update({
+    await db
+      .update(analysisTriggers)
+      .set({
         status: "running",
-        started_at: new Date().toISOString(),
+        updatedAt: new Date(),
       })
-      .eq("id", triggerId)
+      .where(eq(analysisTriggers.id, triggerId))
 
-    // Buscar usuários para análise
+    // Buscar usuarios para analise
     let userIds: string[] = []
 
-    if (trigger.trigger_scope === "all") {
-      const { data: users } = await supabase
-        .from("customers")
-        .select("id, document")
-        .eq("company_id", trigger.company_id)
+    // Note: The original code used trigger_scope but the schema has triggerType
+    // We'll adapt the logic based on what's available in the trigger
+    const triggerMetadata = trigger.result as any || {}
+    const triggerScope = triggerMetadata.trigger_scope || "all"
+    const analysisTypeFromTrigger = triggerMetadata.analysis_type || "free"
 
-      userIds = users?.map((u) => u.id) || []
+    if (triggerScope === "all" && trigger.companyId) {
+      const usersData = await db
+        .select({ id: customers.id, document: customers.document })
+        .from(customers)
+        .where(eq(customers.companyId, trigger.companyId))
+
+      userIds = usersData?.map((u) => u.id) || []
       console.log("[v0] runAnalysisTrigger - Found all users:", userIds.length)
-    } else if (trigger.trigger_scope === "group") {
-      userIds = trigger.users || []
+    } else if (triggerScope === "group") {
+      userIds = triggerMetadata.users || []
       console.log("[v0] runAnalysisTrigger - Group users:", userIds.length)
     } else {
       // Assuming "single" scope means trigger.users contains only one user ID
-      userIds = trigger.users || []
+      userIds = triggerMetadata.users || []
       console.log("[v0] runAnalysisTrigger - Single user(s) in scope:", userIds.length)
     }
 
     // Update total_users with the actual count of users to process
-    await supabase.from("analysis_triggers").update({ total_users: userIds.length }).eq("id", triggerId)
+    await db
+      .update(analysisTriggers)
+      .set({
+        result: {
+          ...triggerMetadata,
+          total_users: userIds.length,
+        },
+      })
+      .where(eq(analysisTriggers.id, triggerId))
 
-    // Processar cada usuário com controle de concorrência
+    // Processar cada usuario com controle de concorrencia
     let processed = 0
     let failed = 0
-    const batchSize = 5 // Processar 5 por vez para não sobrecarregar as APIs
+    const batchSize = 5 // Processar 5 por vez para nao sobrecarregar as APIs
 
     for (let i = 0; i < userIds.length; i += batchSize) {
       const batch = userIds.slice(i, i + batchSize)
@@ -1091,8 +1120,14 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
       await Promise.all(
         batch.map(async (userId) => {
           try {
-            // Buscar CPF do usuário
-            const { data: customer } = await supabase.from("customers").select("document").eq("id", userId).single()
+            // Buscar CPF do usuario
+            const customerResults = await db
+              .select({ document: customers.document })
+              .from(customers)
+              .where(eq(customers.id, userId))
+              .limit(1)
+
+            const customer = customerResults[0]
 
             if (!customer) {
               console.log("[v0] runAnalysisTrigger - Customer not found:", userId)
@@ -1103,31 +1138,31 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
             console.log("[v0] runAnalysisTrigger - Analyzing customer:", {
               userId,
               cpf: customer.document,
-              type: trigger.analysis_type,
+              type: analysisTypeFromTrigger,
             })
 
-            // Executar análise
+            // Executar analise
             let result
-            if (trigger.analysis_type === "free") {
+            if (analysisTypeFromTrigger === "free") {
               // Use analyzeFree with companyId to potentially log the request
-              result = await analyzeFree(customer.document, trigger.company_id)
+              result = await analyzeFree(customer.document || "", trigger.companyId || "")
             } else {
               // analyzeDetailed already uses companyId for Assertiva
-              result = await analyzeDetailed(customer.document, trigger.company_id, userId)
+              result = await analyzeDetailed(customer.document || "", trigger.companyId || "", userId)
             }
 
             // Armazenar resultado
             if (result.success && result.data) {
               // Determine source based on analysis type
-              const source = trigger.analysis_type === "free" ? "gov" : "assertiva"
+              const source = analysisTypeFromTrigger === "free" ? "gov" : "assertiva"
               await storeAnalysisResult(
-                customer.document,
+                customer.document || "",
                 result.data,
                 source,
-                trigger.analysis_type,
-                trigger.company_id,
+                analysisTypeFromTrigger,
+                trigger.companyId || "",
                 userId,
-                "restrictive", // Análise restritiva por padrão
+                "restrictive", // Analise restritiva por padrao
               )
 
               processed++
@@ -1138,13 +1173,16 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
             }
 
             // Atualizar progresso
-            await supabase
-              .from("analysis_triggers")
-              .update({
-                processed_users: processed,
-                failed_users: failed,
+            await db
+              .update(analysisTriggers)
+              .set({
+                result: {
+                  ...triggerMetadata,
+                  processed_users: processed,
+                  failed_users: failed,
+                },
               })
-              .eq("id", triggerId)
+              .where(eq(analysisTriggers.id, triggerId))
           } catch (error: any) {
             failed++
             console.error("[v0] runAnalysisTrigger - Error processing user:", userId, error)
@@ -1154,15 +1192,19 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
     }
 
     // Atualizar status para completed
-    await supabase
-      .from("analysis_triggers")
-      .update({
+    await db
+      .update(analysisTriggers)
+      .set({
         status: "completed",
-        completed_at: new Date().toISOString(),
-        processed_users: processed,
-        failed_users: failed,
+        updatedAt: new Date(),
+        result: {
+          ...triggerMetadata,
+          processed_users: processed,
+          failed_users: failed,
+          completed_at: new Date().toISOString(),
+        },
       })
-      .eq("id", triggerId)
+      .where(eq(analysisTriggers.id, triggerId))
 
     console.log("[v0] runAnalysisTrigger - Completed:", {
       processed,
@@ -1175,15 +1217,14 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
     console.error("[v0] runAnalysisTrigger - Error:", error)
 
     // Atualizar status para failed
-    const supabase = await createClient()
-    await supabase
-      .from("analysis_triggers")
-      .update({
+    await db
+      .update(analysisTriggers)
+      .set({
         status: "failed",
-        error_message: error.message,
-        completed_at: new Date().toISOString(),
+        error: error.message,
+        updatedAt: new Date(),
       })
-      .eq("id", triggerId)
+      .where(eq(analysisTriggers.id, triggerId))
 
     return { success: false, error: error.message }
   }
@@ -1266,43 +1307,22 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
   try {
     console.log("[SERVER][v0] runVMAXAutoAnalysis - Starting for company:", companyId)
 
-    const supabase = createAdminClient()
-
     console.log("[SERVER][v0] runVMAXAutoAnalysis - Querying VMAX table with company_id:", companyId)
 
-    const { data: vmaxRecords, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select('id, id_company, "CPF/CNPJ", Cliente, Cidade')
-      .eq("id_company", companyId)
+    const vmaxRecords = await db
+      .select({
+        id: vmax.id,
+        idCompany: vmax.idCompany,
+        cpfCnpj: vmax.cpfCnpj,
+        cliente: vmax.cliente,
+        cidade: vmax.cidade,
+      })
+      .from(vmax)
+      .where(eq(vmax.idCompany, companyId))
 
     console.log("[SERVER][v0] runVMAXAutoAnalysis - Query result:", {
       records_found: vmaxRecords?.length || 0,
-      has_error: !!vmaxError,
     })
-
-    if (vmaxError) {
-      console.error("[SERVER][v0] runVMAXAutoAnalysis - Error fetching VMAX records:", vmaxError)
-      await supabase.from("integration_logs").insert({
-        company_id: companyId,
-        operation: "VMAX_AUTO_ANALYSIS",
-        status: "error",
-        details: {
-          error: vmaxError.message,
-          total_records: vmaxRecords?.length || 0,
-        },
-        duration_ms: Date.now() - startTime,
-      })
-      return {
-        success: false,
-        total: 0,
-        analyzed: 0,
-        cached: 0,
-        failed: 0,
-        duration: Date.now() - startTime,
-        cpfs_analyzed: [],
-        error: vmaxError.message,
-      }
-    }
 
     if (!vmaxRecords || vmaxRecords.length === 0) {
       console.log("[SERVER][v0] runVMAXAutoAnalysis - No records found in VMAX table")
@@ -1322,10 +1342,10 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
     const cpfsToAnalyze: Array<{ cpf: string; name: string; city: string; isCnpj: boolean; vmaxId: string }> = []
 
     for (const record of vmaxRecords) {
-      const document = record["CPF/CNPJ"]?.replace(/\D/g, "")
+      const document = record.cpfCnpj?.replace(/\D/g, "")
 
       if (!document || (document.length !== 11 && document.length !== 14)) {
-        console.log("[SERVER][v0] runVMAXAutoAnalysis - Invalid document, skipping:", record["CPF/CNPJ"])
+        console.log("[SERVER][v0] runVMAXAutoAnalysis - Invalid document, skipping:", record.cpfCnpj)
         continue
       }
 
@@ -1334,8 +1354,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
       console.log("[SERVER][v0] runVMAXAutoAnalysis - Document will be analyzed:", document, "VMAX ID:", record.id)
       cpfsToAnalyze.push({
         cpf: document,
-        name: record.Cliente || "N/A",
-        city: record.Cidade || "N/A",
+        name: record.cliente || "N/A",
+        city: record.cidade || "N/A",
         isCnpj,
         vmaxId: record.id,
       })
@@ -1387,7 +1407,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
         else if (finalScore >= 300) risk_level = "high"
         else risk_level = "very_high"
 
-        console.log("[SERVER][v0] runVMAXAutoAnalysis - 📋 CUSTOMER ANALYSIS RESULT:", {
+        console.log("[SERVER][v0] runVMAXAutoAnalysis - CUSTOMER ANALYSIS RESULT:", {
           index: i + 1,
           total: cpfsToAnalyze.length,
           customer_name: item.name,
@@ -1402,7 +1422,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           api_status: analysisResult.data?.api_consulted, // Changed from api_status to api_consulted
         })
 
-        // Store the result - análise restritiva (gov/free)
+        // Store the result - analise restritiva (gov/free)
         await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId, undefined, "restrictive")
 
         analyzedCount++
@@ -1447,9 +1467,9 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
       duration_ms: duration,
     })
 
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
-      operation: "VMAX_AUTO_ANALYSIS",
+    await db.insert(integrationLogs).values({
+      companyId: companyId,
+      action: "VMAX_AUTO_ANALYSIS",
       status: "completed",
       details: {
         total_records: vmaxRecords.length,
@@ -1458,8 +1478,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
         cached: 0,
         failed: failedCount,
         cpfs_analyzed: cpfsAnalyzed,
+        duration_ms: duration,
       },
-      duration_ms: duration,
     })
 
     return {
@@ -1476,13 +1496,11 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
     const duration = Date.now() - startTime
     console.error("[SERVER][v0] runVMAXAutoAnalysis - Error:", error)
 
-    const supabase = createAdminClient()
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
-      operation: "VMAX_AUTO_ANALYSIS",
+    await db.insert(integrationLogs).values({
+      companyId: companyId,
+      action: "VMAX_AUTO_ANALYSIS",
       status: "error",
       details: { error: error.message },
-      duration_ms: duration,
     })
 
     return {
@@ -1498,11 +1516,11 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
   }
 }
 
-// Executar análise manual com Assertiva Soluções
+// Executar analise manual com Assertiva Solucoes
 export async function runAssertivaManualAnalysis(
   customerIds: string[],
   companyId: string,
-  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de análise
+  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de analise
 ): Promise<{
   success: boolean
   total: number
@@ -1514,7 +1532,6 @@ export async function runAssertivaManualAnalysis(
   error?: string
 }> {
   const startTime = Date.now()
-  const supabase = createAdminClient()
 
   try {
     console.log("[v0] runAssertivaManualAnalysis - Starting for customers:", customerIds.length)
@@ -1536,42 +1553,26 @@ export async function runAssertivaManualAnalysis(
 
     console.log("[v0] runAssertivaManualAnalysis - Querying VMAX table with IDs:", customerIds)
 
-    const { data: vmaxData, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
-      .in("id", customerIds)
+    const vmaxData = await db
+      .select({
+        id: vmax.id,
+        cpfCnpj: vmax.cpfCnpj,
+        cliente: vmax.cliente,
+        cidade: vmax.cidade,
+        idCompany: vmax.idCompany,
+      })
+      .from(vmax)
+      .where(sql`${vmax.id} IN (${sql.join(customerIds.map(id => sql`${id}`), sql`, `)})`)
 
     console.log("[v0] runAssertivaManualAnalysis - VMAX query result:", {
       found: vmaxData?.length || 0,
-      error: vmaxError?.message,
       sample_data: vmaxData?.map((v) => ({
         id: v.id,
-        company: v.id_company,
-        name: v.Cliente,
-        cpf: v["CPF/CNPJ"]?.substring(0, 6) + "***",
+        company: v.idCompany,
+        name: v.cliente,
+        cpf: v.cpfCnpj?.substring(0, 6) + "***",
       })),
     })
-
-    if (vmaxError) {
-      console.error("[v0] runAssertivaManualAnalysis - Error fetching from VMAX:", vmaxError)
-      await supabase.from("integration_logs").insert({
-        company_id: companyId,
-        operation: "ASSERTIVA_MANUAL_ANALYSIS",
-        status: "error",
-        details: { error: vmaxError.message, customer_ids: customerIds },
-        duration_ms: Date.now() - startTime,
-      })
-      return {
-        success: false,
-        total: 0,
-        analyzed: 0,
-        cached: 0,
-        failed: 0,
-        duration: Date.now() - startTime,
-        customers_analyzed: [],
-        error: vmaxError.message,
-      }
-    }
 
     if (!vmaxData || vmaxData.length === 0) {
       console.log("[v0] runAssertivaManualAnalysis - No customers found in VMAX")
@@ -1586,27 +1587,27 @@ export async function runAssertivaManualAnalysis(
       }
     }
 
-    const customers = vmaxData.map((record) => ({
+    const customersFromDb = vmaxData.map((record) => ({
       id: record.id,
-      name: record.Cliente || "N/A",
-      document: record["CPF/CNPJ"]?.replace(/\D/g, "") || "",
-      city: record.Cidade || "N/A",
-      company_id: record.id_company,
+      name: record.cliente || "N/A",
+      document: record.cpfCnpj?.replace(/\D/g, "") || "",
+      city: record.cidade || "N/A",
+      company_id: record.idCompany,
     }))
 
-    console.log("[v0] runAssertivaManualAnalysis - ✅ Found customers in VMAX:", customers.length)
+    console.log("[v0] runAssertivaManualAnalysis - Found customers in VMAX:", customersFromDb.length)
     console.log(
       "[v0] runAssertivaManualAnalysis - Customer details:",
-      customers.map((c) => ({ id: c.id, name: c.name, document: c.document, city: c.city, company_id: c.company_id })),
+      customersFromDb.map((c) => ({ id: c.id, name: c.name, document: c.document, city: c.city, company_id: c.company_id })),
     )
 
     const customersToAnalyze: Array<{ id: string; cpf: string; name: string; city: string; company_id: string }> = []
 
-    for (const customer of customers) {
+    for (const customer of customersFromDb) {
       const cpf = customer.document
 
       if (!cpf || (cpf.length !== 11 && cpf.length !== 14)) {
-        console.log("[v0] runAssertivaManualAnalysis - ⚠️ Invalid document, skipping:", customer.document)
+        console.log("[v0] runAssertivaManualAnalysis - Invalid document, skipping:", customer.document)
         continue
       }
 
@@ -1616,21 +1617,21 @@ export async function runAssertivaManualAnalysis(
         cpf,
         name: customer.name,
         city: customer.city,
-        company_id: customer.company_id,
+        company_id: customer.company_id || "",
       })
     }
 
-    console.log("[v0] runAssertivaManualAnalysis - 📊 Analysis summary:", {
-      total: customers.length,
+    console.log("[v0] runAssertivaManualAnalysis - Analysis summary:", {
+      total: customersFromDb.length,
       to_analyze: customersToAnalyze.length,
       already_cached: 0, // Always 0 since we're forcing fresh analysis
     })
 
-    // 3. Processar em lotes de 5 (controle de concorrência)
+    // 3. Processar em lotes de 5 (controle de concorrencia)
     let analyzedCount = 0
     let failedCount = 0
     const customersAnalyzed: Array<{ id: string; cpf: string; name: string; score?: number }> = []
-    const batchSize = 10 // Aumentado para processar mais rápido
+    const batchSize = 10 // Aumentado para processar mais rapido
 
     for (let i = 0; i < customersToAnalyze.length; i += batchSize) {
       const batch = customersToAnalyze.slice(i, i + batchSize)
@@ -1645,7 +1646,7 @@ export async function runAssertivaManualAnalysis(
       const batchResults = await Promise.allSettled(
         batch.map(async (customer) => {
           try {
-            console.log("[v0] runAssertivaManualAnalysis - 🔍 Analyzing customer:", {
+            console.log("[v0] runAssertivaManualAnalysis - Analyzing customer:", {
               id: customer.id,
               cpf: customer.cpf,
               name: customer.name,
@@ -1658,14 +1659,14 @@ export async function runAssertivaManualAnalysis(
 
             if (!analysisResult.success) {
               console.error(
-                "[v0] runAssertivaManualAnalysis - ❌ Analysis failed for customer:",
+                "[v0] runAssertivaManualAnalysis - Analysis failed for customer:",
                 customer.id,
                 analysisResult.error,
               )
               return { success: false, customerId: customer.id, error: analysisResult.error }
             }
 
-            console.log("[v0] runAssertivaManualAnalysis - 📦 ASSERTIVA API RESPONSE:", {
+            console.log("[v0] runAssertivaManualAnalysis - ASSERTIVA API RESPONSE:", {
               customer_id: customer.id,
               customer_name: customer.name,
               customer_city: customer.city,
@@ -1685,7 +1686,7 @@ export async function runAssertivaManualAnalysis(
             })
 
             if (analysisResult.data) {
-              console.log("[v0] runAssertivaManualAnalysis - 📋SAMPLE DATA:", {
+              console.log("[v0] runAssertivaManualAnalysis - SAMPLE DATA:", {
                 first_protesto: analysisResult.data.protestos?.[0] || "Nenhum",
                 first_acao_judicial: analysisResult.data.acoes_judiciais?.[0] || "Nenhuma",
                 first_divida_ativa: analysisResult.data.dividas_ativas?.[0] || "Nenhuma",
@@ -1693,7 +1694,7 @@ export async function runAssertivaManualAnalysis(
               })
             }
 
-            // Store the result - salva baseado no tipo de análise (restritiva ou comportamental)
+            // Store the result - salva baseado no tipo de analise (restritiva ou comportamental)
             const storeResult = await storeAnalysisResult(
               customer.cpf,
               analysisResult.data,
@@ -1701,27 +1702,27 @@ export async function runAssertivaManualAnalysis(
               "detailed",
               customer.company_id,
               customer.id,
-              analysisType, // Passa o tipo de análise
+              analysisType, // Passa o tipo de analise
             )
 
             if (!storeResult.success) {
               console.error(
-                "[v0] runAssertivaManualAnalysis - ❌ Failed to store result for customer:",
+                "[v0] runAssertivaManualAnalysis - Failed to store result for customer:",
                 customer.id,
                 storeResult.error,
               )
               // Log the storage failure for debugging
-              await supabase.from("integration_logs").insert({
-                company_id: customer.company_id,
-                cpf: customer.cpf,
-                operation: "ASSERTIVA_MANUAL_ANALYSIS_STORE",
+              await db.insert(integrationLogs).values({
+                companyId: customer.company_id,
+                action: "ASSERTIVA_MANUAL_ANALYSIS_STORE",
                 status: "error",
                 details: {
+                  cpf: customer.cpf,
                   customer_id: customer.id,
                   customer_name: customer.name,
                   error: storeResult.error,
+                  duration_ms: Date.now() - startTime,
                 },
-                duration_ms: Date.now() - startTime,
               })
               return { success: false, customerId: customer.id, error: storeResult.error }
             }
@@ -1741,7 +1742,7 @@ export async function runAssertivaManualAnalysis(
             else if (finalScore >= 300) risk_level = "high"
             else risk_level = "very_high"
 
-            console.log("[v0] runAssertivaManualAnalysis - ✅ Successfully analyzed and stored customer:", {
+            console.log("[v0] runAssertivaManualAnalysis - Successfully analyzed and stored customer:", {
               id: customer.id,
               name: customer.name,
               score: scoreForDisplay, // Display the original score
@@ -1758,21 +1759,21 @@ export async function runAssertivaManualAnalysis(
               data: analysisResult.data, // Include data for potential logging or summary
             }
           } catch (error: any) {
-            console.error("[v0] runAssertivaManualAnalysis - ❌ Error processing customer:", customer.id, error)
+            console.error("[v0] runAssertivaManualAnalysis - Error processing customer:", customer.id, error)
 
             // Log the specific error to integration_logs
             try {
-              await supabase.from("integration_logs").insert({
-                company_id: customer.company_id,
-                cpf: customer.cpf, // Added cpf field
-                operation: "ASSERTIVA_MANUAL_ANALYSIS",
+              await db.insert(integrationLogs).values({
+                companyId: customer.company_id,
+                action: "ASSERTIVA_MANUAL_ANALYSIS",
                 status: "failed",
                 details: {
+                  cpf: customer.cpf,
                   customer_id: customer.id,
                   customer_name: customer.name,
                   error: error.message,
+                  duration_ms: Date.now() - startTime,
                 },
-                duration_ms: Date.now() - startTime,
               })
             } catch (logError) {
               console.error("[v0] runAssertivaManualAnalysis - Failed to log error:", logError)
@@ -1812,8 +1813,8 @@ export async function runAssertivaManualAnalysis(
 
     const duration = Date.now() - startTime
 
-    console.log("[v0] runAssertivaManualAnalysis - 🎉 COMPLETED:", {
-      total: customers.length,
+    console.log("[v0] runAssertivaManualAnalysis - COMPLETED:", {
+      total: customersFromDb.length,
       analyzed: analyzedCount,
       cached: 0,
       failed: failedCount,
@@ -1821,26 +1822,26 @@ export async function runAssertivaManualAnalysis(
       duration_seconds: (duration / 1000).toFixed(2),
     })
 
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
-      cpf: customersToAnalyze.length > 0 ? customersToAnalyze[0].cpf : null, // Log CPF of first analyzed customer if available
-      operation: "ASSERTIVA_MANUAL_ANALYSIS",
+    await db.insert(integrationLogs).values({
+      companyId: companyId,
+      action: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "completed",
       details: {
+        cpf: customersToAnalyze.length > 0 ? customersToAnalyze[0].cpf : null,
         customer_ids: customerIds,
-        total_customers: customers.length,
+        total_customers: customersFromDb.length,
         customers_to_analyze: customersToAnalyze.length,
         analyzed: analyzedCount,
         cached: 0,
         failed: failedCount,
         customers_analyzed: customersAnalyzed.map((c) => ({ id: c.id, cpf: c.cpf, score: c.score })),
+        duration_ms: duration,
       },
-      duration_ms: duration,
     })
 
     return {
       success: true,
-      total: customers.length,
+      total: customersFromDb.length,
       analyzed: analyzedCount,
       cached: 0,
       failed: failedCount,
@@ -1849,16 +1850,18 @@ export async function runAssertivaManualAnalysis(
     }
   } catch (error: any) {
     const duration = Date.now() - startTime
-    console.error("[v0] runAssertivaManualAnalysis - 💥 FATAL ERROR:", error)
+    console.error("[v0] runAssertivaManualAnalysis - FATAL ERROR:", error)
     console.error("[v0] runAssertivaManualAnalysis - Error stack:", error.stack)
 
-    await supabase.from("integration_logs").insert({
-      company_id: companyId,
-      cpf: null, // Added cpf field (null for batch errors)
-      operation: "ASSERTIVA_MANUAL_ANALYSIS",
+    await db.insert(integrationLogs).values({
+      companyId: companyId,
+      action: "ASSERTIVA_MANUAL_ANALYSIS",
       status: "error",
-      details: { error: error.message, customer_ids: customerIds },
-      duration_ms: duration,
+      details: {
+        error: error.message,
+        customer_ids: customerIds,
+        duration_ms: duration,
+      },
     })
 
     return {

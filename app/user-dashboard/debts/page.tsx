@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -54,21 +54,18 @@ export default function UserDebtsPage() {
   const [filteredDebts, setFilteredDebts] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-
-  const supabase = createClient()
+  const { session, profile } = useAuth()
+  const user = session?.user
 
   useEffect(() => {
-    fetchDebts()
-  }, [])
+    if (user && profile) {
+      fetchDebts()
+    }
+  }, [user, profile])
 
   const fetchDebts = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
       if (!user) return
-
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
 
       if (!profile || !profile.cpf_cnpj) {
         setDebts([])
@@ -148,10 +145,10 @@ export default function UserDebtsPage() {
   const openDebts = getOpenDebts(debts)
   const overdueDebts = getOverdueDebts(debts)
   const paidDebts = getPaidDebts(debts)
-  const negotiatedDebts = debts.filter((debt) => debt.status === "negotiated")
+  const negotiatedDebts = debts.filter((debt: any) => debt.status === "negotiated")
 
   const totalOpenAmount = getTotalOpenAmount(debts)
-  const totalOverdueAmount = overdueDebts.reduce((sum, debt) => sum + Number(debt.amount), 0)
+  const totalOverdueAmount = overdueDebts.reduce((sum, debt: any) => sum + Number(debt.amount), 0)
   const totalPaidAmount = getTotalPaidAmount(debts)
 
   const avgPaymentScore = getAveragePaymentScore(debts)
@@ -306,7 +303,7 @@ export default function UserDebtsPage() {
       {/* Debts List */}
       <div className="space-y-4">
         {filteredDebts && filteredDebts.length > 0 ? (
-          filteredDebts.map((debt) => (
+          filteredDebts.map((debt: any) => (
             <EnhancedDebtCard
               key={debt.id}
               debt={{

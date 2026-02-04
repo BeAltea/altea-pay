@@ -9,23 +9,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { Mail, Calendar, Save, CheckCircle, Phone, Building } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 interface UserProfile {
   id: string
-  full_name: string | null
+  fullName: string | null
   email: string | null
   phone: string | null
-  company_name: string | null
+  companyName: string | null
   role: string | null
-  created_at: string
-  updated_at: string
+  createdAt: string
+  updatedAt: string
 }
 
 export default function UserProfilePage() {
-  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const { session, profile: authProfile } = useAuth()
+  const user = session?.user
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [formData, setFormData] = useState({
     fullName: "",
@@ -34,63 +34,40 @@ export default function UserProfilePage() {
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false) // Declare the saving variable
+  const [saving, setSaving] = useState(false)
   const { toast } = useToast()
 
-  const supabase = createBrowserClient()
-
   useEffect(() => {
-    const getUser = async () => {
+    const loadProfile = async () => {
       console.log("[v0] Profile - Getting user data")
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
+      if (user && authProfile) {
         console.log("[v0] Profile - User found:", user.id)
-        setUser(user)
 
-        // Buscar perfil do usuário na tabela profiles
-        const { data: profileData, error } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-        if (error) {
-          console.log("[v0] Profile - Error fetching profile:", error)
-          // Se não existe perfil, criar um básico
-          const newProfile = {
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || "",
-            phone: user.user_metadata?.phone || "",
-            company_name: user.user_metadata?.company_name || "",
-            role: "user",
-          }
-
-          const { error: insertError } = await supabase.from("profiles").insert([newProfile])
-
-          if (!insertError) {
-            setProfile(newProfile as UserProfile)
-            setFormData({
-              fullName: newProfile.full_name || "",
-              phone: newProfile.phone || "",
-              companyName: newProfile.company_name || "",
-            })
-          }
-        } else {
-          console.log("[v0] Profile - Profile data:", profileData)
-          setProfile(profileData)
-          setFormData({
-            fullName: profileData.full_name || "",
-            phone: profileData.phone || "",
-            companyName: profileData.company_name || "",
-          })
+        const profileData: UserProfile = {
+          id: authProfile.id,
+          fullName: authProfile.full_name || "",
+          email: authProfile.email || user.email || "",
+          phone: authProfile.phone || "",
+          companyName: authProfile.company_name || "",
+          role: authProfile.role || "user",
+          createdAt: authProfile.created_at || "",
+          updatedAt: authProfile.updated_at || "",
         }
+
+        console.log("[v0] Profile - Profile data:", profileData)
+        setProfile(profileData)
+        setFormData({
+          fullName: profileData.fullName || "",
+          phone: profileData.phone || "",
+          companyName: profileData.companyName || "",
+        })
       }
       setLoading(false)
     }
 
-    getUser()
-  }, [])
+    loadProfile()
+  }, [user, authProfile])
 
   const handleSave = async () => {
     if (!formData.fullName.trim()) {
@@ -109,26 +86,20 @@ export default function UserProfilePage() {
     try {
       console.log("[v0] Profile - Updating profile for user:", user.id)
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: formData.fullName,
+      const response = await fetch("/api/update-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          fullName: formData.fullName,
           phone: formData.phone,
-          company_name: formData.companyName,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
-
-      if (error) throw error
-
-      // Atualizar também os metadados do usuário no auth
-      await supabase.auth.updateUser({
-        data: {
-          full_name: formData.fullName,
-          phone: formData.phone,
-          company_name: formData.companyName,
-        },
+          companyName: formData.companyName,
+        }),
       })
+
+      if (!response.ok) {
+        throw new Error("Failed to update profile")
+      }
 
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
@@ -218,7 +189,7 @@ export default function UserProfilePage() {
               <div className="flex items-center space-x-2 text-sm">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">
-                  Cliente desde {user?.created_at ? new Date(user.created_at).toLocaleDateString("pt-BR") : "-"}
+                  Cliente desde {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString("pt-BR") : "-"}
                 </span>
               </div>
               <div className="flex items-center space-x-2 text-sm">
@@ -315,7 +286,7 @@ export default function UserProfilePage() {
             </div>
             <div className="text-center p-4 bg-muted rounded-lg">
               <div className="text-2xl font-bold text-altea-navy dark:text-altea-gold">
-                {profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString("pt-BR") : "-"}
+                {profile?.updatedAt ? new Date(profile.updatedAt).toLocaleDateString("pt-BR") : "-"}
               </div>
               <div className="text-sm text-muted-foreground">Última Atualização</div>
             </div>

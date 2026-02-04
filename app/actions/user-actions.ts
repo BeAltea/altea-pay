@@ -1,7 +1,10 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { profiles, users } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import bcrypt from "bcryptjs"
 
 export interface CreateUserParams {
   email: string
@@ -25,31 +28,30 @@ export interface DeleteUserParams {
 
 export async function createUser(params: CreateUserParams) {
   try {
-    const supabase = await createClient()
-
     // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: params.email,
-      password: params.password,
-      email_confirm: true,
-    })
+    const passwordHash = await bcrypt.hash(params.password, 12)
 
-    if (authError) throw authError
+    const [authData] = await db
+      .insert(users)
+      .values({
+        email: params.email,
+        passwordHash,
+        name: params.fullName,
+        emailVerified: new Date(),
+      })
+      .returning()
 
     // Create profile
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .insert({
-        id: authData.user.id,
+    const [profileData] = await db
+      .insert(profiles)
+      .values({
+        id: authData.id,
         email: params.email,
-        full_name: params.fullName,
+        fullName: params.fullName,
         role: params.role,
-        company_id: params.companyId || null,
+        companyId: params.companyId || null,
       })
-      .select()
-      .single()
-
-    if (profileError) throw profileError
+      .returning()
 
     revalidatePath("/super-admin/users")
 
@@ -70,20 +72,15 @@ export async function createUser(params: CreateUserParams) {
 
 export async function updateUser(params: UpdateUserParams) {
   try {
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: params.fullName,
+    const [data] = await db
+      .update(profiles)
+      .set({
+        fullName: params.fullName,
         role: params.role,
-        company_id: params.companyId || null,
+        companyId: params.companyId || null,
       })
-      .eq("id", params.id)
-      .select()
-      .single()
-
-    if (error) throw error
+      .where(eq(profiles.id, params.id))
+      .returning()
 
     revalidatePath("/super-admin/users")
     revalidatePath(`/super-admin/users/${params.id}`)
@@ -105,12 +102,8 @@ export async function updateUser(params: UpdateUserParams) {
 
 export async function deleteUser(params: DeleteUserParams) {
   try {
-    const supabase = await createClient()
-
-    // Delete profile (auth user will be handled by trigger)
-    const { error } = await supabase.from("profiles").delete().eq("id", params.id)
-
-    if (error) throw error
+    // Delete profile (auth user will be handled by cascade)
+    await db.delete(profiles).where(eq(profiles.id, params.id))
 
     revalidatePath("/super-admin/users")
 

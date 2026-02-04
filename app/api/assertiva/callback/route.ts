@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { integrationLogs, creditProfiles, vmax, customers, notifications } from "@/lib/db/schema"
+import { eq, and, sql } from "drizzle-orm"
 
 function validateAssertivaWebhook(request: Request): boolean {
   // Assertiva envia um header de assinatura (se configurado)
@@ -64,14 +66,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 200 })
     }
 
-    const supabase = createAdminClient()
-
-    const { data: existingLog } = await supabase
-      .from("integration_logs")
-      .select("id")
-      .eq("integration_name", "assertiva_callback")
-      .eq("external_id", protocolo || identificador)
-      .single()
+    const [existingLog] = await db
+      .select({ id: integrationLogs.id })
+      .from(integrationLogs)
+      .where(
+        and(
+          eq(integrationLogs.action, "assertiva_callback"),
+          eq(integrationLogs.metadata, sql`${JSON.stringify({ externalId: protocolo || identificador })}::jsonb`)
+        )
+      )
+      .limit(1)
 
     if (existingLog) {
       console.log("[ASSERTIVA CALLBACK] Callback already processed (idempotent check) - returning success")
@@ -102,76 +106,91 @@ export async function POST(request: Request) {
     const isPF = documentType === "CPF"
 
     // 1. Buscar cliente na tabela VMAX
-    const { data: vmaxRecord, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq('"CPF/CNPJ"', cleanDoc)
-      .single()
+    const [vmaxRecord] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.cpfCnpj, cleanDoc))
+      .limit(1)
 
     if (vmaxRecord) {
       console.log("[ASSERTIVA CALLBACK] Found VMAX record:", vmaxRecord.id)
 
       // Buscar o tipo de análise do credit_profiles (se existir)
-      const { data: profileWithType } = await supabase
-        .from("credit_profiles")
-        .select("data_assertiva")
-        .eq("external_id", protocolo || identificador)
-        .maybeSingle()
+      const [profileWithType] = await db
+        .select({ data: creditProfiles.data })
+        .from(creditProfiles)
+        .where(eq(creditProfiles.metadata, sql`${JSON.stringify({ externalId: protocolo || identificador })}::jsonb`))
+        .limit(1)
 
-      const analysisCategory = profileWithType?.data_assertiva?.analysis_category || "behavioral"
+      const dataAssertiva = profileWithType?.data as any
+      const analysisCategory = dataAssertiva?.analysis_category || "behavioral"
       console.log("[ASSERTIVA CALLBACK] Analysis category:", analysisCategory)
 
       // Preparar dados baseado no tipo de análise
       let updateData: any = {
-        assertiva_uuid: identificador,
-        assertiva_protocol: protocolo,
+        analysisMetadata: {
+          ...(vmaxRecord.analysisMetadata as any || {}),
+          assertivaUuid: identificador,
+          assertivaProtocol: protocolo,
+        },
+        updatedAt: new Date(),
       }
 
       if (analysisCategory === "restrictive") {
         // ANÁLISE RESTRITIVA - salva credit_score, risk_level
         updateData = {
           ...updateData,
-          credit_score: creditScore,
-          risk_level: creditClass,
-          approval_status: creditScore >= 500 ? "ACEITA" : "REJEITADA",
-          auto_collection_enabled: creditScore >= 500,
-          restrictive_analysis_logs: payload,
-          restrictive_analysis_date: new Date().toISOString(),
+          creditScore: String(creditScore),
+          riskLevel: creditClass,
+          approvalStatus: creditScore >= 500 ? "ACEITA" : "REJEITADA",
+          autoCollectionEnabled: creditScore >= 500,
+          analysisMetadata: {
+            ...(updateData.analysisMetadata || {}),
+            restrictiveAnalysisLogs: payload,
+            restrictiveAnalysisDate: new Date().toISOString(),
+          },
         }
         console.log("[ASSERTIVA CALLBACK] Updating VMAX with RESTRICTIVE data")
       } else {
         // ANÁLISE COMPORTAMENTAL - salva recovery_score, recovery_class
         updateData = {
           ...updateData,
-          recovery_score: recoveryScore,
-          recovery_class: recoveryClass,
-          recovery_description: recoveryDescription,
-          approval_status: recoveryScore >= 294 ? "ACEITA" : "REJEITADA",
-          auto_collection_enabled: recoveryScore >= 294,
-          approval_reason:
-            recoveryScore >= 294
-              ? `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Aprovado automaticamente`
-              : `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Cobrança manual obrigatória`,
-          behavioral_analysis_logs: payload,
-          behavioral_analysis_date: new Date().toISOString(),
+          approvalStatus: recoveryScore >= 294 ? "ACEITA" : "REJEITADA",
+          autoCollectionEnabled: recoveryScore >= 294,
+          analysisMetadata: {
+            ...(updateData.analysisMetadata || {}),
+            recoveryScore,
+            recoveryClass,
+            recoveryDescription,
+            approvalReason:
+              recoveryScore >= 294
+                ? `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Aprovado automaticamente`
+                : `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Cobrança manual obrigatória`,
+            behavioralAnalysisLogs: payload,
+            behavioralAnalysisDate: new Date().toISOString(),
+          },
         }
         console.log("[ASSERTIVA CALLBACK] Updating VMAX with BEHAVIORAL data")
       }
 
-      const { error: updateError } = await supabase
-        .from("VMAX")
-        .update(updateData)
-        .eq("id", vmaxRecord.id)
+      try {
+        await db
+          .update(vmax)
+          .set(updateData)
+          .where(eq(vmax.id, vmaxRecord.id))
 
-      if (updateError) {
-        console.error("[ASSERTIVA CALLBACK] Error updating VMAX:", updateError)
-      } else {
         console.log("[ASSERTIVA CALLBACK] VMAX record updated successfully with", analysisCategory, "data")
+      } catch (updateError) {
+        console.error("[ASSERTIVA CALLBACK] Error updating VMAX:", updateError)
       }
     }
 
     // 2. Buscar cliente na tabela customers
-    const { data: customerRecord } = await supabase.from("customers").select("*").eq("document", cleanDoc).single()
+    const [customerRecord] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.document, cleanDoc))
+      .limit(1)
 
     const customerId = customerRecord?.id || vmaxRecord?.id
 
@@ -187,25 +206,26 @@ export async function POST(request: Request) {
 
       // Atualizar status para FAILED
       if (customerId) {
-        await supabase
-          .from("credit_profiles")
-          .update({
+        await db
+          .update(creditProfiles)
+          .set({
             status: "failed",
-            data_assertiva: payload,
+            data: payload,
           })
-          .eq("customer_id", customerId)
-          .eq("status", "pending")
+          .where(
+            and(
+              eq(creditProfiles.customerId, customerId),
+              eq(creditProfiles.status, "pending")
+            )
+          )
       }
 
       // Log de erro
-      await supabase.from("integration_logs").insert({
-        integration_name: "assertiva_callback",
-        request_type: isPF ? "PF_ASYNC" : "PJ_ASYNC",
-        document: cleanDoc,
-        external_id: protocolo || identificador,
-        request_data: { identificador, protocolo },
-        response_data: payload,
+      await db.insert(integrationLogs).values({
+        action: "assertiva_callback",
         status: "failed",
+        details: { requestType: isPF ? "PF_ASYNC" : "PJ_ASYNC", responseData: payload },
+        metadata: { externalId: protocolo || identificador, document: cleanDoc },
       })
 
       return NextResponse.json({
@@ -216,97 +236,95 @@ export async function POST(request: Request) {
     }
 
     // 3. ATUALIZAR registro existente em credit_profiles ao invés de insertar
-    const { data: existingProfile } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("external_id", protocolo || identificador)
-      .maybeSingle()
+    const [existingProfile] = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.metadata, sql`${JSON.stringify({ externalId: protocolo || identificador })}::jsonb`))
+      .limit(1)
 
     let profileId: string | null = null
 
     if (existingProfile) {
       // ATUALIZAR registro existente
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from("credit_profiles")
-        .update({
-          status: "completed",
-          score: creditScore,
-          score_assertiva: recoveryScore,
-          risk_level: creditClass,
-          data_assertiva: payload,
-          has_sanctions: acoesData?.resposta?.acoes || false,
-          updated_at: new Date().toISOString(), // Atualiza a data quando a análise é processada novamente
-        })
-        .eq("id", existingProfile.id)
-        .select()
-        .single()
+      try {
+        const [updatedProfile] = await db
+          .update(creditProfiles)
+          .set({
+            status: "completed",
+            score: String(creditScore),
+            riskLevel: creditClass,
+            data: payload,
+            metadata: {
+              ...(existingProfile.metadata as any || {}),
+              scoreAssertiva: recoveryScore,
+              hasSanctions: acoesData?.resposta?.acoes || false,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(creditProfiles.id, existingProfile.id))
+          .returning()
 
-      profileId = updatedProfile?.id || null
-
-      if (updateError) {
-        console.error("[ASSERTIVA CALLBACK] Error updating credit profile:", updateError)
-      } else {
+        profileId = updatedProfile?.id || null
         console.log("[ASSERTIVA CALLBACK] Credit profile updated:", profileId)
+      } catch (updateError) {
+        console.error("[ASSERTIVA CALLBACK] Error updating credit profile:", updateError)
       }
     } else {
       // INSERIR novo registro se não encontrou (fallback)
-      const { data: newProfile, error: insertError } = await supabase
-        .from("credit_profiles")
-        .insert({
-          customer_id: customerId,
-          company_id: customerRecord?.company_id || vmaxRecord?.id_company,
-          cpf: cleanDoc,
-          name: customerRecord?.name || vmaxRecord?.Cliente || "N/A",
-          email: customerRecord?.email || vmaxRecord?.Email,
-          phone: customerRecord?.phone || vmaxRecord?.["Telefone 1"] || vmaxRecord?.["Telefone 2"],
-          city: customerRecord?.city || vmaxRecord?.Cidade,
-          document_type: documentType,
-          score: creditScore,
-          score_assertiva: recoveryScore,
-          risk_level: creditClass,
-          source: "assertiva",
-          analysis_type: "detailed",
-          status: "completed",
-          data_assertiva: payload,
-          is_consolidated: true,
-          has_sanctions: acoesData?.resposta?.acoes || false,
-          has_public_bonds: false,
-          sanctions_count: 0,
-          public_bonds_count: 0,
-          external_id: protocolo || identificador,
-        })
-        .select()
-        .single()
+      try {
+        const [newProfile] = await db
+          .insert(creditProfiles)
+          .values({
+            customerId: customerId,
+            companyId: customerRecord?.companyId || vmaxRecord?.idCompany,
+            cpf: cleanDoc,
+            name: customerRecord?.name || (vmaxRecord as any)?.cliente || "N/A",
+            score: String(creditScore),
+            riskLevel: creditClass,
+            provider: "assertiva",
+            analysisType: "detailed",
+            status: "completed",
+            data: payload,
+            metadata: {
+              scoreAssertiva: recoveryScore,
+              hasSanctions: acoesData?.resposta?.acoes || false,
+              externalId: protocolo || identificador,
+              documentType,
+              email: customerRecord?.email,
+              phone: customerRecord?.phone,
+              city: customerRecord?.city,
+            },
+          })
+          .returning()
 
-      profileId = newProfile?.id || null
-
-      if (insertError) {
-        console.error("[ASSERTIVA CALLBACK] Error inserting credit profile:", insertError)
-      } else {
+        profileId = newProfile?.id || null
         console.log("[ASSERTIVA CALLBACK] Credit profile created:", profileId)
+      } catch (insertError) {
+        console.error("[ASSERTIVA CALLBACK] Error inserting credit profile:", insertError)
       }
     }
 
     // 4. Criar notificação para o usuário (se existe customer)
-    if (customerId && customerRecord?.company_id) {
-      await supabase.from("notifications").insert({
-        company_id: customerRecord.company_id,
+    if (customerId && customerRecord?.companyId) {
+      await db.insert(notifications).values({
+        companyId: customerRecord.companyId,
         type: "analysis_completed",
         title: "Análise Assertiva Concluída",
-        description: `Análise de ${documentType} ${cleanDoc} concluída. Score: ${recoveryScore} (Classe ${recoveryClass})`,
+        message: `Análise de ${documentType} ${cleanDoc} concluída. Score: ${recoveryScore} (Classe ${recoveryClass})`,
       })
     }
 
-    await supabase.from("integration_logs").insert({
-      integration_name: "assertiva_callback",
-      request_type: isPF ? "PF_ASYNC" : "PJ_ASYNC",
-      document: cleanDoc,
-      external_id: protocolo || identificador, // Para idempotência
-      request_data: { identificador, protocolo },
-      response_data: payload,
+    await db.insert(integrationLogs).values({
+      action: "assertiva_callback",
       status: "success",
-      credit_score: creditScore,
-      recovery_score: recoveryScore,
+      details: {
+        requestType: isPF ? "PF_ASYNC" : "PJ_ASYNC",
+        requestData: { identificador, protocolo },
+        responseData: payload,
+        creditScore,
+        recoveryScore,
+      },
+      metadata: { externalId: protocolo || identificador, document: cleanDoc },
     })
 
     console.log("[ASSERTIVA CALLBACK] Processing completed successfully")
@@ -323,15 +341,18 @@ export async function POST(request: Request) {
 
     // Salva erro no log para investigação posterior
     try {
-      const supabase = createAdminClient()
-      await supabase.from("integration_logs").insert({
-        integration_name: "assertiva_callback",
-        request_type: "UNKNOWN",
-        document: payload?.cabecalho?.entrada?.documento || "N/A",
-        external_id: payload?.cabecalho?.protocolo || payload?.cabecalho?.identificador || "N/A",
-        request_data: payload || {},
-        response_data: { error: error.message, stack: error.stack },
+      await db.insert(integrationLogs).values({
+        action: "assertiva_callback",
         status: "error",
+        details: {
+          requestType: "UNKNOWN",
+          requestData: payload || {},
+          responseData: { error: error.message, stack: error.stack },
+        },
+        metadata: {
+          document: payload?.cabecalho?.entrada?.documento || "N/A",
+          externalId: payload?.cabecalho?.protocolo || payload?.cabecalho?.identificador || "N/A",
+        },
       })
     } catch (logError) {
       console.error("[ASSERTIVA CALLBACK] Failed to log error:", logError)

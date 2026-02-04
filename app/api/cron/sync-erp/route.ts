@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { erpIntegrations } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { erpService } from "@/lib/integrations/erp/erpService"
 
 export const dynamic = "force-dynamic"
 
-// Esta rota será chamada pelo Vercel Cron ou Supabase Edge Functions
+// Esta rota sera chamada pelo Vercel Cron ou cron job externo
 // Configurar no vercel.json:
 // {
 //   "crons": [{
@@ -15,38 +17,34 @@ export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   try {
-    // Verificar autorização (Vercel Cron envia um header especial)
+    // Verificar autorizacao (Vercel Cron envia um header especial)
     const authHeader = request.headers.get("authorization")
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("[v0] Cron: Iniciando sincronização automática de ERPs")
+    console.log("[v0] Cron: Iniciando sincronizacao automatica de ERPs")
 
-    const supabase = await createClient()
-
-    // Buscar todas as integrações ativas
-    const { data: integrations, error } = await supabase.from("erp_integrations").select("*").eq("is_active", true)
-
-    if (error) {
-      console.error("[v0] Cron: Erro ao buscar integrações:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    // Buscar todas as integracoes ativas
+    const integrations = await db
+      .select()
+      .from(erpIntegrations)
+      .where(eq(erpIntegrations.isActive, true))
 
     if (!integrations || integrations.length === 0) {
-      console.log("[v0] Cron: Nenhuma integração ativa encontrada")
+      console.log("[v0] Cron: Nenhuma integracao ativa encontrada")
       return NextResponse.json({ message: "No active integrations" }, { status: 200 })
     }
 
-    console.log(`[v0] Cron: ${integrations.length} integrações ativas encontradas`)
+    console.log(`[v0] Cron: ${integrations.length} integracoes ativas encontradas`)
 
     const results = []
 
-    // Processar cada integração
+    // Processar cada integracao
     for (const integration of integrations) {
       try {
-        // Verificar se é hora de sincronizar baseado na frequência
-        const lastSync = integration.last_sync_at ? new Date(integration.last_sync_at) : null
+        // Verificar se e hora de sincronizar baseado na frequencia
+        const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null
         const now = new Date()
 
         let shouldSync = false
@@ -55,8 +53,9 @@ export async function GET(request: Request) {
           shouldSync = true
         } else {
           const hoursSinceLastSync = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
+          const config = integration.config as any
 
-          switch (integration.sync_frequency) {
+          switch (config?.sync_frequency) {
             case "hourly":
               shouldSync = hoursSinceLastSync >= 1
               break
@@ -75,11 +74,11 @@ export async function GET(request: Request) {
         }
 
         if (!shouldSync) {
-          console.log(`[v0] Cron: Pulando ${integration.erp_name} - ainda não é hora de sincronizar`)
+          console.log(`[v0] Cron: Pulando ${integration.name} - ainda nao e hora de sincronizar`)
           continue
         }
 
-        console.log(`[v0] Cron: Sincronizando ${integration.erp_name}...`)
+        console.log(`[v0] Cron: Sincronizando ${integration.name}...`)
 
         // Sincronizar clientes
         const customersResult = await erpService.syncCustomers(integration.id)
@@ -87,10 +86,10 @@ export async function GET(request: Request) {
           `[v0] Cron: Clientes sincronizados - ${customersResult.records_success} sucesso, ${customersResult.records_failed} falhas`,
         )
 
-        // Sincronizar dívidas
+        // Sincronizar dividas
         const debtsResult = await erpService.syncDebts(integration.id)
         console.log(
-          `[v0] Cron: Dívidas sincronizadas - ${debtsResult.records_success} sucesso, ${debtsResult.records_failed} falhas`,
+          `[v0] Cron: Dividas sincronizadas - ${debtsResult.records_success} sucesso, ${debtsResult.records_failed} falhas`,
         )
 
         // Enviar resultados de volta ao ERP
@@ -101,22 +100,22 @@ export async function GET(request: Request) {
 
         results.push({
           integration_id: integration.id,
-          erp_name: integration.erp_name,
+          erp_name: integration.name,
           customers: customersResult,
           debts: debtsResult,
           results: resultsSync,
         })
       } catch (error) {
-        console.error(`[v0] Cron: Erro ao processar ${integration.erp_name}:`, error)
+        console.error(`[v0] Cron: Erro ao processar ${integration.name}:`, error)
         results.push({
           integration_id: integration.id,
-          erp_name: integration.erp_name,
+          erp_name: integration.name,
           error: error instanceof Error ? error.message : "Unknown error",
         })
       }
     }
 
-    console.log("[v0] Cron: Sincronização automática concluída")
+    console.log("[v0] Cron: Sincronizacao automatica concluida")
 
     return NextResponse.json({
       message: "Sync completed",

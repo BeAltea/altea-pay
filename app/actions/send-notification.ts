@@ -1,6 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { vmax, collectionActions } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { sendEmail, generateDebtCollectionEmail } from "@/lib/notifications/email"
 import { sendSMS, generateDebtCollectionSMS } from "@/lib/notifications/sms"
 
@@ -17,57 +20,56 @@ export interface SendNotificationResult {
 
 /**
  * Send collection notification to customer
- * Called from Admin Dashboard "Enviar Cobrança Manual" button
+ * Called from Admin Dashboard "Enviar Cobranca Manual" button
  */
 export async function sendCollectionNotification({
   debtId,
   type,
 }: SendNotificationParams): Promise<SendNotificationResult> {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const session = await auth()
+    const user = session?.user
 
     if (!user) {
       return {
         success: false,
-        message: "Usuário não autenticado",
+        message: "Usuario nao autenticado",
       }
     }
 
-    const { data: vmaxRecord, error: vmaxError } = await supabase.from("VMAX").select("*").eq("id", debtId).single()
+    const [vmaxRecord] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.id, debtId))
+      .limit(1)
 
-    if (vmaxError || !vmaxRecord) {
-      console.error("[v0] VMAX record not found:", vmaxError)
+    if (!vmaxRecord) {
+      console.error("[v0] VMAX record not found")
       return {
         success: false,
-        message: "Registro de dívida não encontrado",
-        error: vmaxError?.message,
+        message: "Registro de divida nao encontrado",
       }
     }
+
+    const metadata = vmaxRecord.analysisMetadata as any
 
     console.log("[v0] VMAX record found:", {
       id: vmaxRecord.id,
-      cliente: vmaxRecord.Cliente,
-      empresa: vmaxRecord.Empresa,
-      vencido: vmaxRecord.Vencido,
-      email: vmaxRecord.Email,
-      telefone: vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"],
+      cliente: vmaxRecord.cliente,
+      idCompany: vmaxRecord.idCompany,
     })
 
-    const customerName = vmaxRecord.Cliente || "Cliente"
-    const companyName = vmaxRecord.Empresa || "Empresa"
-    const debtAmount = vmaxRecord.Vencido || "0"
-    const customerEmail = vmaxRecord.Email
-    const customerPhone = vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"]
+    const customerName = vmaxRecord.cliente || "Cliente"
+    const companyName = metadata?.Empresa || "Empresa"
+    const debtAmount = metadata?.Vencido || "0"
+    const customerEmail = metadata?.Email
+    const customerPhone = metadata?.["Telefone 1"] || metadata?.["Telefone 2"]
 
     if (type === "email") {
       if (!customerEmail) {
         return {
           success: false,
-          message: `Cliente ${customerName} não possui e-mail cadastrado na VMAX. Adicione o e-mail primeiro.`,
+          message: `Cliente ${customerName} nao possui e-mail cadastrado na VMAX. Adicione o e-mail primeiro.`,
         }
       }
     }
@@ -76,7 +78,7 @@ export async function sendCollectionNotification({
       if (!customerPhone) {
         return {
           success: false,
-          message: `Cliente ${customerName} não possui telefone cadastrado na VMAX. Adicione o telefone primeiro.`,
+          message: `Cliente ${customerName} nao possui telefone cadastrado na VMAX. Adicione o telefone primeiro.`,
         }
       }
     }
@@ -93,18 +95,18 @@ export async function sendCollectionNotification({
       const html = await generateDebtCollectionEmail({
         customerName,
         debtAmount: parsedAmount,
-        dueDate: vmaxRecord.Vecto
-          ? new Date(vmaxRecord.Vecto).toLocaleDateString("pt-BR")
+        dueDate: metadata?.Vecto
+          ? new Date(metadata.Vecto).toLocaleDateString("pt-BR")
           : "Vencida",
         companyName,
         paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || "https://alteapay.com"}/user-dashboard/debts/${debtId}`,
       })
 
-      messageContent = `Email de cobrança enviado para ${customerEmail}`
+      messageContent = `Email de cobranca enviado para ${customerEmail}`
 
       result = await sendEmail({
         to: customerEmail,
-        subject: `Cobrança Pendente - ${companyName}`,
+        subject: `Cobranca Pendente - ${companyName}`,
         html,
       })
     } else if (type === "sms" || type === "whatsapp") {
@@ -124,35 +126,31 @@ export async function sendCollectionNotification({
     } else {
       return {
         success: false,
-        message: "Tipo de notificação inválido",
+        message: "Tipo de notificacao invalido",
       }
     }
 
     if (result.success) {
       try {
-        const { error: insertError } = await supabase.from("collection_actions").insert({
-          company_id: vmaxRecord.id_company,
-          customer_id: null, // VMAX doesn't have customer UUIDs, only names
-          debt_id: debtId,
-          action_type: type,
+        await db.insert(collectionActions).values({
+          companyId: vmaxRecord.idCompany,
+          customerId: null,
+          actionType: type,
           status: "sent",
           message: messageContent,
-          sent_by: user.id,
           metadata: {
             customer_name: customerName,
             contact: type === "email" ? customerEmail : customerPhone,
             amount: parsedAmount,
             message_id: result.messageId,
+            sent_by: user.id,
+            debt_id: debtId,
           },
         })
 
-        if (insertError) {
-          console.warn("[v0] Failed to log collection action:", insertError.message)
-        } else {
-          console.log("[v0] Collection action logged successfully")
-        }
+        console.log("[v0] Collection action logged successfully")
       } catch (insertError) {
-        console.warn("[v0] Failed to log collection action (schema may need refresh):", insertError)
+        console.warn("[v0] Failed to log collection action:", insertError)
       }
 
       console.log("[v0] Notification sent successfully:", {
@@ -166,7 +164,7 @@ export async function sendCollectionNotification({
     return {
       success: result.success,
       message: result.success
-        ? `Cobrança enviada com sucesso via ${type.toUpperCase()} para ${customerName}`
+        ? `Cobranca enviada com sucesso via ${type.toUpperCase()} para ${customerName}`
         : `Erro ao enviar: ${result.error}`,
       error: result.error,
     }
@@ -174,7 +172,7 @@ export async function sendCollectionNotification({
     console.error("[v0] Send notification error:", error)
     return {
       success: false,
-      message: "Erro ao enviar notificação",
+      message: "Erro ao enviar notificacao",
       error: error instanceof Error ? error.message : "Unknown error",
     }
   }

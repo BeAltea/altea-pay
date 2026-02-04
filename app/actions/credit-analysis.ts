@@ -1,7 +1,9 @@
 "use server"
 
+import { db } from "@/lib/db"
+import { vmax, creditProfiles } from "@/lib/db/schema"
+import { eq, and, inArray } from "drizzle-orm"
 import { runVMAXAutoAnalysis } from "@/services/creditAnalysisService"
-import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function runVMAXAnalysisAll(companyId: string) {
   try {
@@ -40,16 +42,23 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
       forceRefresh,
     )
 
-    const supabase = createAdminClient()
-
     // Buscar registros selecionados
-    const { data: vmaxRecords, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select('id, "CPF/CNPJ", Cliente, Cidade')
-      .in("id", recordIds)
-      .eq("id_company", companyId)
+    const vmaxRecords = await db
+      .select({
+        id: vmax.id,
+        cpfCnpj: vmax.cpfCnpj,
+        cliente: vmax.cliente,
+        cidade: vmax.cidade,
+      })
+      .from(vmax)
+      .where(
+        and(
+          inArray(vmax.id, recordIds),
+          eq(vmax.idCompany, companyId),
+        ),
+      )
 
-    if (vmaxError || !vmaxRecords || vmaxRecords.length === 0) {
+    if (!vmaxRecords || vmaxRecords.length === 0) {
       return { success: false, error: "Nenhum registro encontrado" }
     }
 
@@ -65,58 +74,66 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
 
     for (let i = 0; i < vmaxRecords.length; i++) {
       const record = vmaxRecords[i]
-      const document = record["CPF/CNPJ"]?.replace(/\D/g, "")
+      const document = record.cpfCnpj?.replace(/\D/g, "")
 
       if (!document || (document.length !== 11 && document.length !== 14)) {
-        console.log("[v0] runVMAXAnalysisSelected - Invalid document, skipping:", record["CPF/CNPJ"])
+        console.log("[v0] runVMAXAnalysisSelected - Invalid document, skipping:", record.cpfCnpj)
         failedCount++
         continue
       }
 
       if (!forceRefresh) {
-        const { data: existingAnalysis } = await supabase
-          .from("credit_profiles")
-          .select("id, customer_id, created_at, score")
-          .eq("cpf", document)
-          .eq("company_id", companyId)
-          .eq("source", "gov")
-          .not("customer_id", "is", null)
-          .maybeSingle()
+        const [existingAnalysis] = await db
+          .select({
+            id: creditProfiles.id,
+            customerId: creditProfiles.customerId,
+            createdAt: creditProfiles.createdAt,
+            score: creditProfiles.score,
+          })
+          .from(creditProfiles)
+          .where(
+            and(
+              eq(creditProfiles.cpf, document),
+              eq(creditProfiles.companyId, companyId),
+              eq(creditProfiles.provider, "gov"),
+            ),
+          )
+          .limit(1)
 
         if (existingAnalysis) {
-          console.log("[v0] runVMAXAnalysisSelected - ♻️ USING CACHED ANALYSIS:", {
+          console.log("[v0] runVMAXAnalysisSelected - USING CACHED ANALYSIS:", {
             document,
-            customer_id: existingAnalysis.customer_id,
-            cached_at: existingAnalysis.created_at,
+            customer_id: existingAnalysis.customerId,
+            cached_at: existingAnalysis.createdAt,
             score: existingAnalysis.score,
-            vmax_record: record.Cliente,
+            vmax_record: record.cliente,
           })
           cachedCount++
           continue
         }
       } else {
         console.log(
-          "[v0] runVMAXAnalysisSelected - 🔄 FORCE REFRESH: Ignoring cache, running new analysis for:",
+          "[v0] runVMAXAnalysisSelected - FORCE REFRESH: Ignoring cache, running new analysis for:",
           document,
         )
       }
 
       try {
-        console.log("[v0] runVMAXAnalysisSelected - 🔍 ANALYZING DOCUMENT (NEW API CALL):", {
+        console.log("[v0] runVMAXAnalysisSelected - ANALYZING DOCUMENT (NEW API CALL):", {
           index: i + 1,
           total: vmaxRecords.length,
           cpf: document,
-          customer_name: record.Cliente,
-          customer_city: record.Cidade,
+          customer_name: record.cliente,
+          customer_city: record.cidade,
           vmaxId: record.id,
           force_refresh: forceRefresh,
         })
 
-        // Executar análise
+        // Executar analise
         const analysisResult = await analyzeFree(document, companyId)
 
         if (!analysisResult.success) {
-          console.error("[v0] runVMAXAnalysisSelected - ❌ Analysis failed:", document, analysisResult.error)
+          console.error("[v0] runVMAXAnalysisSelected - Analysis failed:", document, analysisResult.error)
           failedCount++
           if (i < vmaxRecords.length - 1) {
             await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -124,9 +141,9 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
           continue
         }
 
-        console.log("[v0] runVMAXAnalysisSelected - ✅ API RETURNED DATA FOR:", {
+        console.log("[v0] runVMAXAnalysisSelected - API RETURNED DATA FOR:", {
           document,
-          customer_name: record.Cliente,
+          customer_name: record.cliente,
           score: analysisResult.data?.score_calculado,
           sanctions_count: analysisResult.data?.total_sancoes || 0,
           public_bonds_count: analysisResult.data?.vinculos_publicos?.length || 0,
@@ -136,30 +153,30 @@ export async function runVMAXAnalysisSelected(companyId: string, recordIds: stri
         const storeResult = await storeAnalysisResult(document, analysisResult.data, "gov", "free", companyId)
 
         if (!storeResult.success) {
-          console.error("[v0] runVMAXAnalysisSelected - ❌ Failed to store:", document, storeResult.error)
+          console.error("[v0] runVMAXAnalysisSelected - Failed to store:", document, storeResult.error)
           failedCount++
         } else {
           analyzedCount++
-          console.log("[v0] runVMAXAnalysisSelected - ✅ Successfully analyzed and stored:", {
+          console.log("[v0] runVMAXAnalysisSelected - Successfully analyzed and stored:", {
             document,
-            customer_name: record.Cliente,
+            customer_name: record.cliente,
             score: analysisResult.data?.score_calculado,
           })
         }
       } catch (error: any) {
-        console.error("[v0] runVMAXAnalysisSelected - ❌ Error processing:", document, error)
+        console.error("[v0] runVMAXAnalysisSelected - Error processing:", document, error)
         failedCount++
       }
 
       if (i < vmaxRecords.length - 1) {
-        console.log("[v0] runVMAXAnalysisSelected - ⏳ Waiting 5s before next request...")
+        console.log("[v0] runVMAXAnalysisSelected - Waiting 5s before next request...")
         await new Promise((resolve) => setTimeout(resolve, 5000))
       }
     }
 
     const duration = Date.now() - startTime
 
-    console.log("[v0] runVMAXAnalysisSelected action - 🎉 COMPLETED:", {
+    console.log("[v0] runVMAXAnalysisSelected action - COMPLETED:", {
       total: vmaxRecords.length,
       analyzed: analyzedCount,
       cached: cachedCount,

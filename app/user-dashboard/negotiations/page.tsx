@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { agreements, debts } from "@/lib/db/schema"
+import { eq, desc, inArray } from "drizzle-orm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,38 +11,51 @@ import { NegotiationFilters } from "@/components/user-dashboard/negotiation-filt
 import { CreateNegotiationDialog } from "@/components/user-dashboard/create-negotiation-dialog"
 
 export default async function UserNegotiationsPage() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await auth()
+  const user = session?.user
 
   if (!user) return null
 
-  // Get user's negotiations with debt information
-  const { data: negotiations } = await supabase
-    .from("negotiations")
-    .select(`
-      *,
-      debts (
-        id,
-        description,
-        amount,
-        due_date,
-        status,
-        user_id
-      )
-    `)
-    .eq("debts.user_id", user.id)
-    .order("created_at", { ascending: false })
+  // Get user's negotiations
+  const negotiationsList = await db
+    .select()
+    .from(agreements)
+    .where(eq(agreements.customerId, user.id))
+    .orderBy(desc(agreements.createdAt))
+
+  // Get user's debts to match with negotiations
+  const debtsList = await db
+    .select()
+    .from(debts)
+    .where(eq(debts.customerId, user.id))
+
+  // Map negotiations with debt info
+  const negotiations = negotiationsList.map((negotiation) => {
+    const debt = debtsList.find((d) => d.id === negotiation.debtId)
+    return {
+      ...negotiation,
+      debts: debt ? {
+        id: debt.id,
+        description: debt.description,
+        amount: debt.amount,
+        due_date: debt.dueDate,
+        status: debt.status,
+        user_id: debt.customerId,
+      } : null,
+    }
+  })
 
   // Get user's open debts for creating new negotiations
-  const { data: openDebts } = await supabase
-    .from("debts")
-    .select("*")
-    .eq("user_id", user.id)
-    .in("status", ["open", "overdue", "in_collection"])
-    .order("due_date", { ascending: true })
+  const openDebts = await db
+    .select()
+    .from(debts)
+    .where(eq(debts.customerId, user.id))
+    .orderBy(debts.dueDate)
+
+  // Filter open debts by status
+  const filteredOpenDebts = openDebts.filter(d =>
+    ["open", "overdue", "in_collection"].includes(d.status || "")
+  )
 
   // Calculate summary stats
   const totalNegotiations = negotiations?.length || 0
@@ -49,12 +65,12 @@ export default async function UserNegotiationsPage() {
   const completedNegotiations = negotiations?.filter((n) => n.status === "completed") || []
 
   const totalNegotiatedAmount =
-    negotiations?.reduce((sum, negotiation) => sum + Number(negotiation.proposed_amount), 0) || 0
+    negotiations?.reduce((sum, negotiation) => sum + Number(negotiation.agreedAmount || 0), 0) || 0
   const totalSavings =
     negotiations?.reduce((sum, negotiation) => {
       if (negotiation.status === "accepted" || negotiation.status === "completed") {
-        const originalAmount = Number(negotiation.debts?.amount || 0)
-        const negotiatedAmount = Number(negotiation.proposed_amount)
+        const originalAmount = Number(negotiation.originalAmount || 0)
+        const negotiatedAmount = Number(negotiation.agreedAmount || 0)
         return sum + (originalAmount - negotiatedAmount)
       }
       return sum
@@ -69,7 +85,13 @@ export default async function UserNegotiationsPage() {
           <p className="text-muted-foreground">Gerencie suas propostas de negociação e acordos de pagamento</p>
         </div>
         <div className="flex gap-2 mt-4 sm:mt-0">
-          <CreateNegotiationDialog openDebts={openDebts || []} />
+          <CreateNegotiationDialog openDebts={filteredOpenDebts.map(d => ({
+            id: d.id,
+            description: d.description || "",
+            amount: String(d.amount),
+            due_date: d.dueDate,
+            status: d.status || "",
+          })) || []} />
           <Button variant="outline" size="sm" className="bg-transparent">
             <Filter className="h-4 w-4 mr-2" />
             Filtros
@@ -164,28 +186,34 @@ export default async function UserNegotiationsPage() {
       )}
 
       {/* Quick Actions for Open Debts */}
-      {openDebts && openDebts.length > 0 && (
+      {filteredOpenDebts && filteredOpenDebts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Dívidas Disponíveis para Negociação</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Você tem {openDebts.length} dívida{openDebts.length > 1 ? "s" : ""} que pode
-              {openDebts.length > 1 ? "m" : ""} ser negociada{openDebts.length > 1 ? "s" : ""}
+              Você tem {filteredOpenDebts.length} dívida{filteredOpenDebts.length > 1 ? "s" : ""} que pode
+              {filteredOpenDebts.length > 1 ? "m" : ""} ser negociada{filteredOpenDebts.length > 1 ? "s" : ""}
             </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {openDebts.slice(0, 3).map((debt) => (
+              {filteredOpenDebts.slice(0, 3).map((debt) => (
                 <div key={debt.id} className="border rounded-lg p-4">
                   <h4 className="font-medium">{debt.description}</h4>
                   <p className="text-sm text-muted-foreground">
                     R$ {Number(debt.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Vence em {new Date(debt.due_date).toLocaleDateString("pt-BR")}
+                    Vence em {debt.dueDate ? new Date(debt.dueDate).toLocaleDateString("pt-BR") : "-"}
                   </p>
                   <CreateNegotiationDialog
-                    openDebts={[debt]}
+                    openDebts={[{
+                      id: debt.id,
+                      description: debt.description || "",
+                      amount: String(debt.amount),
+                      due_date: debt.dueDate,
+                      status: debt.status || "",
+                    }]}
                     triggerButton={
                       <Button size="sm" className="mt-2 w-full">
                         <MessageSquare className="h-4 w-4 mr-2" />
@@ -222,9 +250,15 @@ export default async function UserNegotiationsPage() {
               <p className="text-muted-foreground text-center mb-4">
                 Você ainda não iniciou nenhuma negociação. Comece negociando suas dívidas em aberto.
               </p>
-              {openDebts && openDebts.length > 0 && (
+              {filteredOpenDebts && filteredOpenDebts.length > 0 && (
                 <CreateNegotiationDialog
-                  openDebts={openDebts}
+                  openDebts={filteredOpenDebts.map(d => ({
+                    id: d.id,
+                    description: d.description || "",
+                    amount: String(d.amount),
+                    due_date: d.dueDate,
+                    status: d.status || "",
+                  }))}
                   triggerButton={
                     <Button>
                       <Plus className="h-4 w-4 mr-2" />

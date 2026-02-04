@@ -1,40 +1,24 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { vmax, creditProfiles } from "@/lib/db/schema"
+import { eq, and, asc, desc, inArray, sql } from "drizzle-orm"
 
 export async function getVMAXRecords(companyId: string) {
   try {
     console.log("[SERVER] getVMAXRecords - Fetching for company:", companyId)
 
-    const supabase = createAdminClient()
-
-    // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
-    let allData: any[] = []
-    let page = 0
-    const pageSize = 1000
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: vmaxPage, error } = await supabase
-        .from("VMAX")
-        .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
-        .eq("id_company", companyId)
-        .order("Cliente")
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-
-      if (error) {
-        console.error("[SERVER] getVMAXRecords - Error:", error)
-        throw error
-      }
-
-      if (vmaxPage && vmaxPage.length > 0) {
-        allData = [...allData, ...vmaxPage]
-        page++
-        hasMore = vmaxPage.length === pageSize
-      } else {
-        hasMore = false
-      }
-    }
+    const allData = await db
+      .select({
+        id: vmax.id,
+        cpfCnpj: vmax.cpfCnpj,
+        cliente: vmax.cliente,
+        cidade: vmax.cidade,
+        idCompany: vmax.idCompany,
+      })
+      .from(vmax)
+      .where(eq(vmax.idCompany, companyId))
+      .orderBy(asc(vmax.cliente))
 
     console.log("[SERVER] getVMAXRecords - Found records:", allData.length)
 
@@ -47,85 +31,84 @@ export async function getVMAXRecords(companyId: string) {
 
 export async function getCustomerDetails(vmaxId: string) {
   try {
-    const supabase = createAdminClient()
-
     console.log("[SERVER][v0] getCustomerDetails - Searching for VMAX ID:", vmaxId)
 
     // Buscar na tabela VMAX pelo ID
-    const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*").eq("id", vmaxId).single()
+    const [vmaxData] = await db
+      .select()
+      .from(vmax)
+      .where(eq(vmax.id, vmaxId))
+      .limit(1)
 
-    if (vmaxError || !vmaxData) {
-      console.log("[SERVER][v0] getCustomerDetails - Cliente não encontrado:", vmaxError?.message)
-      return { success: false, error: "Cliente não encontrado" }
+    if (!vmaxData) {
+      console.log("[SERVER][v0] getCustomerDetails - Cliente nao encontrado")
+      return { success: false, error: "Cliente nao encontrado" }
     }
 
     console.log("[SERVER][v0] getCustomerDetails - Found VMAX data:", {
       id: vmaxData.id,
-      name: vmaxData.Cliente,
-      document: vmaxData["CPF/CNPJ"],
+      name: vmaxData.cliente,
+      document: vmaxData.cpfCnpj,
     })
 
-    const { data: creditProfile, error: creditError } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", vmaxId)
-      .in("source", ["assertiva", "credit_analysis"])
-      .order("created_at", { ascending: false })
+    const [creditProfile] = await db
+      .select()
+      .from(creditProfiles)
+      .where(
+        and(
+          eq(creditProfiles.customerId, vmaxId),
+          inArray(creditProfiles.provider, ["assertiva", "credit_analysis"]),
+        ),
+      )
+      .orderBy(desc(creditProfiles.createdAt))
       .limit(1)
-      .maybeSingle()
 
-    if (creditError) {
-      console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profile:", creditError)
-    }
-
-    // Buscar histórico completo de análises
-    const { data: creditProfiles, error: profilesError } = await supabase
-      .from("credit_profiles")
-      .select("*")
-      .eq("customer_id", vmaxId)
-      .order("created_at", { ascending: false })
-
-    if (profilesError) {
-      console.error("[SERVER][v0] getCustomerDetails - Error fetching credit profiles:", profilesError)
-    }
+    // Buscar historico completo de analises
+    const creditProfilesList = await db
+      .select()
+      .from(creditProfiles)
+      .where(eq(creditProfiles.customerId, vmaxId))
+      .orderBy(desc(creditProfiles.createdAt))
 
     console.log("[SERVER][v0] getCustomerDetails - Analysis summary:", {
       has_credit_analysis: !!creditProfile,
-      total_analyses: creditProfiles?.length || 0,
+      total_analyses: creditProfilesList.length,
     })
 
     if (creditProfile) {
       console.log("[SERVER][v0] getCustomerDetails - Latest analysis:", {
-        source: creditProfile.source,
+        source: creditProfile.provider,
         score: creditProfile.score,
-        created_at: creditProfile.created_at,
+        created_at: creditProfile.createdAt,
         has_data: !!creditProfile.data,
-        data_keys: creditProfile.data ? Object.keys(creditProfile.data) : [],
+        data_keys: creditProfile.data ? Object.keys(creditProfile.data as object) : [],
       })
     } else {
       console.log("[SERVER][v0] getCustomerDetails - No credit profiles found for customer_id:", vmaxId)
     }
 
+    const metadata = vmaxData.analysisMetadata as any
+
     return {
       success: true,
       data: {
         id: vmaxData.id,
-        name: vmaxData.Cliente || "N/A",
-        document: vmaxData["CPF/CNPJ"] || "N/A",
-        city: vmaxData.Cidade || null,
-        company: vmaxData.Empresa || null,
-        overdue_amount: vmaxData.Vencido || null,
-        first_overdue: vmaxData.Vecto || null,
-        days_overdue: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || null,
-        cancellation_date: vmaxData["DT Cancelamento"] || null,
+        name: vmaxData.cliente || "N/A",
+        document: vmaxData.cpfCnpj || "N/A",
+        city: vmaxData.cidade || null,
+        company: metadata?.Empresa || null,
+        overdue_amount: metadata?.Vencido || null,
+        first_overdue: vmaxData.primeiraVencida || null,
+        days_overdue: Number(String(vmaxData.maiorAtraso || "0").replace(/\D/g, "")) || null,
+        cancellation_date: metadata?.["DT Cancelamento"] || null,
         email: null,
         phone: null,
-        created_at: vmaxData.Vecto || new Date().toISOString(),
+        created_at: vmaxData.primeiraVencida || new Date().toISOString(),
         score: creditProfile?.score || null,
         analysis_data: creditProfile?.data || null,
         analysis_status: creditProfile?.status || null,
-        analysis_source: creditProfile?.source || null,
-        analysis_history: creditProfiles || [],
+        analysis_source: creditProfile?.provider || null,
+        analysis_history: creditProfilesList || [],
       },
     }
   } catch (error: any) {
@@ -136,14 +119,7 @@ export async function getCustomerDetails(vmaxId: string) {
 
 export async function getVmaxColumns() {
   try {
-    const supabase = createAdminClient()
-
-    const { data, error } = await supabase.from("VMAX").select("*").limit(1)
-
-    if (error) {
-      console.error("[v0] getVmaxColumns - Error:", error)
-      return { success: false, columns: [] }
-    }
+    const data = await db.select().from(vmax).limit(1)
 
     // Get all column names from the first row
     const columns = data && data.length > 0 ? Object.keys(data[0]) : []
@@ -153,13 +129,13 @@ export async function getVmaxColumns() {
       (col) =>
         ![
           "id",
-          "id_company",
-          "created_at",
-          "updated_at",
-          "analysis_metadata",
-          "last_analysis_date",
-          "collection_processed_at",
-          "last_collection_attempt",
+          "idCompany",
+          "createdAt",
+          "updatedAt",
+          "analysisMetadata",
+          "lastAnalysisDate",
+          "collectionProcessedAt",
+          "lastCollectionAttempt",
         ].includes(col),
     )
 
@@ -177,8 +153,6 @@ export async function createVmaxClient(data: {
   [key: string]: any
 }) {
   try {
-    const supabase = createAdminClient()
-
     console.log("[v0] createVmaxClient - Creating client for company:", data.company_id)
 
     // Extract company_id and prepare insert data
@@ -187,33 +161,37 @@ export async function createVmaxClient(data: {
     // Check if customer already exists
     const cpfCnpj = clientData["CPF/CNPJ"] || clientData.cpf_cnpj
     if (cpfCnpj) {
-      const { data: existingCustomer } = await supabase
-        .from("VMAX")
-        .select("id")
-        .eq("CPF/CNPJ", cpfCnpj)
-        .eq("id_company", company_id)
-        .single()
+      const [existingCustomer] = await db
+        .select({ id: vmax.id })
+        .from(vmax)
+        .where(
+          and(
+            eq(vmax.cpfCnpj, cpfCnpj),
+            eq(vmax.idCompany, company_id),
+          ),
+        )
+        .limit(1)
 
       if (existingCustomer) {
-        return { success: false, message: "Cliente já cadastrado nesta empresa" }
+        return { success: false, message: "Cliente ja cadastrado nesta empresa" }
       }
     }
 
     // Prepare insert object with company_id and default values
     const insertData: any = {
-      ...clientData,
-      id_company: company_id,
-      auto_collection_enabled: false,
-      approval_status: "PENDENTE",
+      idCompany: company_id,
+      autoCollectionEnabled: false,
+      approvalStatus: "PENDENTE",
+      cliente: clientData.Cliente || clientData.name,
+      cpfCnpj: clientData["CPF/CNPJ"] || clientData.cpf_cnpj,
+      cidade: clientData.Cidade || clientData.city,
     }
 
     // Insert customer into VMAX table
-    const { data: newCustomer, error: insertError } = await supabase.from("VMAX").insert(insertData).select().single()
-
-    if (insertError) {
-      console.error("[v0] createVmaxClient - Error inserting customer:", insertError)
-      return { success: false, message: "Erro ao cadastrar cliente no banco de dados" }
-    }
+    const [newCustomer] = await db
+      .insert(vmax)
+      .values(insertData)
+      .returning()
 
     console.log("[v0] createVmaxClient - Cliente criado com sucesso:", newCustomer.id)
 

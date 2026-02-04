@@ -10,7 +10,6 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CreditCard, QrCode, FileText, CheckCircle, Clock, Copy, Download, Loader2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 interface PaymentProcessingModalProps {
@@ -93,8 +92,6 @@ export function PaymentProcessingModal({ isOpen, onClose, debt }: PaymentProcess
 
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      const supabase = createClient()
 
       // Create payment record (simulated)
       console.log("[v0] PaymentProcessingModal - Creating payment record for debt:", debt.id)

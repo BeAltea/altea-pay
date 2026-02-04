@@ -17,7 +17,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, MessageSquare, Calculator, CheckCircle, Loader2 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
 
@@ -75,8 +74,6 @@ export function CreateNegotiationDialog({ openDebts, triggerButton }: CreateNego
     setIsSubmitting(true)
 
     try {
-      const supabase = createClient()
-
       // Create mock negotiation record
       const mockNegotiation = {
         id: `neg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

@@ -1,4 +1,7 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { auth } from "@/lib/auth/config"
+import { db } from "@/lib/db"
+import { eq } from "drizzle-orm"
+import { vmax, companies } from "@/lib/db/schema"
 import { CustomersFilterClient } from "@/components/super-admin/customers-filter-client"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -6,57 +9,46 @@ import { ArrowLeft } from "lucide-react"
 import { notFound } from "next/navigation"
 
 export default async function ManageCustomersPage({ params }: { params: { id: string } }) {
-  const supabase = createAdminClient()
+  const session = await auth()
+  const user = session?.user
 
-  const { data: company, error: companyError } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("id", params.id)
-    .single()
-
-  if (companyError || !company) {
+  if (!user) {
     notFound()
   }
 
-  // Buscar SOMENTE da tabela VMAX (tabela customers foi descontinuada)
-  let vmaxCustomers: any[] = []
-  let page = 0
-  const pageSize = 1000
-  let hasMore = true
+  const [company] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, params.id))
+    .limit(1)
 
-  while (hasMore) {
-    const { data: vmaxPage, error: vmaxPageError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("id_company", params.id)
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (vmaxPageError) {
-      console.log("[v0] VMAX page error:", vmaxPageError.message)
-      break
-    }
-
-    console.log(`[v0] VMAX customers page ${page}: ${vmaxPage?.length || 0} records`)
-
-    if (vmaxPage && vmaxPage.length > 0) {
-      vmaxCustomers = [...vmaxCustomers, ...vmaxPage]
-      page++
-      hasMore = vmaxPage.length === pageSize
-    } else {
-      hasMore = false
-    }
+  if (!company) {
+    notFound()
   }
 
-  console.log("[v0] TOTAL VMAX customers loaded (after pagination):", vmaxCustomers.length)
+  // Fetch all VMAX records for this company
+  const vmaxCustomers = await db
+    .select()
+    .from(vmax)
+    .where(eq(vmax.idCompany, params.id))
 
-  const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
-    const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
+  console.log("[v0] TOTAL VMAX customers loaded:", vmaxCustomers.length)
+
+  const vmaxProcessed = (vmaxCustomers || []).map((vmaxRecord) => {
+    // Access metadata for additional fields not in schema
+    const metadata = vmaxRecord.analysisMetadata as any
+
+    // Get Vencido value - try valorTotal first, then metadata
+    const vencidoStr = String(vmaxRecord.valorTotal || metadata?.Vencido || "0")
     const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
-    // Remove ponto usado como separador de milhar no formato brasileiro
-    const diasInadStr = String(vmax["Dias Inad."] || vmax.dias_inad || "0")
+
+    // Get Dias Inad. - try maiorAtraso first, then metadata
+    const diasInadStr = String(vmaxRecord.maiorAtraso || metadata?.["Dias Inad."] || "0")
     const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
-    const primeiraVencida = vmax.Vecto || vmax.primeira_vencida
-    const dtCancelamento = vmax["DT Cancelamento"] || vmax.dt_cancelamento
+
+    // Get dates
+    const primeiraVencida = vmaxRecord.primeiraVencida || metadata?.Vecto
+    const dtCancelamento = metadata?.["DT Cancelamento"]
 
     let status: "active" | "overdue" | "negotiating" | "paid" = "active"
     if (diasInad > 0) {
@@ -66,23 +58,23 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     }
 
     return {
-      id: vmax.id || `vmax-${Math.random()}`,
-      name: vmax.Cliente || vmax.cliente || "Cliente VMAX",
+      id: vmaxRecord.id || `vmax-${Math.random()}`,
+      name: vmaxRecord.cliente || "Cliente VMAX",
       email: null,
       phone: null,
-      document: vmax["CPF/CNPJ"] || vmax.cpf_cnpj || "N/A",
+      document: vmaxRecord.cpfCnpj || "N/A",
       company_id: params.id,
       created_at: primeiraVencida || new Date().toISOString(),
       totalDebt: vencidoValue,
       overdueDebt: diasInad > 0 ? vencidoValue : 0,
       lastPayment: dtCancelamento || primeiraVencida || new Date().toISOString(),
       status,
-      city: vmax.Cidade || vmax.cidade || null,
+      city: vmaxRecord.cidade || null,
       daysOverdue: diasInad,
     }
   })
 
-  // Usar SOMENTE dados da tabela VMAX
+  // Use only VMAX data
   const allCustomers = vmaxProcessed
 
   return (

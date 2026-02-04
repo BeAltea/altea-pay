@@ -1,6 +1,7 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { notifications } from "@/lib/db/schema"
 
 export interface CreateNotificationParams {
   userId: string
@@ -12,22 +13,17 @@ export interface CreateNotificationParams {
 
 export async function createNotification(params: CreateNotificationParams) {
   try {
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-      .from("notifications")
-      .insert({
-        user_id: params.userId,
-        company_id: params.companyId,
+    const [data] = await db
+      .insert(notifications)
+      .values({
+        userId: params.userId,
+        companyId: params.companyId,
         type: params.type,
         title: params.title,
-        description: params.description,
-        read: false,
+        message: params.description,
+        isRead: false,
       })
-      .select()
-      .single()
-
-    if (error) throw error
+      .returning()
 
     return { success: true, data }
   } catch (error) {
@@ -47,7 +43,7 @@ export async function notifyImportComplete(
     userId,
     companyId,
     type: "import_complete",
-    title: "Nova importação concluída",
+    title: "Nova importacao concluida",
     description: `${successfulRecords} de ${totalRecords} registros processados com sucesso`,
   })
 }
@@ -62,7 +58,7 @@ export async function notifyCollectionRuleExecuted(
     userId,
     companyId,
     type: "collection_rule_executed",
-    title: "Régua de cobrança executada",
+    title: "Regua de cobranca executada",
     description: `${emailsSent} ${emailsSent === 1 ? "email enviado" : "emails enviados"} automaticamente - ${ruleName}`,
   })
 }
@@ -92,7 +88,7 @@ export async function notifyCreditAnalysisComplete(userId: string, companyId: st
     userId,
     companyId,
     type: "credit_analysis_complete",
-    title: "Análise restritiva concluída",
+    title: "Analise restritiva concluida",
     description: `${customersAnalyzed} ${customersAnalyzed === 1 ? "cliente analisado" : "clientes analisados"} com sucesso`,
   })
 }

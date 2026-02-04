@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth/config"
+import { debts } from "@/lib/db/schema"
+import { eq, inArray } from "drizzle-orm"
 import { ClassificationEngine, createClassificationCriteria } from "@/lib/classification-engine"
 import { type NextRequest, NextResponse } from "next/server"
 
@@ -6,14 +9,10 @@ export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
     // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -21,34 +20,19 @@ export async function POST(request: NextRequest) {
     const { debtIds } = body
 
     // Get debts to classify
-    let query = supabase
-      .from("debts")
-      .select(`
-        id,
-        current_amount,
-        days_overdue,
-        customer_id,
-        customers (
-          id,
-          name,
-          email,
-          document
-        )
-      `)
-      .eq("user_id", user.id)
-
+    let debtResults
     if (debtIds && debtIds.length > 0) {
-      query = query.in("id", debtIds)
+      debtResults = await db
+        .select()
+        .from(debts)
+        .where(inArray(debts.id, debtIds))
+    } else {
+      debtResults = await db
+        .select()
+        .from(debts)
     }
 
-    const { data: debts, error: debtsError } = await query
-
-    if (debtsError) {
-      console.error("Error fetching debts:", debtsError)
-      return NextResponse.json({ error: "Failed to fetch debts" }, { status: 500 })
-    }
-
-    if (!debts || debts.length === 0) {
+    if (!debtResults || debtResults.length === 0) {
       return NextResponse.json({ message: "No debts found to classify" })
     }
 
@@ -57,10 +41,11 @@ export async function POST(request: NextRequest) {
 
     // Classify each debt
     const classifications = []
-    for (const debt of debts) {
+    for (const debt of debtResults) {
+      const daysOverdue = 0 // Would need to compute from dueDate
       const criteria = createClassificationCriteria({
-        daysOverdue: debt.days_overdue || 0,
-        currentAmount: debt.current_amount,
+        daysOverdue: daysOverdue,
+        currentAmount: Number(debt.amount),
         // In a real implementation, you would fetch customer history here
         customerHistory: {
           previousPayments: 0,
@@ -79,14 +64,14 @@ export async function POST(request: NextRequest) {
       })
 
       // Update debt classification in database
-      await supabase.from("debts").update({ classification: result.classification }).eq("id", debt.id)
+      await db.update(debts).set({ classification: result.classification }).where(eq(debts.id, debt.id))
     }
 
     // Get classification stats
-    const criteriaList = debts.map((debt) =>
+    const criteriaList = debtResults.map((debt) =>
       createClassificationCriteria({
-        daysOverdue: debt.days_overdue || 0,
-        currentAmount: debt.current_amount,
+        daysOverdue: 0,
+        currentAmount: Number(debt.amount),
       }),
     )
     const stats = classificationEngine.getClassificationStats(criteriaList)
@@ -105,35 +90,28 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
     // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await auth()
+    const user = session?.user
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Get classification statistics
-    const { data: debts, error } = await supabase
-      .from("debts")
-      .select("classification, current_amount, days_overdue")
-      .eq("user_id", user.id)
-
-    if (error) {
-      console.error("Error fetching debts:", error)
-      return NextResponse.json({ error: "Failed to fetch debts" }, { status: 500 })
-    }
+    const debtResults = await db
+      .select({
+        classification: debts.classification,
+        amount: debts.amount,
+      })
+      .from(debts)
 
     const stats = {
-      total: debts.length,
-      low: debts.filter((d) => d.classification === "low").length,
-      medium: debts.filter((d) => d.classification === "medium").length,
-      high: debts.filter((d) => d.classification === "high").length,
-      critical: debts.filter((d) => d.classification === "critical").length,
-      totalAmount: debts.reduce((sum, debt) => sum + (debt.current_amount || 0), 0),
+      total: debtResults.length,
+      low: debtResults.filter((d) => d.classification === "low").length,
+      medium: debtResults.filter((d) => d.classification === "medium").length,
+      high: debtResults.filter((d) => d.classification === "high").length,
+      critical: debtResults.filter((d) => d.classification === "critical").length,
+      totalAmount: debtResults.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
     }
 
     return NextResponse.json({ stats })

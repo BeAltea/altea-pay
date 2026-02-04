@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bell, Search, Sun, Moon, User, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
@@ -58,29 +58,8 @@ export function UserHeader({ user }: UserHeaderProps) {
     if (!user?.id) return
 
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(10)
-
-      if (error) {
-        console.error("Error fetching notifications:", error)
-        return
-      }
-
-      const formattedNotifications: Notification[] = (data || []).map((notif) => ({
-        id: notif.id,
-        title: notif.title || "Nova notificação",
-        message: notif.description || "",
-        type: notif.type || "info",
-        timestamp: notif.created_at,
-        read: notif.read || false,
-      }))
-
-      setNotifications(formattedNotifications)
+      // TODO: Replace with server action or API route for notifications
+      setNotifications([])
     } catch (error) {
       console.error("Exception fetching notifications:", error)
     } finally {
@@ -104,27 +83,12 @@ export function UserHeader({ user }: UserHeaderProps) {
   const handleSignOut = async () => {
     console.log("[v0] UserHeader - Sign out initiated")
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error("[v0] UserHeader - Sign out error:", error)
-        toast({
-          title: "Erro",
-          description: "Erro ao fazer logout. Tente novamente.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("[v0] UserHeader - Sign out successful, redirecting...")
       toast({
         title: "Logout realizado",
         description: "Você foi desconectado com sucesso.",
       })
 
-      // Force redirect to login page
-      window.location.href = "/auth/login"
+      await signOut({ callbackUrl: "/auth/login" })
     } catch (error) {
       console.error("[v0] UserHeader - Sign out exception:", error)
       toast({

@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import {
   Plus,
   Trash2,
@@ -63,7 +63,7 @@ export default function CollectionRulersPage() {
   const [editingRule, setEditingRule] = useState<Rule | null>(null)
   const [companyId, setCompanyId] = useState<string>("")
   const { toast } = useToast()
-  const supabase = createClient()
+  const { companyId: authCompanyId } = useAuth()
 
   const [formData, setFormData] = useState({
     name: "",
@@ -77,24 +77,20 @@ export default function CollectionRulersPage() {
   })
 
   useEffect(() => {
-    fetchCompanyAndRules()
-  }, [])
+    if (authCompanyId) {
+      setCompanyId(authCompanyId)
+      fetchCompanyAndRules(authCompanyId)
+    }
+  }, [authCompanyId])
 
-  async function fetchCompanyAndRules() {
+  async function fetchCompanyAndRules(cId?: string) {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
+      const id = cId || companyId
+      if (!id) return
 
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
-
-      if (profile?.company_id) {
-        setCompanyId(profile.company_id)
-        const result = await getCollectionRules(profile.company_id)
-        if (result.success) {
-          setRules(result.data)
-        }
+      const result = await getCollectionRules(id)
+      if (result.success) {
+        setRules(result.data)
       }
     } catch (error) {
       console.error("Error fetching rules:", error)

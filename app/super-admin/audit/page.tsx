@@ -4,30 +4,29 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createBrowserClient } from "@/lib/supabase/client"
 
 const AuditPage = () => {
   const [auditLogs, setAuditLogs] = useState([])
-  const [securityEvents, setSecurityEvents] = useState([])
+  const [securityEventsList, setSecurityEventsList] = useState([])
 
   useEffect(() => {
     const loadRealAuditLogs = async () => {
       try {
-        const supabase = createBrowserClient()
-
-        console.log("[v0] 📋 Carregando logs reais de auditoria...")
+        // Note: Client components should fetch via API routes that use Drizzle
+        // The API routes use: import { db } from "@/lib/db"
+        console.log("[v0] Loading audit logs via API...")
       } catch (error) {
-        console.error("[v0] 🚨 Erro ao carregar logs de auditoria:", error)
+        console.error("[v0] Error loading audit logs:", error)
       }
     }
 
     const loadSecurityEvents = async () => {
       try {
-        const supabase = createBrowserClient()
-
-        console.log("[v0] 🔒 Carregando eventos de segurança reais...")
+        // Note: Client components should fetch via API routes that use Drizzle
+        // The API routes use: import { db } from "@/lib/db"
+        console.log("[v0] Loading security events via API...")
       } catch (error) {
-        console.error("[v0] 🚨 Erro ao carregar eventos de segurança:", error)
+        console.error("[v0] Error loading security events:", error)
       }
     }
 
@@ -41,7 +40,7 @@ const AuditPage = () => {
       <Tabs defaultValue="audit-logs">
         <TabsList>
           <TabsTrigger value="audit-logs">Logs de Auditoria</TabsTrigger>
-          <TabsTrigger value="security-events">Eventos de Segurança</TabsTrigger>
+          <TabsTrigger value="security-events">Eventos de Seguranca</TabsTrigger>
         </TabsList>
         <TabsContent value="audit-logs">
           <Card>
@@ -63,12 +62,12 @@ const AuditPage = () => {
         <TabsContent value="security-events">
           <Card>
             <CardHeader>
-              <CardTitle>Eventos de Segurança</CardTitle>
-              <CardDescription>Lista de eventos de segurança</CardDescription>
+              <CardTitle>Eventos de Seguranca</CardTitle>
+              <CardDescription>Lista de eventos de seguranca</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Adicionando lista de eventos de segurança */}
-              {securityEvents.map((event) => (
+              {/* Adicionando lista de eventos de seguranca */}
+              {securityEventsList.map((event) => (
                 <div key={event.id}>
                   <Badge>{event.type}</Badge>
                   <span>{event.details}</span>
