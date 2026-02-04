@@ -32,18 +32,25 @@ export default async function ClientesPage() {
 
     const { data: company } = await supabase.from("companies").select("id, name").eq("id", profile.company_id).single()
 
-    console.log("[v0] ClientesPage - company:", company)
-
-    const { data: vmaxCustomers, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select("*")
-      .eq("id_company", profile.company_id)
-
-    console.log("[v0] ClientesPage - VMAX query result:", {
-      company_id_used: profile.company_id,
-      customers_found: vmaxCustomers?.length || 0,
-      error: vmaxError?.message || null,
-    })
+    // Buscar TODOS os registros da empresa (sem limite de 1000)
+    let vmaxCustomers: any[] = []
+    let page = 0
+    const pageSize = 1000
+    
+    while (true) {
+      const { data: pageData, error: vmaxError } = await supabase
+        .from("VMAX")
+        .select("*")
+        .eq("id_company", profile.company_id)
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      
+      if (vmaxError || !pageData || pageData.length === 0) break
+      vmaxCustomers = [...vmaxCustomers, ...pageData]
+      if (pageData.length < pageSize) break
+      page++
+    }
+    
+    console.log("[v0] ClientesPage - Total VMAX customers:", vmaxCustomers.length)
 
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
