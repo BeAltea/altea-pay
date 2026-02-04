@@ -1,46 +1,99 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Altea Pay - Docker Compose Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Usage:
+#   Quick start:     ./start-local.sh
+#   Manual start:    docker compose up -d
+#   View logs:       docker compose logs -f
+#   Stop:            docker compose down
+#   Reset (delete data): docker compose down -v
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
 services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    container_name: altea-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-altea}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-altea}
       POSTGRES_DB: ${POSTGRES_DB:-alteapay}
+      # Performance tuning for development
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts:/scripts:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-altea} -d ${POSTGRES_DB:-alteapay}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     networks:
       - altea-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Next.js Application
+  # ─────────────────────────────────────────────────────────────────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: altea-app
     restart: unless-stopped
     ports:
       - "3000:3000"
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://altea:altea@postgres:5432/alteapay
+      # Override DATABASE_URL to use Docker network hostname
+      DATABASE_URL: postgresql://${POSTGRES_USER:-altea}:${POSTGRES_PASSWORD:-altea}@postgres:5432/${POSTGRES_DB:-alteapay}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-secret-change-me-in-production}
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me-in-production}
       AUTH_TRUST_HOST: "true"
+      NODE_ENV: ${NODE_ENV:-production}
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/auth/providers || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - altea-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Volumes
+# ═══════════════════════════════════════════════════════════════════════════════
 volumes:
   pgdata:
+    name: altea-pgdata
+    driver: local
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Networks
+# ═══════════════════════════════════════════════════════════════════════════════
 networks:
   altea-network:
+    name: altea-network
     driver: bridge

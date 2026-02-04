@@ -1,5 +1,20 @@
 # Altea Pay — Deployment Guide
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Local Development Setup (Automated)](#local-development-setup-automated)
+- [Database Setup](#database-setup)
+- [Local Docker Deployment (Manual)](#local-docker-deployment)
+- [Kubernetes Deployment](#kubernetes-deployment)
+- [Third-Party Services](#third-party-services)
+- [Cron Jobs](#cron-jobs)
+- [Troubleshooting](#troubleshooting)
+- [Validation Steps](#validation-steps)
+
+---
+
 ## Prerequisites
 
 | Tool | Version | Purpose |
@@ -48,6 +63,297 @@ cp .env.example .env
 | `POSTGRES_USER` | Docker | PostgreSQL user (docker-compose only) |
 | `POSTGRES_PASSWORD` | Docker | PostgreSQL password (docker-compose only) |
 | `POSTGRES_DB` | Docker | PostgreSQL database name (docker-compose only) |
+
+---
+
+## Local Development Setup (Automated)
+
+The easiest way to get started with local development is to use the automated setup script. This script handles everything: Docker services, database schema, data migration from Supabase, and superadmin user creation.
+
+### Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| Docker Desktop | Installed and running ([macOS](https://docs.docker.com/desktop/install/mac-install/) / [Windows](https://docs.docker.com/desktop/install/windows-install/) / [Linux](https://docs.docker.com/engine/install/)) |
+| RAM | Minimum 4GB available for Docker |
+| Disk Space | ~2GB for Docker images and data |
+| Ports | 3000 (app), 5432 (PostgreSQL) must be available |
+| `.env` file | Configured with Supabase credentials (for data migration) |
+
+### Environment Variables for Local Setup
+
+Create a `.env` file by copying `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+#### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `POSTGRES_USER` | Local PostgreSQL username | `altea` |
+| `POSTGRES_PASSWORD` | Local PostgreSQL password | `altea` |
+| `POSTGRES_DB` | Local PostgreSQL database name | `alteapay` |
+| `NEXTAUTH_SECRET` | NextAuth encryption secret | Generate with `openssl rand -base64 32` |
+
+#### Supabase Migration Variables (Optional)
+
+These are only required if you want to migrate data from Supabase:
+
+| Variable | Description | Where to Find |
+|----------|-------------|---------------|
+| `SUPABASE_DB_HOST` | Supabase database host | Supabase → Settings → Database → Host |
+| `SUPABASE_DB_PORT` | Supabase database port | Usually `5432` |
+| `SUPABASE_DB_NAME` | Supabase database name | Usually `postgres` |
+| `SUPABASE_DB_USER` | Supabase database user | `postgres.[project-ref]` |
+| `SUPABASE_DB_PASSWORD` | Supabase database password | Supabase → Settings → Database → Password |
+
+**How to get Supabase credentials:**
+1. Go to your Supabase project dashboard
+2. Navigate to **Settings** → **Database**
+3. Copy the **Connection string** (URI format)
+4. The connection string format is: `postgres://[user]:[password]@[host]:5432/postgres`
+5. Split this into the individual variables in your `.env` file
+
+### Running the Setup Script
+
+#### For Linux/Mac:
+
+```bash
+# Make the script executable (first time only)
+chmod +x start-local.sh
+
+# Run full setup with data migration
+./start-local.sh
+
+# Run without data migration (use existing local data)
+./start-local.sh --skip-migration
+
+# Force complete reset (removes all Docker volumes)
+./start-local.sh --reset
+```
+
+#### For Windows (PowerShell):
+
+```powershell
+# Run full setup with data migration
+.\start-local.ps1
+
+# Run without data migration
+.\start-local.ps1 -SkipMigration
+
+# Force complete reset
+.\start-local.ps1 -Reset
+```
+
+### What the Script Does
+
+The setup script performs these steps automatically:
+
+| Step | Description | Duration |
+|------|-------------|----------|
+| 1. Pre-flight Checks | Verifies Docker, .env file, required variables | ~5 seconds |
+| 2. Environment Validation | Validates all required environment variables are set | ~2 seconds |
+| 3. Docker Services | Starts PostgreSQL container with health checks | ~30 seconds |
+| 4. Database Schema | Applies Drizzle ORM schema migrations | ~10 seconds |
+| 5. Data Migration | Exports data from Supabase, imports to local DB | ~2-5 minutes |
+| 6. Superadmin User | Creates local admin user with secure password | ~5 seconds |
+| 7. Application | Builds and starts the Next.js app container | ~1-2 minutes |
+
+**Total estimated time: 3-8 minutes** (depending on data size and network speed)
+
+### After Setup
+
+Once the script completes, you'll see:
+
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║                    Setup Complete!                               ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Application URL:
+  http://localhost:3000
+
+Local Superadmin Credentials:
+  Email:    admin@local.dev
+  Password: [generated-password]
+
+Database Connection:
+  Host:     localhost
+  Port:     5432
+  User:     altea
+  Password: altea
+  Database: alteapay
+```
+
+#### How to Access the Application
+
+1. Open your browser to **http://localhost:3000**
+2. Log in with the superadmin credentials displayed by the script
+3. The migrated data from Supabase will be available
+
+#### View Application Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Just the app
+docker compose logs -f app
+
+# Just PostgreSQL
+docker compose logs -f postgres
+
+# Last 100 lines
+docker compose logs --tail 100 app
+```
+
+#### Restart Services
+
+```bash
+# Restart all services
+docker compose restart
+
+# Restart just the app (after code changes)
+docker compose up -d --build app
+```
+
+#### Stop Services
+
+```bash
+# Stop (preserves data)
+docker compose down
+
+# Stop and delete all data (full reset)
+docker compose down -v
+```
+
+### Troubleshooting Local Setup
+
+#### "Docker is not running"
+
+**Solution:** Start Docker Desktop and wait for it to fully initialize before running the script.
+
+```bash
+# Verify Docker is running
+docker info
+```
+
+#### "Port 3000 already in use"
+
+**Solution:** Stop the process using port 3000 or change the port mapping.
+
+```bash
+# Find what's using port 3000
+lsof -i :3000
+
+# Kill the process
+kill -9 <PID>
+
+# Or change the port in docker-compose.yml
+# ports: "3001:3000"
+```
+
+#### "Port 5432 already in use"
+
+**Solution:** Stop any local PostgreSQL instance or change the port.
+
+```bash
+# macOS - stop Homebrew PostgreSQL
+brew services stop postgresql
+
+# Or change the port in docker-compose.yml
+# ports: "5433:5432"
+```
+
+#### "Cannot connect to Supabase"
+
+**Solution:** Verify your Supabase credentials in `.env`:
+
+1. Check `SUPABASE_DB_HOST` is correct (usually `aws-1-*.pooler.supabase.com`)
+2. Check `SUPABASE_DB_PASSWORD` is the database password (not the anon key)
+3. Ensure your IP is not blocked by Supabase's connection pooler
+
+```bash
+# Test Supabase connection manually
+psql "postgres://postgres.[ref]:[password]@[host]:5432/postgres?sslmode=require"
+```
+
+#### "Database migration failed"
+
+**Solution:** Check if the schema already exists or there are constraint violations.
+
+```bash
+# View migration logs
+cat setup.log
+
+# Reset and try again
+./start-local.sh --reset
+```
+
+#### "Services not starting"
+
+**Solution:** Check Docker logs for specific errors.
+
+```bash
+# View all logs
+docker compose logs
+
+# Check container status
+docker compose ps
+
+# Inspect a specific container
+docker inspect altea-app
+```
+
+#### "Application shows blank page or errors"
+
+**Solution:** The app might still be building or there's a runtime error.
+
+```bash
+# Check if app is healthy
+docker compose ps
+
+# View app logs for errors
+docker compose logs app --tail 200
+
+# Rebuild the app
+docker compose up -d --build app
+```
+
+### Data Persistence
+
+- **Stopping services (`docker compose down`)**: Data is preserved in Docker volumes. Your database data will still be there when you start again.
+
+- **Full reset (`docker compose down -v`)**: This deletes all volumes including database data. Use this when you want a completely fresh start.
+
+- **Backup local database**:
+  ```bash
+  # Export database to file
+  docker compose exec postgres pg_dump -U altea alteapay > backup.sql
+
+  # Restore from backup
+  docker compose exec -T postgres psql -U altea alteapay < backup.sql
+  ```
+
+### Re-running the Script
+
+- Running `./start-local.sh` again will:
+  - Stop existing containers
+  - Start fresh containers (but preserve data volumes)
+  - Skip creating superadmin if already exists
+  - Apply any new schema migrations
+
+- To get a completely fresh database:
+  ```bash
+  ./start-local.sh --reset
+  ```
+
+- To preserve existing data and just restart services:
+  ```bash
+  ./start-local.sh --skip-migration
+  ```
 
 ---
 
