@@ -919,14 +919,16 @@ export async function storeAnalysisResult(
       return { success: false, error: error.message }
     }
 
-    if (vmaxRecord && customerId) {
+    // Atualizar a tabela VMAX com os resultados da análise
+    if (customerId) {
       console.log("[v0] storeAnalysisResult - Updating VMAX with approval status", {
         customerId,
         approvalStatus,
         autoCollectionEnabled,
-        credit_score: finalScore, // Use finalScore (already converted 0→5)
+        credit_score: finalScore,
         risk_level: riskLevel,
-        analysis_metadata: data, // Save complete data including errors
+        recovery_score: data.recupere?.resposta?.score?.pontos || null,
+        recovery_class: data.recupere?.resposta?.score?.classe || null,
         last_analysis_date: new Date().toISOString(),
       })
 
@@ -935,9 +937,11 @@ export async function storeAnalysisResult(
         .update({
           approval_status: approvalStatus,
           auto_collection_enabled: autoCollectionEnabled,
-          credit_score: finalScore, // Use finalScore (already converted 0→5)
+          credit_score: finalScore,
           risk_level: riskLevel,
-          analysis_metadata: data, // Save complete data including errors
+          recovery_score: data.recupere?.resposta?.score?.pontos || null,
+          recovery_class: data.recupere?.resposta?.score?.classe || null,
+          analysis_metadata: data,
           last_analysis_date: new Date().toISOString(),
         })
         .eq("id", customerId)
@@ -945,8 +949,10 @@ export async function storeAnalysisResult(
       if (vmaxError) {
         console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError.message)
       } else {
-        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX with approval status and analysis date")
+        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX record:", customerId)
       }
+    } else {
+      console.log("[v0] storeAnalysisResult - ⚠️ No customerId, skipping VMAX update for CPF:", cleanCpf)
     }
 
     console.log("[v0] storeAnalysisResult - ✅ Success", {
