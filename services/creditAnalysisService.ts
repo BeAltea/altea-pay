@@ -717,50 +717,52 @@ export async function storeAnalysisResult(
     const supabase = createAdminClient()
     const cleanCpf = cpf.replace(/\D/g, "")
 
-    let customerId: string | null = null
+    let customerId: string | null = userId || null
     let customerName: string | null = null
     let customerCity: string | null = null
     let customerEmail: string | null = null
     let customerPhone: string | null = null
 
-    const { data: vmaxRecords } = await supabase
-      .from("VMAX")
-      .select('id, "CPF/CNPJ", Cliente, Cidade')
-      .eq("id_company", companyId)
-
-    console.log("[v0] storeAnalysisResult - Query result:", {
-      records_found: vmaxRecords?.length || 0,
-    })
-
-    if (!vmaxRecords || vmaxRecords.length === 0) {
-      console.log("[v0] storeAnalysisResult - No records found in VMAX table")
-    }
-
-    const vmaxRecord = vmaxRecords?.find((record) => {
-      const recordCpf = record["CPF/CNPJ"]?.replace(/\D/g, "")
-      return recordCpf === cleanCpf
-    })
-
-    if (vmaxRecord) {
-      customerId = vmaxRecord.id
-      customerName = vmaxRecord.Cliente
-      customerCity = vmaxRecord.Cidade
-      console.log("[v0] storeAnalysisResult - ✅ Found customer_id from VMAX:", customerId, "for CPF:", cleanCpf)
-    } else {
-      const { data: customerRecord } = await supabase
-        .from("customers")
-        .select("id, name, city, email, phone")
-        .eq("company_id", companyId)
-        .eq("document", cleanCpf)
+    // Se já temos o userId (ID do cliente VMAX), buscar diretamente por ID
+    if (userId) {
+      const { data: vmaxRecord } = await supabase
+        .from("VMAX")
+        .select('id, "CPF/CNPJ", Cliente, Cidade')
+        .eq("id", userId)
         .maybeSingle()
 
-      if (customerRecord) {
-        customerId = customerRecord.id
-        customerName = customerRecord.name
-        customerCity = customerRecord.city
-        customerEmail = customerRecord.email
-        customerPhone = customerRecord.phone
-        console.log("[v0] storeAnalysisResult - ✅ Found customer_id from customers table:", customerId)
+      if (vmaxRecord) {
+        customerId = vmaxRecord.id
+        customerName = vmaxRecord.Cliente
+        customerCity = vmaxRecord.Cidade
+        console.log("[v0] storeAnalysisResult - ✅ Found customer by userId:", customerId, "for CPF:", cleanCpf)
+      }
+    }
+
+    // Se não temos userId ou não encontrou, buscar pelo CPF
+    if (!customerId) {
+      const { data: vmaxRecords } = await supabase
+        .from("VMAX")
+        .select('id, "CPF/CNPJ", Cliente, Cidade')
+        .eq("id_company", companyId)
+        .ilike("CPF/CNPJ", `%${cleanCpf.slice(0, 3)}%${cleanCpf.slice(-3)}%`)
+
+      console.log("[v0] storeAnalysisResult - Query result:", {
+        records_found: vmaxRecords?.length || 0,
+        searching_for: cleanCpf,
+      })
+
+      // Encontrar o registro exato pelo CPF limpo
+      const vmaxRecord = vmaxRecords?.find((record) => {
+        const recordCpf = record["CPF/CNPJ"]?.replace(/\D/g, "")
+        return recordCpf === cleanCpf
+      })
+
+      if (vmaxRecord) {
+        customerId = vmaxRecord.id
+        customerName = vmaxRecord.Cliente
+        customerCity = vmaxRecord.Cidade
+        console.log("[v0] storeAnalysisResult - ✅ Found customer_id from VMAX by CPF:", customerId)
       } else {
         console.log("[v0] storeAnalysisResult - ⚠️ No customer_id found for CPF:", cleanCpf)
       }
