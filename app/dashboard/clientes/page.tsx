@@ -28,8 +28,6 @@ export default async function ClientesPage() {
       return <div className="p-4 md:p-8">Empresa não encontrada para o usuário</div>
     }
 
-    console.log("[v0] ClientesPage - profile.company_id:", profile.company_id)
-
     const { data: company } = await supabase.from("companies").select("id, name").eq("id", profile.company_id).single()
 
     // Buscar TODOS os registros da empresa (sem limite de 1000)
@@ -49,8 +47,6 @@ export default async function ClientesPage() {
       if (pageData.length < pageSize) break
       page++
     }
-    
-    console.log("[v0] ClientesPage - Total VMAX customers:", vmaxCustomers.length)
 
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
