@@ -13,10 +13,14 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Dummy build-time values for NEXT_PUBLIC_* variables
+# Dummy build-time values so Next.js can collect page data
 ENV NEXT_PUBLIC_APP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
+ENV SUPABASE_SERVICE_ROLE_KEY=placeholder
+ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+ENV NEXTAUTH_SECRET=placeholder
+ENV NEXTAUTH_URL=http://localhost:3000
 
 RUN pnpm build
 

@@ -29,6 +29,9 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://altea:altea@postgres:5432/alteapay}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-secret-change-me-in-production}
+      AUTH_TRUST_HOST: "true"
     depends_on:
       postgres:
         condition: service_healthy
