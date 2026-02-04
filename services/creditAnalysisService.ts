@@ -1630,12 +1630,12 @@ export async function runAssertivaManualAnalysis(
     let analyzedCount = 0
     let failedCount = 0
     const customersAnalyzed: Array<{ id: string; cpf: string; name: string; score?: number }> = []
-    const batchSize = 5
+    const batchSize = 10 // Aumentado para processar mais rápido
 
     for (let i = 0; i < customersToAnalyze.length; i += batchSize) {
       const batch = customersToAnalyze.slice(i, i + batchSize)
 
-      console.log("[v0] runAssertivaManualAnalysis - 🔄 Processing batch:", {
+      console.log("[v0] runAssertivaManualAnalysis - Processing batch:", {
         batch_number: Math.floor(i / batchSize) + 1,
         start: i + 1,
         end: Math.min(i + batchSize, customersToAnalyze.length),
@@ -1806,8 +1806,7 @@ export async function runAssertivaManualAnalysis(
 
       // Delay between batches to avoid rate limiting
       if (i + batchSize < customersToAnalyze.length) {
-        console.log("[v0] runAssertivaManualAnalysis - Waiting 4s before next batch...")
-        await new Promise((resolve) => setTimeout(resolve, 4000))
+        await new Promise((resolve) => setTimeout(resolve, 2000))
       }
     }
 
