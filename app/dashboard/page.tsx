@@ -55,13 +55,23 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
-  // Buscar diretamente pelo id_company ao invés de buscar todos e filtrar
-  const { data: vmaxRecords, error: vmaxError } = await supabase
-    .from("VMAX")
-    .select("*")
-    .eq("id_company", companyId)
-
-  console.log("[v0] Dashboard - company_id:", companyId, "VMAX customers:", vmaxRecords?.length || 0, "error:", vmaxError?.message || "none")
+  // Buscar TODOS os registros da empresa (sem limite de 1000)
+  let vmaxRecords: any[] = []
+  let page = 0
+  const pageSize = 1000
+  
+  while (true) {
+    const { data: pageData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", companyId)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+    
+    if (vmaxError || !pageData || pageData.length === 0) break
+    vmaxRecords = [...vmaxRecords, ...pageData]
+    if (pageData.length < pageSize) break
+    page++
+  }
 
   const vmaxData = vmaxRecords || []
 
