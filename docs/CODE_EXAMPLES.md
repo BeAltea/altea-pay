@@ -21,7 +21,7 @@
 
 ### Basic CRUD Operations
 
-```typescript
+\`\`\`typescript
 import { createClient } from "@/lib/supabase/server"
 
 // CREATE
@@ -102,11 +102,11 @@ async function deleteCustomer(id: string) {
 
   if (error) throw new Error(error.message)
 }
-```
+\`\`\`
 
 ### Queries with Joins
 
-```typescript
+\`\`\`typescript
 // Get customers with their debts
 async function getCustomersWithDebts(companyId: string) {
   const supabase = await createClient()
@@ -165,11 +165,11 @@ async function getDebtDetails(debtId: string) {
 
   return data
 }
-```
+\`\`\`
 
 ### Complex Filters
 
-```typescript
+\`\`\`typescript
 // Get overdue debts for collection
 async function getOverdueDebtsForCollection(companyId: string) {
   const supabase = await createClient()
@@ -222,11 +222,11 @@ async function searchDebts(params: {
   const { data, error } = await query.order('due_date')
   return data
 }
-```
+\`\`\`
 
 ### Aggregations
 
-```typescript
+\`\`\`typescript
 // Get debt statistics
 async function getDebtStats(companyId: string) {
   const supabase = await createClient()
@@ -258,7 +258,7 @@ async function countOverdueDebts(companyId: string) {
 
   return count ?? 0
 }
-```
+\`\`\`
 
 ---
 
@@ -266,7 +266,7 @@ async function countOverdueDebts(companyId: string) {
 
 ### Check Current User
 
-```typescript
+\`\`\`typescript
 // In Server Component
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
@@ -293,11 +293,11 @@ export default async function ProtectedPage() {
     </div>
   )
 }
-```
+\`\`\`
 
 ### Client-side Auth Hook
 
-```typescript
+\`\`\`typescript
 // hooks/use-auth.tsx
 "use client"
 
@@ -376,11 +376,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
-```
+\`\`\`
 
 ### Sign In / Sign Up
 
-```typescript
+\`\`\`typescript
 // Sign in with email/password
 async function signIn(email: string, password: string) {
   const supabase = createClient()
@@ -421,7 +421,7 @@ async function resetPassword(email: string) {
 
   if (error) throw error
 }
-```
+\`\`\`
 
 ---
 
@@ -429,7 +429,7 @@ async function resetPassword(email: string) {
 
 ### Basic API Route
 
-```typescript
+\`\`\`typescript
 // app/api/customers/route.ts
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
@@ -508,11 +508,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-```
+\`\`\`
 
 ### Dynamic Route
 
-```typescript
+\`\`\`typescript
 // app/api/customers/[id]/route.ts
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
@@ -574,11 +574,11 @@ export async function DELETE(
 
   return new NextResponse(null, { status: 204 })
 }
-```
+\`\`\`
 
 ### Cron Job Route
 
-```typescript
+\`\`\`typescript
 // app/api/cron/daily-report/route.ts
 import { createAdminClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
@@ -608,7 +608,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-```
+\`\`\`
 
 ---
 
@@ -616,7 +616,7 @@ export async function GET(request: NextRequest) {
 
 ### Basic Server Action
 
-```typescript
+\`\`\`typescript
 // app/actions/customer-actions.ts
 "use server"
 
@@ -698,11 +698,11 @@ export async function deleteCustomer(id: string) {
   revalidatePath('/dashboard/customers')
   return { success: true }
 }
-```
+\`\`\`
 
 ### Action with File Upload
 
-```typescript
+\`\`\`typescript
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
@@ -743,7 +743,7 @@ export async function uploadFile(formData: FormData) {
 
   return { success: true, url: publicUrl }
 }
-```
+\`\`\`
 
 ---
 
@@ -751,7 +751,7 @@ export async function uploadFile(formData: FormData) {
 
 ### Data Table Component
 
-```typescript
+\`\`\`typescript
 // components/data-table.tsx
 "use client"
 
@@ -838,11 +838,11 @@ export function DataTable<T extends { id: string }>({
   )}
 />
 */
-```
+\`\`\`
 
 ### Loading Skeleton
 
-```typescript
+\`\`\`typescript
 // components/customer-skeleton.tsx
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -869,11 +869,11 @@ export function CustomerListSkeleton() {
   <CustomerList />
 </Suspense>
 */
-```
+\`\`\`
 
 ### Confirmation Dialog
 
-```typescript
+\`\`\`typescript
 // components/confirm-dialog.tsx
 "use client"
 
@@ -961,7 +961,7 @@ export function ConfirmDialog({
   variant="destructive"
 />
 */
-```
+\`\`\`
 
 ---
 
@@ -969,7 +969,7 @@ export function ConfirmDialog({
 
 ### Form with React Hook Form + Zod
 
-```typescript
+\`\`\`typescript
 // components/customer-form.tsx
 "use client"
 
@@ -1070,7 +1070,7 @@ export function CustomerForm({ initialData, onSubmit }: CustomerFormProps) {
     </form>
   )
 }
-```
+\`\`\`
 
 ---
 
@@ -1078,7 +1078,7 @@ export function CustomerForm({ initialData, onSubmit }: CustomerFormProps) {
 
 ### Debt Classification
 
-```typescript
+\`\`\`typescript
 import { ClassificationEngine } from "@/lib/classification-engine"
 
 function classifyDebt(debt: Debt) {
@@ -1097,11 +1097,11 @@ function classifyDebt(debt: Debt) {
   return result
   // { classification: 'medium', appliedRule: '...', score: 75 }
 }
-```
+\`\`\`
 
 ### Propensity Scoring
 
-```typescript
+\`\`\`typescript
 import { propensityEngine } from "@/lib/propensity-engine"
 
 async function scoreDebt(debt: Debt) {
@@ -1125,11 +1125,11 @@ async function scoreDebt(debt: Debt) {
   //   factors: ['Atraso recente - alta propensão ao pagamento']
   // }
 }
-```
+\`\`\`
 
 ### Credit Decision
 
-```typescript
+\`\`\`typescript
 import { decidirEntradaRegua } from "@/lib/credit-analysis-engine"
 
 async function evaluateCustomer(creditData: any, debtAmount: number) {
@@ -1156,7 +1156,7 @@ async function evaluateCustomer(creditData: any, debtAmount: number) {
   //   autoCollectionEnabled: true
   // }
 }
-```
+\`\`\`
 
 ---
 
@@ -1164,7 +1164,7 @@ async function evaluateCustomer(creditData: any, debtAmount: number) {
 
 ### Send Notification
 
-```typescript
+\`\`\`typescript
 import { sendEmail } from "@/lib/notifications/email"
 import { sendSMS } from "@/lib/notifications/sms"
 
@@ -1192,11 +1192,11 @@ async function notifyCustomer(customer: Customer, debt: Debt) {
     })
   }
 }
-```
+\`\`\`
 
 ### Create Payment in ASAAS
 
-```typescript
+\`\`\`typescript
 import {
   createAsaasCustomer,
   createAsaasPayment,
@@ -1233,11 +1233,11 @@ async function createPayment(customer: Customer, debt: Debt) {
     boletoUrl: payment.bankSlipUrl,
   }
 }
-```
+\`\`\`
 
 ### Run Credit Analysis
 
-```typescript
+\`\`\`typescript
 import { analyzeDetailedWithCache } from "@/services/assertivaService"
 
 async function analyzeCustomer(cpf: string, companyId: string) {
@@ -1257,4 +1257,4 @@ async function analyzeCustomer(cpf: string, companyId: string) {
     presumedIncome: result.data.credito?.renda_presumida,
   }
 }
-```
+\`\`\`

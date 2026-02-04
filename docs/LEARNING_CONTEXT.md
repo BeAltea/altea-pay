@@ -65,7 +65,7 @@
 
 ### 2.1 System Architecture Diagram
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              CLIENTS                                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
@@ -173,7 +173,7 @@
 │  │    (ERP)     │  │    (ERP)     │  │    (ERP)     │                      │
 │  └──────────────┘  └──────────────┘  └──────────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ### 2.2 Technology Stack
 
@@ -241,7 +241,7 @@
 
 ### 3.1 Directory Structure
 
-```
+\`\`\`
 altea-pay/
 ├── app/                          # Next.js App Router
 │   ├── auth/                     # Authentication pages
@@ -369,7 +369,7 @@ altea-pay/
 ├── package.json                 # Dependencies
 ├── vercel.json                  # Vercel deployment config
 └── components.json              # shadcn/ui config
-```
+\`\`\`
 
 ### 3.2 Module Responsibilities
 
@@ -430,7 +430,7 @@ Control access to the platform based on user roles and company membership.
 
 #### Role-Based Access
 
-```typescript
+\`\`\`typescript
 // Role definitions
 type UserRole = "super_admin" | "admin" | "user"
 
@@ -440,15 +440,15 @@ const roleRoutes = {
   admin: "/dashboard",
   user: "/user-dashboard"
 }
-```
+\`\`\`
 
 #### Configuration
 Environment variables:
-```env
+\`\`\`env
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
+\`\`\`
 
 ---
 
@@ -470,7 +470,7 @@ Determine if customers qualify for automated collection based on credit profile 
 
 #### Key Functions
 
-```typescript
+\`\`\`typescript
 // Main decision function
 async function decidirEntradaRegua(cli: ClienteCredito): Promise<ResultadoRegra>
 
@@ -479,11 +479,11 @@ async function classificarComportamento(cli: ClienteCredito): Promise<Comportame
 
 // Risk level determination
 async function determinarRiskLevel(score: number): Promise<RiskLevel>
-```
+\`\`\`
 
 #### Configuration
 
-```typescript
+\`\`\`typescript
 // lib/credit-analysis-types.ts
 export const RegrasConfig = {
   SCORE_ALTO_MIN: 400,      // High score threshold
@@ -493,7 +493,7 @@ export const RegrasConfig = {
   LIMITE_MIN_OK: 300,       // Minimum credit limit
   DIVIDA_BAIXA_MAX: 1000,   // Small debt threshold
 }
-```
+\`\`\`
 
 #### Dependencies
 - Assertiva API credentials
@@ -521,16 +521,16 @@ Two-engine system:
 
 #### Collection Modes
 
-```typescript
+\`\`\`typescript
 type CollectionMode =
   | "AUTO_MESSAGE"        // Score ≥ 294: Immediate email + SMS
   | "ASSISTED_COLLECTION" // Score 350-490 + good behavior: Operator review
   | "MANUAL_COLLECTION"   // Score < 294: Human intervention required
-```
+\`\`\`
 
 #### Rule Step Configuration
 
-```typescript
+\`\`\`typescript
 interface CollectionRuleStep {
   days_after_due: number       // Trigger day (0 = due date)
   action_type: "email" | "sms" | "whatsapp" | "call_automatic" | "call_human" | "task"
@@ -540,7 +540,7 @@ interface CollectionRuleStep {
   retry_on_failure: boolean
   max_retries: number
 }
-```
+\`\`\`
 
 #### Cron Schedule
 - **Process collection rules:** Every hour (`0 * * * *`)
@@ -574,7 +574,7 @@ ASAAS payment gateway integration supporting PIX, boleto, and credit card.
 
 #### Key Functions
 
-```typescript
+\`\`\`typescript
 // Create customer in ASAAS
 createAsaasCustomer(params): Promise<AsaasCustomer>
 
@@ -583,13 +583,13 @@ createAsaasPayment(params): Promise<AsaasPayment>
 
 // Generate payment link
 createAsaasPaymentLink(data): Promise<AsaasPaymentLink>
-```
+\`\`\`
 
 #### Configuration
-```env
+\`\`\`env
 ASAAS_API_KEY=your-asaas-api-key
 ASAAS_API_URL=https://api.asaas.com/v3
-```
+\`\`\`
 
 ---
 
@@ -611,7 +611,7 @@ Connector pattern supporting multiple ERP systems with generic interface.
 
 #### Connector Interface
 
-```typescript
+\`\`\`typescript
 interface ERPConnector {
   name: string
   type: string
@@ -620,7 +620,7 @@ interface ERPConnector {
   fetchDebts(config: ERPConnectionConfig): Promise<any[]>
   syncResults(config: ERPConnectionConfig, data: any[]): Promise<boolean>
 }
-```
+\`\`\`
 
 #### Supported ERPs
 - TOTVS Protheus
@@ -660,14 +660,14 @@ Rule-based scoring engine with ML-ready architecture.
 
 #### Output
 
-```typescript
+\`\`\`typescript
 interface PropensityScores {
   paymentScore: number   // 0-100
   loanScore: number      // 0-100
   confidence: number     // Prediction quality
   factors: string[]      // Reasoning
 }
-```
+\`\`\`
 
 ---
 
@@ -713,13 +713,13 @@ Server-side parsing with validation and error reporting.
 
 #### Validation Functions
 
-```typescript
+\`\`\`typescript
 validateEmail(email: string): boolean
 validateCPF(cpf: string): boolean
 validateCNPJ(cnpj: string): boolean
 validateCustomerRecord(record, lineNumber): ImportValidationError[]
 validateDebtRecord(record, lineNumber): ImportValidationError[]
-```
+\`\`\`
 
 #### Supported Formats
 - CSV (comma, semicolon, tab delimited)
@@ -733,7 +733,7 @@ validateDebtRecord(record, lineNumber): ImportValidationError[]
 
 ### 5.1 Entity Relationship Diagram
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          ENTITY RELATIONSHIPS                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -775,12 +775,12 @@ validateDebtRecord(record, lineNumber): ImportValidationError[]
 Legend:
   1 ────< *  = One-to-Many
   1 ────1    = One-to-One
-```
+\`\`\`
 
 ### 5.2 Core Tables
 
 #### profiles
-```sql
+\`\`\`sql
 CREATE TABLE profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id),
   full_name TEXT,
@@ -791,10 +791,10 @@ CREATE TABLE profiles (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### companies
-```sql
+\`\`\`sql
 CREATE TABLE companies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
@@ -803,10 +803,10 @@ CREATE TABLE companies (
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### customers
-```sql
+\`\`\`sql
 CREATE TABLE customers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL REFERENCES companies(id),
@@ -823,10 +823,10 @@ CREATE TABLE customers (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### debts
-```sql
+\`\`\`sql
 CREATE TABLE debts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL,
@@ -849,10 +849,10 @@ CREATE TABLE debts (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### payments
-```sql
+\`\`\`sql
 CREATE TABLE payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   debt_id UUID NOT NULL REFERENCES debts(id),
@@ -863,10 +863,10 @@ CREATE TABLE payments (
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### collection_rules
-```sql
+\`\`\`sql
 CREATE TABLE collection_rules (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL REFERENCES companies(id),
@@ -879,10 +879,10 @@ CREATE TABLE collection_rules (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### collection_rule_steps
-```sql
+\`\`\`sql
 CREATE TABLE collection_rule_steps (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   rule_id UUID NOT NULL REFERENCES collection_rules(id),
@@ -898,10 +898,10 @@ CREATE TABLE collection_rule_steps (
   max_retries INTEGER DEFAULT 3,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 #### credit_profiles
-```sql
+\`\`\`sql
 CREATE TABLE credit_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL,
@@ -916,12 +916,12 @@ CREATE TABLE credit_profiles (
   analysis_date TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 ### 5.3 Key Data Structures
 
 #### ClienteCredito (Credit Analysis Input)
-```typescript
+\`\`\`typescript
 interface ClienteCredito {
   creditScore: number          // Assertiva score (0-1000)
   atrasos12m: number           // Delays in last 12 months
@@ -933,10 +933,10 @@ interface ClienteCredito {
   rendaPresumida: number       // Presumed income
   valorDivida: number          // Debt amount
 }
-```
+\`\`\`
 
 #### ResultadoRegra (Decision Output)
-```typescript
+\`\`\`typescript
 interface ResultadoRegra {
   decisao: "ACEITA" | "REJEITA" | "ACEITA_ESPECIAL"
   motivo: string               // Rule identifier (R1-R7)
@@ -944,17 +944,17 @@ interface ResultadoRegra {
   comportamento: "BOM" | "RUIM"
   autoCollectionEnabled: boolean
 }
-```
+\`\`\`
 
 #### PropensityScores
-```typescript
+\`\`\`typescript
 interface PropensityScores {
   paymentScore: number         // 0-100
   loanScore: number            // 0-100
   confidence: number           // Prediction quality
   factors: string[]            // Explanation factors
 }
-```
+\`\`\`
 
 ---
 
@@ -1031,7 +1031,7 @@ interface PropensityScores {
 #### Create Collection Rule
 
 **Request:**
-```http
+\`\`\`http
 POST /api/collection-rules
 Content-Type: application/json
 Authorization: Bearer <jwt-token>
@@ -1055,10 +1055,10 @@ Authorization: Bearer <jwt-token>
     }
   ]
 }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "id": "uuid-here",
   "name": "Standard Collection Rule",
@@ -1068,21 +1068,21 @@ Authorization: Bearer <jwt-token>
   "company_id": "company-uuid",
   "created_at": "2025-02-02T10:00:00Z"
 }
-```
+\`\`\`
 
 #### Import Data
 
 **Request:**
-```http
+\`\`\`http
 POST /api/import
 Content-Type: multipart/form-data
 
 file: <csv-file>
 type: customers | debts
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "import_id": "uuid-here",
@@ -1098,11 +1098,11 @@ type: customers | debts
     }
   ]
 }
-```
+\`\`\`
 
 ### 6.3 Authentication Flow
 
-```
+\`\`\`
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
 │   Client    │      │  Next.js    │      │  Supabase   │
 │   Browser   │      │  Middleware │      │    Auth     │
@@ -1126,12 +1126,12 @@ type: customers | debts
        │ 6. Route based on role                  │
        │ <──────────────────│                    │
        │                    │                    │
-```
+\`\`\`
 
 ### 6.4 Integration Patterns
 
 #### Server Action Pattern
-```typescript
+\`\`\`typescript
 // app/actions/customer-actions.ts
 "use server"
 
@@ -1150,10 +1150,10 @@ export async function createCustomer(companyId: string, data: CustomerData) {
   if (error) throw error
   return customer
 }
-```
+\`\`\`
 
 #### API Route Pattern
-```typescript
+\`\`\`typescript
 // app/api/collection-rules/route.ts
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
@@ -1177,7 +1177,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json(data)
 }
-```
+\`\`\`
 
 ---
 
@@ -1185,7 +1185,7 @@ export async function GET(request: Request) {
 
 ### 7.1 Payment Flow
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            PAYMENT FLOW                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -1257,11 +1257,11 @@ export async function GET(request: Request) {
 │  └─────────────┘     └─────────────┘     └─────────────┘                   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ### 7.2 Collection Decision Flow
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        COLLECTION DECISION FLOW                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -1337,11 +1337,11 @@ export async function GET(request: Request) {
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ### 7.3 Segmentation Algorithm
 
-```typescript
+\`\`\`typescript
 // Segmentation is based on multiple factors:
 
 // 1. Credit Score Segments
@@ -1373,12 +1373,12 @@ const amountSegments = {
   LARGE: amount <= 10000,
   VERY_LARGE: amount > 10000
 }
-```
+\`\`\`
 
 ### 7.4 Rules and Validations
 
 #### Document Validation
-```typescript
+\`\`\`typescript
 // CPF validation (11 digits + check digits)
 function validateCPF(cpf: string): boolean {
   const clean = cpf.replace(/\D/g, '')
@@ -1392,7 +1392,7 @@ function validateCNPJ(cnpj: string): boolean {
   if (clean.length !== 14) return false
   // Check digit algorithm...
 }
-```
+\`\`\`
 
 #### Business Rules
 | Rule | Validation | Action |
@@ -1455,7 +1455,7 @@ function validateCNPJ(cnpj: string): boolean {
 | Integrity | Audit logging |
 
 #### Technical Measures
-```typescript
+\`\`\`typescript
 // Data anonymization for analytics
 function anonymizeCustomer(customer: Customer) {
   return {
@@ -1476,7 +1476,7 @@ async function logAction(action: string, userId: string, data: any) {
     timestamp: new Date()
   })
 }
-```
+\`\`\`
 
 ### 8.3 Data Encryption and Tokenization
 
@@ -1490,7 +1490,7 @@ async function logAction(action: string, userId: string, data: any) {
 
 ### 8.4 Audit Trails
 
-```sql
+\`\`\`sql
 -- Audit logging table
 CREATE TABLE audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1517,7 +1517,7 @@ CREATE TABLE integration_logs (
   error_message TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-```
+\`\`\`
 
 ---
 
@@ -1532,7 +1532,7 @@ CREATE TABLE integration_logs (
 
 #### Installation
 
-```bash
+\`\`\`bash
 # Clone repository
 git clone https://github.com/BeAltea/altea-pay.git
 cd altea-pay
@@ -1545,11 +1545,11 @@ cp .env.example .env.local
 
 # Start development server
 pnpm dev
-```
+\`\`\`
 
 ### 9.2 Environment Configuration
 
-```env
+\`\`\`env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
@@ -1578,12 +1578,12 @@ CRON_SECRET=your-cron-secret
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
+\`\`\`
 
 ### 9.3 Testing Approach
 
 #### Manual Testing
-```bash
+\`\`\`bash
 # Run development server
 pnpm dev
 
@@ -1591,10 +1591,10 @@ pnpm dev
 # Super Admin: super@alteapay.com
 # Admin: admin@company.com
 # User: user@email.com
-```
+\`\`\`
 
 #### API Testing
-```bash
+\`\`\`bash
 # Test with curl
 curl -X GET http://localhost:3000/api/collection-rules \
   -H "Authorization: Bearer <jwt-token>"
@@ -1602,13 +1602,13 @@ curl -X GET http://localhost:3000/api/collection-rules \
 # Test cron job
 curl -X GET http://localhost:3000/api/cron/sync-erp \
   -H "Authorization: Bearer <CRON_SECRET>"
-```
+\`\`\`
 
 ### 9.4 Deployment Process
 
 #### Vercel Deployment
 
-```bash
+\`\`\`bash
 # Install Vercel CLI
 npm i -g vercel
 
@@ -1617,7 +1617,7 @@ vercel
 
 # Deploy to production
 vercel --prod
-```
+\`\`\`
 
 #### Environment Setup
 1. Add all environment variables in Vercel dashboard
@@ -1648,7 +1648,7 @@ vercel --prod
 
 #### ASAAS Payment Webhook
 
-```typescript
+\`\`\`typescript
 // app/api/webhooks/asaas/route.ts
 export async function POST(request: Request) {
   const data = await request.json()
@@ -1666,11 +1666,11 @@ export async function POST(request: Request) {
 
   return new Response('OK', { status: 200 })
 }
-```
+\`\`\`
 
 #### Assertiva Callback
 
-```typescript
+\`\`\`typescript
 // app/api/assertiva/callback/route.ts
 export async function POST(request: Request) {
   const data = await request.json()
@@ -1687,7 +1687,7 @@ export async function POST(request: Request) {
 
   return new Response('OK', { status: 200 })
 }
-```
+\`\`\`
 
 ### 10.3 Event Handling
 
@@ -1702,7 +1702,7 @@ export async function POST(request: Request) {
 ### 10.4 Error Handling Strategies
 
 #### API Error Handling
-```typescript
+\`\`\`typescript
 try {
   const result = await externalApiCall()
   return NextResponse.json(result)
@@ -1719,10 +1719,10 @@ try {
 
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
 }
-```
+\`\`\`
 
 #### Retry Logic
-```typescript
+\`\`\`typescript
 // services/assertivaService.ts
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -1743,7 +1743,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
     }
   }
 }
-```
+\`\`\`
 
 ---
 
@@ -1797,7 +1797,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
 ### Common Commands
 
-```bash
+\`\`\`bash
 # Development
 pnpm dev              # Start dev server
 pnpm build            # Build for production
@@ -1807,7 +1807,7 @@ pnpm lint             # Run ESLint
 supabase start        # Start local Supabase
 supabase db reset     # Reset database
 supabase migration new # Create migration
-```
+\`\`\`
 
 ### Key Files Quick Reference
 
