@@ -28,12 +28,22 @@ export default async function ClientesPage() {
       return <div className="p-4 md:p-8">Empresa não encontrada para o usuário</div>
     }
 
+    console.log("[v0] ClientesPage - profile.company_id:", profile.company_id)
+
     const { data: company } = await supabase.from("companies").select("id, name").eq("id", profile.company_id).single()
+
+    console.log("[v0] ClientesPage - company:", company)
 
     const { data: vmaxCustomers, error: vmaxError } = await supabase
       .from("VMAX")
       .select("*")
       .eq("id_company", profile.company_id)
+
+    console.log("[v0] ClientesPage - VMAX query result:", {
+      company_id_used: profile.company_id,
+      customers_found: vmaxCustomers?.length || 0,
+      error: vmaxError?.message || null,
+    })
 
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
