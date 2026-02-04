@@ -63,11 +63,11 @@ export default async function DashboardPage() {
 
   console.log("[v0] Dashboard - company_id:", companyId, "VMAX customers:", vmaxRecords?.length || 0, "error:", vmaxError?.message || "none")
 
-  const vmaxRecords = vmaxRecords || []
+  const vmaxData = vmaxRecords || []
 
   let integrationLogsData = []
-  if (vmaxRecords.length > 0) {
-    const vmaxIds = vmaxRecords.map((v: any) => v.id).filter(Boolean)
+  if (vmaxData.length > 0) {
+    const vmaxIds = vmaxData.map((v: any) => v.id).filter(Boolean)
     const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
 
     integrationLogsData = logsData || []
@@ -78,14 +78,14 @@ export default async function DashboardPage() {
     .select("id")
     .eq("company_id", companyId)
 
-  const totalCustomers = (customers?.length || 0) + vmaxRecords.length
+  const totalCustomers = (customers?.length || 0) + vmaxData.length
 
   const { data: debts, error: debtsError } = await supabase
     .from("debts")
     .select("amount, status")
     .eq("company_id", companyId)
 
-  const vmaxDebtsFormatted = vmaxRecords.map((debt: any) => {
+  const vmaxDebtsFormatted = vmaxData.map((debt: any) => {
     const vencidoStr = String(debt.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
     const amount = Number(cleanValue) || 0
@@ -322,7 +322,7 @@ export default async function DashboardPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Total de Clientes VMAX</span>
-                  <span className="text-lg font-bold text-purple-600">{vmaxRecords.length}</span>
+                  <span className="text-lg font-bold text-purple-600">{vmaxData.length}</span>
                 </div>
                 <div className="text-xs text-gray-500">Integrados da base VMAX</div>
               </div>
