@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: altea-pay
+  namespace: altea-pay
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: altea-pay
+  template:
+    metadata:
+      labels:
+        app: altea-pay
+    spec:
+      containers:
+        - name: altea-pay
+          image: altea-pay:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: altea-pay-config
+            - secretRef:
+                name: altea-pay-secrets
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

@@ -1,0 +1,77 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sync-erp
+  namespace: altea-pay
+spec:
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: sync-erp
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - 'curl -sf -H "Authorization: Bearer $(CRON_SECRET)" http://altea-pay.altea-pay.svc.cluster.local/api/cron/sync-erp'
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: altea-pay-secrets
+                      key: CRON_SECRET
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: process-collection-rules
+  namespace: altea-pay
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: process-collection-rules
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - 'curl -sf -H "Authorization: Bearer $(CRON_SECRET)" http://altea-pay.altea-pay.svc.cluster.local/api/cron/process-collection-rules'
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: altea-pay-secrets
+                      key: CRON_SECRET
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: process-collection-ruler
+  namespace: altea-pay
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: process-collection-ruler
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - 'curl -sf -H "Authorization: Bearer $(CRON_SECRET)" http://altea-pay.altea-pay.svc.cluster.local/api/cron/process-collection-ruler'
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: altea-pay-secrets
+                      key: CRON_SECRET
+          restartPolicy: OnFailure

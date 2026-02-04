@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: altea-pay
+  namespace: altea-pay
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.alteapay.com
+      secretName: altea-pay-tls
+  rules:
+    - host: app.alteapay.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: altea-pay
+                port:
+                  number: 80

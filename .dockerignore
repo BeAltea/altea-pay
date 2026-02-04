@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+.env*
+*.md
+.vercel
+.vscode
+.idea
+docker-compose*.yml
+Dockerfile
+k8s/
+drizzle/
