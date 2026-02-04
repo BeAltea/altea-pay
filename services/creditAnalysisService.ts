@@ -710,9 +710,10 @@ export async function storeAnalysisResult(
   type: "free" | "detailed",
   companyId: string,
   userId?: string,
+  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de análise: restritiva ou comportamental
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log("[v0] storeAnalysisResult - Starting", { cpf, source, type, companyId, userId })
+    console.log("[v0] storeAnalysisResult - Starting", { cpf, source, type, companyId, userId, analysisType })
 
     const supabase = createAdminClient()
     const cleanCpf = cpf.replace(/\D/g, "")
@@ -921,38 +922,54 @@ export async function storeAnalysisResult(
 
     // Atualizar a tabela VMAX com os resultados da análise
     if (customerId) {
-      console.log("[v0] storeAnalysisResult - Updating VMAX with approval status", {
-        customerId,
-        approvalStatus,
-        autoCollectionEnabled,
-        credit_score: finalScore,
-        risk_level: riskLevel,
-        recovery_score: data.recupere?.resposta?.score?.pontos || null,
-        recovery_class: data.recupere?.resposta?.score?.classe || null,
-        last_analysis_date: new Date().toISOString(),
-      })
+      // Preparar dados baseado no tipo de análise
+      let updateData: any = {}
+
+      if (analysisType === "restrictive") {
+        // Análise RESTRITIVA - salva credit_score, risk_level, approval_status
+        updateData = {
+          credit_score: finalScore,
+          risk_level: riskLevel,
+          approval_status: approvalStatus,
+          auto_collection_enabled: autoCollectionEnabled,
+          restrictive_analysis_logs: data,
+          restrictive_analysis_date: new Date().toISOString(),
+        }
+        console.log("[v0] storeAnalysisResult - Updating VMAX with RESTRICTIVE analysis", {
+          customerId,
+          credit_score: finalScore,
+          risk_level: riskLevel,
+          approval_status: approvalStatus,
+        })
+      } else {
+        // Análise COMPORTAMENTAL - salva recovery_score, recovery_class
+        const recoveryScore = data.recupere?.resposta?.score?.pontos || null
+        const recoveryClass = data.recupere?.resposta?.score?.classe || null
+        updateData = {
+          recovery_score: recoveryScore,
+          recovery_class: recoveryClass,
+          behavioral_analysis_logs: data,
+          behavioral_analysis_date: new Date().toISOString(),
+        }
+        console.log("[v0] storeAnalysisResult - Updating VMAX with BEHAVIORAL analysis", {
+          customerId,
+          recovery_score: recoveryScore,
+          recovery_class: recoveryClass,
+        })
+      }
 
       const { error: vmaxError } = await supabase
         .from("VMAX")
-        .update({
-          approval_status: approvalStatus,
-          auto_collection_enabled: autoCollectionEnabled,
-          credit_score: finalScore,
-          risk_level: riskLevel,
-          recovery_score: data.recupere?.resposta?.score?.pontos || null,
-          recovery_class: data.recupere?.resposta?.score?.classe || null,
-          analysis_metadata: data,
-          last_analysis_date: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", customerId)
 
       if (vmaxError) {
         console.error("[v0] storeAnalysisResult - Error updating VMAX:", vmaxError.message)
       } else {
-        console.log("[v0] storeAnalysisResult - ✅ Successfully updated VMAX record:", customerId)
+        console.log("[v0] storeAnalysisResult - Successfully updated VMAX record:", customerId, "type:", analysisType)
       }
     } else {
-      console.log("[v0] storeAnalysisResult - ⚠️ No customerId, skipping VMAX update for CPF:", cleanCpf)
+      console.log("[v0] storeAnalysisResult - No customerId, skipping VMAX update for CPF:", cleanCpf)
     }
 
     console.log("[v0] storeAnalysisResult - ✅ Success", {
@@ -1110,6 +1127,7 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
                 trigger.analysis_type,
                 trigger.company_id,
                 userId,
+                "restrictive", // Análise restritiva por padrão
               )
 
               processed++
@@ -1384,8 +1402,8 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
           api_status: analysisResult.data?.api_consulted, // Changed from api_status to api_consulted
         })
 
-        // Store the result, which might consolidate with existing Assertiva data
-        await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId) // Source is 'gov' for analyzeFree
+        // Store the result - análise restritiva (gov/free)
+        await storeAnalysisResult(item.cpf, analysisResult.data, "gov", "free", companyId, undefined, "restrictive")
 
         analyzedCount++
         cpfsAnalyzed.push(item.cpf)
@@ -1484,6 +1502,7 @@ export async function runVMAXAutoAnalysis(companyId: string): Promise<{
 export async function runAssertivaManualAnalysis(
   customerIds: string[],
   companyId: string,
+  analysisType: "restrictive" | "behavioral" = "restrictive", // Tipo de análise
 ): Promise<{
   success: boolean
   total: number
@@ -1674,14 +1693,15 @@ export async function runAssertivaManualAnalysis(
               })
             }
 
-            // Store the result, which might consolidate with existing GOV data
+            // Store the result - salva baseado no tipo de análise (restritiva ou comportamental)
             const storeResult = await storeAnalysisResult(
               customer.cpf,
               analysisResult.data,
-              "assertiva", // Source is 'assertiva'
-              "detailed", // Analysis type is 'detailed'
+              "assertiva",
+              "detailed",
               customer.company_id,
               customer.id,
+              analysisType, // Passa o tipo de análise
             )
 
             if (!storeResult.success) {

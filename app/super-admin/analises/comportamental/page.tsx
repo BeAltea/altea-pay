@@ -184,6 +184,7 @@ export default function ComportamentalPage() {
           documento: customer.document,
           tipo,
           customerId: customer.id,
+          analysisType: "behavioral", // Análise COMPORTAMENTAL
         })
 
         if (result.success) {

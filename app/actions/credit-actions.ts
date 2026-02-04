@@ -280,23 +280,29 @@ ${result.cpfs_analyzed.length > 0 ? `\n✅ CPFs analisados:\n${result.cpfs_analy
 }
 
 // Renamed function to avoid redeclaration
-export async function runAssertivaManualAnalysisWrapper(customerIds: string[], companyId: string) {
+export async function runAssertivaManualAnalysisWrapper(
+  customerIds: string[],
+  companyId: string,
+  analysisType: "restrictive" | "behavioral" = "restrictive",
+) {
   try {
+    const analysisLabel = analysisType === "restrictive" ? "Restritiva" : "Comportamental"
+    
     await logSecurityEvent({
       event_type: "credit_analysis",
       severity: "high",
-      action: `Iniciou análise Assertiva (paga) para ${customerIds.length} cliente(s)`,
+      action: `Iniciou análise ${analysisLabel} para ${customerIds.length} cliente(s)`,
       resource_type: "customer",
       company_id: companyId,
       metadata: {
         customer_count: customerIds.length,
-        analysis_type: "assertiva",
+        analysis_type: analysisType,
         is_paid: true,
       },
       status: "pending",
     })
 
-    const result = await runAssertivaManualAnalysisService(customerIds, companyId)
+    const result = await runAssertivaManualAnalysisService(customerIds, companyId, analysisType)
 
     if (!result.success) {
       await logSecurityEvent({
@@ -379,8 +385,12 @@ ${
   }
 }
 
-export async function runAssertivaManualAnalysis(customerIds: string[], companyId: string) {
-  return runAssertivaManualAnalysisWrapper(customerIds, companyId)
+export async function runAssertivaManualAnalysis(
+  customerIds: string[],
+  companyId: string,
+  analysisType: "restrictive" | "behavioral" = "restrictive",
+) {
+  return runAssertivaManualAnalysisWrapper(customerIds, companyId, analysisType)
 }
 
 export async function getAllCompanies() {

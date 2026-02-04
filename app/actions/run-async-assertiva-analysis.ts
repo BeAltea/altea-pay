@@ -9,13 +9,14 @@ interface AsyncAnalysisParams {
   customerId?: string
   companyId?: string
   consultasAdicionais?: string[]
+  analysisType?: "restrictive" | "behavioral" // Tipo de análise: restritiva ou comportamental
 }
 
 export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
   try {
     console.log("[RUN ASYNC ANALYSIS] Starting analysis for:", params.documento, "type:", params.tipo)
 
-    const { documento, tipo, identificador, customerId, companyId, consultasAdicionais } = params
+    const { documento, tipo, identificador, customerId, companyId, consultasAdicionais, analysisType = "behavioral" } = params
 
     const cleanDoc = documento.replace(/\D/g, "")
 
@@ -218,6 +219,7 @@ export async function runAsyncAssertivaAnalysis(params: AsyncAnalysisParams) {
             uuid,
             identificador: identificadorResponse,
             queued_at: new Date().toISOString(),
+            analysis_category: analysisType, // Salva o tipo de análise para uso no callback
           },
         },
         {
