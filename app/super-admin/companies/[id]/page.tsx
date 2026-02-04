@@ -172,7 +172,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     address: companyData.address || "N/A",
     segment: companyData.sector || "N/A",
     totalCustomers,
-    totalDebts: totalDebts + (vmaxData?.length || 0),
+    totalDebts,
     totalAmount: combinedTotalAmount,
     recoveredAmount,
     recoveryRate,
