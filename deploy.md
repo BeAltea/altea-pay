@@ -355,6 +355,91 @@ docker compose up -d --build app
   ./start-local.sh --skip-migration
   ```
 
+### Post-Migration Validation Checklist
+
+After running the setup script, verify these critical metrics in the dashboard:
+
+| Metric | Expected Value | Notes |
+|--------|----------------|-------|
+| ☐ Total Clientes | 3,205 | VMAX table row count |
+| ☐ Administradores Ativos | 4 | 3 from Supabase + 1 script superadmin |
+| ☐ **Valor Total em Cobrança** | **R$ 838.39k** | **CRITICAL METRIC** |
+| ☐ **Casos Críticos** | **3,205** | **CRITICAL METRIC** |
+| ☐ Dívidas Ativas | 3,205 | Records with debt amounts |
+
+#### Verify with SQL
+
+```bash
+# Run verification queries
+psql postgresql://altea:altea@localhost:5432/alteapay -f scripts/verify-migration.sql
+
+# Or run diagnostic script
+docker compose exec postgres bash /scripts/diagnose-migration.sh
+```
+
+### Troubleshooting Failed Migration
+
+#### Run Diagnostics First
+
+```bash
+# Detailed comparison report
+./scripts/diagnose-migration.sh
+
+# Or from inside container
+docker compose exec postgres bash /scripts/diagnose-migration.sh
+```
+
+#### "Valor Total em Cobrança = R$ 0.00"
+
+**Cause:** The `Vencido` column from Supabase was not mapped to `Valor_Total` in local DB.
+
+**Solution:**
+1. Verify the migration script includes the `Vencido` column in VMAX export
+2. Re-run migration: `./start-local.sh --reset`
+3. Check the migration log: `cat /tmp/migration.log`
+
+#### "Casos Críticos = 0"
+
+**Cause:** The `Dias Inad.` column from Supabase was not mapped to `Maior_Atraso` in local DB.
+
+**Solution:**
+1. Verify the migration script includes the `Dias Inad.` column in VMAX export
+2. Re-run migration: `./start-local.sh --reset`
+
+#### "Migration validation failed"
+
+The migration script validates critical metrics. If it fails:
+
+```bash
+# Check the log file for details
+docker compose exec postgres cat /tmp/migration.log
+
+# Compare source vs target data
+docker compose exec postgres bash /scripts/diagnose-migration.sh
+```
+
+#### Common Issues and Solutions
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Supabase connection failed | Wrong credentials | Check `SUPABASE_DB_*` vars in `.env` |
+| Local connection failed | PostgreSQL not ready | Wait for health check, retry |
+| FK constraint violation | Data dependencies | Tables must be imported in correct order |
+| Column mismatch | Schema differs | Update migration script column mapping |
+| Brazilian currency parsing | Format "R$ X.XXX,XX" | Script handles this automatically |
+
+### Understanding the Metrics
+
+| Metric | Source Table | Column | Calculation |
+|--------|--------------|--------|-------------|
+| Total Clientes | `VMAX` | - | `COUNT(*)` |
+| Valor Total em Cobrança | `VMAX` | `Valor_Total` | `SUM(parsed_currency)` |
+| Casos Críticos | `VMAX` | `Maior_Atraso` | `COUNT(*) WHERE Maior_Atraso IS NOT NULL` |
+| Dívidas Ativas | `VMAX` | `Valor_Total` | `COUNT(*) WHERE Valor_Total IS NOT NULL` |
+| Administradores | `profiles` | `role` | `COUNT(*) WHERE role IN ('admin', 'super_admin')` |
+
+**Note:** Currency values are stored as Brazilian format strings (e.g., "R$ 1.234,56") and must be parsed for calculations.
+
 ---
 
 ## Database Setup
