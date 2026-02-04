@@ -6,7 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
-import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2 } from "lucide-react"
+import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2, Trash2 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { UserFilters } from "@/components/super-admin/user-filters"
 
 interface User {
@@ -27,6 +38,7 @@ export default function UsersPage() {
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [isFiltered, setIsFiltered] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -85,6 +97,31 @@ export default function UsersPage() {
     console.log("[v0] Usuarios filtrados:", filtered.length, "de", allUsers.length)
     setFilteredUsers(filtered)
     setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null)
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    setDeletingUserId(userId)
+    try {
+      const response = await fetch(`/api/super-admin/users/${userId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        alert(error.error || "Erro ao excluir usuario")
+        return
+      }
+
+      // Remove user from state
+      setAllUsers((prev) => prev.filter((u) => u.id !== userId))
+      setFilteredUsers((prev) => prev.filter((u) => u.id !== userId))
+      console.log("[v0] Usuario excluido com sucesso:", userId)
+    } catch (error) {
+      console.error("[v0] Erro ao excluir usuario:", error)
+      alert("Erro ao excluir usuario")
+    } finally {
+      setDeletingUserId(null)
+    }
   }
 
   const displayUsers = isFiltered ? filteredUsers : allUsers
@@ -294,6 +331,41 @@ export default function UsersPage() {
                           Editar
                         </Link>
                       </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            disabled={deletingUserId === user.id}
+                          >
+                            {deletingUserId === user.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir Usuario</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja excluir o usuario <strong>{user.fullName}</strong> ({user.email})?
+                              <br /><br />
+                              Esta acao nao pode ser desfeita. Todos os dados associados a este usuario serao permanentemente removidos.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                            >
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 </div>
