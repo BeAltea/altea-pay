@@ -55,28 +55,19 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
-  console.log("[v0] Dashboard - profile.company_id:", companyId)
+  // Buscar diretamente pelo id_company ao invés de buscar todos e filtrar
+  const { data: vmaxRecords, error: vmaxError } = await supabase
+    .from("VMAX")
+    .select("*")
+    .eq("id_company", companyId)
 
-  const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
+  console.log("[v0] Dashboard - company_id:", companyId, "VMAX customers:", vmaxRecords?.length || 0, "error:", vmaxError?.message || "none")
 
-  console.log("[v0] Dashboard - Total VMAX records:", allVmaxRecords?.length || 0)
-  
-  // Log unique id_company values to see what format they have
-  const uniqueCompanyIds = [...new Set((allVmaxRecords || []).map((v: any) => v.id_company))]
-  console.log("[v0] Dashboard - Unique id_company values in VMAX (first 5):", uniqueCompanyIds.slice(0, 5))
-
-  const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
-    (v: any) =>
-      String(v.id_company || "")
-        .toLowerCase()
-        .trim() === String(companyId).toLowerCase().trim(),
-  )
-  
-  console.log("[v0] Dashboard - Filtered VMAX customers:", vmaxCustomersFiltered.length)
+  const vmaxRecords = vmaxRecords || []
 
   let integrationLogsData = []
-  if (vmaxCustomersFiltered.length > 0) {
-    const vmaxIds = vmaxCustomersFiltered.map((v: any) => v.id).filter(Boolean)
+  if (vmaxRecords.length > 0) {
+    const vmaxIds = vmaxRecords.map((v: any) => v.id).filter(Boolean)
     const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
 
     integrationLogsData = logsData || []
@@ -87,14 +78,14 @@ export default async function DashboardPage() {
     .select("id")
     .eq("company_id", companyId)
 
-  const totalCustomers = (customers?.length || 0) + vmaxCustomersFiltered.length
+  const totalCustomers = (customers?.length || 0) + vmaxRecords.length
 
   const { data: debts, error: debtsError } = await supabase
     .from("debts")
     .select("amount, status")
     .eq("company_id", companyId)
 
-  const vmaxDebtsFormatted = vmaxCustomersFiltered.map((debt: any) => {
+  const vmaxDebtsFormatted = vmaxRecords.map((debt: any) => {
     const vencidoStr = String(debt.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
     const amount = Number(cleanValue) || 0
@@ -331,7 +322,7 @@ export default async function DashboardPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Total de Clientes VMAX</span>
-                  <span className="text-lg font-bold text-purple-600">{vmaxCustomersFiltered.length}</span>
+                  <span className="text-lg font-bold text-purple-600">{vmaxRecords.length}</span>
                 </div>
                 <div className="text-xs text-gray-500">Integrados da base VMAX</div>
               </div>
