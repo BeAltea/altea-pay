@@ -55,7 +55,15 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
+  console.log("[v0] Dashboard - profile.company_id:", companyId)
+
   const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
+
+  console.log("[v0] Dashboard - Total VMAX records:", allVmaxRecords?.length || 0)
+  
+  // Log unique id_company values to see what format they have
+  const uniqueCompanyIds = [...new Set((allVmaxRecords || []).map((v: any) => v.id_company))]
+  console.log("[v0] Dashboard - Unique id_company values in VMAX (first 5):", uniqueCompanyIds.slice(0, 5))
 
   const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
     (v: any) =>
@@ -63,6 +71,8 @@ export default async function DashboardPage() {
         .toLowerCase()
         .trim() === String(companyId).toLowerCase().trim(),
   )
+  
+  console.log("[v0] Dashboard - Filtered VMAX customers:", vmaxCustomersFiltered.length)
 
   let integrationLogsData = []
   if (vmaxCustomersFiltered.length > 0) {
