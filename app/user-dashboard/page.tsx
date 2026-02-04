@@ -97,10 +97,31 @@ export default async function UserDashboardPage() {
       const formattedCpfCnpj = profile.cpf_cnpj
 
       try {
-        const { data: allRecords, error: fetchError } = await serviceSupabase.from("VMAX").select("*").limit(1000)
+        // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+        let allRecords: any[] = []
+        let page = 0
+        const pageSize = 1000
+        let hasMore = true
 
-        if (!fetchError && allRecords) {
-          const matchingRecords = (allRecords || []).filter((record: any) => {
+        while (hasMore) {
+          const { data: vmaxPage, error: vmaxPageError } = await serviceSupabase
+            .from("VMAX")
+            .select("*")
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (vmaxPageError) break
+
+          if (vmaxPage && vmaxPage.length > 0) {
+            allRecords = [...allRecords, ...vmaxPage]
+            page++
+            hasMore = vmaxPage.length === pageSize
+          } else {
+            hasMore = false
+          }
+        }
+
+        if (allRecords.length > 0) {
+          const matchingRecords = allRecords.filter((record: any) => {
             const possibleColumns = ["CPF/CNPJ", "cpf_cnpj", "cpf", "cnpj", "document"]
 
             for (const col of possibleColumns) {
@@ -146,13 +167,13 @@ export default async function UserDashboardPage() {
               }
 
               let daysOverdue = 0
-              if (debt.Dias_Inad) {
-                daysOverdue = Number.parseInt(String(debt.Dias_Inad).replace(/\D/g, "")) || 0
+              if (debt["Dias Inad."]) {
+                daysOverdue = Number.parseInt(String(debt["Dias Inad."]).replace(/\D/g, "")) || 0
               } else if (debt.days_overdue) {
                 daysOverdue = debt.days_overdue
               }
 
-              const dueDate = debt.Primeira_Vencida || debt.due_date || new Date().toISOString()
+              const dueDate = debt.Vecto || debt.due_date || new Date().toISOString()
 
               return {
                 id: debt.id || `VMAX-${Math.random()}`,

@@ -33,6 +33,7 @@ interface CompanyDetailsProps {
 }
 
 export default async function CompanyDetailsPage({ params }: CompanyDetailsProps) {
+  console.log("[v0] === COMPANY DETAILS PAGE v2 - WITH PAGINATION ===")
   const supabase = createAdminClient()
 
   const { data: companyData, error: companyError } = await supabase
@@ -46,11 +47,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     notFound()
   }
 
-  const { data: customersData } = await supabase.from("customers").select("*").eq("company_id", params.id)
-
-  const { data: debtsData } = await supabase.from("debts").select("*").eq("company_id", params.id)
-
-  const { data: paymentsData } = await supabase.from("payments").select("*").eq("company_id", params.id)
+  // SOMENTE dados da tabela VMAX (tabelas customers, debts e payments foram descontinuadas)
 
   const { data: adminsData } = await supabase
     .from("profiles")
@@ -58,15 +55,40 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     .eq("company_id", params.id)
     .eq("role", "admin")
 
-  const { data: vmaxData } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
+  // Buscar TODOS os registros VMAX para esta empresa (paginação para superar limite de 1000)
+  let vmaxData: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  console.log("[v0] 📊 VMAX records for company:", vmaxData?.length || 0)
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", params.id)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
 
-  const allCustomers = [...(customersData || []), ...(vmaxData || [])]
-  const totalCustomers = allCustomers.length
+    if (vmaxPageError) {
+      console.log("[v0] VMAX page error:", vmaxPageError.message)
+      break
+    }
 
-  const totalDebts = debtsData?.length || 0
-  const totalAmount = debtsData?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0
+    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] TOTAL VMAX records for company (after pagination):", vmaxData.length)
+
+  // SOMENTE dados da tabela VMAX
+  const totalCustomers = vmaxData.length
+  const totalDebts = vmaxData.filter((v) => !v["DT Cancelamento"]).length
 
   const vmaxTotalAmount =
     vmaxData?.reduce((sum, v) => {
@@ -81,22 +103,27 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
       return sum + value
     }, 0) || 0
 
-  const combinedTotalAmount = totalAmount + vmaxTotalAmount
-  const recoveredAmount = paymentsData?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
-  const recoveryRate = combinedTotalAmount > 0 ? (recoveredAmount / combinedTotalAmount) * 100 : 0
+  // SOMENTE dados VMAX
+  const totalAmount = vmaxTotalAmount
+  const recoveredAmount = 0 // Não há dados de pagamentos na VMAX ainda
+  const recoveryRate = 0
 
-  const overdueDebts = debtsData?.filter((d) => d.status === "overdue").length || 0
   const vmaxOverdueDebts =
     vmaxData?.filter((v) => {
-      const diasInadStr = String(v["Dias_Inad."] || v.Dias_Inad || 0)
-      const diasInad = Number(diasInadStr) || 0
+      const diasInadStr = String(v["Dias Inad."] || "0")
+      // Remove ponto usado como separador de milhar no formato brasileiro
+      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
       return diasInad > 0
     }).length || 0
-  const totalOverdueDebts = overdueDebts + vmaxOverdueDebts
+  const totalOverdueDebts = vmaxOverdueDebts
 
   const admins = adminsData?.length || 0
 
-  const daysOverdueData = vmaxData?.map((v) => Number(v.Dias_Inad || 0)) || []
+  const daysOverdueData = vmaxData?.map((v) => {
+    const diasStr = String(v["Dias Inad."] || "0")
+    // Remove ponto usado como separador de milhar no formato brasileiro
+    return Number(diasStr.replace(/\./g, "")) || 0
+  }) || []
   const avgDaysOverdue =
     daysOverdueData.length > 0 ? daysOverdueData.reduce((sum, days) => sum + days, 0) / daysOverdueData.length : 0
 

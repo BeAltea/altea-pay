@@ -105,40 +105,68 @@ export async function POST(request: Request) {
     const { data: vmaxRecord, error: vmaxError } = await supabase
       .from("VMAX")
       .select("*")
-      .eq("CPF/CNPJ", cleanDoc)
+      .eq('"CPF/CNPJ"', cleanDoc)
       .single()
 
     if (vmaxRecord) {
       console.log("[ASSERTIVA CALLBACK] Found VMAX record:", vmaxRecord.id)
 
-      // Atualizar registro VMAX com análise completa
-      const { error: updateError } = await supabase
-        .from("VMAX")
-        .update({
-          analysis_metadata: payload, // Salva JSON completo da Assertiva
+      // Buscar o tipo de análise do credit_profiles (se existir)
+      const { data: profileWithType } = await supabase
+        .from("credit_profiles")
+        .select("data_assertiva")
+        .eq("external_id", protocolo || identificador)
+        .maybeSingle()
+
+      const analysisCategory = profileWithType?.data_assertiva?.analysis_category || "behavioral"
+      console.log("[ASSERTIVA CALLBACK] Analysis category:", analysisCategory)
+
+      // Preparar dados baseado no tipo de análise
+      let updateData: any = {
+        assertiva_uuid: identificador,
+        assertiva_protocol: protocolo,
+      }
+
+      if (analysisCategory === "restrictive") {
+        // ANÁLISE RESTRITIVA - salva credit_score, risk_level
+        updateData = {
+          ...updateData,
           credit_score: creditScore,
+          risk_level: creditClass,
+          approval_status: creditScore >= 500 ? "ACEITA" : "REJEITADA",
+          auto_collection_enabled: creditScore >= 500,
+          restrictive_analysis_logs: payload,
+          restrictive_analysis_date: new Date().toISOString(),
+        }
+        console.log("[ASSERTIVA CALLBACK] Updating VMAX with RESTRICTIVE data")
+      } else {
+        // ANÁLISE COMPORTAMENTAL - salva recovery_score, recovery_class
+        updateData = {
+          ...updateData,
           recovery_score: recoveryScore,
           recovery_class: recoveryClass,
           recovery_description: recoveryDescription,
-          risk_level: creditClass,
-          last_analysis_date: new Date().toISOString(),
-          assertiva_uuid: identificador,
-          assertiva_protocol: protocolo,
-          // Definir approval_status baseado no recovery_score
           approval_status: recoveryScore >= 294 ? "ACEITA" : "REJEITADA",
           auto_collection_enabled: recoveryScore >= 294,
           approval_reason:
             recoveryScore >= 294
               ? `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Aprovado automaticamente`
               : `Score de Recuperação ${recoveryScore} (Classe ${recoveryClass}) - Cobrança manual obrigatória`,
-        })
+          behavioral_analysis_logs: payload,
+          behavioral_analysis_date: new Date().toISOString(),
+        }
+        console.log("[ASSERTIVA CALLBACK] Updating VMAX with BEHAVIORAL data")
+      }
+
+      const { error: updateError } = await supabase
+        .from("VMAX")
+        .update(updateData)
         .eq("id", vmaxRecord.id)
 
       if (updateError) {
         console.error("[ASSERTIVA CALLBACK] Error updating VMAX:", updateError)
-        // Erro será registrado nos logs
       } else {
-        console.log("[ASSERTIVA CALLBACK] VMAX record updated successfully")
+        console.log("[ASSERTIVA CALLBACK] VMAX record updated successfully with", analysisCategory, "data")
       }
     }
 
@@ -230,7 +258,7 @@ export async function POST(request: Request) {
           cpf: cleanDoc,
           name: customerRecord?.name || vmaxRecord?.Cliente || "N/A",
           email: customerRecord?.email || vmaxRecord?.Email,
-          phone: customerRecord?.phone || vmaxRecord?.Telefone,
+          phone: customerRecord?.phone || vmaxRecord?.["Telefone 1"] || vmaxRecord?.["Telefone 2"],
           city: customerRecord?.city || vmaxRecord?.Cidade,
           document_type: documentType,
           score: creditScore,

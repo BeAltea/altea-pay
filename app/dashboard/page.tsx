@@ -55,18 +55,29 @@ export default async function DashboardPage() {
 
   const companyId = profile.company_id
 
-  const { data: allVmaxRecords, error: vmaxError } = await supabase.from("VMAX").select("*")
+  // Buscar TODOS os registros da empresa (sem limite de 1000)
+  let vmaxRecords: any[] = []
+  let page = 0
+  const pageSize = 1000
+  
+  while (true) {
+    const { data: pageData, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", companyId)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+    
+    if (vmaxError || !pageData || pageData.length === 0) break
+    vmaxRecords = [...vmaxRecords, ...pageData]
+    if (pageData.length < pageSize) break
+    page++
+  }
 
-  const vmaxCustomersFiltered = (allVmaxRecords || []).filter(
-    (v: any) =>
-      String(v.id_company || "")
-        .toLowerCase()
-        .trim() === String(companyId).toLowerCase().trim(),
-  )
+  const vmaxData = vmaxRecords || []
 
   let integrationLogsData = []
-  if (vmaxCustomersFiltered.length > 0) {
-    const vmaxIds = vmaxCustomersFiltered.map((v: any) => v.id).filter(Boolean)
+  if (vmaxData.length > 0) {
+    const vmaxIds = vmaxData.map((v: any) => v.id).filter(Boolean)
     const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
 
     integrationLogsData = logsData || []
@@ -77,22 +88,23 @@ export default async function DashboardPage() {
     .select("id")
     .eq("company_id", companyId)
 
-  const totalCustomers = (customers?.length || 0) + vmaxCustomersFiltered.length
+  const totalCustomers = (customers?.length || 0) + vmaxData.length
 
   const { data: debts, error: debtsError } = await supabase
     .from("debts")
     .select("amount, status")
     .eq("company_id", companyId)
 
-  const vmaxDebtsFormatted = vmaxCustomersFiltered.map((debt: any) => {
+  const vmaxDebtsFormatted = vmaxData.map((debt: any) => {
     const vencidoStr = String(debt.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
     const amount = Number(cleanValue) || 0
 
+    const diasInadStr = String(debt["Dias Inad."] || "0")
     return {
       amount,
-      status: debt.DT_Cancelamento ? "paid" : "pending",
-      diasInad: Number(debt.Dias_Inad) || 0,
+      status: debt["DT Cancelamento"] ? "paid" : "pending",
+      diasInad: Number(diasInadStr.replace(/\./g, "")) || 0,
     }
   })
 
@@ -320,7 +332,7 @@ export default async function DashboardPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Total de Clientes VMAX</span>
-                  <span className="text-lg font-bold text-purple-600">{vmaxCustomersFiltered.length}</span>
+                  <span className="text-lg font-bold text-purple-600">{vmaxData.length}</span>
                 </div>
                 <div className="text-xs text-gray-500">Integrados da base VMAX</div>
               </div>

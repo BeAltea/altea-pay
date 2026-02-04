@@ -8,20 +8,37 @@ export async function getVMAXRecords(companyId: string) {
 
     const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from("VMAX")
-      .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
-      .eq("id_company", companyId)
-      .order("Cliente")
+    // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+    let allData: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    if (error) {
-      console.error("[SERVER] getVMAXRecords - Error:", error)
-      throw error
+    while (hasMore) {
+      const { data: vmaxPage, error } = await supabase
+        .from("VMAX")
+        .select('id, "CPF/CNPJ", Cliente, Cidade, id_company')
+        .eq("id_company", companyId)
+        .order("Cliente")
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (error) {
+        console.error("[SERVER] getVMAXRecords - Error:", error)
+        throw error
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        allData = [...allData, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
     }
 
-    console.log("[SERVER] getVMAXRecords - Found records:", data?.length || 0)
+    console.log("[SERVER] getVMAXRecords - Found records:", allData.length)
 
-    return { success: true, data: data || [] }
+    return { success: true, data: allData }
   } catch (error: any) {
     console.error("[SERVER] getVMAXRecords - Error:", error)
     return { success: false, error: error.message, data: [] }
@@ -98,12 +115,12 @@ export async function getCustomerDetails(vmaxId: string) {
         city: vmaxData.Cidade || null,
         company: vmaxData.Empresa || null,
         overdue_amount: vmaxData.Vencido || null,
-        first_overdue: vmaxData.Primeira_Vencida || null,
-        days_overdue: vmaxData["Dias_Inad."] || null,
-        cancellation_date: vmaxData.DT_Cancelamento || null,
+        first_overdue: vmaxData.Vecto || null,
+        days_overdue: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || null,
+        cancellation_date: vmaxData["DT Cancelamento"] || null,
         email: null,
         phone: null,
-        created_at: vmaxData.Primeira_Vencida || new Date().toISOString(),
+        created_at: vmaxData.Vecto || new Date().toISOString(),
         score: creditProfile?.score || null,
         analysis_data: creditProfile?.data || null,
         analysis_status: creditProfile?.status || null,

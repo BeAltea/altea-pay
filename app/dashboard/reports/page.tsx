@@ -51,8 +51,8 @@ export default function ReportsPage() {
           const aprovados = vmaxData.filter((c) => c.approval_status === "ACEITA").length
           const rejeitados = vmaxData.filter((c) => c.approval_status === "REJEITA").length
           const inadimplentes = vmaxData.filter((c) => {
-            const dias = c["Dias_Inad"]
-            return dias && Number.parseInt(dias) > 0
+            const dias = c["Dias Inad."]
+            return dias && Number.parseInt(String(dias).replace(/\D/g, "")) > 0
           }).length
 
           // Calcular total vencido

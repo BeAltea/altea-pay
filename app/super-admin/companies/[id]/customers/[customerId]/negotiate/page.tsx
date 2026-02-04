@@ -73,7 +73,7 @@ export default async function SuperAdminNegotiatePage({
               <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">
                 R$ {totalDebt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </h3>
-              <p className="text-sm text-red-700 dark:text-red-400">{customer.Dias_Inad || 0} dias em atraso</p>
+              <p className="text-sm text-red-700 dark:text-red-400">{Number(String(customer["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias em atraso</p>
             </div>
           </CardContent>
         </Card>

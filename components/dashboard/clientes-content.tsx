@@ -47,7 +47,7 @@ interface Cliente {
   credit_score: number
   approval_status: string
   sanctions_count: number
-  Dias_Inad: number
+  "Dias Inad.": number
   Vencido: string
   analysis_metadata: any
   behavioralData?: any // Adicionado para análise comportamental
@@ -102,7 +102,9 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           comparison = (a.approval_status || "").localeCompare(b.approval_status || "")
           break
         case "days":
-          comparison = (a.Dias_Inad || 0) - (b.Dias_Inad || 0)
+          const diasA = Number(String(a["Dias Inad."] || "0").replace(/\./g, "")) || 0
+          const diasB = Number(String(b["Dias Inad."] || "0").replace(/\./g, "")) || 0
+          comparison = diasA - diasB
           break
       }
 
@@ -891,12 +893,12 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                                     <p className="font-semibold text-slate-700">{cliente.Cidade || "N/A"}, {cliente.UF || "-"}</p>
                                   </div>
                                 </div>
-                                {cliente.Dias_Inad > 0 && (
+                                {Number(String(cliente["Dias Inad."] || "0").replace(/\D/g, "")) > 0 && (
                                   <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl">
                                     <Clock className="h-5 w-5 text-red-400" />
                                     <div>
                                       <p className="text-xs text-red-400">Inadimplencia</p>
-                                      <p className="font-bold text-red-600">{cliente.Dias_Inad} dias</p>
+                                      <p className="font-bold text-red-600">{Number(String(cliente["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias</p>
                                     </div>
                                   </div>
                                 )}

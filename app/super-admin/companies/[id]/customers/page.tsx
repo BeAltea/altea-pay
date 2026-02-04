@@ -18,28 +18,45 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     notFound()
   }
 
-  const { data: customers } = await supabase
-    .from("customers")
-    .select(`
-      *,
-      debts (
-        id,
-        amount,
-        status,
-        due_date
-      )
-    `)
-    .eq("company_id", params.id)
-    .order("created_at", { ascending: false })
+  // Buscar SOMENTE da tabela VMAX (tabela customers foi descontinuada)
+  let vmaxCustomers: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  const { data: vmaxCustomers } = await supabase.from("VMAX").select("*").eq("id_company", params.id)
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", params.id)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPageError) {
+      console.log("[v0] VMAX page error:", vmaxPageError.message)
+      break
+    }
+
+    console.log(`[v0] VMAX customers page ${page}: ${vmaxPage?.length || 0} records`)
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxCustomers = [...vmaxCustomers, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] TOTAL VMAX customers loaded (after pagination):", vmaxCustomers.length)
 
   const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
     const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
     const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
-    const diasInad = Number(vmax["Dias_Inad"] || vmax.dias_inad || 0)
-    const primeiraVencida = vmax.Primeira_Vencida || vmax.primeira_vencida
-    const dtCancelamento = vmax.DT_Cancelamento || vmax.dt_cancelamento
+    // Remove ponto usado como separador de milhar no formato brasileiro
+    const diasInadStr = String(vmax["Dias Inad."] || vmax.dias_inad || "0")
+    const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
+    const primeiraVencida = vmax.Vecto || vmax.primeira_vencida
+    const dtCancelamento = vmax["DT Cancelamento"] || vmax.dt_cancelamento
 
     let status: "active" | "overdue" | "negotiating" | "paid" = "active"
     if (diasInad > 0) {
@@ -65,41 +82,8 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     }
   })
 
-  const customersWithStats = (customers || []).map((customer) => {
-    const debts = customer.debts || []
-    const totalDebt = debts.reduce((sum: number, debt: any) => sum + (debt.amount || 0), 0)
-    const overdueDebts = debts.filter((debt: any) => {
-      if (debt.status === "paid") return false
-      if (!debt.due_date) return false
-      return new Date(debt.due_date) < new Date()
-    })
-    const overdueDebt = overdueDebts.reduce((sum: number, debt: any) => sum + (debt.amount || 0), 0)
-    const lastPayment = debts
-      .filter((d: any) => d.status === "paid")
-      .sort((a: any, b: any) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime())[0]?.due_date
-
-    const oldestOverdueDebt = overdueDebts.sort(
-      (a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime(),
-    )[0]
-    const daysOverdue = oldestOverdueDebt
-      ? Math.floor((new Date().getTime() - new Date(oldestOverdueDebt.due_date).getTime()) / (1000 * 60 * 60 * 24))
-      : 0
-
-    let status: "active" | "overdue" | "negotiating" | "paid" = "active"
-    if (totalDebt === 0) status = "paid"
-    else if (overdueDebt > 0) status = "overdue"
-
-    return {
-      ...customer,
-      totalDebt,
-      overdueDebt,
-      lastPayment: lastPayment || customer.created_at,
-      status,
-      daysOverdue,
-    }
-  })
-
-  const allCustomers = [...customersWithStats, ...vmaxProcessed]
+  // Usar SOMENTE dados da tabela VMAX
+  const allCustomers = vmaxProcessed
 
   return (
     <div className="space-y-6">

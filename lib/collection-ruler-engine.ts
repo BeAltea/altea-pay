@@ -193,9 +193,10 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
       Cliente,
       CPF/CNPJ,
       Email,
-      Telefone,
+      "Telefone 1",
+      "Telefone 2",
       Vencido,
-      Primeira_Vencida,
+      Vecto,
       approval_status,
       id_company,
       recovery_score,
@@ -204,7 +205,7 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
     .eq("id_company", rule.company_id)
     .in("approval_status", rule.requires_approval_status || ["ACEITA", "ACEITA_ESPECIAL"])
     .not("Email", "is", null)
-    .not("Telefone", "is", null)
+    .not("Telefone 1", "is", null)
 
   const { data: vmaxDebts, error } = await query
 
@@ -220,13 +221,13 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
   // Mapear para estrutura EligibleDebt
   const eligibleDebts: EligibleDebt[] = vmaxDebts
     .map((debt) => {
-      let startDate = debt.Primeira_Vencida || debt.due_date || new Date().toISOString().split("T")[0]
+      let startDate = debt.Vecto || debt.due_date || new Date().toISOString().split("T")[0]
 
       // Determinar data de referência baseado em start_date_field
       if (rule.start_date_field === "due_date") {
-        startDate = debt.Primeira_Vencida || startDate
+        startDate = debt.Vecto || startDate
       } else if (rule.start_date_field === "first_overdue") {
-        startDate = debt.Primeira_Vencida || startDate
+        startDate = debt.Vecto || startDate
       }
 
       return {
@@ -234,10 +235,10 @@ async function getEligibleDebts(rule: CollectionRule): Promise<EligibleDebt[]> {
         customer_id: debt.id, // Usando id da VMAX como customer_id
         company_id: debt.id_company,
         amount: Number.parseFloat(debt.Vencido || "0"),
-        due_date: debt.Primeira_Vencida || startDate,
+        due_date: debt.Vecto || startDate,
         customer_name: debt.Cliente || "Cliente",
         customer_email: debt.Email || "",
-        customer_phone: debt.Telefone || "",
+        customer_phone: debt["Telefone 1"] || debt["Telefone 2"] || "",
         approval_status: debt.approval_status || "",
         start_date: startDate,
         recovery_score: debt.recovery_score,

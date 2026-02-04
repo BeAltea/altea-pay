@@ -28,6 +28,8 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0 // Force no cache for this page
 
 async function fetchCompanies() {
+  console.log("[v0] ========== COMPANIES PAGE v3 - PAGINATION ENABLED ==========")
+  
   const supabase = createAdminClient()
 
   const { data: companiesData, error: companiesError } = await supabase.from("companies").select("*")
@@ -37,23 +39,7 @@ async function fetchCompanies() {
     return []
   }
 
-  const { data: customersData, error: customersError } = await supabase.from("customers").select("company_id")
-
-  if (customersError) {
-    console.error("[v0] Error fetching customers:", customersError)
-  }
-
-  const { data: debtsData, error: debtsError } = await supabase.from("debts").select("company_id, amount, status")
-
-  if (debtsError) {
-    console.error("[v0] Error fetching debts:", debtsError)
-  }
-
-  const { data: paymentsData, error: paymentsError } = await supabase.from("payments").select("company_id, amount")
-
-  if (paymentsError) {
-    console.error("[v0] Error fetching payments:", paymentsError)
-  }
+  // SOMENTE dados da tabela VMAX (tabelas customers, debts e payments foram descontinuadas)
 
   const { data: adminsData, error: adminsError } = await supabase
     .from("profiles")
@@ -64,18 +50,40 @@ async function fetchCompanies() {
     console.error("[v0] Error fetching admins:", adminsError)
   }
 
-  const { data: vmaxData, error: vmaxError } = await supabase.from("VMAX").select("*")
+  // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+  let vmaxData: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  if (vmaxError) {
-    console.error("[v0] Error fetching VMAX:", vmaxError)
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxPageError) {
+      console.error("[v0] Error fetching VMAX page:", vmaxPageError)
+      break
+    }
+
+    console.log(`[v0] VMAX page ${page}: ${vmaxPage?.length || 0} records`)
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
   }
 
+  console.log("[v0] TOTAL VMAX records loaded (after pagination):", vmaxData.length)
+
   const companies: Company[] = (companiesData || []).map((company) => {
-    const companyCustomers = customersData?.filter((c) => c.company_id === company.id) || []
-    const companyDebts = debtsData?.filter((d) => d.company_id === company.id) || []
-    const companyPayments = paymentsData?.filter((p) => p.company_id === company.id) || []
     const companyAdmins = adminsData?.filter((a) => a.company_id === company.id) || []
 
+    // SOMENTE dados da tabela VMAX
     const companyVmaxData = vmaxData.filter((v) => {
       const vmaxCompanyId = v.id_company?.toString().toLowerCase().trim()
       const match = vmaxCompanyId === company.id.toString().toLowerCase().trim()
@@ -106,17 +114,21 @@ async function fetchCompanies() {
     console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
-      const diasInad = Number(v.Dias_Inad || 0)
+      const diasInadStr = String(v["Dias Inad."] || "0")
+      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
       return diasInad > 0
     })
 
     const avgDaysOverdue =
       vmaxWithOverdue.length > 0
-        ? vmaxWithOverdue.reduce((sum, v) => sum + Number(v.Dias_Inad || 0), 0) / vmaxWithOverdue.length
+        ? vmaxWithOverdue.reduce((sum, v) => {
+            const diasInadStr = String(v["Dias Inad."] || "0")
+            return sum + (Number(diasInadStr.replace(/\./g, "")) || 0)
+          }, 0) / vmaxWithOverdue.length
         : 0
 
     const paidAmount = companyVmaxData
-      .filter((v) => v.DT_Cancelamento)
+      .filter((v) => v["DT Cancelamento"])
       .reduce((sum, v) => {
         const vencidoStr = String(v.Vencido || "0")
         const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
@@ -127,7 +139,7 @@ async function fetchCompanies() {
     const recoveryRate = 0 // No recovery data available yet
 
     const totalCustomers = companyVmaxData.length
-    const totalDebts = companyVmaxData.filter((v) => !v.DT_Cancelamento).length
+    const totalDebts = companyVmaxData.filter((v) => !v["DT Cancelamento"]).length
 
     console.log(
       `[v0] Company ${company.name} - totalAmount: ${vmaxTotalAmount}, VMAX records: ${companyVmaxData.length}`,

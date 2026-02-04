@@ -3,32 +3,51 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function fetchAllCustomers() {
-  console.log("[v0] 🔍 Iniciando fetchAllCustomers...")
+  console.log("[v0] Iniciando fetchAllCustomers...")
 
   try {
     const supabase = createAdminClient()
-    console.log("[v0] ✅ Admin client criado")
+    console.log("[v0] Admin client criado")
 
-    const [customersRes, vmaxRes] = await Promise.all([
-      supabase.from("customers").select("id, name, document, company_id").order("name"),
-      supabase.from("VMAX").select('id, Cliente, id_company, "CPF/CNPJ"'),
-    ])
+    // Buscar clientes da tabela customers
+    const customersRes = await supabase.from("customers").select("id, name, document, company_id").order("name")
 
-    console.log("[v0] 📊 Customers query status:", customersRes.error ? "ERROR" : "SUCCESS")
-    console.log("[v0] 📊 VMAX query status:", vmaxRes.error ? "ERROR" : "SUCCESS")
+    console.log("[v0] Customers query status:", customersRes.error ? "ERROR" : "SUCCESS")
 
     if (customersRes.error) {
-      console.error("[v0] ❌ Error fetching customers:", customersRes.error)
-    }
-    if (vmaxRes.error) {
-      console.error("[v0] ❌ Error fetching VMAX:", vmaxRes.error)
+      console.error("[v0] Error fetching customers:", customersRes.error)
     }
 
     const customersData = customersRes.data || []
-    const vmaxData = vmaxRes.data || []
 
-    console.log("[v0] 📦 VMAX records fetched:", vmaxData.length)
-    console.log("[v0] 📦 Customers records fetched:", customersData.length)
+    // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
+    let vmaxData: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
+
+    while (hasMore) {
+      const { data: vmaxPage, error: vmaxPageError } = await supabase
+        .from("VMAX")
+        .select('id, Cliente, id_company, "CPF/CNPJ"')
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+
+      if (vmaxPageError) {
+        console.error("[v0] Error fetching VMAX page:", vmaxPageError)
+        break
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        vmaxData = [...vmaxData, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
+    }
+
+    console.log("[v0] VMAX records fetched:", vmaxData.length)
+    console.log("[v0] Customers records fetched:", customersData.length)
 
     const vmaxCustomers = vmaxData.map((v: any) => ({
       id: v.id,

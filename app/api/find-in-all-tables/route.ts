@@ -50,14 +50,33 @@ export async function POST(request: Request) {
 
     for (const tableName of tablesToSearch) {
       try {
-        const { data: allRecords, error: fetchError } = await supabaseAdmin.from(tableName).select("*").limit(1000)
+        // Buscar TODOS os registros (paginação para superar limite de 1000)
+        let allRecords: any[] = []
+        let page = 0
+        const pageSize = 1000
+        let hasMore = true
 
-        if (fetchError) {
-          // Silently skip tables that don't exist
-          continue
+        while (hasMore) {
+          const { data: recordsPage, error: fetchError } = await supabaseAdmin
+            .from(tableName)
+            .select("*")
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (fetchError) {
+            // Silently skip tables that don't exist
+            break
+          }
+
+          if (recordsPage && recordsPage.length > 0) {
+            allRecords = [...allRecords, ...recordsPage]
+            page++
+            hasMore = recordsPage.length === pageSize
+          } else {
+            hasMore = false
+          }
         }
 
-        if (allRecords && allRecords.length > 0) {
+        if (allRecords.length > 0) {
           const possibleColumns = ["CPF/CNPJ", "cpf_cnpj", "cpf", "cnpj", "document", "Cliente"]
 
           for (const record of allRecords) {

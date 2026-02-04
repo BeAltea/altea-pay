@@ -4,31 +4,19 @@ import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function getAnalysesData() {
   try {
-    console.log("[SERVER] getAnalysesData - Starting...")
+    console.log("[SERVER] getAnalysesData - Starting (VMAX ONLY)...")
 
     const supabase = createAdminClient()
 
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document, company_id")
-      .order("name")
-      .limit(200)
-
-    if (customersError) {
-      console.error("[SERVER] getAnalysesData - Error loading customers:", customersError)
-      throw customersError
-    }
-
-    console.log("[SERVER] getAnalysesData - Customers loaded:", customersData?.length || 0)
-
+    // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
+    // Buscar registros com análise RESTRITIVA (restrictive_analysis_logs ou analysis_metadata antigo)
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
       .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad, credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date',
       )
-      .not("analysis_metadata", "is", null) // Apenas com análise
-      .order("last_analysis_date", { ascending: false })
-      .limit(200)
+      .or("restrictive_analysis_logs.not.is.null,analysis_metadata.not.is.null") // Com análise restritiva
+      .order("restrictive_analysis_date", { ascending: false, nullsFirst: false })
 
     if (vmaxError) {
       console.error("[SERVER] Error loading VMAX:", vmaxError)
@@ -41,7 +29,6 @@ export async function getAnalysesData() {
       .select("*")
       .eq("source", "assertiva")
       .order("created_at", { ascending: false })
-      .limit(200)
 
     if (profilesError) {
       console.error("[SERVER] Error loading profiles:", profilesError)
@@ -56,12 +43,13 @@ export async function getAnalysesData() {
         company_id: v.id_company,
         city: v.Cidade || "N/A",
         source_table: "vmax" as const,
-        dias_inad: v.Dias_Inad || 0,
+        dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
         credit_score: v.credit_score,
         risk_level: v.risk_level,
         approval_status: v.approval_status,
-        analysis_metadata: v.analysis_metadata,
-        last_analysis_date: v.last_analysis_date,
+        // Usar restrictive_analysis_logs se existir, senão analysis_metadata (compatibilidade)
+        analysis_metadata: v.restrictive_analysis_logs || v.analysis_metadata,
+        last_analysis_date: v.restrictive_analysis_date || v.last_analysis_date,
       })),
       ...(profilesData || []).map((p) => ({
         id: p.id,
@@ -152,7 +140,7 @@ export async function getCustomerDetails(customerId: string) {
         document: vmaxData["CPF/CNPJ"],
         company_id: vmaxData.id_company,
         city: vmaxData.Cidade,
-        dias_inad: vmaxData.Dias_Inad || 0,
+        dias_inad: Number(String(vmaxData["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
       }
       isVMAX = true
     }
@@ -275,58 +263,50 @@ export async function runAnalysis(customerId: string, document: string) {
 
 export async function getAllCustomers() {
   try {
-    console.log("[SERVER] getAllCustomers - Starting...")
-
     const supabase = createAdminClient()
+    // Buscar TODOS os registros VMAX (sem limite)
+    let allVmaxData: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    const { data: customersData, error: customersError } = await supabase
-      .from("customers")
-      .select("id, name, document, company_id")
-      .order("name")
-      .limit(200)
+    while (hasMore) {
+      const { data: vmaxPage, error: vmaxPageError } = await supabase
+        .from("VMAX")
+        .select(
+          'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date, behavioral_analysis_logs, behavioral_analysis_date',
+        )
+        .order("Cliente")
+        .range(page * pageSize, (page + 1) * pageSize - 1)
 
-    if (customersError) {
-      console.error("[SERVER] getAllCustomers - Error loading customers:", customersError)
-      throw customersError
+      if (vmaxPageError) {
+        console.error("[SERVER] getAllCustomers - Error loading VMAX page:", vmaxPageError)
+        break
+      }
+
+      if (vmaxPage && vmaxPage.length > 0) {
+        allVmaxData = [...allVmaxData, ...vmaxPage]
+        page++
+        hasMore = vmaxPage.length === pageSize
+      } else {
+        hasMore = false
+      }
     }
 
-    console.log("[SERVER] getAllCustomers - Customers loaded:", customersData?.length || 0)
+    const vmaxData = allVmaxData
+    const vmaxError = null
 
-    const { data: vmaxData, error: vmaxError } = await supabase
-      .from("VMAX")
-      .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, Dias_Inad, credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date',
-      )
-      .order("Cliente")
-      .limit(200)
-
-    if (vmaxError) {
-      console.error("[SERVER] getAllCustomers - Error loading VMAX:", vmaxError)
-    }
-
-    console.log("[SERVER] getAllCustomers - VMAX records loaded:", vmaxData?.length || 0)
-
-    const allCustomers = [
-      ...(customersData || []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        document: c.document,
-        company_id: c.company_id,
-        city: "N/A",
-        source_table: "customers" as const,
-        dias_inad: 0,
-        credit_score: null,
-        risk_level: null,
-        approval_status: null,
-        analysis_metadata: null,
-        last_analysis_date: null,
-      })),
-      ...(vmaxData || []).map((v) => {
+    // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
+    const allCustomers = (vmaxData || []).map((v) => {
         let score = v.credit_score
+        
+        // Usar logs restritivos se existir, senão analysis_metadata (compatibilidade)
+        const analysisLogs = v.restrictive_analysis_logs || v.analysis_metadata
+        const analysisDate = v.restrictive_analysis_date || v.last_analysis_date
 
-        if (!score && v.analysis_metadata) {
+        if (!score && analysisLogs) {
           try {
-            const metadata = v.analysis_metadata as any
+            const metadata = analysisLogs as any
             score =
               metadata?.assertiva_data?.credito?.resposta?.score?.pontos ||
               metadata?.credito?.resposta?.score?.pontos ||
@@ -346,18 +326,24 @@ export async function getAllCustomers() {
           document: v["CPF/CNPJ"],
           company_id: v.id_company,
           city: v.Cidade || "N/A",
-          source_table: "vmax" as const,
-          dias_inad: v.Dias_Inad || 0,
+          source_table: "VMAX" as const,
+          dias_inad: Number(String(v["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
           credit_score: score,
           risk_level: v.risk_level,
           approval_status: v.approval_status,
-          analysis_metadata: v.analysis_metadata,
-          last_analysis_date: v.last_analysis_date,
-        }
-      }),
-    ]
+          analysis_metadata: analysisLogs,
+          last_analysis_date: analysisDate,
+          recovery_score: v.recovery_score,
+          recovery_class: v.recovery_class,
+          // Novos campos separados
+          restrictive_analysis_logs: v.restrictive_analysis_logs,
+          restrictive_analysis_date: v.restrictive_analysis_date,
+          behavioral_analysis_logs: v.behavioral_analysis_logs,
+          behavioral_analysis_date: v.behavioral_analysis_date,
+      }
+    })
 
-    console.log("[SERVER] getAllCustomers - Total customers (customers + VMAX):", allCustomers.length)
+    console.log("[SERVER] getAllCustomers - Total VMAX customers:", allCustomers.length)
 
     if (allCustomers.length === 0) {
       return { success: true, data: [] }
@@ -368,7 +354,7 @@ export async function getAllCustomers() {
 
     const companiesMap = new Map(companiesData?.map((c) => [c.id, c]) || [])
 
-    const formattedCustomers = allCustomers.map((customer) => {
+    const formattedCustomers = allCustomers.map((customer: any) => {
       const company = companiesMap.get(customer.company_id)
 
       return {
@@ -385,6 +371,13 @@ export async function getAllCustomers() {
         approval_status: customer.approval_status,
         analysis_metadata: customer.analysis_metadata,
         last_analysis_date: customer.last_analysis_date,
+        recovery_score: customer.recovery_score,
+        recovery_class: customer.recovery_class,
+        // Novos campos separados para cada tipo de análise
+        restrictive_analysis_logs: customer.restrictive_analysis_logs,
+        restrictive_analysis_date: customer.restrictive_analysis_date,
+        behavioral_analysis_logs: customer.behavioral_analysis_logs,
+        behavioral_analysis_date: customer.behavioral_analysis_date,
       }
     })
 

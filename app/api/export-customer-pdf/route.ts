@@ -618,7 +618,7 @@ function generateCustomerPDFHTML(cliente: any, company: any): string {
           </div>
           <div class="info-item">
             <div class="info-label">Telefone</div>
-            <div class="info-value">${cliente.Telefone || "N/A"}</div>
+            <div class="info-value">${cliente["Telefone 1"] || cliente["Telefone 2"] || "N/A"}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Cidade/UF</div>
@@ -681,11 +681,11 @@ function generateCustomerPDFHTML(cliente: any, company: any): string {
           </div>
           <div class="info-item">
             <div class="info-label">Primeira Vencida</div>
-            <div class="info-value">${formatDate(cliente.Primeira_Vencida)}</div>
+            <div class="info-value">${formatDate(cliente.Vecto)}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Dias em Inadimplência</div>
-            <div class="info-value" style="color: #F59E0B; font-size: 20px;">${cliente.Dias_Inad || 0} dias</div>
+            <div class="info-value" style="color: #F59E0B; font-size: 20px;">${Number(String(cliente["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias</div>
           </div>
           <div class="info-item">
             <div class="info-label">Status de Aprovação</div>

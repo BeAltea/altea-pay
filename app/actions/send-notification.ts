@@ -54,14 +54,14 @@ export async function sendCollectionNotification({
       empresa: vmaxRecord.Empresa,
       vencido: vmaxRecord.Vencido,
       email: vmaxRecord.Email,
-      telefone: vmaxRecord.Telefone,
+      telefone: vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"],
     })
 
     const customerName = vmaxRecord.Cliente || "Cliente"
     const companyName = vmaxRecord.Empresa || "Empresa"
     const debtAmount = vmaxRecord.Vencido || "0"
     const customerEmail = vmaxRecord.Email
-    const customerPhone = vmaxRecord.Telefone
+    const customerPhone = vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"]
 
     if (type === "email") {
       if (!customerEmail) {
@@ -93,8 +93,8 @@ export async function sendCollectionNotification({
       const html = await generateDebtCollectionEmail({
         customerName,
         debtAmount: parsedAmount,
-        dueDate: vmaxRecord.Primeira_Vencida
-          ? new Date(vmaxRecord.Primeira_Vencida).toLocaleDateString("pt-BR")
+        dueDate: vmaxRecord.Vecto
+          ? new Date(vmaxRecord.Vecto).toLocaleDateString("pt-BR")
           : "Vencida",
         companyName,
         paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || "https://alteapay.com"}/user-dashboard/debts/${debtId}`,
