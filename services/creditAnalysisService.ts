@@ -1786,8 +1786,8 @@ export async function runAssertivaManualAnalysis(
 
       // Delay between batches to avoid rate limiting
       if (i + batchSize < customersToAnalyze.length) {
-        console.log("[v0] runAssertivaManualAnalysis - ⏳ Waiting 2s before next batch...")
-        await new Promise((resolve) => setTimeout(resolve, 2000))
+        console.log("[v0] runAssertivaManualAnalysis - Waiting 4s before next batch...")
+        await new Promise((resolve) => setTimeout(resolve, 4000))
       }
     }
 
