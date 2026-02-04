@@ -9,13 +9,14 @@ export async function getAnalysesData() {
     const supabase = createAdminClient()
 
     // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
+    // Buscar registros com análise RESTRITIVA (restrictive_analysis_logs ou analysis_metadata antigo)
     const { data: vmaxData, error: vmaxError } = await supabase
       .from("VMAX")
       .select(
-        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
+        'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date',
       )
-      .not("analysis_metadata", "is", null) // Apenas com análise
-      .order("last_analysis_date", { ascending: false })
+      .or("restrictive_analysis_logs.not.is.null,analysis_metadata.not.is.null") // Com análise restritiva
+      .order("restrictive_analysis_date", { ascending: false, nullsFirst: false })
 
     if (vmaxError) {
       console.error("[SERVER] Error loading VMAX:", vmaxError)
@@ -46,8 +47,9 @@ export async function getAnalysesData() {
         credit_score: v.credit_score,
         risk_level: v.risk_level,
         approval_status: v.approval_status,
-        analysis_metadata: v.analysis_metadata,
-        last_analysis_date: v.last_analysis_date,
+        // Usar restrictive_analysis_logs se existir, senão analysis_metadata (compatibilidade)
+        analysis_metadata: v.restrictive_analysis_logs || v.analysis_metadata,
+        last_analysis_date: v.restrictive_analysis_date || v.last_analysis_date,
       })),
       ...(profilesData || []).map((p) => ({
         id: p.id,
@@ -272,7 +274,7 @@ export async function getAllCustomers() {
       const { data: vmaxPage, error: vmaxPageError } = await supabase
         .from("VMAX")
         .select(
-          'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class',
+          'id, Cliente, "CPF/CNPJ", id_company, Cidade, "Dias Inad.", credit_score, risk_level, approval_status, analysis_metadata, last_analysis_date, recovery_score, recovery_class, restrictive_analysis_logs, restrictive_analysis_date, behavioral_analysis_logs, behavioral_analysis_date',
         )
         .order("Cliente")
         .range(page * pageSize, (page + 1) * pageSize - 1)
@@ -297,10 +299,14 @@ export async function getAllCustomers() {
     // SOMENTE dados da tabela VMAX (tabela customers foi descontinuada)
     const allCustomers = (vmaxData || []).map((v) => {
         let score = v.credit_score
+        
+        // Usar logs restritivos se existir, senão analysis_metadata (compatibilidade)
+        const analysisLogs = v.restrictive_analysis_logs || v.analysis_metadata
+        const analysisDate = v.restrictive_analysis_date || v.last_analysis_date
 
-        if (!score && v.analysis_metadata) {
+        if (!score && analysisLogs) {
           try {
-            const metadata = v.analysis_metadata as any
+            const metadata = analysisLogs as any
             score =
               metadata?.assertiva_data?.credito?.resposta?.score?.pontos ||
               metadata?.credito?.resposta?.score?.pontos ||
@@ -325,10 +331,15 @@ export async function getAllCustomers() {
           credit_score: score,
           risk_level: v.risk_level,
           approval_status: v.approval_status,
-          analysis_metadata: v.analysis_metadata,
-          last_analysis_date: v.last_analysis_date,
-        recovery_score: v.recovery_score,
-        recovery_class: v.recovery_class,
+          analysis_metadata: analysisLogs,
+          last_analysis_date: analysisDate,
+          recovery_score: v.recovery_score,
+          recovery_class: v.recovery_class,
+          // Novos campos separados
+          restrictive_analysis_logs: v.restrictive_analysis_logs,
+          restrictive_analysis_date: v.restrictive_analysis_date,
+          behavioral_analysis_logs: v.behavioral_analysis_logs,
+          behavioral_analysis_date: v.behavioral_analysis_date,
       }
     })
 
@@ -362,6 +373,11 @@ export async function getAllCustomers() {
         last_analysis_date: customer.last_analysis_date,
         recovery_score: customer.recovery_score,
         recovery_class: customer.recovery_class,
+        // Novos campos separados para cada tipo de análise
+        restrictive_analysis_logs: customer.restrictive_analysis_logs,
+        restrictive_analysis_date: customer.restrictive_analysis_date,
+        behavioral_analysis_logs: customer.behavioral_analysis_logs,
+        behavioral_analysis_date: customer.behavioral_analysis_date,
       }
     })
 

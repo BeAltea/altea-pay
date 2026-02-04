@@ -106,7 +106,9 @@ export default function AnalysesPage() {
 
       if (response.success) {
         const mappedData = response.data.map((customer: any) => {
-          const assertiva_data = customer.analysis_metadata || null
+          // Usar dados restritivos se existir, senão analysis_metadata (compatibilidade)
+          const assertiva_data = customer.restrictive_analysis_logs || customer.analysis_metadata || null
+          const analysisDate = customer.restrictive_analysis_date || customer.last_analysis_date
 
           let displayScore = customer.credit_score
 
@@ -114,7 +116,8 @@ export default function AnalysesPage() {
             displayScore = 5
           }
 
-          const hasAnalysis = customer.analysis_metadata && customer.last_analysis_date
+          // Verificar se tem análise RESTRITIVA
+          const hasAnalysis = (customer.restrictive_analysis_logs || customer.analysis_metadata) && analysisDate
           const status = hasAnalysis ? "completed" : "pending"
 
           return {
@@ -122,14 +125,14 @@ export default function AnalysesPage() {
             customer_id: customer.id,
             company_id: customer.company_id,
             cpf: customer.document,
-            score: displayScore, // Main score only (converted 0 → 5)
+            score: displayScore,
             source: customer.source_table,
             analysis_type: hasAnalysis ? "detailed" : "pending",
-            status, // Set status based on analysis completion
-            created_at: customer.last_analysis_date || customer.created_at,
+            status,
+            created_at: analysisDate || customer.created_at,
             customer_name: customer.name,
             company_name: customer.company_name,
-            assertiva_data, // Pass assertiva_data directly (not nested)
+            assertiva_data,
           }
         })
 
