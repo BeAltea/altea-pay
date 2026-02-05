@@ -131,10 +131,18 @@ export async function sendPaymentLink(
 
       if (error) {
         console.error("Resend error:", error)
-        return { success: false, error: "Erro ao enviar e-mail: " + error.message }
+        // Se for erro de dominio nao verificado no Resend, retorna o link para copia manual
+        if (error.message?.includes("testing emails") || error.message?.includes("verify a domain")) {
+          return { 
+            success: false, 
+            error: "O Resend esta em modo teste e so envia para o email da propria conta. Verifique um dominio em resend.com/domains para enviar para outros destinatarios.",
+            paymentUrl,
+          }
+        }
+        return { success: false, error: "Erro ao enviar e-mail: " + error.message, paymentUrl }
       }
 
-      return { success: true, data: { emailId: data?.id } }
+      return { success: true, data: { emailId: data?.id, paymentUrl } }
     }
 
     if (channel === "sms" || channel === "whatsapp") {
