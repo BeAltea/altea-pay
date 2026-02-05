@@ -41,13 +41,21 @@ export default async function NegotiatePage({
     redirect("/dashboard/clientes")
   }
 
+  // Parse Vencido value (Brazilian format: "1.234,56" or "R$ 1.234,56")
+  const vencidoStr = String(customerData.Vencido || "0")
+  const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+  const debtAmount = Number(cleanValue) || 0
+
   // Format customer data
   const customer = {
     id: customerData.id,
-    name: customerData.Cliente || customerData.name,
-    cpf: customerData["CPF/CNPJ"] || customerData.cpf,
-    debtAmount: Number.parseFloat(customerData.Vencido || customerData.debt_amount || "0"),
-    daysOverdue: Number.parseInt(String(customerData["Dias Inad."] || customerData.days_overdue || "0").replace(/\D/g, "")) || 0,
+    name: customerData.Cliente || customerData.name || "N/A",
+    cpf: customerData["CPF/CNPJ"] || customerData.cpf || "N/A",
+    debtAmount: debtAmount,
+    daysOverdue: Number.parseInt(String(customerData["Dias Inad."] || "0").replace(/\D/g, "")) || 0,
+    email: customerData.Email || null,
+    phone1: customerData["Telefone 1"] || null,
+    phone2: customerData["Telefone 2"] || null,
   }
 
   return (

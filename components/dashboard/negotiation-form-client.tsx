@@ -20,8 +20,9 @@ interface Customer {
   cpf: string
   debtAmount: number
   daysOverdue: number
-  email?: string
-  phone?: string
+  email?: string | null
+  phone1?: string | null
+  phone2?: string | null
 }
 
 export function NegotiationFormClient({ customer }: { customer: Customer }) {
@@ -319,8 +320,9 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
           }}
           agreementId={createdAgreementId}
           customerName={customer.name}
-          customerEmail={customer.email}
-          customerPhone={customer.phone}
+          customerEmail={customer.email || undefined}
+          customerPhone1={customer.phone1 || undefined}
+          customerPhone2={customer.phone2 || undefined}
         />
       )}
     </>

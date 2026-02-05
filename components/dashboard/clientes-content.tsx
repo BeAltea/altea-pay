@@ -67,6 +67,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
   const [sortField, setSortField] = useState<SortField>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [displayLimit, setDisplayLimit] = useState<string>("50")
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const router = useRouter()
 
@@ -114,6 +115,12 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
     return sorted
   }, [clientes, searchTerm, sortField, sortDirection, statusFilter])
 
+  const displayedClientes = useMemo(() => {
+    if (displayLimit === "all") return filteredAndSortedClientes
+    const limit = Number(displayLimit)
+    return filteredAndSortedClientes.slice(0, limit)
+  }, [filteredAndSortedClientes, displayLimit])
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc")
@@ -160,7 +167,9 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Badge variant="secondary" className="text-base px-4 py-2 justify-center">
-            {clientes.length} clientes
+            {filteredAndSortedClientes.length !== clientes.length
+              ? `${filteredAndSortedClientes.length} / ${clientes.length} clientes`
+              : `${clientes.length} clientes`}
           </Badge>
           <Button asChild className="w-full sm:w-auto">
             <Link href="/dashboard/clientes/novo">
@@ -185,7 +194,7 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
           </div>
 
           {/* Filtros e Ordenação */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
@@ -196,6 +205,19 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
                 <SelectItem value="ACEITA_ESPECIAL">Aceita Especial</SelectItem>
                 <SelectItem value="REJEITA">Rejeita</SelectItem>
                 <SelectItem value="PENDENTE">Pendente</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={displayLimit} onValueChange={setDisplayLimit}>
+              <SelectTrigger>
+                <SelectValue placeholder="Exibir" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="50">Exibir 50</SelectItem>
+                <SelectItem value="100">Exibir 100</SelectItem>
+                <SelectItem value="200">Exibir 200</SelectItem>
+                <SelectItem value="500">Exibir 500</SelectItem>
+                <SelectItem value="all">Exibir Todos</SelectItem>
               </SelectContent>
             </Select>
 
@@ -238,8 +260,25 @@ export function ClientesContent({ clientes, company }: ClientesContentProps) {
         </CardContent>
       </Card>
 
+      {/* Display info */}
+      {filteredAndSortedClientes.length > displayedClientes.length && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-muted-foreground">
+            Exibindo {displayedClientes.length} de {filteredAndSortedClientes.length} clientes
+          </p>
+          <Button
+            variant="link"
+            size="sm"
+            className="text-sm"
+            onClick={() => setDisplayLimit("all")}
+          >
+            Ver todos
+          </Button>
+        </div>
+      )}
+
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 w-full">
-        {filteredAndSortedClientes.map((cliente) => {
+        {displayedClientes.map((cliente) => {
           const metadata = cliente.analysis_metadata
           const scoreRecupere = metadata?.recupere?.resposta?.score?.pontos || null
           const classeRecupere = metadata?.recupere?.resposta?.score?.classe || null
