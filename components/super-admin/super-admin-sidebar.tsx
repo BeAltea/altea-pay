@@ -20,6 +20,7 @@ import {
   CreditCard,
   Sparkles,
   LayoutGrid,
+  Mail,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -92,6 +93,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin/collection-rules",
       icon: Target,
       current: pathname.startsWith("/super-admin/collection-rules"),
+    },
+    {
+      name: "Enviar Email",
+      href: "/super-admin/send-email",
+      icon: Mail,
+      current: pathname.startsWith("/super-admin/send-email"),
     },
     {
       name: "Relatórios Globais",
