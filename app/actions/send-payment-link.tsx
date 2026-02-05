@@ -9,18 +9,19 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
   try {
     const supabase = await createClient()
 
+    // Fetch agreement with optional customer/company joins
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select(`
         *,
-        customers!inner(id, name, document, email, phone),
-        companies!inner(id, name, cnpj)
+        customers(id, name, document, email, phone),
+        companies(id, name, cnpj)
       `)
       .eq("id", agreementId)
       .single()
 
     if (agreementError || !agreement) {
-      return { success: false, error: "Acordo não encontrado" }
+      return { success: false, error: "Acordo nao encontrado" }
     }
 
     const paymentUrl = agreement.asaas_payment_url
@@ -28,27 +29,29 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
     if (!paymentUrl) {
       return {
         success: false,
-        error: "Link de pagamento não encontrado. Certifique-se de que a cobrança foi criada no Asaas.",
+        error: "Link de pagamento nao encontrado. Certifique-se de que a cobranca foi criada no Asaas.",
       }
     }
 
     const customer = agreement.customers as any
     const company = agreement.companies as any
-    const customerName = customer?.name || "Cliente"
-    let customerEmail = customer?.email
-    let customerPhone = customer?.phone
+    let customerName = customer?.name || "Cliente"
+    let customerEmail = customer?.email || ""
+    let customerPhone = customer?.phone || ""
 
-    if (!customerEmail || !customerPhone) {
-      const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
+    // Always try to enrich from VMAX which is the source of truth
+    const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
+    if (cleanedDocument) {
       const { data: vmaxRecord } = await supabase
         .from("VMAX")
-        .select("Email, Telefone")
-        .eq('"CPF/CNPJ"', cleanedDocument)
-        .single()
+        .select('Email, "Telefone 1", "Telefone 2", Cliente')
+        .or(`"CPF/CNPJ".eq.${cleanedDocument}`)
+        .maybeSingle()
 
       if (vmaxRecord) {
-        customerEmail = customerEmail || vmaxRecord.Email
-        customerPhone = customerPhone || vmaxRecord.Telefone
+        customerName = customerName || vmaxRecord.Cliente || "Cliente"
+        customerEmail = customerEmail || vmaxRecord.Email || ""
+        customerPhone = customerPhone || vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || ""
       }
     }
 

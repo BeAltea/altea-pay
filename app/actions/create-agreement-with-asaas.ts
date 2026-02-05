@@ -39,7 +39,7 @@ export async function createAgreementWithAsaas(params: {
     // Step 1: Create or get customer in our database
     const cpfCnpj = vmaxRecord["CPF/CNPJ"]?.replace(/[^\d]/g, "") || ""
     const customerName = vmaxRecord.Cliente || "Cliente"
-    const customerPhone = vmaxRecord.Telefone?.replace(/[^\d]/g, "") || ""
+    const customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || "").replace(/[^\d]/g, "")
     const customerEmail = vmaxRecord.Email || ""
 
     let customerId: string
@@ -50,14 +50,14 @@ export async function createAgreementWithAsaas(params: {
       .select("id, user_id")
       .eq("document", cpfCnpj)
       .eq("company_id", profile.company_id)
-      .single()
+      .maybeSingle()
 
     if (existingCustomer) {
       customerId = existingCustomer.id
       customerUserId = existingCustomer.user_id
     } else {
-      // Search for user_id in profiles by cpf_cnpj
-      const { data: profileData } = await supabase.from("profiles").select("id").eq("cpf_cnpj", cpfCnpj).single()
+      // Search for user_id in profiles by cpf_cnpj (optional, may not exist)
+      const { data: profileData } = await supabase.from("profiles").select("id").eq("cpf_cnpj", cpfCnpj).maybeSingle()
 
       const { data: newCustomer, error: customerError } = await supabase
         .from("customers")
@@ -81,7 +81,9 @@ export async function createAgreementWithAsaas(params: {
     }
 
     // Step 2: Create or get debt
-    const originalAmount = Number.parseFloat(vmaxRecord.Vencido?.replace(/[^\d,]/g, "").replace(",", ".") || "0")
+    // Parse Brazilian format: "1.234,56" or "R$ 1.234,56" -> remove dots (thousands), replace comma with dot
+    const vencidoStr = String(vmaxRecord.Vencido || "0")
+    const originalAmount = Number(vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0
 
     let debtId: string
 
@@ -91,7 +93,7 @@ export async function createAgreementWithAsaas(params: {
       .eq("customer_id", customerId)
       .eq("company_id", profile.company_id)
       .eq("external_id", params.vmaxId)
-      .single()
+      .maybeSingle()
 
     if (existingDebt) {
       debtId = existingDebt.id
@@ -102,7 +104,8 @@ export async function createAgreementWithAsaas(params: {
           customer_id: customerId,
           company_id: profile.company_id,
           amount: originalAmount,
-          description: `Dívida de ${customerName}`,
+          due_date: params.dueDate,
+          description: `Divida de ${customerName}`,
           status: "in_negotiation",
           source_system: "VMAX",
           external_id: params.vmaxId,

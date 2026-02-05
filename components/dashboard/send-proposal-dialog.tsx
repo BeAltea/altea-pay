@@ -47,22 +47,25 @@ export function SendProposalDialog({
         const { createClient } = await import("@/lib/supabase/client")
         const supabase = createClient()
 
+        // Get agreement with customer data
         const { data: agreement } = await supabase
           .from("agreements")
-          .select("customer_id, vmax_id")
+          .select("customer_id, customers(document)")
           .eq("id", agreementId)
           .single()
 
         if (agreement) {
-          // Try to get from VMAX directly using vmax_id
-          const vmaxId = agreement.vmax_id || agreement.customer_id
-          if (vmaxId) {
-            const { data: vmaxRecord } = await supabase
+          const customerDoc = (agreement.customers as any)?.document?.replace(/[^\d]/g, "") || ""
+          
+          if (customerDoc) {
+            // Query VMAX by CPF/CNPJ to get contact info
+            const { data: vmaxRecords } = await supabase
               .from("VMAX")
               .select('Email, "Telefone 1", "Telefone 2"')
-              .eq("id", vmaxId)
-              .single()
+              .or(`"CPF/CNPJ".eq.${customerDoc}`)
+              .limit(1)
 
+            const vmaxRecord = vmaxRecords?.[0]
             if (vmaxRecord) {
               if (!email) setEmail(vmaxRecord.Email || undefined)
               if (!phone1) setPhone1(vmaxRecord["Telefone 1"] || undefined)
