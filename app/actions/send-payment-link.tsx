@@ -9,12 +9,12 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
   try {
     const supabase = await createClient()
 
-    // Fetch agreement with optional customer/company joins
+    // Fetch agreement com customer (pra pegar external_id = vmaxId) e company
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select(`
         *,
-        customers(id, name, document, email, phone),
+        customers(id, name, document, external_id),
         companies(id, name, cnpj)
       `)
       .eq("id", agreementId)
@@ -35,23 +35,25 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
 
     const customer = agreement.customers as any
     const company = agreement.companies as any
-    let customerName = customer?.name || "Cliente"
-    let customerEmail = customer?.email || ""
-    let customerPhone = customer?.phone || ""
 
-    // Always try to enrich from VMAX which is the source of truth
-    const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
-    if (cleanedDocument) {
+    // Buscar dados SOMENTE da VMAX - unica fonte de verdade
+    let customerName = "Cliente"
+    let customerEmail = ""
+    let customerPhone = ""
+
+    // Buscar VMAX pelo external_id do customer (que e o ID do registro VMAX)
+    const vmaxId = customer?.external_id
+    if (vmaxId) {
       const { data: vmaxRecord } = await supabase
         .from("VMAX")
         .select('Email, "Telefone 1", "Telefone 2", Cliente')
-        .or(`"CPF/CNPJ".eq.${cleanedDocument}`)
-        .maybeSingle()
+        .eq("id", vmaxId)
+        .single()
 
       if (vmaxRecord) {
-        customerName = customerName || vmaxRecord.Cliente || "Cliente"
-        customerEmail = customerEmail || vmaxRecord.Email || ""
-        customerPhone = customerPhone || vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || ""
+        customerName = vmaxRecord.Cliente || "Cliente"
+        customerEmail = vmaxRecord.Email || ""
+        customerPhone = vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || ""
       }
     }
 

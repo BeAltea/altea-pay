@@ -107,6 +107,19 @@ export async function createAsaasPayment(params: CreatePaymentParams): Promise<A
   })
 }
 
+export async function updateAsaasCustomer(customerId: string, params: {
+  notificationDisabled?: boolean
+  email?: string
+  mobilePhone?: string
+}): Promise<AsaasCustomer> {
+  console.log("[v0] Updating Asaas customer:", customerId, params)
+
+  return asaasFetch(`/customers/${customerId}`, {
+    method: "PUT",
+    body: JSON.stringify(params),
+  })
+}
+
 export async function getAsaasPayment(paymentId: string): Promise<AsaasPayment> {
   return asaasFetch(`/payments/${paymentId}`)
 }

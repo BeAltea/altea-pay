@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj } from "@/lib/asaas"
+import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
 
 export async function createAgreementWithAsaas(params: {
   vmaxId: string
@@ -43,7 +43,6 @@ export async function createAgreementWithAsaas(params: {
     const customerEmail = vmaxRecord.Email || ""
 
     let customerId: string
-    let customerUserId: string | null = null
 
     const { data: existingCustomer } = await supabase
       .from("customers")
@@ -54,11 +53,12 @@ export async function createAgreementWithAsaas(params: {
 
     if (existingCustomer) {
       customerId = existingCustomer.id
-      customerUserId = existingCustomer.user_id
+      // Atualizar dados do customer com dados frescos da VMAX
+      await supabase
+        .from("customers")
+        .update({ name: customerName, phone: customerPhone, email: customerEmail })
+        .eq("id", existingCustomer.id)
     } else {
-      // Search for user_id in profiles by cpf_cnpj (optional, may not exist)
-      const { data: profileData } = await supabase.from("profiles").select("id").eq("cpf_cnpj", cpfCnpj).maybeSingle()
-
       const { data: newCustomer, error: customerError } = await supabase
         .from("customers")
         .insert({
@@ -70,14 +70,12 @@ export async function createAgreementWithAsaas(params: {
           company_id: profile.company_id,
           source_system: "VMAX",
           external_id: params.vmaxId,
-          user_id: profileData?.id || null,
         })
-        .select("id, user_id")
+        .select("id")
         .single()
 
       if (customerError) throw customerError
       customerId = newCustomer.id
-      customerUserId = newCustomer.user_id
     }
 
     // Step 2: Create or get debt
@@ -109,7 +107,6 @@ export async function createAgreementWithAsaas(params: {
           status: "in_negotiation",
           source_system: "VMAX",
           external_id: params.vmaxId,
-          user_id: customerUserId,
         })
         .select("id")
         .single()
@@ -125,6 +122,8 @@ export async function createAgreementWithAsaas(params: {
 
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
+      // SEMPRE desabilitar notificacoes no cliente existente para evitar envio automatico
+      await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
     } else {
       const asaasCustomer = await createAsaasCustomer({
         name: customerName,
@@ -187,17 +186,6 @@ export async function createAgreementWithAsaas(params: {
       .single()
 
     if (agreementError) throw agreementError
-
-    // Step 6: Create notification for customer if they have user_id
-    if (customerUserId) {
-      await supabase.from("notifications").insert({
-        user_id: customerUserId,
-        company_id: profile.company_id,
-        type: "agreement",
-        title: "Nova Proposta de Acordo",
-        description: `Você recebeu uma proposta de acordo no valor de R$ ${params.agreedAmount.toFixed(2)} em ${params.installments}x de R$ ${installmentAmount.toFixed(2)}`,
-      })
-    }
 
     return {
       success: true,

@@ -1,7 +1,7 @@
 "use server"
 
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj } from "@/lib/asaas"
+import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
 
 export async function createAgreementSuperAdmin(params: {
   vmaxId: string
@@ -120,6 +120,8 @@ export async function createAgreementSuperAdmin(params: {
     const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
+      // SEMPRE desabilitar notificacoes no cliente existente para evitar envio automatico
+      await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
     } else {
       const asaasCustomer = await createAsaasCustomer({
         name: customerName,
