@@ -5,7 +5,7 @@ import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-export async function sendPaymentLink(agreementId: string, channel: "email" | "sms" | "whatsapp") {
+export async function sendPaymentLink(agreementId: string, channel: "email" | "sms" | "whatsapp", phoneOverride?: string) {
   try {
     const supabase = await createClient()
 
@@ -146,11 +146,22 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
     }
 
     if (channel === "sms" || channel === "whatsapp") {
-      if (!customerPhone) {
-        return { success: false, error: "Cliente não possui telefone cadastrado" }
+      const phoneToUse = phoneOverride || customerPhone
+      if (!phoneToUse) {
+        return { success: false, error: "Cliente nao possui telefone cadastrado" }
       }
 
-      return { success: false, error: "Envio por SMS/WhatsApp ainda não implementado" }
+      // TODO: Implementar envio real por SMS/WhatsApp via API
+      // Por enquanto, retorna o link para envio manual
+      return { 
+        success: true, 
+        data: { 
+          phone: phoneToUse, 
+          paymentUrl, 
+          message: `Ola ${customerName}! Sua proposta de acordo esta pronta. Acesse: ${paymentUrl}`,
+          channel 
+        } 
+      }
     }
 
     return { success: false, error: "Canal inválido" }

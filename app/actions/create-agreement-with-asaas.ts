@@ -155,12 +155,13 @@ export async function createAgreementWithAsaas(params: {
     })
 
     // Step 5: Create agreement in our database
+    // user_id = the logged-in attendant (user.id), so RLS policies work
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .insert({
         debt_id: debtId,
         customer_id: customerId,
-        user_id: customerUserId,
+        user_id: user.id,
         company_id: profile.company_id,
         original_amount: originalAmount,
         agreed_amount: params.agreedAmount,

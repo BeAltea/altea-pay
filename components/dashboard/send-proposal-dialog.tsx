@@ -29,7 +29,9 @@ export function SendProposalDialog({
   customerPhone1,
   customerPhone2,
 }: SendProposalDialogProps) {
-  const [sendingChannel, setSendingChannel] = useState<SendChannel>("email")
+  const [sendingChannel, setSendingChannel] = useState<SendChannel>(
+    customerEmail ? "email" : customerPhone1 ? "whatsapp_phone1" : customerPhone2 ? "whatsapp_phone2" : "email"
+  )
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState(customerEmail)
   const [phone1, setPhone1] = useState(customerPhone1)
@@ -89,13 +91,26 @@ export function SendProposalDialog({
     setLoading(true)
 
     try {
-      // Map the channel to the action format
+      // Map the channel to the action format and determine which phone to use
       let actionChannel: "email" | "whatsapp" | "sms" = "email"
-      if (sendingChannel.startsWith("whatsapp")) actionChannel = "whatsapp"
-      else if (sendingChannel.startsWith("sms")) actionChannel = "sms"
+      let selectedPhone: string | undefined
+
+      if (sendingChannel === "whatsapp_phone1") {
+        actionChannel = "whatsapp"
+        selectedPhone = phone1
+      } else if (sendingChannel === "whatsapp_phone2") {
+        actionChannel = "whatsapp"
+        selectedPhone = phone2
+      } else if (sendingChannel === "sms_phone1") {
+        actionChannel = "sms"
+        selectedPhone = phone1
+      } else if (sendingChannel === "sms_phone2") {
+        actionChannel = "sms"
+        selectedPhone = phone2
+      }
 
       const { sendPaymentLink } = await import("@/app/actions/send-payment-link")
-      const result = await sendPaymentLink(agreementId, actionChannel)
+      const result = await sendPaymentLink(agreementId, actionChannel, selectedPhone)
 
       if (result.success) {
         const channelLabel = actionChannel === "email" ? "E-mail" : actionChannel === "whatsapp" ? "WhatsApp" : "SMS"

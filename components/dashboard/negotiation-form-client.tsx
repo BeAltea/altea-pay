@@ -59,10 +59,18 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
         terms: terms || `Acordo para ${customer.name} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
       })
 
+      console.log("[v0] createAgreementWithAsaas result:", JSON.stringify(result, null, 2))
+
       if (result.success && result.agreement) {
         toast.success("Proposta criada com sucesso no Asaas!")
-        setCreatedAgreementId(result.agreement.id)
-        setShowSendDialog(true)
+        const agreementId = result.agreement.id
+        console.log("[v0] Setting agreement ID:", agreementId)
+        setCreatedAgreementId(agreementId)
+        // Small delay to ensure state is set before opening dialog
+        setTimeout(() => {
+          console.log("[v0] Opening send dialog")
+          setShowSendDialog(true)
+        }, 100)
       } else {
         toast.error("Erro ao criar proposta")
       }
