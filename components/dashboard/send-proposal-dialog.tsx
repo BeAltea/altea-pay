@@ -69,36 +69,11 @@ export function SendProposalDialog({
       })
 
       if (result.success) {
-        const data = result.data as any
-
-        if (actionChannel === "whatsapp" && data?.paymentUrl && data?.phone) {
-          // Abrir WhatsApp direto com a mensagem
-          const cleanPhone = data.phone.replace(/[^\d]/g, "")
-          const phoneWithCountry = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`
-          const message = encodeURIComponent(data.message || `Ola ${customerName}! Sua proposta de acordo esta pronta. Acesse: ${data.paymentUrl}`)
-          window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, "_blank")
-          toast.success("WhatsApp aberto com a mensagem!")
-        } else if (actionChannel === "sms" && data?.paymentUrl) {
-          // Copiar link para area de transferencia
-          await navigator.clipboard.writeText(data.paymentUrl)
-          toast.success("Link de pagamento copiado! Envie por SMS manualmente.")
-        } else {
-          toast.success("Proposta enviada com sucesso via E-mail!")
-        }
-
+        const channelLabel = actionChannel === "email" ? "e-mail" : actionChannel === "whatsapp" ? "WhatsApp" : "SMS"
+        toast.success(`Proposta enviada com sucesso via ${channelLabel}!`)
         onOpenChange(false)
       } else {
-        // Se o Resend falhou mas temos o link, mostrar opcao de copiar
-        const paymentUrl = (result as any).paymentUrl
-        if (paymentUrl) {
-          await navigator.clipboard.writeText(paymentUrl)
-          toast.error(result.error || "Erro ao enviar", {
-            description: "O link de pagamento foi copiado para a area de transferencia.",
-            duration: 8000,
-          })
-        } else {
-          toast.error(result.error || "Erro ao enviar proposta")
-        }
+        toast.error(result.error || "Erro ao enviar proposta")
       }
     } catch (error) {
       console.error("Error sending proposal:", error)
