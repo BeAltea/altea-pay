@@ -174,7 +174,7 @@ The codebase currently does not have an automated testing framework configured. 
 
 ### Using curl
 
-```bash
+\`\`\`bash
 # Set variables
 export BASE_URL="http://localhost:3000"
 export AUTH_COOKIE="sb-access-token=your-token-here"
@@ -201,11 +201,11 @@ curl -X POST "$BASE_URL/api/propensity" \
   -H "Content-Type: application/json" \
   -H "Cookie: $AUTH_COOKIE" \
   -d '{"debtId": "uuid-here"}'
-```
+\`\`\`
 
 ### Using HTTPie (more readable)
 
-```bash
+\`\`\`bash
 # List customers
 http GET "$BASE_URL/api/get-company-customers" \
   Cookie:"$AUTH_COOKIE"
@@ -216,7 +216,7 @@ http POST "$BASE_URL/api/score-check" \
   cpf="12345678901" \
   customerId="uuid" \
   debtId="uuid"
-```
+\`\`\`
 
 ---
 
@@ -224,7 +224,7 @@ http POST "$BASE_URL/api/score-check" \
 
 ### 4.1 Test Assertiva Integration
 
-```bash
+\`\`\`bash
 # Test credit analysis (requires valid Assertiva credentials)
 curl -X POST "$BASE_URL/api/score-check" \
   -H "Content-Type: application/json" \
@@ -241,11 +241,11 @@ curl -X POST "$BASE_URL/api/score-check" \
 #   "recovery_class": "B",
 #   "risk_level": "LOW"
 # }
-```
+\`\`\`
 
 ### 4.2 Test ASAAS Integration
 
-```bash
+\`\`\`bash
 # Create payment (use ASAAS sandbox)
 # This is typically done via the UI or Server Actions
 
@@ -261,16 +261,16 @@ curl -X POST "$BASE_URL/api/webhooks/asaas" \
       "customer": "cus_xxx"
     }
   }'
-```
+\`\`\`
 
 ### 4.3 Test Email/SMS
 
-```bash
+\`\`\`bash
 # Test email (in development, check Resend dashboard)
 # Create a debt and trigger collection rule
 
 # Test SMS (check Twilio dashboard for delivery status)
-```
+\`\`\`
 
 ---
 
@@ -278,7 +278,7 @@ curl -X POST "$BASE_URL/api/webhooks/asaas" \
 
 ### 5.1 Unit Test Examples (Vitest)
 
-```typescript
+\`\`\`typescript
 // tests/lib/classification-engine.test.ts
 import { describe, it, expect } from 'vitest'
 import { ClassificationEngine } from '@/lib/classification-engine'
@@ -344,11 +344,11 @@ describe('ClassificationEngine', () => {
     })
   })
 })
-```
+\`\`\`
 
 ### 5.2 Credit Analysis Engine Tests
 
-```typescript
+\`\`\`typescript
 // tests/lib/credit-analysis-engine.test.ts
 import { describe, it, expect } from 'vitest'
 import {
@@ -442,11 +442,11 @@ describe('Credit Analysis Engine', () => {
     })
   })
 })
-```
+\`\`\`
 
 ### 5.3 Propensity Engine Tests
 
-```typescript
+\`\`\`typescript
 // tests/lib/propensity-engine.test.ts
 import { describe, it, expect } from 'vitest'
 import { propensityEngine } from '@/lib/propensity-engine'
@@ -514,11 +514,11 @@ describe('PropensityEngine', () => {
     })
   })
 })
-```
+\`\`\`
 
 ### 5.4 Document Validation Tests
 
-```typescript
+\`\`\`typescript
 // tests/lib/import-utils.test.ts
 import { describe, it, expect } from 'vitest'
 import { validateCPF, validateCNPJ, validateEmail } from '@/lib/import-utils'
@@ -562,11 +562,11 @@ describe('Document Validation', () => {
     })
   })
 })
-```
+\`\`\`
 
 ### 5.5 Component Test Examples
 
-```typescript
+\`\`\`typescript
 // tests/components/customer-form.test.tsx
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -619,7 +619,7 @@ describe('CustomerForm', () => {
     })
   })
 })
-```
+\`\`\`
 
 ---
 
@@ -627,13 +627,13 @@ describe('CustomerForm', () => {
 
 ### Install Testing Dependencies
 
-```bash
+\`\`\`bash
 pnpm add -D vitest @testing-library/react @testing-library/jest-dom jsdom @vitejs/plugin-react
-```
+\`\`\`
 
 ### Create Vitest Config
 
-```typescript
+\`\`\`typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
@@ -656,11 +656,11 @@ export default defineConfig({
     },
   },
 })
-```
+\`\`\`
 
 ### Create Test Setup
 
-```typescript
+\`\`\`typescript
 // tests/setup.ts
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
@@ -693,11 +693,11 @@ vi.mock('@/lib/supabase/client', () => ({
     },
   }),
 }))
-```
+\`\`\`
 
 ### Add Scripts to package.json
 
-```json
+\`\`\`json
 {
   "scripts": {
     "test": "vitest",
@@ -706,11 +706,11 @@ vi.mock('@/lib/supabase/client', () => ({
     "test:run": "vitest run"
   }
 }
-```
+\`\`\`
 
 ### Run Tests
 
-```bash
+\`\`\`bash
 # Run tests in watch mode
 pnpm test
 
@@ -722,7 +722,7 @@ pnpm test:coverage
 
 # Run with UI
 pnpm test:ui
-```
+\`\`\`
 
 ---
 

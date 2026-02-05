@@ -15,14 +15,14 @@
 
 ## 1. Clone and Install
 
-```bash
+\`\`\`bash
 # Clone the repository
 git clone https://github.com/BeAltea/altea-pay.git
 cd altea-pay
 
 # Install dependencies
 pnpm install
-```
+\`\`\`
 
 ---
 
@@ -30,7 +30,7 @@ pnpm install
 
 Create a `.env.local` file in the project root:
 
-```env
+\`\`\`env
 # Required - Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
@@ -59,7 +59,7 @@ TWILIO_PHONE_NUMBER=+15551234567
 
 # Optional - Cron Jobs
 CRON_SECRET=your-secret-for-cron-jobs
-```
+\`\`\`
 
 **Minimum for development:** Only Supabase variables are required to start.
 
@@ -67,9 +67,9 @@ CRON_SECRET=your-secret-for-cron-jobs
 
 ## 3. Start Development Server
 
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
@@ -91,7 +91,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 5. Project Structure Overview
 
-```
+\`\`\`
 altea-pay/
 ├── app/                    # Next.js pages and API routes
 │   ├── auth/              # Login, register, password reset
@@ -106,7 +106,7 @@ altea-pay/
 │   └── notifications/    # Email/SMS services
 ├── services/             # External integrations
 └── scripts/              # Database migrations
-```
+\`\`\`
 
 ---
 
@@ -125,32 +125,32 @@ altea-pay/
 ## 7. Common Development Tasks
 
 ### Add a new page
-```bash
+\`\`\`bash
 # Create a new page in the dashboard
 mkdir -p app/dashboard/new-feature
 touch app/dashboard/new-feature/page.tsx
-```
+\`\`\`
 
 ### Add a new API endpoint
-```bash
+\`\`\`bash
 # Create a new API route
 mkdir -p app/api/new-endpoint
 touch app/api/new-endpoint/route.ts
-```
+\`\`\`
 
 ### Add a new UI component
-```bash
+\`\`\`bash
 # Use shadcn/ui to add components
 npx shadcn@latest add button
 npx shadcn@latest add dialog
-```
+\`\`\`
 
 ---
 
 ## 8. Database Access
 
 ### Server Components (recommended)
-```typescript
+\`\`\`typescript
 import { createClient } from "@/lib/supabase/server"
 
 export default async function Page() {
@@ -158,10 +158,10 @@ export default async function Page() {
   const { data } = await supabase.from('customers').select('*')
   return <div>{/* render data */}</div>
 }
-```
+\`\`\`
 
 ### Client Components
-```typescript
+\`\`\`typescript
 "use client"
 import { createClient } from "@/lib/supabase/client"
 
@@ -169,10 +169,10 @@ export default function Component() {
   const supabase = createClient()
   // Use in useEffect or event handlers
 }
-```
+\`\`\`
 
 ### Server Actions
-```typescript
+\`\`\`typescript
 "use server"
 import { createClient } from "@/lib/supabase/server"
 
@@ -180,13 +180,13 @@ export async function createCustomer(data: any) {
   const supabase = await createClient()
   return supabase.from('customers').insert(data)
 }
-```
+\`\`\`
 
 ---
 
 ## 9. Useful Commands
 
-```bash
+\`\`\`bash
 # Development
 pnpm dev              # Start dev server (port 3000)
 pnpm build            # Build for production
@@ -199,7 +199,7 @@ curl http://localhost:3000/api/health
 # Test cron job locally
 curl -H "Authorization: Bearer your-cron-secret" \
   http://localhost:3000/api/cron/sync-erp
-```
+\`\`\`
 
 ---
 

@@ -28,7 +28,7 @@
 1. Ensure you're not importing Twilio in client components
 2. Check that webpack fallbacks are configured:
 
-```javascript
+\`\`\`javascript
 // next.config.mjs
 webpack: (config, { isServer }) => {
   if (!isServer) {
@@ -41,7 +41,7 @@ webpack: (config, { isServer }) => {
   }
   return config
 }
-```
+\`\`\`
 
 ---
 
@@ -54,13 +54,13 @@ webpack: (config, { isServer }) => {
 2. Restart the dev server after adding env vars
 3. Check variable names start with `NEXT_PUBLIC_` for client-side use
 
-```bash
+\`\`\`bash
 # Verify env file exists
 cat .env.local | head -5
 
 # Restart dev server
 pnpm dev
-```
+\`\`\`
 
 ---
 
@@ -68,12 +68,12 @@ pnpm dev
 
 **Solution:** Install pnpm globally:
 
-```bash
+\`\`\`bash
 npm install -g pnpm
 # or
 corepack enable
 corepack prepare pnpm@latest --activate
-```
+\`\`\`
 
 ---
 
@@ -81,10 +81,10 @@ corepack prepare pnpm@latest --activate
 
 **Solutions:**
 1. Check if `.next` folder is corrupted:
-```bash
+\`\`\`bash
 rm -rf .next
 pnpm dev
-```
+\`\`\`
 
 2. Check for syntax errors in code
 3. Ensure you're not editing files in `node_modules`
@@ -111,13 +111,13 @@ pnpm dev
 
 1. Check browser cookies are enabled
 2. Verify Supabase URL matches:
-```javascript
+\`\`\`javascript
 // Should match in .env.local and Supabase dashboard
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-```
+\`\`\`
 
 3. Check middleware is not blocking:
-```typescript
+\`\`\`typescript
 // middleware.ts - ensure public paths include auth routes
 const publicPaths = [
   "/",
@@ -126,7 +126,7 @@ const publicPaths = [
   "/auth/callback",
   // ...
 ]
-```
+\`\`\`
 
 ---
 
@@ -136,10 +136,10 @@ const publicPaths = [
 
 **Solution:** The Supabase client should auto-refresh. If not:
 
-```typescript
+\`\`\`typescript
 // Force refresh
 const { data, error } = await supabase.auth.refreshSession()
-```
+\`\`\`
 
 ---
 
@@ -149,12 +149,12 @@ const { data, error } = await supabase.auth.refreshSession()
 
 **Solution:** Check profile in database:
 
-```sql
+\`\`\`sql
 SELECT id, role, company_id FROM profiles WHERE email = 'user@email.com';
 
 -- Update if needed
 UPDATE profiles SET role = 'admin' WHERE email = 'admin@company.com';
-```
+\`\`\`
 
 ---
 
@@ -167,16 +167,16 @@ UPDATE profiles SET role = 'admin' WHERE email = 'admin@company.com';
 **Solutions:**
 
 1. Check RLS policies in Supabase:
-```sql
+\`\`\`sql
 SELECT * FROM pg_policies WHERE tablename = 'customers';
-```
+\`\`\`
 
 2. Ensure company_id matches user's company
 3. Use admin client for system operations:
-```typescript
+\`\`\`typescript
 import { createAdminClient } from "@/lib/supabase/server"
 const supabase = createAdminClient() // Bypasses RLS
-```
+\`\`\`
 
 ---
 
@@ -187,13 +187,13 @@ const supabase = createAdminClient() // Bypasses RLS
 **Solutions:**
 
 1. Use `.maybeSingle()` when row might not exist:
-```typescript
+\`\`\`typescript
 const { data } = await supabase
   .from('customers')
   .select('*')
   .eq('id', customerId)
   .maybeSingle() // Returns null instead of error
-```
+\`\`\`
 
 2. Check your WHERE conditions
 
@@ -206,14 +206,14 @@ const { data } = await supabase
 **Solutions:**
 
 1. Use upsert instead of insert:
-```typescript
+\`\`\`typescript
 const { data } = await supabase
   .from('customers')
   .upsert({ document: cpf, name: 'Customer' }, { onConflict: 'document' })
-```
+\`\`\`
 
 2. Check for existing record first:
-```typescript
+\`\`\`typescript
 const { data: existing } = await supabase
   .from('customers')
   .select('id')
@@ -223,7 +223,7 @@ const { data: existing } = await supabase
 if (existing) {
   // Update instead
 }
-```
+\`\`\`
 
 ---
 
@@ -232,27 +232,27 @@ if (existing) {
 **Solutions:**
 
 1. Add indexes for commonly filtered columns:
-```sql
+\`\`\`sql
 CREATE INDEX idx_customers_company ON customers(company_id);
 CREATE INDEX idx_debts_status ON debts(status);
-```
+\`\`\`
 
 2. Use select with specific columns:
-```typescript
+\`\`\`typescript
 // Bad
 const { data } = await supabase.from('customers').select('*')
 
 // Good
 const { data } = await supabase.from('customers').select('id, name, email')
-```
+\`\`\`
 
 3. Use pagination:
-```typescript
+\`\`\`typescript
 const { data } = await supabase
   .from('customers')
   .select('*')
   .range(0, 49) // First 50 records
-```
+\`\`\`
 
 ---
 
@@ -263,20 +263,20 @@ const { data } = await supabase
 **Solutions:**
 
 1. Check authentication:
-```typescript
+\`\`\`typescript
 const { data: { user }, error } = await supabase.auth.getUser()
 if (!user) {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 }
-```
+\`\`\`
 
 2. For cron jobs, check CRON_SECRET:
-```typescript
+\`\`\`typescript
 const authHeader = request.headers.get('authorization')
 if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 }
-```
+\`\`\`
 
 ---
 
@@ -287,7 +287,7 @@ if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
 2. Function is exported
 3. Called from client component correctly:
 
-```typescript
+\`\`\`typescript
 // app/actions/my-action.ts
 "use server"
 export async function myAction(data: any) { ... }
@@ -295,7 +295,7 @@ export async function myAction(data: any) { ... }
 // Component
 import { myAction } from "@/app/actions/my-action"
 const result = await myAction(data)
-```
+\`\`\`
 
 ---
 
@@ -304,13 +304,13 @@ const result = await myAction(data)
 **Cause:** Accessing nested property on null/undefined.
 
 **Solution:** Use optional chaining:
-```typescript
+\`\`\`typescript
 // Bad
 const name = customer.profile.name
 
 // Good
 const name = customer?.profile?.name ?? 'Unknown'
-```
+\`\`\`
 
 ---
 
@@ -319,10 +319,10 @@ const name = customer?.profile?.name ?? 'Unknown'
 ### Error: "ASAAS_API_KEY environment variable is required"
 
 **Solution:** Add ASAAS credentials to `.env.local`:
-```env
+\`\`\`env
 ASAAS_API_KEY=your-api-key
 ASAAS_API_URL=https://sandbox.asaas.com/api/v3
-```
+\`\`\`
 
 ---
 
@@ -331,10 +331,10 @@ ASAAS_API_URL=https://sandbox.asaas.com/api/v3
 **Solutions:**
 
 1. **Local development:** Use ngrok to expose localhost:
-```bash
+\`\`\`bash
 ngrok http 3000
 # Configure webhook URL: https://xxx.ngrok.io/api/webhooks/asaas
-```
+\`\`\`
 
 2. **Production:** Verify webhook URL in ASAAS dashboard:
    - URL: `https://yourdomain.com/api/webhooks/asaas`
@@ -342,18 +342,18 @@ ngrok http 3000
    - Events: Select payment events
 
 3. Check webhook logs in Supabase:
-```sql
+\`\`\`sql
 SELECT * FROM integration_logs
 WHERE integration_name = 'asaas_webhook'
 ORDER BY created_at DESC LIMIT 10;
-```
+\`\`\`
 
 ---
 
 ### Error: "Customer not found" when creating payment
 
 **Solution:** Create customer first:
-```typescript
+\`\`\`typescript
 let customer = await getAsaasCustomerByCpfCnpj(cpf)
 if (!customer) {
   customer = await createAsaasCustomer({
@@ -362,7 +362,7 @@ if (!customer) {
     email,
   })
 }
-```
+\`\`\`
 
 ---
 
@@ -373,17 +373,17 @@ if (!customer) {
 **Solutions:**
 
 1. Check Resend API key:
-```env
+\`\`\`env
 RESEND_API_KEY=re_xxxxx
-```
+\`\`\`
 
 2. Verify email format:
-```typescript
+\`\`\`typescript
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 if (!emailRegex.test(email)) {
   throw new Error('Invalid email format')
 }
-```
+\`\`\`
 
 3. Check Resend dashboard for errors
 
@@ -394,18 +394,18 @@ if (!emailRegex.test(email)) {
 **Solutions:**
 
 1. Check Twilio credentials:
-```env
+\`\`\`env
 TWILIO_ACCOUNT_SID=ACxxxxx
 TWILIO_AUTH_TOKEN=xxxxx
 TWILIO_PHONE_NUMBER=+15551234567
-```
+\`\`\`
 
 2. Verify phone format (must include country code):
-```typescript
+\`\`\`typescript
 // Must be E.164 format
 const phone = '+5511999999999' // Correct
 const phone = '11999999999'    // Wrong
-```
+\`\`\`
 
 3. Check Twilio console for error logs
 
@@ -414,7 +414,7 @@ const phone = '11999999999'    // Wrong
 ### Error: "Phone number is not valid"
 
 **Solution:** Format phone number correctly:
-```typescript
+\`\`\`typescript
 function formatPhone(phone: string): string {
   const cleaned = phone.replace(/\D/g, '')
   if (!cleaned.startsWith('55')) {
@@ -422,7 +422,7 @@ function formatPhone(phone: string): string {
   }
   return `+${cleaned}`
 }
-```
+\`\`\`
 
 ---
 
@@ -438,7 +438,7 @@ function formatPhone(phone: string): string {
 4. **Contact info exists?** Email or phone must be set
 5. **Not already executed?** Check collection_rule_executions
 
-```sql
+\`\`\`sql
 -- Check rule status
 SELECT id, name, is_active, last_execution_at
 FROM collection_rules
@@ -447,7 +447,7 @@ WHERE company_id = 'your-company-id';
 -- Check recent executions
 SELECT * FROM collection_rule_executions
 ORDER BY created_at DESC LIMIT 10;
-```
+\`\`\`
 
 ---
 
@@ -458,11 +458,11 @@ ORDER BY created_at DESC LIMIT 10;
 1. Check Assertiva credentials
 2. Verify CPF is valid
 3. Check credit_profiles table:
-```sql
+\`\`\`sql
 SELECT cpf, score_assertiva, analysis_date
 FROM credit_profiles
 WHERE cpf = '12345678901';
-```
+\`\`\`
 
 ---
 
@@ -475,14 +475,14 @@ WHERE cpf = '12345678901';
 - Collection Engine: Score >= 294 = Auto allowed
 
 Check which score is being used:
-```typescript
+\`\`\`typescript
 // Collection engine uses recovery_score (294 threshold)
 if (recoveryScore >= 294) {
   // Auto collection
 } else {
   // Manual collection
 }
-```
+\`\`\`
 
 ---
 
@@ -493,26 +493,26 @@ if (recoveryScore >= 294) {
 **Solutions:**
 
 1. The project ignores TypeScript errors during build:
-```javascript
+\`\`\`javascript
 // next.config.mjs
 typescript: {
   ignoreBuildErrors: true,
 }
-```
+\`\`\`
 
 2. To see errors, run:
-```bash
+\`\`\`bash
 pnpm tsc --noEmit
-```
+\`\`\`
 
 ---
 
 ### Build fails with memory error
 
 **Solution:** Increase Node.js memory:
-```bash
+\`\`\`bash
 NODE_OPTIONS=--max-old-space-size=4096 pnpm build
-```
+\`\`\`
 
 ---
 
@@ -531,7 +531,7 @@ NODE_OPTIONS=--max-old-space-size=4096 pnpm build
 **Solutions:**
 
 1. Check `vercel.json`:
-```json
+\`\`\`json
 {
   "crons": [
     {
@@ -540,7 +540,7 @@ NODE_OPTIONS=--max-old-space-size=4096 pnpm build
     }
   ]
 }
-```
+\`\`\`
 
 2. Verify CRON_SECRET is set in Vercel env vars
 3. Check Vercel Functions logs for errors
@@ -556,18 +556,18 @@ NODE_OPTIONS=--max-old-space-size=4096 pnpm build
 1. Use Server Components (default in App Router)
 2. Implement pagination for large lists
 3. Use React Suspense for loading states:
-```tsx
+\`\`\`tsx
 <Suspense fallback={<Loading />}>
   <CustomerList />
 </Suspense>
-```
+\`\`\`
 
 ---
 
 ### Too many database queries
 
 **Solution:** Batch queries and use joins:
-```typescript
+\`\`\`typescript
 // Bad: N+1 queries
 for (const customer of customers) {
   const { data: debts } = await supabase
@@ -581,7 +581,7 @@ const { data } = await supabase
   .from('customers')
   .select('*, debts(*)')
   .eq('company_id', companyId)
-```
+\`\`\`
 
 ---
 
@@ -590,23 +590,23 @@ const { data } = await supabase
 **Solutions:**
 
 1. Increase timeout in fetch:
-```typescript
+\`\`\`typescript
 fetch(url, {
   signal: AbortSignal.timeout(30000) // 30 seconds
 })
-```
+\`\`\`
 
 2. For long operations, use background jobs:
-```typescript
+\`\`\`typescript
 // Return immediately, process in background
 return NextResponse.json({ status: 'processing', jobId })
-```
+\`\`\`
 
 ---
 
 ## Quick Diagnostic Commands
 
-```bash
+\`\`\`bash
 # Check if server is running
 curl http://localhost:3000/api/health
 
@@ -623,7 +623,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 
 # Check environment variables are loaded
 node -e "console.log(process.env.NEXT_PUBLIC_SUPABASE_URL)"
-```
+\`\`\`
 
 ---
 

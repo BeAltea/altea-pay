@@ -23,7 +23,7 @@
 
 ### Create a customer (Server Action)
 
-```typescript
+\`\`\`typescript
 // app/actions/customer-actions.ts
 "use server"
 
@@ -53,11 +53,11 @@ export async function createCustomer(data: {
   if (error) throw error
   return customer
 }
-```
+\`\`\`
 
 ### Fetch customers with debts
 
-```typescript
+\`\`\`typescript
 // In a Server Component
 const supabase = await createClient()
 
@@ -74,17 +74,17 @@ const { data: customers } = await supabase
   `)
   .eq('company_id', companyId)
   .order('created_at', { ascending: false })
-```
+\`\`\`
 
 ### Search customers by document
 
-```typescript
+\`\`\`typescript
 const { data: customer } = await supabase
   .from('customers')
   .select('*')
   .eq('document', cpfOrCnpj.replace(/\D/g, ''))
   .single()
-```
+\`\`\`
 
 ---
 
@@ -92,7 +92,7 @@ const { data: customer } = await supabase
 
 ### Create a debt
 
-```typescript
+\`\`\`typescript
 "use server"
 
 export async function createDebt(data: {
@@ -117,11 +117,11 @@ export async function createDebt(data: {
   if (error) throw error
   return debt
 }
-```
+\`\`\`
 
 ### Get overdue debts
 
-```typescript
+\`\`\`typescript
 const { data: overdueDebts } = await supabase
   .from('debts')
   .select('*, customers(*)')
@@ -129,11 +129,11 @@ const { data: overdueDebts } = await supabase
   .eq('status', 'pending')
   .lt('due_date', new Date().toISOString().split('T')[0])
   .order('due_date', { ascending: true })
-```
+\`\`\`
 
 ### Mark debt as paid
 
-```typescript
+\`\`\`typescript
 export async function markDebtAsPaid(debtId: string, paymentData: {
   amount: number
   payment_method: 'pix' | 'boleto' | 'credit_card'
@@ -154,11 +154,11 @@ export async function markDebtAsPaid(debtId: string, paymentData: {
     .update({ status: 'paid' })
     .eq('id', debtId)
 }
-```
+\`\`\`
 
 ### Calculate days overdue
 
-```typescript
+\`\`\`typescript
 // The database calculates this automatically via generated column:
 // days_overdue INTEGER GENERATED ALWAYS AS (CURRENT_DATE - due_date) STORED
 
@@ -167,7 +167,7 @@ const daysOverdue = Math.floor(
   (new Date().getTime() - new Date(debt.due_date).getTime()) /
   (1000 * 60 * 60 * 24)
 )
-```
+\`\`\`
 
 ---
 
@@ -175,7 +175,7 @@ const daysOverdue = Math.floor(
 
 ### Create a collection rule
 
-```typescript
+\`\`\`typescript
 export async function createCollectionRule(data: {
   name: string
   company_id: string
@@ -214,11 +214,11 @@ export async function createCollectionRule(data: {
 
   return rule
 }
-```
+\`\`\`
 
 ### Template variables for messages
 
-```typescript
+\`\`\`typescript
 // Available variables in template_content:
 const templateVariables = {
   '{customer_name}': 'Customer full name',
@@ -239,11 +239,11 @@ Pague agora: {payment_link}
 Atenciosamente,
 Equipe de Cobrança
 `
-```
+\`\`\`
 
 ### Trigger collection manually
 
-```typescript
+\`\`\`typescript
 import { processCollectionByScore } from "@/lib/collection-engine"
 
 const result = await processCollectionByScore({
@@ -256,7 +256,7 @@ const result = await processCollectionByScore({
 
 console.log(result)
 // { success: true, recovery_score: 450, action: 'AUTO_MESSAGE' }
-```
+\`\`\`
 
 ---
 
@@ -264,7 +264,7 @@ console.log(result)
 
 ### Create ASAAS payment
 
-```typescript
+\`\`\`typescript
 import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj } from "@/lib/asaas"
 
 export async function createPaymentForDebt(debt: any, customer: any) {
@@ -302,11 +302,11 @@ export async function createPaymentForDebt(debt: any, customer: any) {
 
   return payment
 }
-```
+\`\`\`
 
 ### Handle payment webhook
 
-```typescript
+\`\`\`typescript
 // The webhook is at: app/api/webhooks/asaas/route.ts
 // It handles these events:
 // - PAYMENT_CREATED
@@ -315,7 +315,7 @@ export async function createPaymentForDebt(debt: any, customer: any) {
 // - PAYMENT_OVERDUE
 // - PAYMENT_REFUNDED
 // - PAYMENT_DELETED
-```
+\`\`\`
 
 ---
 
@@ -323,7 +323,7 @@ export async function createPaymentForDebt(debt: any, customer: any) {
 
 ### Run credit analysis
 
-```typescript
+\`\`\`typescript
 import { analyzeDetailedWithCache } from "@/services/assertivaService"
 
 const result = await analyzeDetailedWithCache(
@@ -343,11 +343,11 @@ if (result.success) {
   //   recupere: {...},
   // }
 }
-```
+\`\`\`
 
 ### Apply credit decision rules
 
-```typescript
+\`\`\`typescript
 import { decidirEntradaRegua, extrairDadosAssertivaParaAnalise } from "@/lib/credit-analysis-engine"
 
 // Convert Assertiva data to analysis format
@@ -367,11 +367,11 @@ console.log(resultado)
 //   comportamento: 'BOM',
 //   autoCollectionEnabled: true
 // }
-```
+\`\`\`
 
 ### Classify debt risk
 
-```typescript
+\`\`\`typescript
 import { ClassificationEngine } from "@/lib/classification-engine"
 
 const engine = new ClassificationEngine()
@@ -389,7 +389,7 @@ const result = engine.classify({
 
 console.log(result)
 // { classification: 'medium', appliedRule: 'Medium - 30-60 days', score: 75 }
-```
+\`\`\`
 
 ---
 
@@ -397,7 +397,7 @@ console.log(result)
 
 ### Send email
 
-```typescript
+\`\`\`typescript
 import { sendEmail } from "@/lib/notifications/email"
 
 const result = await sendEmail({
@@ -409,33 +409,33 @@ const result = await sendEmail({
 if (!result.success) {
   console.error('Email failed:', result.error)
 }
-```
+\`\`\`
 
 ### Send SMS
 
-```typescript
+\`\`\`typescript
 import { sendSMS } from "@/lib/notifications/sms"
 
 const result = await sendSMS({
   to: '+5511999999999', // Must include country code
   body: 'Your payment of R$ 100.00 is due. Pay at: https://...',
 })
-```
+\`\`\`
 
 ### Send WhatsApp
 
-```typescript
+\`\`\`typescript
 import { sendWhatsApp } from "@/lib/notifications/sms"
 
 const result = await sendWhatsApp({
   to: '+5511999999999',
   body: 'Hello! This is a payment reminder...',
 })
-```
+\`\`\`
 
 ### Create in-app notification
 
-```typescript
+\`\`\`typescript
 import { createNotification } from "@/lib/notifications/create-notification"
 
 await createNotification({
@@ -445,7 +445,7 @@ await createNotification({
   title: 'Payment Received',
   description: 'A payment of R$ 500.00 was confirmed.',
 })
-```
+\`\`\`
 
 ---
 
@@ -453,7 +453,7 @@ await createNotification({
 
 ### Create a new API endpoint
 
-```typescript
+\`\`\`typescript
 // app/api/my-endpoint/route.ts
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
@@ -512,11 +512,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json(data, { status: 201 })
 }
-```
+\`\`\`
 
 ### Create a Server Action
 
-```typescript
+\`\`\`typescript
 // app/actions/my-action.ts
 "use server"
 
@@ -541,7 +541,7 @@ export async function myAction(formData: FormData) {
 
   return { success: true }
 }
-```
+\`\`\`
 
 ---
 
@@ -549,7 +549,7 @@ export async function myAction(formData: FormData) {
 
 ### Use admin client (bypasses RLS)
 
-```typescript
+\`\`\`typescript
 import { createAdminClient } from "@/lib/supabase/server"
 
 // Use for cron jobs or system operations
@@ -560,11 +560,11 @@ const { data } = await supabase
   .from('customers')
   .select('*')
   // No company_id filter needed - sees all data
-```
+\`\`\`
 
 ### Run a transaction
 
-```typescript
+\`\`\`typescript
 // Supabase doesn't have native transactions, use RPC
 const { data, error } = await supabase.rpc('transfer_debt', {
   from_customer_id: 'uuid1',
@@ -585,11 +585,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 */
-```
+\`\`\`
 
 ### Bulk insert
 
-```typescript
+\`\`\`typescript
 const customers = [
   { name: 'Customer 1', email: 'c1@email.com', company_id: companyId },
   { name: 'Customer 2', email: 'c2@email.com', company_id: companyId },
@@ -600,7 +600,7 @@ const { data, error } = await supabase
   .from('customers')
   .insert(customers)
   .select()
-```
+\`\`\`
 
 ---
 
@@ -608,7 +608,7 @@ const { data, error } = await supabase
 
 ### Check if user is authenticated
 
-```typescript
+\`\`\`typescript
 // In Server Component
 const supabase = await createClient()
 const { data: { user } } = await supabase.auth.getUser()
@@ -616,11 +616,11 @@ const { data: { user } } = await supabase.auth.getUser()
 if (!user) {
   redirect('/auth/login')
 }
-```
+\`\`\`
 
 ### Get user role
 
-```typescript
+\`\`\`typescript
 const supabase = await createClient()
 const { data: { user } } = await supabase.auth.getUser()
 
@@ -631,11 +631,11 @@ const { data: profile } = await supabase
   .single()
 
 // profile.role: 'super_admin' | 'admin' | 'user'
-```
+\`\`\`
 
 ### Protect a page by role
 
-```typescript
+\`\`\`typescript
 // app/dashboard/admin-only/page.tsx
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
@@ -656,7 +656,7 @@ export default async function AdminOnlyPage() {
 
   return <div>Admin content</div>
 }
-```
+\`\`\`
 
 ---
 
@@ -664,7 +664,7 @@ export default async function AdminOnlyPage() {
 
 ### Test API endpoint with curl
 
-```bash
+\`\`\`bash
 # GET request
 curl http://localhost:3000/api/customers \
   -H "Cookie: sb-access-token=your-token"
@@ -678,17 +678,17 @@ curl -X POST http://localhost:3000/api/customers \
 # Test cron job
 curl http://localhost:3000/api/cron/sync-erp \
   -H "Authorization: Bearer your-cron-secret"
-```
+\`\`\`
 
 ### Test webhook locally
 
-```bash
+\`\`\`bash
 # Use ngrok to expose localhost
 ngrok http 3000
 
 # Configure ASAAS webhook URL to:
 # https://your-ngrok-url.ngrok.io/api/webhooks/asaas
-```
+\`\`\`
 
 ### Manual testing checklist
 
@@ -706,7 +706,7 @@ ngrok http 3000
 
 ### Loading states in Client Components
 
-```typescript
+\`\`\`typescript
 "use client"
 
 import { useState } from "react"
@@ -730,11 +730,11 @@ export function SubmitButton() {
     </Button>
   )
 }
-```
+\`\`\`
 
 ### Error handling in Server Actions
 
-```typescript
+\`\`\`typescript
 "use server"
 
 export async function safeAction(data: any) {
@@ -752,11 +752,11 @@ const result = await safeAction(data)
 if (!result.success) {
   toast.error(result.error)
 }
-```
+\`\`\`
 
 ### Optimistic updates
 
-```typescript
+\`\`\`typescript
 "use client"
 
 import { useOptimistic } from "react"
@@ -779,4 +779,4 @@ export function CustomerList({ customers }: { customers: Customer[] }) {
     </ul>
   )
 }
-```
+\`\`\`

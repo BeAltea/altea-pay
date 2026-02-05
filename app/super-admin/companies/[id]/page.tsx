@@ -192,7 +192,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     segment: companyData.segment || "N/A",
     totalCustomers,
     totalDebts: totalDebts + (vmaxData?.length || 0),
-    totalAmount: combinedTotalAmount,
+    totalAmount: totalAmount,
     recoveredAmount,
     recoveryRate,
     overdueDebts: totalOverdueDebts,
@@ -205,7 +205,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     name: company.name,
     totalCustomers,
     totalDebts: company.totalDebts,
-    totalAmount: combinedTotalAmount,
+    totalAmount: totalAmount,
     vmaxRecords: vmaxData?.length || 0,
     vmaxTotalAmount,
   })
@@ -308,7 +308,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(combinedTotalAmount)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalAmount)}</div>
             <p className="text-xs text-muted-foreground">
               R$ {recoveredAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} recuperados
             </p>
