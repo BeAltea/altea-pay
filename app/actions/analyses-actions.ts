@@ -125,40 +125,44 @@ export async function getCustomerDetails(customerId: string) {
       .where(eq(vmax.id, customerId))
       .limit(1)
 
-    let customer: any = customerData
-    let isVMAX = false
-
     if (!customerData) {
-      // Try customers table - but since it's been discontinued, use VMAX
-      const [vmaxData] = await db
-        .select()
-        .from(vmax)
-        .where(eq(vmax.id, customerId))
-        .limit(1)
+      throw new Error("Cliente nao encontrado")
+    }
 
-      if (!vmaxData) {
-        throw new Error("Cliente nao encontrado")
-      }
+    const metadata = customerData.analysisMetadata as any
 
-      customer = {
-        id: vmaxData.id,
-        name: vmaxData.cliente,
-        document: vmaxData.cpfCnpj,
-        company_id: vmaxData.idCompany,
-        city: vmaxData.cidade,
-        dias_inad: Number(String(vmaxData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
-      }
-      isVMAX = true
-    } else {
-      customer = {
-        id: customerData.id,
-        name: customerData.cliente,
-        document: customerData.cpfCnpj,
-        company_id: customerData.idCompany,
-        city: customerData.cidade,
-        dias_inad: Number(String(customerData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
-      }
-      isVMAX = true
+    const customer = {
+      id: customerData.id,
+      name: customerData.cliente,
+      document: customerData.cpfCnpj,
+      company_id: customerData.idCompany,
+      city: customerData.cidade,
+      // Financial info
+      valorTotal: customerData.valorTotal,
+      quantidadeTitulos: customerData.quantidadeTitulos,
+      primeiraVencida: customerData.primeiraVencida,
+      maiorAtraso: customerData.maiorAtraso,
+      dias_inad: Number(String(customerData.maiorAtraso || "0").replace(/\D/g, "")) || 0,
+      // Status info
+      creditScore: customerData.creditScore,
+      riskLevel: customerData.riskLevel,
+      approvalStatus: customerData.approvalStatus,
+      // Collection info
+      autoCollectionEnabled: customerData.autoCollectionEnabled,
+      collectionProcessedAt: customerData.collectionProcessedAt,
+      lastCollectionAttempt: customerData.lastCollectionAttempt,
+      lastAnalysisDate: customerData.lastAnalysisDate,
+      // Analysis metadata
+      analysisMetadata: customerData.analysisMetadata,
+      restrictive_analysis_logs: metadata?.restrictive_analysis_logs || null,
+      restrictive_analysis_date: metadata?.restrictive_analysis_date || null,
+      behavioral_analysis_logs: metadata?.behavioral_analysis_logs || null,
+      behavioral_analysis_date: metadata?.behavioral_analysis_date || null,
+      recovery_score: metadata?.recovery_score || null,
+      recovery_class: metadata?.recovery_class || null,
+      // Timestamps
+      createdAt: customerData.createdAt,
+      updatedAt: customerData.updatedAt,
     }
 
     const [profileData] = await db
@@ -185,7 +189,7 @@ export async function getCustomerDetails(customerId: string) {
         profile: profileData,
         company: companyData,
         analysisHistory: analysisHistory || [],
-        isVMAX,
+        isVMAX: true,
       },
     }
   } catch (error: any) {

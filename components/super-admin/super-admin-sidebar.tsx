@@ -20,6 +20,7 @@ import {
   CreditCard,
   Sparkles,
   LayoutGrid,
+  DollarSign,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -56,72 +57,105 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       href: "/super-admin",
       icon: LayoutDashboard,
       current: pathname === "/super-admin",
+      hidden: false,
     },
     {
       name: "Empresas",
       href: "/super-admin/companies",
       icon: Building2,
       current: pathname.startsWith("/super-admin/companies"),
+      hidden: false,
+    },
+    {
+      name: "Clientes",
+      href: "/super-admin/clientes",
+      icon: Users,
+      current: pathname.startsWith("/super-admin/clientes"),
+      hidden: false,
+    },
+    {
+      name: "Cobranças",
+      href: "/super-admin/cobrancas",
+      icon: DollarSign,
+      current: pathname === "/super-admin/cobrancas",
+      hidden: false,
+    },
+    {
+      name: "Cobranças ASAAS",
+      href: "/super-admin/asaas-cobrancas",
+      icon: CreditCard,
+      current: pathname.startsWith("/super-admin/asaas-cobrancas"),
+      hidden: false,
     },
     {
       name: "Análise Restritiva",
       href: "/super-admin/analises",
       icon: CreditCard,
       current: pathname === "/super-admin/analises",
+      hidden: false,
     },
     {
       name: "Análise Comportamental",
       href: "/super-admin/analises/comportamental",
       icon: Sparkles,
       current: pathname.startsWith("/super-admin/analises/comportamental"),
+      hidden: false,
     },
     {
       name: "Análise Consolidada",
       href: "/super-admin/analises/consolidada",
       icon: LayoutGrid,
       current: pathname.startsWith("/super-admin/analises/consolidada"),
+      hidden: false,
     },
     {
       name: "Usuários",
       href: "/super-admin/users",
       icon: Users,
       current: pathname.startsWith("/super-admin/users"),
+      hidden: false,
     },
     {
       name: "Réguas de Cobrança",
       href: "/super-admin/collection-rules",
       icon: Target,
       current: pathname.startsWith("/super-admin/collection-rules"),
+      hidden: false,
     },
     {
       name: "Relatórios Globais",
       href: "/super-admin/reports",
       icon: BarChart3,
       current: pathname.startsWith("/super-admin/reports"),
+      hidden: false,
     },
     {
       name: "Analytics",
       href: "/super-admin/analytics",
       icon: TrendingUp,
       current: pathname.startsWith("/super-admin/analytics"),
+      hidden: true, // Hidden but code preserved for future use
     },
     {
       name: "Auditoria",
       href: "/super-admin/audit",
       icon: FileText,
       current: pathname.startsWith("/super-admin/audit"),
+      hidden: true, // Hidden but code preserved for future use
     },
     {
       name: "Sistema",
       href: "/super-admin/system",
       icon: Database,
       current: pathname.startsWith("/super-admin/system"),
+      hidden: true, // Hidden but code preserved for future use
     },
     {
       name: "Configurações",
       href: "/super-admin/settings",
       icon: Settings,
       current: pathname.startsWith("/super-admin/settings"),
+      hidden: false,
     },
   ]
 
@@ -147,7 +181,9 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navigation.map((item) => (
+        {navigation
+          .filter((item) => !item.hidden)
+          .map((item) => (
           <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
             <Button
               variant={item.current ? "secondary" : "ghost"}

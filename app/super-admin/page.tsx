@@ -145,38 +145,44 @@ export default async function SuperAdminDashboardPage() {
 
       {/* Global Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total de Empresas</CardTitle>
-            <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{totalStats.totalCompanies}</div>
-            <p className="text-xs text-muted-foreground">Clientes ativos</p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/companies" className="block">
+          <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Total de Empresas</CardTitle>
+              <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-lg sm:text-2xl font-bold">{totalStats.totalCompanies}</div>
+              <p className="text-xs text-muted-foreground">Clientes ativos</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total de Clientes</CardTitle>
-            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{totalStats.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">{totalStats.totalAdmins} administradores ativos</p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/clientes" className="block">
+          <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Total de Clientes</CardTitle>
+              <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-lg sm:text-2xl font-bold">{totalStats.totalCustomers.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{totalStats.totalAdmins} administradores ativos</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Valor Total em Cobranca</CardTitle>
-            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000).toFixed(2)}k</div>
-            <p className="text-xs text-muted-foreground">{totalStats.totalDebts.toLocaleString()} dividas ativas</p>
-          </CardContent>
-        </Card>
+        <Link href="/super-admin/cobrancas" className="block">
+          <Card className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Valor Total em Cobranca</CardTitle>
+              <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000).toFixed(2)}k</div>
+              <p className="text-xs text-muted-foreground">{totalStats.totalDebts.toLocaleString()} dividas ativas</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Companies Overview */}

@@ -32,8 +32,8 @@ export function LoginForm() {
         return
       }
 
-      router.push(result.redirectTo || "/")
-      router.refresh()
+      // Use hard redirect to ensure session is properly loaded
+      window.location.href = result.redirectTo || "/"
     } catch (error: unknown) {
       console.error("[v0] Erro no processo de login:", error)
       setError(error instanceof Error ? error.message : "Erro ao fazer login")

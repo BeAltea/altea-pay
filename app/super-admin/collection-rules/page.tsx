@@ -119,24 +119,34 @@ export default function SuperAdminCollectionRulesPage() {
       // Fetch rules via API route that uses Drizzle ORM
       const response = await fetch("/api/collection-rules")
       if (!response.ok) throw new Error("Failed to fetch rules")
-      const rulesData = await response.json()
+      const data = await response.json()
+      const rulesData = data.rules || data || []
+
+      // Ensure rulesData is an array
+      if (!Array.isArray(rulesData)) {
+        console.error("[v0] rulesData is not an array:", rulesData)
+        setRules([])
+        return
+      }
 
       // Fetch steps for each rule
       const rulesWithSteps = await Promise.all(
-        (rulesData || []).map(async (rule: any) => {
+        rulesData.map(async (rule: any) => {
           const stepsResponse = await fetch(`/api/collection-rules/${rule.id}/steps`)
           const stepsData = stepsResponse.ok ? await stepsResponse.json() : []
-          return { ...rule, steps: stepsData || [] }
+          return { ...rule, steps: Array.isArray(stepsData) ? stepsData : stepsData.steps || [] }
         }),
       )
 
       setRules(rulesWithSteps)
     } catch (error: any) {
+      console.error("[v0] Error fetching rules:", error)
       toast({
         title: "Erro ao carregar reguas",
         description: error.message,
         variant: "destructive",
       })
+      setRules([])
     } finally {
       setLoading(false)
     }

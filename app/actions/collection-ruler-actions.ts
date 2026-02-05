@@ -178,15 +178,44 @@ export async function getCollectionRules(companyId: string) {
       .where(eq(collectionRules.companyId, companyId))
       .orderBy(desc(collectionRules.createdAt))
 
-    // Fetch steps for each rule
+    // Fetch steps for each rule and transform to expected format
     const rulesWithSteps = await Promise.all(
       rules.map(async (rule) => {
-        const steps = await db
+        const stepsData = await db
           .select()
           .from(collectionRuleSteps)
           .where(eq(collectionRuleSteps.ruleId, rule.id))
 
-        return { ...rule, steps }
+        const metadata = rule.metadata as any || {}
+
+        // Transform steps to expected format
+        const steps = stepsData.map((step) => {
+          const stepMeta = step.metadata as any || {}
+          return {
+            step_order: step.stepOrder,
+            days_after_due: step.delayDays || 0,
+            action_type: step.actionType,
+            template_subject: stepMeta.templateSubject || "",
+            template_content: step.messageTemplate || "",
+            execution_time: stepMeta.executionTime || "09:00:00",
+            is_enabled: stepMeta.isEnabled !== false,
+          }
+        })
+
+        // Transform rule to expected format
+        return {
+          id: rule.id,
+          name: rule.name,
+          description: rule.description || "",
+          is_active: rule.isActive,
+          execution_mode: metadata.executionMode || "automatic",
+          start_date_field: metadata.startDateField || "due_date",
+          is_default_for_company: metadata.isDefaultForCompany || false,
+          requires_approval_status: metadata.requiresApprovalStatus || ["ACEITA", "ACEITA_ESPECIAL"],
+          created_at: rule.createdAt?.toISOString() || "",
+          last_execution_at: metadata.lastExecutionAt || null,
+          steps: steps,
+        }
       })
     )
 
