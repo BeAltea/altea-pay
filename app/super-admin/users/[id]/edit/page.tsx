@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
-import { User, Save, ArrowLeft } from "lucide-react"
+import { User, Save, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { getUserById, getCompanies, updateUserProfile } from "@/app/actions/user-actions"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserFormData {
   full_name: string
@@ -27,31 +29,80 @@ interface UserFormData {
   company_id: string
 }
 
+interface Company {
+  id: string
+  name: string
+}
+
 export default function EditUserPage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
+  const [companies, setCompanies] = useState<Company[]>([])
 
-  // Mock data for user
   const [formData, setFormData] = useState<UserFormData>({
-    full_name: "João Silva",
-    email: "joao.silva@enel.com.br",
-    role: "admin",
+    full_name: "",
+    email: "",
+    role: "user",
     status: "active",
-    phone: "(11) 99999-9999",
-    address: "Rua das Flores, 123",
-    city: "São Paulo",
-    state: "SP",
-    notes: "Usuário administrador responsável pela gestão de cobrança da região metropolitana.",
-    company_id: "11111111-1111-1111-1111-111111111111",
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    notes: "",
+    company_id: "",
   })
 
-  // Mock companies data
-  const companies = [
-    { id: "11111111-1111-1111-1111-111111111111", name: "Enel Distribuição São Paulo" },
-    { id: "22222222-2222-2222-2222-222222222222", name: "Sabesp - Companhia de Saneamento" },
-    { id: "33333333-3333-3333-3333-333333333333", name: "CPFL Energia" },
-    { id: "44444444-4444-4444-4444-444444444444", name: "Cemig Distribuição" },
-  ]
+  useEffect(() => {
+    async function fetchData() {
+      setIsFetching(true)
+      try {
+        // Fetch user data
+        const userResult = await getUserById(params.id)
+        if (userResult.success && userResult.data) {
+          const user = userResult.data
+          setFormData({
+            full_name: user.full_name || "",
+            email: user.email || "",
+            role: user.role || "user",
+            status: user.status || "active",
+            phone: user.phone || "",
+            address: user.address || "",
+            city: user.city || "",
+            state: user.state || "",
+            notes: user.notes || "",
+            company_id: user.company_id || "",
+          })
+        } else {
+          toast({
+            title: "Erro",
+            description: "Usuário não encontrado",
+            variant: "destructive",
+          })
+          router.push("/super-admin/users")
+          return
+        }
+
+        // Fetch companies
+        const companiesResult = await getCompanies()
+        if (companiesResult.success) {
+          setCompanies(companiesResult.data)
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching data:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar dados do usuário",
+          variant: "destructive",
+        })
+      } finally {
+        setIsFetching(false)
+      }
+    }
+
+    fetchData()
+  }, [params.id, router, toast])
 
   const handleInputChange = (field: keyof UserFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -61,14 +112,55 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     e.preventDefault()
     setIsLoading(true)
 
-    console.log("[v0] Salvando dados do usuário:", formData)
+    try {
+      const result = await updateUserProfile({
+        id: params.id,
+        full_name: formData.full_name,
+        email: formData.email,
+        role: formData.role,
+        status: formData.status,
+        company_id: formData.company_id || null,
+        phone: formData.phone,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        notes: formData.notes,
+      })
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (result.success) {
+        toast({
+          title: "Sucesso",
+          description: "Dados do usuário atualizados com sucesso!",
+        })
+        router.push(`/super-admin/users/${params.id}`)
+      } else {
+        toast({
+          title: "Erro",
+          description: result.message || "Erro ao atualizar usuário",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error updating user:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar usuário",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-    alert("Dados do usuário atualizados com sucesso!")
-    setIsLoading(false)
-    router.push(`/super-admin/users/${params.id}`)
+  if (isFetching) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-altea-gold" />
+          <p className="text-gray-600 dark:text-gray-400">Carregando dados do usuário...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -83,12 +175,12 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
-                .slice(0, 2)}
+                .slice(0, 2) || "??"}
             </AvatarFallback>
           </Avatar>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Editar Usuário</h1>
-            <p className="text-gray-600 dark:text-gray-400">{formData.full_name}</p>
+            <p className="text-gray-600 dark:text-gray-400">{formData.full_name || "Carregando..."}</p>
           </div>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
@@ -130,7 +222,10 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
                   value={formData.email}
                   onChange={(e) => handleInputChange("email", e.target.value)}
                   required
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800"
                 />
+                <p className="text-xs text-gray-500">O email não pode ser alterado</p>
               </div>
             </div>
 
@@ -166,11 +261,15 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
             {formData.role !== "super_admin" && (
               <div className="space-y-2">
                 <Label htmlFor="company_id">Empresa</Label>
-                <Select value={formData.company_id} onValueChange={(value) => handleInputChange("company_id", value)}>
+                <Select 
+                  value={formData.company_id || "none"} 
+                  onValueChange={(value) => handleInputChange("company_id", value === "none" ? "" : value)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione uma empresa" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">Nenhuma empresa</SelectItem>
                     {companies.map((company) => (
                       <SelectItem key={company.id} value={company.id}>
                         {company.name}
@@ -252,7 +351,10 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? (
-              <>Salvando...</>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Salvando...
+              </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
