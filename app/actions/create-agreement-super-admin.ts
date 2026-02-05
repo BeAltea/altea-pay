@@ -57,6 +57,11 @@ export async function createAgreementSuperAdmin(params: {
 
     if (existingCustomer) {
       customerId = existingCustomer.id
+      // Atualizar dados do customer com dados frescos da VMAX
+      await supabase
+        .from("customers")
+        .update({ name: customerName, phone: customerPhone, email: customerEmail })
+        .eq("id", existingCustomer.id)
     } else {
       const { data: newCustomer, error: customerError } = await supabase
         .from("customers")

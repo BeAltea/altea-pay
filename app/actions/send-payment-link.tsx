@@ -5,16 +5,23 @@ import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-export async function sendPaymentLink(agreementId: string, channel: "email" | "sms" | "whatsapp", phoneOverride?: string) {
+export async function sendPaymentLink(
+  agreementId: string,
+  channel: "email" | "sms" | "whatsapp",
+  contactInfo: {
+    email?: string
+    phone?: string
+    customerName?: string
+  }
+) {
   try {
     const supabase = await createClient()
 
-    // Fetch agreement com customer (pra pegar external_id = vmaxId) e company
+    // Buscar agreement e company
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select(`
         *,
-        customers(id, name, document, external_id),
         companies(id, name, cnpj)
       `)
       .eq("id", agreementId)
@@ -33,29 +40,12 @@ export async function sendPaymentLink(agreementId: string, channel: "email" | "s
       }
     }
 
-    const customer = agreement.customers as any
     const company = agreement.companies as any
 
-    // Buscar dados SOMENTE da VMAX - unica fonte de verdade
-    let customerName = "Cliente"
-    let customerEmail = ""
-    let customerPhone = ""
-
-    // Buscar VMAX pelo external_id do customer (que e o ID do registro VMAX)
-    const vmaxId = customer?.external_id
-    if (vmaxId) {
-      const { data: vmaxRecord } = await supabase
-        .from("VMAX")
-        .select('Email, "Telefone 1", "Telefone 2", Cliente')
-        .eq("id", vmaxId)
-        .single()
-
-      if (vmaxRecord) {
-        customerName = vmaxRecord.Cliente || "Cliente"
-        customerEmail = vmaxRecord.Email || ""
-        customerPhone = vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || ""
-      }
-    }
+    // Dados de contato vem DIRETO do dialog (que pega da VMAX)
+    const customerName = contactInfo.customerName || "Cliente"
+    const customerEmail = contactInfo.email || ""
+    const customerPhone = contactInfo.phone || ""
 
     if (channel === "email") {
       if (!customerEmail) {

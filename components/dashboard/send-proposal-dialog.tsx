@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -33,58 +33,11 @@ export function SendProposalDialog({
     customerEmail ? "email" : customerPhone1 ? "whatsapp_phone1" : customerPhone2 ? "whatsapp_phone2" : "email"
   )
   const [loading, setLoading] = useState(false)
-  const [email, setEmail] = useState(customerEmail)
-  const [phone1, setPhone1] = useState(customerPhone1)
-  const [phone2, setPhone2] = useState(customerPhone2)
-  const [fetchingContacts, setFetchingContacts] = useState(false)
 
-  useEffect(() => {
-    async function fetchCustomerContacts() {
-      if (!agreementId) return
-      // If we already have all data passed as props, no need to fetch
-      if (email && phone1) return
-
-      setFetchingContacts(true)
-      try {
-        const { createClient } = await import("@/lib/supabase/client")
-        const supabase = createClient()
-
-        // Buscar agreement com customer.external_id (= VMAX id)
-        const { data: agreement } = await supabase
-          .from("agreements")
-          .select("customer_id, customers(external_id)")
-          .eq("id", agreementId)
-          .single()
-
-        if (agreement) {
-          const vmaxId = (agreement.customers as any)?.external_id
-          
-          if (vmaxId) {
-            // Buscar VMAX pelo ID - UNICA fonte de dados
-            const { data: vmaxRecord } = await supabase
-              .from("VMAX")
-              .select('Email, "Telefone 1", "Telefone 2"')
-              .eq("id", vmaxId)
-              .single()
-
-            if (vmaxRecord) {
-              if (!email) setEmail(vmaxRecord.Email || undefined)
-              if (!phone1) setPhone1(vmaxRecord["Telefone 1"] || undefined)
-              if (!phone2) setPhone2(vmaxRecord["Telefone 2"] || undefined)
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching customer contacts:", error)
-      } finally {
-        setFetchingContacts(false)
-      }
-    }
-
-    if (open) {
-      fetchCustomerContacts()
-    }
-  }, [open, agreementId, email, phone1])
+  // Dados de contato vem DIRETO das props (que sao da VMAX)
+  const email = customerEmail
+  const phone1 = customerPhone1
+  const phone2 = customerPhone2
 
   const handleSend = async () => {
     setLoading(true)
@@ -109,7 +62,11 @@ export function SendProposalDialog({
       }
 
       const { sendPaymentLink } = await import("@/app/actions/send-payment-link")
-      const result = await sendPaymentLink(agreementId, actionChannel, selectedPhone)
+      const result = await sendPaymentLink(agreementId, actionChannel, {
+        email: email,
+        phone: selectedPhone || phone1 || phone2,
+        customerName: customerName,
+      })
 
       if (result.success) {
         const channelLabel = actionChannel === "email" ? "E-mail" : actionChannel === "whatsapp" ? "WhatsApp" : "SMS"
@@ -171,9 +128,6 @@ export function SendProposalDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {fetchingContacts ? (
-            <div className="text-center text-muted-foreground">Carregando informacoes de contato...</div>
-          ) : (
             <RadioGroup value={sendingChannel} onValueChange={(value) => setSendingChannel(value as SendChannel)}>
               <div className="space-y-3">
                 {/* Email option */}
@@ -224,7 +178,6 @@ export function SendProposalDialog({
                 )}
               </div>
             </RadioGroup>
-          )}
 
           <div className="bg-muted rounded-lg p-3 text-sm text-muted-foreground">
             <p>
@@ -238,7 +191,7 @@ export function SendProposalDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>
-          <Button onClick={handleSend} disabled={loading || fetchingContacts}>
+          <Button onClick={handleSend} disabled={loading}>
             <Send className="w-4 h-4 mr-2" />
             {loading ? "Enviando..." : "Enviar Proposta"}
           </Button>
