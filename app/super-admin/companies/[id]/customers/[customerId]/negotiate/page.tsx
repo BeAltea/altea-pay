@@ -86,6 +86,9 @@ export default async function SuperAdminNegotiatePage({
           totalDebt={totalDebt}
           customerName={customer.Cliente}
           isSuperAdmin={true}
+          customerEmail={customer.Email || null}
+          customerPhone1={customer["Telefone 1"] || null}
+          customerPhone2={customer["Telefone 2"] || null}
         />
       </div>
     </div>

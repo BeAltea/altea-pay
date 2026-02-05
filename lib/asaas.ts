@@ -48,6 +48,7 @@ export interface CreatePaymentParams {
   externalReference?: string
   installmentCount?: number
   installmentValue?: number
+  postalService?: boolean
 }
 
 async function asaasFetch(endpoint: string, options?: RequestInit) {
@@ -79,6 +80,7 @@ export async function createAsaasCustomer(params: {
   postalCode?: string
   address?: string
   addressNumber?: string
+  notificationDisabled?: boolean
 }): Promise<AsaasCustomer> {
   console.log("[v0] Creating Asaas customer:", params.cpfCnpj)
 
