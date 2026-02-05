@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -15,7 +15,7 @@ export async function sendPaymentLink(
   }
 ) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Buscar agreement e company
     const { data: agreement, error: agreementError } = await supabase
@@ -138,8 +138,7 @@ export async function sendPaymentLink(
     }
 
     if (channel === "sms" || channel === "whatsapp") {
-      const phoneToUse = phoneOverride || customerPhone
-      if (!phoneToUse) {
+      if (!customerPhone) {
         return { success: false, error: "Cliente nao possui telefone cadastrado" }
       }
 
@@ -148,7 +147,7 @@ export async function sendPaymentLink(
       return { 
         success: true, 
         data: { 
-          phone: phoneToUse, 
+          phone: customerPhone, 
           paymentUrl, 
           message: `Ola ${customerName}! Sua proposta de acordo esta pronta. Acesse: ${paymentUrl}`,
           channel 
