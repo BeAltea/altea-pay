@@ -9,14 +9,15 @@ import Link from "next/link"
 import { ArrowLeft, Save, TestTube } from "lucide-react"
 
 interface NewERPIntegrationPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function NewERPIntegrationPage({ params }: NewERPIntegrationPageProps) {
+  const { id } = await params
   const company = {
-    id: params.id,
+    id: id,
     name: "Enel Distribuição São Paulo",
   }
 
@@ -27,7 +28,7 @@ export default async function NewERPIntegrationPage({ params }: NewERPIntegratio
         <div className="min-w-0">
           <div className="flex items-center space-x-3 mb-2">
             <Button asChild variant="outline" size="sm">
-              <Link href={`/super-admin/companies/${params.id}/erp-integration`}>
+              <Link href={`/super-admin/companies/${id}/erp-integration`}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Voltar
               </Link>

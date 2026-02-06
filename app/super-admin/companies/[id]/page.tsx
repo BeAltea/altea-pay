@@ -27,19 +27,19 @@ import {
 import { formatCurrency } from "@/lib/format-currency"
 
 interface CompanyDetailsProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function CompanyDetailsPage({ params }: CompanyDetailsProps) {
-  console.log("[v0] === COMPANY DETAILS PAGE v2 - WITH PAGINATION ===")
+  const { id } = await params
   const supabase = createAdminClient()
 
   const { data: companyData, error: companyError } = await supabase
     .from("companies")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (companyError || !companyData) {
@@ -52,7 +52,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const { data: adminsData } = await supabase
     .from("profiles")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .eq("role", "admin")
 
   // Buscar TODOS os registros VMAX para esta empresa (paginação para superar limite de 1000)
@@ -65,7 +65,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     const { data: vmaxPage, error: vmaxPageError } = await supabase
       .from("VMAX")
       .select("*")
-      .eq("id_company", params.id)
+      .eq("id_company", id)
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (vmaxPageError) {
@@ -135,14 +135,14 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const { data: recentPayments } = await supabase
     .from("payments")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .order("created_at", { ascending: false })
     .limit(2)
 
   const { data: recentDebts } = await supabase
     .from("debts")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .order("created_at", { ascending: false })
     .limit(2)
 

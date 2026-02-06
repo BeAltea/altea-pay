@@ -6,13 +6,14 @@ import { ArrowLeft, Users, UserCheck, UserX, AlertTriangle } from "lucide-react"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 
-export default async function ManageUsersPage({ params }: { params: { id: string } }) {
+export default async function ManageUsersPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = createAdminClient()
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (companyError || !company) {
@@ -22,7 +23,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
   const { data: users } = await supabase
     .from("profiles")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .order("created_at", { ascending: false })
 
   const usersList = (users || []).map((user) => ({
@@ -87,7 +88,7 @@ export default async function ManageUsersPage({ params }: { params: { id: string
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
       <div className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
         <Button variant="ghost" size="sm" asChild className="text-xs sm:text-sm">
-          <Link href={`/super-admin/companies/${params.id}`}>
+          <Link href={`/super-admin/companies/${id}`}>
             <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             Voltar
           </Link>

@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation"
 
 interface UsersPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
-export default function UsersPage({ params }: UsersPageProps) {
-  redirect(`/super-admin/companies/${params.id}/users/manage`)
+export default async function UsersPage({ params }: UsersPageProps) {
+  const { id } = await params
+  redirect(`/super-admin/companies/${id}/users/manage`)
 }

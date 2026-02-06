@@ -9,8 +9,9 @@ import Link from "next/link"
 export default async function NegotiatePage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   const serviceClient = createServiceClient()
 
@@ -35,7 +36,7 @@ export default async function NegotiatePage({
   }
 
   // Get customer data from VMAX table using service client
-  const { data: customerData } = await serviceClient.from("VMAX").select("*").eq("id", params.id).single()
+  const { data: customerData } = await serviceClient.from("VMAX").select("*").eq("id", id).single()
 
   if (!customerData) {
     redirect("/dashboard/clientes")

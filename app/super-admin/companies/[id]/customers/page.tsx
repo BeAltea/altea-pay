@@ -5,13 +5,14 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { notFound } from "next/navigation"
 
-export default async function ManageCustomersPage({ params }: { params: { id: string } }) {
+export default async function ManageCustomersPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = createAdminClient()
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (companyError || !company) {
@@ -28,7 +29,7 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
     const { data: vmaxPage, error: vmaxPageError } = await supabase
       .from("VMAX")
       .select("*")
-      .eq("id_company", params.id)
+      .eq("id_company", id)
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (vmaxPageError) {
@@ -71,7 +72,7 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
       email: null,
       phone: null,
       document: vmax["CPF/CNPJ"] || vmax.cpf_cnpj || "N/A",
-      company_id: params.id,
+      company_id: id,
       created_at: primeiraVencida || new Date().toISOString(),
       totalDebt: vencidoValue,
       overdueDebt: diasInad > 0 ? vencidoValue : 0,
@@ -93,14 +94,14 @@ export default async function ManageCustomersPage({ params }: { params: { id: st
           <p className="text-gray-600 dark:text-gray-400">{company.name}</p>
         </div>
         <Button asChild variant="outline">
-          <Link href={`/super-admin/companies/${params.id}`}>
+          <Link href={`/super-admin/companies/${id}`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Link>
         </Button>
       </div>
 
-      <CustomersFilterClient customers={allCustomers} companyId={params.id} />
+      <CustomersFilterClient customers={allCustomers} companyId={id} />
     </div>
   )
 }
