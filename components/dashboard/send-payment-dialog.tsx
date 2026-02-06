@@ -20,7 +20,7 @@ export function SendPaymentDialog({ agreementId, paymentUrl, open, onOpenChange 
   const handleSend = async (channel: "email" | "sms" | "whatsapp") => {
     setSending(true)
     try {
-      await sendPaymentLink({ agreementId, channel })
+      await sendPaymentLink(agreementId, channel, {})
       toast.success(
         `Link de pagamento enviado via ${channel === "email" ? "E-mail" : channel === "whatsapp" ? "WhatsApp" : "SMS"}`,
       )
