@@ -137,8 +137,11 @@ async function fetchDirect(endpoint: string, apiKey: string, options?: RequestIn
 // ====== Main API Caller ======
 
 async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
-  // Strategy 1: Try direct call with env var
+  // IMPORTANT: Read key inside function, NOT at module level
+  // Module-level reads get cached at build time and may be empty
   const key = process.env.ASAAS_API_KEY?.trim()
+
+  console.log("[v0] asaasRequest called - endpoint:", endpoint, "- key exists:", !!key, "- key length:", key?.length || 0)
 
   if (key && key.length > 0) {
     const opts: RequestInit = { method }
@@ -148,8 +151,8 @@ async function asaasRequest(endpoint: string, method = "GET", body?: unknown): P
     return fetchDirect(endpoint, key, opts)
   }
 
-  // Strategy 2: Use proxy route (always works because API routes can read env vars)
-  console.warn("ASAAS_API_KEY not in process.env, using /api/asaas proxy")
+  // Fallback: Use proxy route which reads env vars at request time
+  console.warn("[v0] ASAAS_API_KEY not found in process.env, falling back to /api/asaas proxy")
   return fetchViaProxy(endpoint, method, body)
 }
 
