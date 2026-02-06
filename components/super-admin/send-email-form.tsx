@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +22,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Building2,
   Users,
   Mail,
@@ -31,6 +38,10 @@ import {
   Search,
   CheckSquare,
   Square,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  FlaskConical,
 } from "lucide-react"
 
 interface Company {
@@ -47,17 +58,66 @@ interface Recipient {
 interface SendEmailFormProps {
   companies: Company[]
   recipientsMap: Record<string, Recipient[]>
+  emailTrackingMap: Record<string, string>
 }
 
-export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) {
+type EmailStatusFilter = "all" | "sent" | "not_sent"
+
+interface FailedDetail {
+  email: string
+  error: string
+}
+
+interface SendResult {
+  success: boolean
+  message: string
+  totalSent?: number
+  totalFailed?: number
+  failedDetails?: FailedDetail[]
+}
+
+function formatDateBrazilian(isoDate: string): string {
+  const date = new Date(isoDate)
+  // Convert to Brazilian timezone
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }
+  const formatted = new Intl.DateTimeFormat("pt-BR", options).format(date)
+  // Format is "DD/MM/YYYY, HH:MM" - remove the comma
+  return formatted.replace(",", "")
+}
+
+function parseTestEmails(input: string): string[] {
+  return input
+    .split(/[;,\n]/)
+    .map((email) => email.trim())
+    .filter((email) => email.length > 0 && email.includes("@"))
+}
+
+export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: SendEmailFormProps) {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("")
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set())
   const [subject, setSubject] = useState("")
   const [htmlBody, setHtmlBody] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
+  const [emailStatusFilter, setEmailStatusFilter] = useState<EmailStatusFilter>("all")
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [result, setResult] = useState<SendResult | null>(null)
+  const [isErrorDetailsOpen, setIsErrorDetailsOpen] = useState(false)
+
+  // Test mode state
+  const [isTestMode, setIsTestMode] = useState(false)
+  const [testEmailsInput, setTestEmailsInput] = useState("")
+
+  // Parse test emails
+  const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
 
   // Get recipients for selected company
   const companyRecipients = useMemo(() => {
@@ -65,20 +125,35 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
     return recipientsMap[selectedCompanyId] || []
   }, [selectedCompanyId, recipientsMap])
 
-  // Filter recipients based on search
+  // Filter recipients based on search and email status
   const filteredRecipients = useMemo(() => {
-    if (!searchTerm) return companyRecipients
-    const lowerSearch = searchTerm.toLowerCase()
-    return companyRecipients.filter(
-      (r) =>
-        r.name.toLowerCase().includes(lowerSearch) ||
-        r.email.toLowerCase().includes(lowerSearch),
-    )
-  }, [companyRecipients, searchTerm])
+    let filtered = companyRecipients
 
-  // Get selected recipients' emails
-  const selectedEmails = useMemo(() => {
-    return companyRecipients.filter((r) => selectedRecipientIds.has(r.id)).map((r) => r.email)
+    // Filter by search term (name)
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase()
+      filtered = filtered.filter(
+        (r) =>
+          r.name.toLowerCase().includes(lowerSearch) ||
+          r.email.toLowerCase().includes(lowerSearch),
+      )
+    }
+
+    // Filter by email status
+    if (emailStatusFilter === "sent") {
+      filtered = filtered.filter((r) => emailTrackingMap[r.id])
+    } else if (emailStatusFilter === "not_sent") {
+      filtered = filtered.filter((r) => !emailTrackingMap[r.id])
+    }
+
+    return filtered
+  }, [companyRecipients, searchTerm, emailStatusFilter, emailTrackingMap])
+
+  // Get selected recipients' data (id and email)
+  const selectedRecipientsData = useMemo(() => {
+    return companyRecipients
+      .filter((r) => selectedRecipientIds.has(r.id))
+      .map((r) => ({ id: r.id, email: r.email }))
   }, [companyRecipients, selectedRecipientIds])
 
   // Handle company change
@@ -86,12 +161,27 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
     setSelectedCompanyId(companyId)
     setSelectedRecipientIds(new Set())
     setSearchTerm("")
+    setEmailStatusFilter("all")
   }
 
-  // Handle select all
+  // Handle test mode toggle
+  const handleTestModeToggle = (checked: boolean) => {
+    setIsTestMode(checked)
+    if (checked) {
+      // Clear company selection when entering test mode
+      setSelectedCompanyId("")
+      setSelectedRecipientIds(new Set())
+    } else {
+      // Clear test emails when exiting test mode
+      setTestEmailsInput("")
+    }
+    setResult(null)
+  }
+
+  // Handle select all - only selects filtered recipients
   const handleSelectAll = () => {
-    const allIds = new Set(companyRecipients.map((r) => r.id))
-    setSelectedRecipientIds(allIds)
+    const filteredIds = new Set(filteredRecipients.map((r) => r.id))
+    setSelectedRecipientIds(filteredIds)
   }
 
   // Handle deselect all
@@ -110,8 +200,13 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
     setSelectedRecipientIds(newSelected)
   }
 
-  // Validate form
-  const isFormValid = selectedCompanyId && selectedRecipientIds.size > 0 && subject.trim() && htmlBody.trim()
+  // Validate form - different validation for test mode
+  const isFormValid = isTestMode
+    ? testEmails.length > 0 && subject.trim() && htmlBody.trim()
+    : selectedCompanyId && selectedRecipientIds.size > 0 && subject.trim() && htmlBody.trim()
+
+  // Get recipient count for display
+  const recipientCount = isTestMode ? testEmails.length : selectedRecipientIds.size
 
   // Handle send
   const handleSend = async () => {
@@ -119,29 +214,49 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
 
     setIsSending(true)
     setResult(null)
+    setIsErrorDetailsOpen(false)
 
     try {
       const response = await fetch("/api/super-admin/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          companyId: selectedCompanyId,
-          recipientEmails: selectedEmails,
+          companyId: isTestMode ? null : selectedCompanyId,
+          recipients: isTestMode
+            ? testEmails.map((email) => ({ id: `test-${email}`, email }))
+            : selectedRecipientsData,
           subject,
           htmlBody,
+          isTestMode,
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        setResult({ success: false, message: data.error || "Erro ao enviar email" })
+        setResult({
+          success: false,
+          message: data.error || "Erro ao enviar email",
+        })
       } else {
-        setResult({ success: true, message: data.message || "Emails enviados com sucesso!" })
-        // Reset form on success
-        setSelectedRecipientIds(new Set())
-        setSubject("")
-        setHtmlBody("")
+        setResult({
+          success: data.totalFailed === 0,
+          message: data.message,
+          totalSent: data.totalSent,
+          totalFailed: data.totalFailed,
+          failedDetails: data.failedDetails,
+        })
+
+        // Only reset form on complete success
+        if (data.totalFailed === 0) {
+          if (isTestMode) {
+            setTestEmailsInput("")
+          } else {
+            setSelectedRecipientIds(new Set())
+          }
+          setSubject("")
+          setHtmlBody("")
+        }
       }
     } catch (error) {
       setResult({
@@ -153,6 +268,18 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
     }
   }
 
+  // Get email status for a recipient
+  const getEmailStatus = (recipientId: string): { sent: boolean; date: string | null } => {
+    const sentAt = emailTrackingMap[recipientId]
+    if (sentAt) {
+      return { sent: true, date: formatDateBrazilian(sentAt) }
+    }
+    return { sent: false, date: null }
+  }
+
+  // Check if should show email composition
+  const showEmailComposition = isTestMode ? testEmails.length > 0 : selectedRecipientIds.size > 0
+
   return (
     <div className="space-y-6">
       {/* Result Alert */}
@@ -163,37 +290,128 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
           ) : (
             <AlertCircle className="h-4 w-4" />
           )}
-          <AlertDescription>{result.message}</AlertDescription>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>{result.message}</span>
+            {result.failedDetails && result.failedDetails.length > 0 && (
+              <Collapsible open={isErrorDetailsOpen} onOpenChange={setIsErrorDetailsOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-1 p-0 h-auto text-destructive hover:text-destructive">
+                    {isErrorDetailsOpen ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                    Ver detalhes dos erros ({result.failedDetails.length})
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <div className="rounded-md bg-destructive/10 p-3 space-y-1 text-sm">
+                    {result.failedDetails.map((detail, index) => (
+                      <div key={index} className="flex flex-col">
+                        <span className="font-medium">{detail.email}</span>
+                        <span className="text-muted-foreground text-xs">{detail.error}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
-      {/* Company Selection */}
+      {/* Company Selection / Test Mode */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Selecionar Empresa
-          </CardTitle>
-          <CardDescription>Escolha a empresa cujos clientes receberão o email</CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                {isTestMode ? "Modo de Teste" : "Selecionar Empresa"}
+              </CardTitle>
+              <CardDescription>
+                {isTestMode
+                  ? "Digite os emails de teste separados por ponto e vírgula (;)"
+                  : "Escolha a empresa cujos clientes receberão o email"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="test-mode" className="text-sm font-medium cursor-pointer">
+                  Modo de Teste
+                </Label>
+              </div>
+              <Switch
+                id="test-mode"
+                checked={isTestMode}
+                onCheckedChange={handleTestModeToggle}
+              />
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <Select value={selectedCompanyId} onValueChange={handleCompanyChange}>
-            <SelectTrigger className="w-full md:w-[400px]">
-              <SelectValue placeholder="Selecione uma empresa..." />
-            </SelectTrigger>
-            <SelectContent>
-              {companies.map((company) => (
-                <SelectItem key={company.id} value={company.id}>
-                  {company.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <CardContent className="space-y-4">
+          {isTestMode ? (
+            // Test Mode - Manual email input
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="test-emails">Emails de Teste</Label>
+                <Textarea
+                  id="test-emails"
+                  placeholder="email1@exemplo.com; email2@exemplo.com; email3@exemplo.com"
+                  value={testEmailsInput}
+                  onChange={(e) => setTestEmailsInput(e.target.value)}
+                  className="min-h-[100px] font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Separe os emails com ponto e vírgula (;), vírgula (,) ou quebra de linha
+                </p>
+              </div>
+
+              {testEmails.length > 0 && (
+                <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Emails válidos detectados:</span>
+                    <Badge variant="secondary">{testEmails.length} email(s)</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {testEmails.map((email, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {email}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Alert>
+                <FlaskConical className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Modo de Teste:</strong> Os emails enviados neste modo não serão registrados
+                  no histórico de envios.
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : (
+            // Normal Mode - Company selection
+            <Select value={selectedCompanyId} onValueChange={handleCompanyChange}>
+              <SelectTrigger className="w-full md:w-[400px]">
+                <SelectValue placeholder="Selecione uma empresa..." />
+              </SelectTrigger>
+              <SelectContent>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
-      {/* Recipient Selection */}
-      {selectedCompanyId && (
+      {/* Recipient Selection - Only show when not in test mode and company is selected */}
+      {!isTestMode && selectedCompanyId && (
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -208,7 +426,7 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-sm">
-                  {selectedRecipientIds.size} selecionado(s)
+                  {selectedRecipientIds.size} selecionado(s) de {filteredRecipients.length} filtrado(s)
                 </Badge>
               </div>
             </div>
@@ -222,6 +440,62 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
               </div>
             ) : (
               <>
+                {/* Filters Section */}
+                <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Filter className="h-4 w-4" />
+                    Filtros
+                  </div>
+
+                  {/* Search by name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="search-name" className="text-sm text-muted-foreground">
+                      Buscar por nome
+                    </Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="search-name"
+                        placeholder="Digite o nome para filtrar..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Filter by email status */}
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">
+                      Status do email
+                    </Label>
+                    <RadioGroup
+                      value={emailStatusFilter}
+                      onValueChange={(value) => setEmailStatusFilter(value as EmailStatusFilter)}
+                      className="flex flex-wrap gap-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="all" id="status-all" />
+                        <Label htmlFor="status-all" className="cursor-pointer font-normal">
+                          Todos ({companyRecipients.length})
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="sent" id="status-sent" />
+                        <Label htmlFor="status-sent" className="cursor-pointer font-normal">
+                          Enviado ({companyRecipients.filter(r => emailTrackingMap[r.id]).length})
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="not_sent" id="status-not-sent" />
+                        <Label htmlFor="status-not-sent" className="cursor-pointer font-normal">
+                          Não enviado ({companyRecipients.filter(r => !emailTrackingMap[r.id]).length})
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+
                 {/* Quick Actions */}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -231,7 +505,7 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
                     className="gap-2"
                   >
                     <CheckSquare className="h-4 w-4" />
-                    Selecionar Todos ({companyRecipients.length})
+                    Selecionar Todos ({filteredRecipients.length})
                   </Button>
                   <Button
                     variant="outline"
@@ -245,43 +519,73 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
                   </Button>
                 </div>
 
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nome ou email..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-
                 {/* Recipient List */}
-                <ScrollArea className="h-[300px] rounded-md border">
-                  <div className="p-4 space-y-2">
-                    {filteredRecipients.map((recipient) => (
-                      <div
-                        key={recipient.id}
-                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => handleRecipientToggle(recipient.id)}
-                      >
-                        <Checkbox
-                          checked={selectedRecipientIds.has(recipient.id)}
-                          onCheckedChange={() => handleRecipientToggle(recipient.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{recipient.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {recipient.email}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                    {filteredRecipients.length === 0 && searchTerm && (
-                      <p className="text-center text-muted-foreground py-4">
-                        Nenhum destinatário encontrado para &quot;{searchTerm}&quot;
-                      </p>
-                    )}
+                <ScrollArea className="h-[400px] rounded-md border">
+                  <div className="p-4">
+                    {/* Table Header */}
+                    <div className="flex items-center gap-3 p-3 border-b bg-muted/50 rounded-t-lg font-medium text-sm">
+                      <div className="w-6"></div>
+                      <div className="flex-1 min-w-0">Nome</div>
+                      <div className="w-48 text-center hidden sm:block">Email</div>
+                      <div className="w-44 text-center hidden md:block">Status do Envio</div>
+                    </div>
+
+                    {/* Recipient Rows */}
+                    <div className="space-y-1 mt-1">
+                      {filteredRecipients.map((recipient) => {
+                        const status = getEmailStatus(recipient.id)
+                        return (
+                          <div
+                            key={recipient.id}
+                            className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                            onClick={() => handleRecipientToggle(recipient.id)}
+                          >
+                            <Checkbox
+                              checked={selectedRecipientIds.has(recipient.id)}
+                              onCheckedChange={() => handleRecipientToggle(recipient.id)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{recipient.name}</p>
+                              <p className="text-xs text-muted-foreground truncate sm:hidden">
+                                {recipient.email}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate md:hidden mt-1">
+                                {status.sent ? (
+                                  <span className="text-green-600 dark:text-green-400">
+                                    Enviado em {status.date}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">Não enviado</span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="w-48 text-center hidden sm:block">
+                              <p className="text-xs text-muted-foreground truncate">
+                                {recipient.email}
+                              </p>
+                            </div>
+                            <div className="w-44 text-center hidden md:block">
+                              {status.sent ? (
+                                <Badge variant="outline" className="text-green-600 border-green-600/50 dark:text-green-400 dark:border-green-400/50">
+                                  Enviado em {status.date}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground">
+                                  Não enviado
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {filteredRecipients.length === 0 && (
+                        <p className="text-center text-muted-foreground py-4">
+                          {searchTerm || emailStatusFilter !== "all"
+                            ? "Nenhum destinatário encontrado com os filtros aplicados"
+                            : "Nenhum destinatário cadastrado"}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </ScrollArea>
               </>
@@ -291,7 +595,7 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
       )}
 
       {/* Email Composition */}
-      {selectedRecipientIds.size > 0 && (
+      {showEmailComposition && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -299,8 +603,9 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
               Compor Email
             </CardTitle>
             <CardDescription>
-              Escreva o conteúdo do email que será enviado para {selectedRecipientIds.size}{" "}
+              Escreva o conteúdo do email que será enviado para {recipientCount}{" "}
               destinatário(s)
+              {isTestMode && <span className="text-yellow-600 dark:text-yellow-400"> (modo de teste)</span>}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -349,7 +654,7 @@ export function SendEmailForm({ companies, recipientsMap }: SendEmailFormProps) 
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                {isSending ? "Enviando..." : `Enviar para ${selectedRecipientIds.size} destinatário(s)`}
+                {isSending ? "Enviando..." : `Enviar para ${recipientCount} destinatário(s)`}
               </Button>
             </div>
           </CardContent>
