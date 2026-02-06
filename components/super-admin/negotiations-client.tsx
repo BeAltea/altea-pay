@@ -181,7 +181,15 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       })
 
       if (result.success) {
-        toast.success(`Negociacao enviada para ${result.sent} cliente(s) com sucesso!`)
+        const totalSelected = selectedCustomers.size
+        if (result.sent === totalSelected) {
+          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
+        } else {
+          toast.success(`Negociacao enviada para ${result.sent} de ${totalSelected} cliente(s).`)
+          if (result.errors && result.errors.length > 0) {
+            toast.warning(`${result.errors.length} erro(s): ${result.errors.slice(0, 3).join("; ")}`)
+          }
+        }
         setShowModal(false)
         setSelectedCustomers(new Set())
         // Reload customers to update status

@@ -174,7 +174,15 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
         notificationChannels: Array.from(notificationChannels),
       })
       if (result.success) {
-        toast.success(`Negociacao enviada para ${result.sent} cliente(s) com sucesso!`)
+        const totalSelected = selectedCustomers.size
+        if (result.sent === totalSelected) {
+          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
+        } else {
+          toast.success(`Negociacao enviada para ${result.sent} de ${totalSelected} cliente(s).`)
+          if (result.errors && result.errors.length > 0) {
+            toast.warning(`${result.errors.length} erro(s): ${result.errors.slice(0, 3).join("; ")}`)
+          }
+        }
         setShowNegotiationModal(false)
         setSelectedCustomers(new Set())
         router.refresh()
