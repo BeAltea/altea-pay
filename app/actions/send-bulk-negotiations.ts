@@ -2,6 +2,14 @@
 
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import {
+  getAsaasCustomerByCpfCnpj,
+  createAsaasCustomer,
+  updateAsaasCustomer,
+  getAsaasCustomerNotifications,
+  updateAsaasNotification,
+  createAsaasPayment,
+} from "@/lib/asaas"
 
 interface SendBulkNegotiationsParams {
   companyId: string
@@ -38,6 +46,9 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
     let sentCount = 0
     const errors: string[] = []
 
+    // Determine notification channel (use first selected channel)
+    const primaryChannel = params.notificationChannels[0] as "email" | "sms" | "whatsapp" || "email"
+
     for (const vmaxId of params.customerIds) {
       try {
         // Get VMAX record
@@ -56,6 +67,11 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
         const customerName = vmax.Cliente || "Cliente"
         const customerPhone = (vmax["Telefone 1"] || vmax["Telefone 2"] || "").replace(/\D/g, "")
         const customerEmail = vmax.Email || ""
+
+        if (!cpfCnpj) {
+          errors.push(`${customerName}: sem CPF/CNPJ cadastrado`)
+          continue
+        }
 
         // Parse debt value
         const vencidoStr = String(vmax.Vencido || "0")
@@ -140,7 +156,6 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
 
         if (existingDebt) {
           debtId = existingDebt.id
-          // Update debt amount if needed
           await supabase
             .from("debts")
             .update({ amount: originalAmount, status: "in_negotiation" })
@@ -171,35 +186,142 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           debtId = newDebt.id
         }
 
-        // Create agreement
+        // ====== ASAAS INTEGRATION (same as sendPaymentLink) ======
+
+        // 1. Create or find Asaas customer
+        let asaasCustomerId: string | null = null
+        try {
+          const existingAsaas = await getAsaasCustomerByCpfCnpj(cpfCnpj)
+          if (existingAsaas) {
+            asaasCustomerId = existingAsaas.id
+            await updateAsaasCustomer(asaasCustomerId, {
+              email: customerEmail || undefined,
+              mobilePhone: customerPhone || undefined,
+              notificationDisabled: true,
+            })
+          } else {
+            const newAsaas = await createAsaasCustomer({
+              name: customerName,
+              cpfCnpj,
+              email: customerEmail || undefined,
+              mobilePhone: customerPhone || undefined,
+              notificationDisabled: true,
+            })
+            asaasCustomerId = newAsaas.id
+          }
+        } catch (asaasErr: any) {
+          errors.push(`${customerName}: erro Asaas cliente - ${asaasErr.message}`)
+          continue
+        }
+
+        // 2. Create agreement in DB
         const dueDate = new Date()
         dueDate.setDate(dueDate.getDate() + 30)
+        const dueDateStr = dueDate.toISOString().split("T")[0]
 
-        const { error: agreementError } = await supabase.from("agreements").insert({
-          debt_id: debtId,
-          customer_id: customerId,
-          user_id: user.id,
-          company_id: params.companyId,
-          original_amount: originalAmount,
-          agreed_amount: agreedAmount,
-          discount_amount: discountAmount,
-          discount_percentage: discountPercentage,
-          installments: 1,
-          installment_amount: agreedAmount,
-          due_date: dueDate.toISOString().split("T")[0],
-          status: "active",
-          payment_status: "pending",
-          attendant_name: profile.full_name || "Super Admin",
-          terms: JSON.stringify({
-            payment_methods: params.paymentMethods,
-            notification_channels: params.notificationChannels,
-            discount_type: params.discountType,
-            discount_value: params.discountValue,
-          }),
-        })
+        const { data: agreement, error: agreementError } = await supabase
+          .from("agreements")
+          .insert({
+            debt_id: debtId,
+            customer_id: customerId,
+            user_id: user.id,
+            company_id: params.companyId,
+            original_amount: originalAmount,
+            agreed_amount: agreedAmount,
+            discount_amount: discountAmount,
+            discount_percentage: discountPercentage,
+            installments: 1,
+            installment_amount: agreedAmount,
+            due_date: dueDateStr,
+            status: "draft",
+            payment_status: "pending",
+            attendant_name: profile.full_name || "Super Admin",
+            asaas_customer_id: asaasCustomerId,
+            terms: JSON.stringify({
+              payment_methods: params.paymentMethods,
+              notification_channels: params.notificationChannels,
+              discount_type: params.discountType,
+              discount_value: params.discountValue,
+            }),
+          })
+          .select()
+          .single()
 
-        if (agreementError) {
-          errors.push(`${customerName}: erro ao criar acordo - ${agreementError.message}`)
+        if (agreementError || !agreement) {
+          errors.push(`${customerName}: erro ao criar acordo - ${agreementError?.message}`)
+          continue
+        }
+
+        // 3. Enable notification for the selected channel, then create payment
+        try {
+          // Update Asaas customer contact info and enable notifications
+          const updateData: { notificationDisabled: boolean; email?: string; mobilePhone?: string } = { notificationDisabled: false }
+          if (customerEmail) updateData.email = customerEmail
+          if (customerPhone) updateData.mobilePhone = customerPhone.replace(/[^\d]/g, "")
+          await updateAsaasCustomer(asaasCustomerId, updateData)
+
+          // Configure notifications - enable only PAYMENT_CREATED for the right channel
+          const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
+
+          for (const notif of allNotifications) {
+            if (notif.event === "PAYMENT_CREATED") {
+              await updateAsaasNotification(notif.id, {
+                enabled: true,
+                emailEnabledForCustomer: params.notificationChannels.includes("email"),
+                smsEnabledForCustomer: params.notificationChannels.includes("sms"),
+                whatsappEnabledForCustomer: params.notificationChannels.includes("whatsapp"),
+              })
+            } else {
+              await updateAsaasNotification(notif.id, {
+                enabled: false,
+                emailEnabledForCustomer: false,
+                smsEnabledForCustomer: false,
+                whatsappEnabledForCustomer: false,
+              })
+            }
+          }
+
+          // 4. Create Asaas payment
+          const paymentParams: any = {
+            customer: asaasCustomerId,
+            billingType: "UNDEFINED" as const,
+            value: agreedAmount,
+            dueDate: dueDateStr,
+            description: `Acordo de negociacao - ${customerName}`,
+            externalReference: `agreement_${agreement.id}`,
+            postalService: false,
+          }
+
+          const asaasPayment = await createAsaasPayment(paymentParams)
+
+          // 5. Update agreement with Asaas payment info
+          await supabase
+            .from("agreements")
+            .update({
+              asaas_payment_id: asaasPayment.id,
+              asaas_payment_url: asaasPayment.invoiceUrl || null,
+              asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
+              asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+              status: "active",
+            })
+            .eq("id", agreement.id)
+
+          // 6. Disable notifications again
+          await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+
+          const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
+          if (paymentCreatedNotif) {
+            await updateAsaasNotification(paymentCreatedNotif.id, {
+              enabled: false,
+              emailEnabledForCustomer: false,
+              smsEnabledForCustomer: false,
+              whatsappEnabledForCustomer: false,
+            })
+          }
+        } catch (asaasPaymentErr: any) {
+          errors.push(`${customerName}: erro ao criar cobranca Asaas - ${asaasPaymentErr.message}`)
+          // Delete the draft agreement since payment failed
+          await supabase.from("agreements").delete().eq("id", agreement.id)
           continue
         }
 
