@@ -5,6 +5,7 @@ interface SendGridEmailParams {
   subject: string
   html: string
   text?: string
+  replyTo?: string
 }
 
 interface SendGridResponse {
@@ -13,11 +14,49 @@ interface SendGridResponse {
   error?: string
 }
 
+interface IndividualSendResult {
+  email: string
+  success: boolean
+  error?: string
+}
+
+interface BulkSendResponse {
+  success: boolean
+  totalSent: number
+  totalFailed: number
+  results: IndividualSendResult[]
+  error?: string
+}
+
+function getConfig() {
+  return {
+    apiKey: process.env.SENDGRID_API_KEY,
+    fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.SENDGRID_SENDER_EMAIL || "noreply@alteapay.com",
+    fromName: process.env.SENDGRID_FROM_NAME || process.env.SENDGRID_SENDER_NAME || "AlteaPay",
+    replyTo: process.env.SENDGRID_REPLY_TO,
+  }
+}
+
+export async function validateSendGridConfig(): Promise<{ valid: boolean; error?: string }> {
+  const config = getConfig()
+
+  if (!config.apiKey) {
+    return { valid: false, error: "SENDGRID_API_KEY não configurada" }
+  }
+
+  if (!config.fromEmail) {
+    return { valid: false, error: "SENDGRID_FROM_EMAIL não configurado" }
+  }
+
+  return { valid: true }
+}
+
 export async function sendEmailViaSendGrid({
   to,
   subject,
   html,
   text,
+  replyTo,
 }: SendGridEmailParams): Promise<SendGridResponse> {
   try {
     console.log("=".repeat(50))
@@ -25,11 +64,9 @@ export async function sendEmailViaSendGrid({
     console.log("[SendGrid] To:", Array.isArray(to) ? to.length + " recipients" : to)
     console.log("[SendGrid] Subject:", subject)
 
-    const apiKey = process.env.SENDGRID_API_KEY
-    const senderEmail = process.env.SENDGRID_SENDER_EMAIL || "noreply@alteapay.com"
-    const senderName = process.env.SENDGRID_SENDER_NAME || "AlteaPay"
+    const config = getConfig()
 
-    if (!apiKey) {
+    if (!config.apiKey) {
       console.error("[SendGrid] ERROR: SENDGRID_API_KEY not configured")
       return { success: false, error: "SENDGRID_API_KEY não configurada" }
     }
@@ -51,24 +88,33 @@ export async function sendEmailViaSendGrid({
       to: [{ email }],
     }))
 
+    // Build the request body
+    const requestBody: Record<string, unknown> = {
+      personalizations,
+      from: {
+        email: config.fromEmail,
+        name: config.fromName,
+      },
+      subject,
+      content: [
+        ...(text ? [{ type: "text/plain", value: text }] : []),
+        { type: "text/html", value: html },
+      ],
+    }
+
+    // Add reply_to if configured
+    const effectiveReplyTo = replyTo || config.replyTo
+    if (effectiveReplyTo) {
+      requestBody.reply_to = { email: effectiveReplyTo }
+    }
+
     const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        personalizations,
-        from: {
-          email: senderEmail,
-          name: senderName,
-        },
-        subject,
-        content: [
-          ...(text ? [{ type: "text/plain", value: text }] : []),
-          { type: "text/html", value: html },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
@@ -164,5 +210,96 @@ export async function sendBulkEmailViaSendGrid({
   return {
     success: true,
     messageId: `bulk-${Date.now()}`,
+  }
+}
+
+/**
+ * Send emails individually with tracking for each recipient
+ * This allows us to track which specific emails succeeded or failed
+ */
+export async function sendIndividualEmailsWithTracking({
+  recipients,
+  subject,
+  html,
+}: {
+  recipients: { email: string; id: string }[]
+  subject: string
+  html: string
+}): Promise<BulkSendResponse> {
+  console.log("[SendGrid] Sending individual emails to", recipients.length, "recipients with tracking")
+
+  const config = getConfig()
+
+  if (!config.apiKey) {
+    return {
+      success: false,
+      totalSent: 0,
+      totalFailed: recipients.length,
+      results: recipients.map(r => ({ email: r.email, success: false, error: "SENDGRID_API_KEY não configurada" })),
+      error: "SENDGRID_API_KEY não configurada",
+    }
+  }
+
+  const results: IndividualSendResult[] = []
+  let totalSent = 0
+  let totalFailed = 0
+  const textContent = stripHtml(html)
+
+  for (const recipient of recipients) {
+    try {
+      // Build the request body for individual email
+      const requestBody: Record<string, unknown> = {
+        personalizations: [{ to: [{ email: recipient.email }] }],
+        from: {
+          email: config.fromEmail,
+          name: config.fromName,
+        },
+        subject,
+        content: [
+          { type: "text/plain", value: textContent },
+          { type: "text/html", value: html },
+        ],
+      }
+
+      // Add reply_to if configured
+      if (config.replyTo) {
+        requestBody.reply_to = { email: config.replyTo }
+      }
+
+      const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.errors?.[0]?.message || `Erro HTTP ${response.status}`
+        console.error(`[SendGrid] Failed to send to ${recipient.email}:`, errorMessage)
+        results.push({ email: recipient.email, success: false, error: errorMessage })
+        totalFailed++
+      } else {
+        console.log(`[SendGrid] Successfully sent to ${recipient.email}`)
+        results.push({ email: recipient.email, success: true })
+        totalSent++
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
+      console.error(`[SendGrid] Exception sending to ${recipient.email}:`, errorMessage)
+      results.push({ email: recipient.email, success: false, error: errorMessage })
+      totalFailed++
+    }
+  }
+
+  console.log(`[SendGrid] Completed: ${totalSent} sent, ${totalFailed} failed`)
+
+  return {
+    success: totalFailed === 0,
+    totalSent,
+    totalFailed,
+    results,
   }
 }
