@@ -111,9 +111,27 @@ export async function sendPaymentLink(
     const installmentAmount = agreement.installment_amount || agreement.agreed_amount
     const installments = agreement.installments || 1
 
+    // Determine billingType from agreement terms (may contain payment_methods selection)
+    let billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED" = "UNDEFINED"
+    try {
+      const termsData = typeof agreement.terms === "string" ? JSON.parse(agreement.terms) : agreement.terms
+      if (termsData?.payment_methods && Array.isArray(termsData.payment_methods)) {
+        const methodMapping: Record<string, "BOLETO" | "CREDIT_CARD" | "PIX"> = {
+          boleto: "BOLETO",
+          pix: "PIX",
+          credit_card: "CREDIT_CARD",
+        }
+        if (termsData.payment_methods.length === 1 && methodMapping[termsData.payment_methods[0]]) {
+          billingType = methodMapping[termsData.payment_methods[0]]
+        }
+      }
+    } catch {
+      // terms is not JSON, keep UNDEFINED
+    }
+
     const paymentParams: any = {
       customer: asaasCustomerId,
-      billingType: "UNDEFINED" as const,
+      billingType,
       value: installments > 1 ? installmentAmount : agreement.agreed_amount,
       dueDate: agreement.due_date,
       description: `Acordo de negociacao - ${customerName}${installments > 1 ? ` (Parcela 1/${installments})` : ""}`,
@@ -151,6 +169,42 @@ export async function sendPaymentLink(
         smsEnabledForCustomer: false,
         whatsappEnabledForCustomer: false,
       })
+    }
+
+    // Send SMS directly via Twilio when SMS channel is selected (Asaas SMS may not be active)
+    if (channel === "sms" && contactInfo.phone) {
+      try {
+        const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
+
+        let formattedPhone = contactInfo.phone.replace(/\D/g, "")
+        if (formattedPhone.length >= 10 && !formattedPhone.startsWith("55")) {
+          formattedPhone = "55" + formattedPhone
+        }
+        formattedPhone = "+" + formattedPhone
+
+        // Get company name
+        const { data: companyData } = await supabase
+          .from("companies")
+          .select("name")
+          .eq("id", agreement.company_id)
+          .single()
+
+        const smsBody = await generateDebtCollectionSMS({
+          customerName,
+          debtAmount: agreement.agreed_amount,
+          companyName: companyData?.name || "Empresa",
+          paymentLink: asaasPayment.invoiceUrl || "",
+        })
+
+        const smsResult = await sendSMS({ to: formattedPhone, body: smsBody })
+        if (!smsResult.success) {
+          console.log(`[sendPaymentLink] SMS Twilio falhou: ${smsResult.error}`)
+        } else {
+          console.log(`[sendPaymentLink] SMS Twilio enviado com sucesso`)
+        }
+      } catch (smsErr: any) {
+        console.error(`[sendPaymentLink] Erro ao enviar SMS Twilio:`, smsErr.message)
+      }
     }
 
     const channelLabel = channel === "email" ? "e-mail" : channel === "whatsapp" ? "WhatsApp" : "SMS"
