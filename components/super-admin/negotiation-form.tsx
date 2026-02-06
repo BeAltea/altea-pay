@@ -80,7 +80,7 @@ export function NegotiationForm({
           setCreatedAgreementId(result.agreement.id)
           setTimeout(() => setShowSendDialog(true), 100)
         } else {
-          toast.error("Erro ao criar proposta")
+          toast.error(result.error || "Erro ao criar proposta")
         }
       } else {
         const { createAgreementWithAsaas } = await import("@/app/actions/create-agreement-with-asaas")
@@ -98,7 +98,7 @@ export function NegotiationForm({
           setCreatedAgreementId(result.agreement.id)
           setTimeout(() => setShowSendDialog(true), 100)
         } else {
-          toast.error("Erro ao criar proposta")
+          toast.error(result.error || "Erro ao criar proposta")
         }
       }
     } catch (error) {
