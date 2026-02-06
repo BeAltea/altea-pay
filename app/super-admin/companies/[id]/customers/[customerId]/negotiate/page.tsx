@@ -7,12 +7,10 @@ import Link from "next/link"
 
 export const dynamic = "force-dynamic"
 
-export default async function SuperAdminNegotiatePage({
-  params,
-}: {
+export default async function SuperAdminNegotiatePage(props: {
   params: Promise<{ id: string; customerId: string }>
 }) {
-  const { id, customerId } = await params
+  const { id, customerId } = await props.params
   const supabase = createAdminClient()
 
   // Get customer data
