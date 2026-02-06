@@ -74,15 +74,27 @@ function getAppBaseUrl(): string {
 async function fetchViaProxy(endpoint: string, method: string, body?: unknown): Promise<unknown> {
   const baseUrl = getAppBaseUrl()
   
-  const res = await fetch(`${baseUrl}/api/asaas`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      endpoint,
-      method,
-      data: body,
-    }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl}/api/asaas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint,
+        method,
+        data: body,
+      }),
+    })
+  } catch (fetchError: any) {
+    throw new Error(`Falha ao conectar com proxy Asaas: ${fetchError.message}`)
+  }
+
+  const contentType = res.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    const text = await res.text()
+    console.error("Asaas proxy returned non-JSON response:", text.substring(0, 200))
+    throw new Error("ASAAS_API_KEY nao configurada. Adicione a chave nas variaveis de ambiente do projeto.")
+  }
 
   const json = await res.json()
 
@@ -103,6 +115,13 @@ async function fetchDirect(endpoint: string, apiKey: string, options?: RequestIn
       ...(options?.headers ?? {}),
     },
   })
+
+  const contentType = res.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    const text = await res.text()
+    console.error("Asaas API returned non-JSON:", res.status, text.substring(0, 200))
+    throw new Error(`Asaas API retornou resposta invalida (${res.status}). Verifique a ASAAS_API_KEY.`)
+  }
 
   const json = await res.json()
 
