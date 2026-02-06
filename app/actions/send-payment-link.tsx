@@ -115,6 +115,7 @@ export async function sendPaymentLink(
     let billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED" = "UNDEFINED"
     try {
       const termsData = typeof agreement.terms === "string" ? JSON.parse(agreement.terms) : agreement.terms
+      console.log(`[v0] sendPaymentLink - parsed terms:`, JSON.stringify(termsData))
       if (termsData?.payment_methods && Array.isArray(termsData.payment_methods)) {
         const methodMapping: Record<string, "BOLETO" | "CREDIT_CARD" | "PIX"> = {
           boleto: "BOLETO",
@@ -124,9 +125,19 @@ export async function sendPaymentLink(
         if (termsData.payment_methods.length === 1 && methodMapping[termsData.payment_methods[0]]) {
           billingType = methodMapping[termsData.payment_methods[0]]
         }
+        console.log(`[v0] sendPaymentLink - payment_methods: ${JSON.stringify(termsData.payment_methods)}, billingType resolved to: ${billingType}`)
+      } else {
+        console.log(`[v0] sendPaymentLink - no payment_methods in terms, using UNDEFINED`)
       }
-    } catch {
-      // terms is not JSON, keep UNDEFINED
+    } catch (parseErr) {
+      console.log(`[v0] sendPaymentLink - terms is not JSON (value: "${String(agreement.terms).substring(0, 100)}"), using UNDEFINED`)
+    }
+
+    // If installments > 1 and billingType is PIX, Asaas doesn't support PIX installments
+    // In that case, fall back to UNDEFINED so customer can choose (credit card supports installments)
+    if (installments > 1 && billingType === "PIX") {
+      console.log(`[v0] sendPaymentLink - PIX does not support installments (${installments}x), falling back to UNDEFINED`)
+      billingType = "UNDEFINED"
     }
 
     const paymentParams: any = {
@@ -144,7 +155,10 @@ export async function sendPaymentLink(
       paymentParams.installmentValue = installmentAmount
     }
 
+    console.log(`[v0] sendPaymentLink - creating Asaas payment with billingType: ${billingType}, params:`, JSON.stringify(paymentParams))
+
     const asaasPayment = await createAsaasPayment(paymentParams)
+    console.log(`[v0] sendPaymentLink - Asaas payment created: id=${asaasPayment.id}, billingType=${asaasPayment.billingType}, invoiceUrl=${asaasPayment.invoiceUrl}`)
 
     // 4. Update agreement
     await supabase

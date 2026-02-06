@@ -63,6 +63,12 @@ export function NegotiationForm({
     setLoading(true)
 
     try {
+      // Build terms as JSON with payment_methods so Asaas billing type can be resolved
+      const termsJson = JSON.stringify({
+        payment_methods: [paymentMethod],
+        description: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+      })
+
       if (isSuperAdmin) {
         const { createAgreementSuperAdmin } = await import("@/app/actions/create-agreement-super-admin")
         const result = await createAgreementSuperAdmin({
@@ -72,7 +78,7 @@ export function NegotiationForm({
           installments: Number(installments),
           dueDate: dueDate,
           attendantName: attendantName || undefined,
-          terms: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+          terms: termsJson,
         })
 
         if (result.success && result.agreement) {
@@ -90,7 +96,7 @@ export function NegotiationForm({
           installments: Number(installments),
           dueDate: dueDate,
           attendantName: attendantName || undefined,
-          terms: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+          terms: termsJson,
         })
 
         if (result.success && result.agreement) {
