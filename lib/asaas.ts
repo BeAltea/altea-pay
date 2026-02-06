@@ -1,14 +1,12 @@
 /**
- * Asaas Payment Gateway Integration - v6 REWRITE
+ * Asaas Payment Gateway Integration - v7 FINAL
  * 
- * IMPORTANT: This file uses an internal API route proxy (/api/asaas)
- * to access the ASAAS_API_KEY. This is necessary because Server Actions
- * sometimes cannot read process.env variables directly due to Next.js
- * runtime context limitations.
+ * Flow:
+ * 1. Read ASAAS_API_KEY from process.env INSIDE each function call (not at module level)
+ * 2. If available, call Asaas API directly
+ * 3. If not available, fallback to /api/asaas proxy route
  * 
- * The flow is:
- * 1. Try process.env.ASAAS_API_KEY directly
- * 2. If not available, call /api/asaas proxy route which CAN read the env var
+ * Last updated: 2026-02-06 - Fixed env var reading to happen at runtime
  */
 
 const ASAAS_BASE = "https://api.asaas.com/v3"
