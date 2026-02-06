@@ -2,6 +2,8 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import {
+  getAsaasCustomerByCpfCnpj,
+  createAsaasCustomer,
   updateAsaasCustomer,
   getAsaasCustomerNotifications,
   updateAsaasNotification,
@@ -30,9 +32,49 @@ export async function sendPaymentLink(
       return { success: false, error: "Acordo nao encontrado" }
     }
 
-    const asaasCustomerId = agreement.asaas_customer_id
+    let asaasCustomerId = agreement.asaas_customer_id
+
+    // If agreement doesn't have asaas_customer_id, create/find the customer now
     if (!asaasCustomerId) {
-      return { success: false, error: "Cliente Asaas nao encontrado neste acordo." }
+      // Get the customer document from DB
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("document, name, email, phone")
+        .eq("id", agreement.customer_id)
+        .single()
+
+      if (!customer?.document) {
+        return { success: false, error: "Cliente sem CPF/CNPJ cadastrado." }
+      }
+
+      const cpfCnpj = customer.document.replace(/[^\d]/g, "")
+
+      try {
+        // Try to find existing customer in Asaas
+        const existingAsaas = await getAsaasCustomerByCpfCnpj(cpfCnpj)
+        if (existingAsaas) {
+          asaasCustomerId = existingAsaas.id
+        } else {
+          // Create new customer in Asaas
+          const newAsaas = await createAsaasCustomer({
+            name: customer.name || contactInfo.customerName || "Cliente",
+            cpfCnpj,
+            email: customer.email || contactInfo.email || undefined,
+            mobilePhone: customer.phone || contactInfo.phone?.replace(/[^\d]/g, "") || undefined,
+            notificationDisabled: true,
+          })
+          asaasCustomerId = newAsaas.id
+        }
+
+        // Save asaas_customer_id to agreement so next time it works directly
+        await supabase
+          .from("agreements")
+          .update({ asaas_customer_id: asaasCustomerId })
+          .eq("id", agreementId)
+      } catch (asaasErr: any) {
+        console.error("Failed to create Asaas customer:", asaasErr)
+        return { success: false, error: `Erro ao criar cliente no Asaas: ${asaasErr.message}` }
+      }
     }
 
     // 1. Update contact info
