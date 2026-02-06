@@ -107,60 +107,70 @@ export async function createAgreementWithAsaas(params: {
       debtId = newDebt.id
     }
 
-    // Asaas - using lib/asaas.ts with proxy fallback
-    let asaasCustomerId: string
+    // Asaas - optional integration (only if ASAAS_API_KEY is configured)
+    let asaasCustomerId: string | null = null
 
-    const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
+    try {
+      const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
 
-    if (existingAsaasCustomer) {
-      asaasCustomerId = existingAsaasCustomer.id
-      await updateAsaasCustomer(asaasCustomerId, {
-        email: customerEmail || undefined,
-        mobilePhone: customerPhone || undefined,
-        notificationDisabled: true,
-      })
-    } else {
-      const newAsaasCustomer = await createAsaasCustomer({
-        name: customerName,
-        cpfCnpj,
-        email: customerEmail || undefined,
-        mobilePhone: customerPhone || undefined,
-        notificationDisabled: true,
-      })
-      asaasCustomerId = newAsaasCustomer.id
+      if (existingAsaasCustomer) {
+        asaasCustomerId = existingAsaasCustomer.id
+        await updateAsaasCustomer(asaasCustomerId, {
+          email: customerEmail || undefined,
+          mobilePhone: customerPhone || undefined,
+          notificationDisabled: true,
+        })
+      } else {
+        const newAsaasCustomer = await createAsaasCustomer({
+          name: customerName,
+          cpfCnpj,
+          email: customerEmail || undefined,
+          mobilePhone: customerPhone || undefined,
+          notificationDisabled: true,
+        })
+        asaasCustomerId = newAsaasCustomer.id
+      }
+    } catch (asaasError: any) {
+      console.warn("Asaas integration skipped (API key may not be configured):", asaasError.message)
+      asaasCustomerId = null
     }
 
-    const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
+    const discountPercentage = originalAmount > 0 ? ((originalAmount - params.agreedAmount) / originalAmount) * 100 : 0
     const installmentAmount = params.agreedAmount / params.installments
+
+    const agreementData: Record<string, any> = {
+      debt_id: debtId,
+      customer_id: customerId,
+      user_id: user.id,
+      company_id: profile.company_id,
+      original_amount: originalAmount,
+      agreed_amount: params.agreedAmount,
+      discount_amount: originalAmount - params.agreedAmount,
+      discount_percentage: discountPercentage,
+      installments: params.installments,
+      installment_amount: installmentAmount,
+      due_date: params.dueDate,
+      status: "draft",
+      attendant_name: params.attendantName,
+      terms: params.terms,
+      payment_status: "pending",
+    }
+
+    if (asaasCustomerId) {
+      agreementData.asaas_customer_id = asaasCustomerId
+    }
 
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
-      .insert({
-        debt_id: debtId,
-        customer_id: customerId,
-        user_id: user.id,
-        company_id: profile.company_id,
-        original_amount: originalAmount,
-        agreed_amount: params.agreedAmount,
-        discount_amount: originalAmount - params.agreedAmount,
-        discount_percentage: discountPercentage,
-        installments: params.installments,
-        installment_amount: installmentAmount,
-        due_date: params.dueDate,
-        status: "draft",
-        attendant_name: params.attendantName,
-        terms: params.terms,
-        asaas_customer_id: asaasCustomerId,
-        payment_status: "pending",
-      })
+      .insert(agreementData)
       .select()
       .single()
 
     if (agreementError) throw agreementError
 
     return { success: true, agreement }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating agreement with Asaas:", error)
-    throw error
+    return { success: false, error: error.message || "Erro desconhecido ao criar acordo", agreement: null }
   }
 }
