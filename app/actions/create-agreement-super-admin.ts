@@ -6,27 +6,9 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 const ASAAS_URL = "https://api.asaas.com/v3"
 
 async function asaasRequest(endpoint: string, method = "GET", body?: any) {
-  // Try multiple ways to read the API key
-  const key = process.env.ASAAS_API_KEY 
-    || process.env.NEXT_PUBLIC_ASAAS_API_KEY
-    || (() => {
-      try {
-        // Try getConfig for serverRuntimeConfig
-        const getConfig = require("next/config").default
-        const config = getConfig?.()
-        return config?.serverRuntimeConfig?.ASAAS_API_KEY
-      } catch { return undefined }
-    })()
-  
-  console.log("[v0] asaasRequest - key present:", !!key, "key length:", key?.length ?? 0, "endpoint:", endpoint)
-  console.log("[v0] process.env.ASAAS_API_KEY:", typeof process.env.ASAAS_API_KEY, "value:", process.env.ASAAS_API_KEY ? "SET" : "UNDEFINED")
-  console.log("[v0] ALL env keys with ASAAS:", Object.keys(process.env).filter(k => k.includes("ASAAS")))
-  console.log("[v0] Total env keys:", Object.keys(process.env).length)
-  
+  const key = process.env.ASAAS_API_KEY
   if (!key) {
-    const envKeys = Object.keys(process.env).sort()
-    console.error("[v0] ALL ENV VARS:", envKeys.join(", "))
-    throw new Error("ASAAS_API_KEY nao configurada. Total env vars: " + envKeys.length)
+    throw new Error("ASAAS_API_KEY nao configurada")
   }
 
   const res = await fetch(`${ASAAS_URL}${endpoint}`, {
