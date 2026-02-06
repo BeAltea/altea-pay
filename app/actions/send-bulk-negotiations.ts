@@ -104,12 +104,14 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
         // Create or get customer in DB
         let customerId: string
 
-        const { data: existingCustomer } = await supabase
+        const { data: existingCustomers } = await supabase
           .from("customers")
           .select("id")
           .eq("document", cpfCnpj)
           .eq("company_id", params.companyId)
-          .maybeSingle()
+          .limit(1)
+
+        const existingCustomer = existingCustomers?.[0] || null
 
         if (existingCustomer) {
           customerId = existingCustomer.id
@@ -147,12 +149,15 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
         // Create or get debt
         let debtId: string
 
-        const { data: existingDebt } = await supabase
+        const { data: existingDebts } = await supabase
           .from("debts")
           .select("id")
           .eq("customer_id", customerId)
           .eq("company_id", params.companyId)
-          .maybeSingle()
+          .order("created_at", { ascending: false })
+          .limit(1)
+
+        const existingDebt = existingDebts?.[0] || null
 
         if (existingDebt) {
           debtId = existingDebt.id
@@ -355,23 +360,33 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
 
         sentCount++
       } catch (innerError: any) {
+        console.error(`[sendBulkNegotiations] Erro inesperado para vmaxId ${vmaxId}:`, innerError)
         errors.push(`Erro inesperado: ${innerError.message}`)
       }
     }
 
+    console.log(`[sendBulkNegotiations] Resultado: ${sentCount} enviados de ${params.customerIds.length} selecionados. Erros: ${errors.length}`)
+    if (errors.length > 0) {
+      console.log(`[sendBulkNegotiations] Erros detalhados:`, errors)
+    }
+
     revalidatePath("/super-admin/negotiations")
+    revalidatePath("/super-admin/companies")
 
     if (sentCount === 0 && errors.length > 0) {
       return {
         success: false,
-        error: `Nenhuma negociacao enviada. Erros: ${errors.slice(0, 3).join("; ")}`,
+        error: `Nenhuma negociacao enviada. Erros: ${errors.slice(0, 5).join("; ")}`,
         sent: 0,
+        total: params.customerIds.length,
+        errors: errors,
       }
     }
 
     return {
       success: true,
       sent: sentCount,
+      total: params.customerIds.length,
       errors: errors.length > 0 ? errors : undefined,
     }
   } catch (error: any) {
