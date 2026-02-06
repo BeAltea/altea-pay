@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const dynamic = "force-dynamic"
+
 const ASAAS_BASE_URL = "https://api.asaas.com/v3"
 
 export async function POST(request: NextRequest) {
