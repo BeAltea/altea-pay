@@ -1,32 +1,11 @@
 "use server"
 
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-
-// Inline Asaas API calls - no external module dependency
-const ASAAS_URL = "https://api.asaas.com/v3"
-
-async function asaasRequest(endpoint: string, method = "GET", body?: any) {
-  const key = process.env.ASAAS_API_KEY
-  if (!key) {
-    throw new Error("ASAAS_API_KEY nao configurada")
-  }
-
-  const res = await fetch(`${ASAAS_URL}${endpoint}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "access_token": key,
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  })
-
-  const data = await res.json()
-  if (!res.ok) {
-    console.error("[v0] Asaas error:", res.status, JSON.stringify(data))
-    throw new Error(data.errors?.[0]?.description || `Asaas error ${res.status}`)
-  }
-  return data
-}
+import {
+  getAsaasCustomerByCpfCnpj,
+  createAsaasCustomer,
+  updateAsaasCustomer,
+} from "@/lib/asaas"
 
 export async function createAgreementSuperAdmin(params: {
   vmaxId: string
@@ -143,21 +122,20 @@ export async function createAgreementSuperAdmin(params: {
       debtId = newDebt.id
     }
 
-    // Asaas - create or get customer (INLINE, no lib import)
+    // Asaas - create or get customer (using lib/asaas.ts with proxy fallback)
     let asaasCustomerId: string
 
-    const searchData = await asaasRequest(`/customers?cpfCnpj=${cpfCnpj}`)
-    const existingAsaasCustomer = searchData.data?.[0] || null
+    const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
 
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", {
+      await updateAsaasCustomer(asaasCustomerId, {
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
         notificationDisabled: true,
       })
     } else {
-      const newAsaasCustomer = await asaasRequest("/customers", "POST", {
+      const newAsaasCustomer = await createAsaasCustomer({
         name: customerName,
         cpfCnpj,
         email: customerEmail || undefined,
