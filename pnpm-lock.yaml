@@ -143,9 +143,6 @@ importers:
       path:
         specifier: 0.12.7
         version: 0.12.7
-      pg:
-        specifier: 8.18.0
-        version: 8.18.0(pg-native@3.5.2)
       pg-native:
         specifier: latest
         version: 3.5.2
@@ -207,6 +204,9 @@ importers:
       '@types/react-dom':
         specifier: ^18
         version: 18.3.7(@types/react@18.3.28)
+      pg:
+        specifier: ^8.18.0
+        version: 8.18.0(pg-native@3.5.2)
       postcss:
         specifier: ^8.5
         version: 8.5.6

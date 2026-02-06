@@ -61,8 +61,6 @@ async function callAsaasApi(endpoint: string, options?: RequestInit) {
 
   if (apiKey && apiKey.trim() !== "") {
     // Direct call - API key available in this runtime context
-    console.log("[v0] callAsaasApi DIRECT - key present, len:", apiKey.length)
-    
     const url = `${ASAAS_BASE_URL}${endpoint}`
     const response = await fetch(url, {
       ...options,
@@ -76,7 +74,7 @@ async function callAsaasApi(endpoint: string, options?: RequestInit) {
     const data = await response.json()
 
     if (!response.ok) {
-      console.error("[v0] Asaas API error:", response.status, JSON.stringify(data))
+      console.error("Asaas API error:", response.status, JSON.stringify(data))
       throw new Error(data.errors?.[0]?.description || `Asaas API error (${response.status})`)
     }
 
@@ -84,8 +82,6 @@ async function callAsaasApi(endpoint: string, options?: RequestInit) {
   }
 
   // Fallback: API key not available in this context, use internal proxy route
-  console.log("[v0] callAsaasApi PROXY FALLBACK - process.env.ASAAS_API_KEY not available, using /api/asaas")
-  
   // Determine base URL for internal API call
   let appUrl = "http://localhost:3000"
   if (process.env.NEXT_PUBLIC_APP_URL) {
@@ -136,7 +132,6 @@ export async function createAsaasCustomer(params: {
   addressNumber?: string
   notificationDisabled?: boolean
 }): Promise<AsaasCustomer> {
-  console.log("[v0] Creating Asaas customer:", params.cpfCnpj)
   return callAsaasApi("/customers", {
     method: "POST",
     body: JSON.stringify(params),
@@ -146,7 +141,6 @@ export async function createAsaasCustomer(params: {
 export async function getAsaasCustomerByCpfCnpj(
   cpfCnpj: string
 ): Promise<AsaasCustomer | null> {
-  console.log("[v0] Searching Asaas customer by CPF/CNPJ:", cpfCnpj)
   const data = await callAsaasApi(`/customers?cpfCnpj=${cpfCnpj}`)
   return data.data?.[0] || null
 }
@@ -159,7 +153,6 @@ export async function updateAsaasCustomer(
     mobilePhone?: string
   }
 ): Promise<AsaasCustomer> {
-  console.log("[v0] Updating Asaas customer:", customerId, params)
   return callAsaasApi(`/customers/${customerId}`, {
     method: "PUT",
     body: JSON.stringify(params),
@@ -171,7 +164,6 @@ export async function updateAsaasCustomer(
 export async function createAsaasPayment(
   params: CreatePaymentParams
 ): Promise<AsaasPayment> {
-  console.log("[v0] Creating Asaas payment:", JSON.stringify(params))
   return callAsaasApi("/payments", {
     method: "POST",
     body: JSON.stringify(params),

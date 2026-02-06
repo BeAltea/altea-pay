@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.ASAAS_API_KEY
 
     if (!apiKey) {
-      console.error("[v0] ASAAS_API_KEY not found in API route environment")
+      console.error("ASAAS_API_KEY not found in API route environment")
       return NextResponse.json(
         { error: "ASAAS_API_KEY not configured" },
         { status: 500 }
@@ -42,13 +42,13 @@ export async function POST(request: NextRequest) {
     const responseData = await response.json()
 
     if (!response.ok) {
-      console.error("[v0] Asaas API proxy error:", response.status, JSON.stringify(responseData))
+      console.error("Asaas API proxy error:", response.status, JSON.stringify(responseData))
       return NextResponse.json(responseData, { status: response.status })
     }
 
     return NextResponse.json(responseData)
   } catch (error: any) {
-    console.error("[v0] Asaas proxy route error:", error)
+    console.error("Asaas proxy route error:", error)
     return NextResponse.json(
       { error: error.message || "Internal proxy error" },
       { status: 500 }

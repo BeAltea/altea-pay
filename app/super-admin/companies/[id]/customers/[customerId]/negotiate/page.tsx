@@ -7,31 +7,52 @@ import Link from "next/link"
 
 export const dynamic = "force-dynamic"
 
+type PageParams = { id: string; customerId: string }
+
 export default async function SuperAdminNegotiatePage(props: {
-  params: Promise<{ id: string; customerId: string }>
+  params: Promise<PageParams>
 }) {
-  const { id, customerId } = await props.params
+  const resolvedParams = await props.params
+  const companyId = resolvedParams.id
+  const custId = resolvedParams.customerId
+
   const supabase = createAdminClient()
 
   // Get customer data
-  const { data: customer } = await supabase.from("VMAX").select("*").eq("id", customerId).single()
+  const { data: customer, error: customerError } = await supabase
+    .from("VMAX")
+    .select("*")
+    .eq("id", custId)
+    .single()
 
-  if (!customer) {
-    redirect(`/super-admin/companies/${id}`)
+  if (!customer || customerError) {
+    redirect(`/super-admin/companies/${companyId}`)
   }
 
   // Get company data
-  const { data: company } = await supabase.from("companies").select("*").eq("id", id).single()
+  const { data: company } = await supabase
+    .from("companies")
+    .select("*")
+    .eq("id", companyId)
+    .single()
 
   // Parse Vencido value
   const vencidoStr = String(customer.Vencido || "0")
-  const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+  const cleanValue = vencidoStr
+    .replace(/R\$/g, "")
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".")
   const totalDebt = Number(cleanValue) || 0
+
+  const diasInad = Number(
+    String(customer["Dias Inad."] || "0").replace(/\D/g, "")
+  ) || 0
 
   return (
     <div className="container mx-auto p-4 md:p-8 max-w-5xl space-y-6">
       <Link
-        href={`/super-admin/companies/${id}/customers`}
+        href={`/super-admin/companies/${companyId}/customers`}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -39,9 +60,14 @@ export default async function SuperAdminNegotiatePage(props: {
       </Link>
 
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">Nova Negociação</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Nova Negociacao
+        </h1>
         <p className="text-muted-foreground">
-          Criar proposta de acordo para <span className="font-medium text-foreground">{customer.Cliente}</span>
+          {"Criar proposta de acordo para "}
+          <span className="font-medium text-foreground">
+            {customer.Cliente}
+          </span>
         </p>
       </div>
 
@@ -49,9 +75,13 @@ export default async function SuperAdminNegotiatePage(props: {
         <Card className="border-2">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Cliente</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Cliente
+              </p>
               <h3 className="text-xl font-bold">{customer.Cliente}</h3>
-              <p className="text-sm text-muted-foreground">{customer["CPF/CNPJ"]}</p>
+              <p className="text-sm text-muted-foreground">
+                {customer["CPF/CNPJ"]}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -59,8 +89,12 @@ export default async function SuperAdminNegotiatePage(props: {
         <Card className="border-2">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Empresa</p>
-              <h3 className="text-xl font-bold">{company?.name || "N/A"}</h3>
+              <p className="text-sm font-medium text-muted-foreground">
+                Empresa
+              </p>
+              <h3 className="text-xl font-bold">
+                {company?.name || "N/A"}
+              </h3>
             </div>
           </CardContent>
         </Card>
@@ -68,11 +102,18 @@ export default async function SuperAdminNegotiatePage(props: {
         <Card className="border-2 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-red-700 dark:text-red-400">Valor Total</p>
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                Valor Total
+              </p>
               <h3 className="text-2xl font-bold text-red-600 dark:text-red-400">
-                R$ {totalDebt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {"R$ "}
+                {totalDebt.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
               </h3>
-              <p className="text-sm text-red-700 dark:text-red-400">{Number(String(customer["Dias Inad."] || "0").replace(/\D/g, "")) || 0} dias em atraso</p>
+              <p className="text-sm text-red-700 dark:text-red-400">
+                {diasInad} dias em atraso
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -80,8 +121,8 @@ export default async function SuperAdminNegotiatePage(props: {
 
       <div className="border-t pt-6">
         <NegotiationForm
-          customerId={customerId}
-          companyId={id}
+          customerId={custId}
+          companyId={companyId}
           totalDebt={totalDebt}
           customerName={customer.Cliente}
           isSuperAdmin={true}
