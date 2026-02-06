@@ -6,16 +6,27 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 const ASAAS_URL = "https://api.asaas.com/v3"
 
 async function asaasRequest(endpoint: string, method = "GET", body?: any) {
-  const key = process.env.ASAAS_API_KEY
-  console.log("[v0] asaasRequest inline - ASAAS_API_KEY present:", !!key, "endpoint:", endpoint)
+  // Try multiple ways to read the API key
+  const key = process.env.ASAAS_API_KEY 
+    || process.env.NEXT_PUBLIC_ASAAS_API_KEY
+    || (() => {
+      try {
+        // Try getConfig for serverRuntimeConfig
+        const getConfig = require("next/config").default
+        const config = getConfig?.()
+        return config?.serverRuntimeConfig?.ASAAS_API_KEY
+      } catch { return undefined }
+    })()
+  
+  console.log("[v0] asaasRequest - key present:", !!key, "key length:", key?.length ?? 0, "endpoint:", endpoint)
+  console.log("[v0] process.env.ASAAS_API_KEY:", typeof process.env.ASAAS_API_KEY, "value:", process.env.ASAAS_API_KEY ? "SET" : "UNDEFINED")
+  console.log("[v0] ALL env keys with ASAAS:", Object.keys(process.env).filter(k => k.includes("ASAAS")))
+  console.log("[v0] Total env keys:", Object.keys(process.env).length)
   
   if (!key) {
-    // Try to list what env vars ARE available for debugging
-    const envKeys = Object.keys(process.env).filter(k => 
-      k.includes("ASAAS") || k.includes("SUPABASE") || k.includes("NEXT_PUBLIC")
-    )
-    console.error("[v0] ENV VARS AVAILABLE:", envKeys.join(", "))
-    throw new Error("ASAAS_API_KEY nao configurada")
+    const envKeys = Object.keys(process.env).sort()
+    console.error("[v0] ALL ENV VARS:", envKeys.join(", "))
+    throw new Error("ASAAS_API_KEY nao configurada. Total env vars: " + envKeys.length)
   }
 
   const res = await fetch(`${ASAAS_URL}${endpoint}`, {
