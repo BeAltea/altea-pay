@@ -74,15 +74,27 @@ function getAppBaseUrl(): string {
 async function fetchViaProxy(endpoint: string, method: string, body?: unknown): Promise<unknown> {
   const baseUrl = getAppBaseUrl()
   
-  const res = await fetch(`${baseUrl}/api/asaas`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      endpoint,
-      method,
-      data: body,
-    }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl}/api/asaas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint,
+        method,
+        data: body,
+      }),
+    })
+  } catch (fetchError: any) {
+    throw new Error(`Falha ao conectar com proxy Asaas: ${fetchError.message}`)
+  }
+
+  const contentType = res.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    const text = await res.text()
+    console.error("Asaas proxy returned non-JSON response:", text.substring(0, 200))
+    throw new Error("ASAAS_API_KEY nao configurada. Adicione a chave nas variaveis de ambiente do projeto.")
+  }
 
   const json = await res.json()
 
@@ -104,6 +116,13 @@ async function fetchDirect(endpoint: string, apiKey: string, options?: RequestIn
     },
   })
 
+  const contentType = res.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    const text = await res.text()
+    console.error("Asaas API returned non-JSON:", res.status, text.substring(0, 200))
+    throw new Error(`Asaas API retornou resposta invalida (${res.status}). Verifique a ASAAS_API_KEY.`)
+  }
+
   const json = await res.json()
 
   if (!res.ok) {
@@ -118,8 +137,11 @@ async function fetchDirect(endpoint: string, apiKey: string, options?: RequestIn
 // ====== Main API Caller ======
 
 async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
-  // Strategy 1: Try direct call with env var
+  // IMPORTANT: Read key inside function, NOT at module level
+  // Module-level reads get cached at build time and may be empty
   const key = process.env.ASAAS_API_KEY?.trim()
+
+  console.log("[v0] asaasRequest called - endpoint:", endpoint, "- key exists:", !!key, "- key length:", key?.length || 0)
 
   if (key && key.length > 0) {
     const opts: RequestInit = { method }
@@ -129,8 +151,8 @@ async function asaasRequest(endpoint: string, method = "GET", body?: unknown): P
     return fetchDirect(endpoint, key, opts)
   }
 
-  // Strategy 2: Use proxy route (always works because API routes can read env vars)
-  console.warn("ASAAS_API_KEY not in process.env, using /api/asaas proxy")
+  // Fallback: Use proxy route which reads env vars at request time
+  console.warn("[v0] ASAAS_API_KEY not found in process.env, falling back to /api/asaas proxy")
   return fetchViaProxy(endpoint, method, body)
 }
 

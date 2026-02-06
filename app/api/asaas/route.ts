@@ -39,6 +39,17 @@ export async function POST(request: NextRequest) {
     }
 
     const response = await fetch(url, fetchOptions)
+
+    const contentType = response.headers.get("content-type") || ""
+    if (!contentType.includes("application/json")) {
+      const text = await response.text()
+      console.error("Asaas API returned non-JSON:", response.status, text.substring(0, 300))
+      return NextResponse.json(
+        { error: `Asaas API retornou resposta invalida (${response.status}). Verifique a ASAAS_API_KEY.` },
+        { status: 502 }
+      )
+    }
+
     const responseData = await response.json()
 
     if (!response.ok) {
