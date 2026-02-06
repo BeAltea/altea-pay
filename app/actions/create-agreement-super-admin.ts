@@ -1,8 +1,39 @@
 "use server"
 
-// v4 - imports from refactored asaas module
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
+
+// Inline Asaas API calls - no external module dependency
+const ASAAS_URL = "https://api.asaas.com/v3"
+
+async function asaasRequest(endpoint: string, method = "GET", body?: any) {
+  const key = process.env.ASAAS_API_KEY
+  console.log("[v0] asaasRequest inline - ASAAS_API_KEY present:", !!key, "endpoint:", endpoint)
+  
+  if (!key) {
+    // Try to list what env vars ARE available for debugging
+    const envKeys = Object.keys(process.env).filter(k => 
+      k.includes("ASAAS") || k.includes("SUPABASE") || k.includes("NEXT_PUBLIC")
+    )
+    console.error("[v0] ENV VARS AVAILABLE:", envKeys.join(", "))
+    throw new Error("ASAAS_API_KEY nao configurada")
+  }
+
+  const res = await fetch(`${ASAAS_URL}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": key,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    console.error("[v0] Asaas error:", res.status, JSON.stringify(data))
+    throw new Error(data.errors?.[0]?.description || `Asaas error ${res.status}`)
+  }
+  return data
+}
 
 export async function createAgreementSuperAdmin(params: {
   vmaxId: string
@@ -46,7 +77,7 @@ export async function createAgreementSuperAdmin(params: {
     const customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || "").replace(/[^\d]/g, "")
     const customerEmail = vmaxRecord.Email || ""
 
-    // Create or get customer
+    // Create or get customer in DB
     let customerId: string
 
     const { data: existingCustomer } = await supabase
@@ -58,7 +89,6 @@ export async function createAgreementSuperAdmin(params: {
 
     if (existingCustomer) {
       customerId = existingCustomer.id
-      // Atualizar dados do customer com dados frescos da VMAX
       await supabase
         .from("customers")
         .update({ name: customerName, phone: customerPhone, email: customerEmail })
@@ -120,29 +150,31 @@ export async function createAgreementSuperAdmin(params: {
       debtId = newDebt.id
     }
 
-    // Asaas - so criar/atualizar cliente (cobranca sera criada ao enviar)
+    // Asaas - create or get customer (INLINE, no lib import)
     let asaasCustomerId: string
 
-    const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
+    const searchData = await asaasRequest(`/customers?cpfCnpj=${cpfCnpj}`)
+    const existingAsaasCustomer = searchData.data?.[0] || null
+
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      await updateAsaasCustomer(asaasCustomerId, {
+      await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", {
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
         notificationDisabled: true,
       })
     } else {
-      const asaasCustomer = await createAsaasCustomer({
+      const newAsaasCustomer = await asaasRequest("/customers", "POST", {
         name: customerName,
-        cpfCnpj: cpfCnpj,
+        cpfCnpj,
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
         notificationDisabled: true,
       })
-      asaasCustomerId = asaasCustomer.id
+      asaasCustomerId = newAsaasCustomer.id
     }
 
-    // Salvar acordo no banco (SEM cobranca no Asaas)
+    // Save agreement
     const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
     const installmentAmount = params.agreedAmount / params.installments
 
@@ -171,10 +203,7 @@ export async function createAgreementSuperAdmin(params: {
 
     if (agreementError) throw agreementError
 
-    return {
-      success: true,
-      agreement,
-    }
+    return { success: true, agreement }
   } catch (error) {
     console.error("Error creating agreement (super admin):", error)
     throw error
