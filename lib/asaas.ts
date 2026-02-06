@@ -1,12 +1,19 @@
 /**
- * Asaas Payment Gateway Integration - v5
- * Uses internal API route proxy to access ASAAS_API_KEY
- * This avoids issues with process.env not being available in Server Actions
+ * Asaas Payment Gateway Integration - v6 REWRITE
+ * 
+ * IMPORTANT: This file uses an internal API route proxy (/api/asaas)
+ * to access the ASAAS_API_KEY. This is necessary because Server Actions
+ * sometimes cannot read process.env variables directly due to Next.js
+ * runtime context limitations.
+ * 
+ * The flow is:
+ * 1. Try process.env.ASAAS_API_KEY directly
+ * 2. If not available, call /api/asaas proxy route which CAN read the env var
  */
 
-const ASAAS_BASE_URL = "https://api.asaas.com/v3"
+const ASAAS_BASE = "https://api.asaas.com/v3"
 
-// --- Types ---
+// ====== Types ======
 
 export interface AsaasCustomer {
   id: string
@@ -52,74 +59,82 @@ export interface CreatePaymentParams {
   postalService?: boolean
 }
 
-// --- Core fetch helper ---
-// Tries direct process.env first, falls back to internal API route proxy
+// ====== Internal API Proxy Helper ======
 
-async function callAsaasApi(endpoint: string, options?: RequestInit) {
-  // Try reading API key directly first
-  const apiKey = process.env.ASAAS_API_KEY
-
-  if (apiKey && apiKey.trim() !== "") {
-    // Direct call - API key available in this runtime context
-    const url = `${ASAAS_BASE_URL}${endpoint}`
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        access_token: apiKey.trim(),
-        ...(options?.headers ?? {}),
-      },
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      console.error("Asaas API error:", response.status, JSON.stringify(data))
-      throw new Error(data.errors?.[0]?.description || `Asaas API error (${response.status})`)
-    }
-
-    return data
-  }
-
-  // Fallback: API key not available in this context, use internal proxy route
-  // Determine base URL for internal API call
-  let appUrl = "http://localhost:3000"
+function getAppBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    appUrl = process.env.NEXT_PUBLIC_APP_URL
-  } else if (process.env.VERCEL_URL) {
-    appUrl = `https://${process.env.VERCEL_URL}`
+    return process.env.NEXT_PUBLIC_APP_URL
   }
-  
-  const method = options?.method || "GET"
-  let bodyData: any = undefined
-  if (options?.body) {
-    try {
-      bodyData = JSON.parse(options.body as string)
-    } catch {
-      bodyData = options.body
-    }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
   }
+  return "http://localhost:3000"
+}
 
-  const proxyResponse = await fetch(`${appUrl}/api/asaas`, {
+async function fetchViaProxy(endpoint: string, method: string, body?: unknown): Promise<unknown> {
+  const baseUrl = getAppBaseUrl()
+  
+  const res = await fetch(`${baseUrl}/api/asaas`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       endpoint,
       method,
-      data: bodyData,
+      data: body,
     }),
   })
 
-  const proxyData = await proxyResponse.json()
+  const json = await res.json()
 
-  if (!proxyResponse.ok) {
-    throw new Error(proxyData.error || `Asaas proxy error (${proxyResponse.status})`)
+  if (!res.ok) {
+    const msg = json.error || json.errors?.[0]?.description || `Asaas proxy error (${res.status})`
+    throw new Error(msg)
   }
 
-  return proxyData
+  return json
 }
 
-// --- Customer functions ---
+async function fetchDirect(endpoint: string, apiKey: string, options?: RequestInit): Promise<unknown> {
+  const res = await fetch(`${ASAAS_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      access_token: apiKey,
+      ...(options?.headers ?? {}),
+    },
+  })
+
+  const json = await res.json()
+
+  if (!res.ok) {
+    const msg = json.errors?.[0]?.description || `Asaas API error (${res.status})`
+    console.error("Asaas direct API error:", res.status, JSON.stringify(json))
+    throw new Error(msg)
+  }
+
+  return json
+}
+
+// ====== Main API Caller ======
+
+async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
+  // Strategy 1: Try direct call with env var
+  const key = process.env.ASAAS_API_KEY?.trim()
+
+  if (key && key.length > 0) {
+    const opts: RequestInit = { method }
+    if (body) {
+      opts.body = JSON.stringify(body)
+    }
+    return fetchDirect(endpoint, key, opts)
+  }
+
+  // Strategy 2: Use proxy route (always works because API routes can read env vars)
+  console.warn("ASAAS_API_KEY not in process.env, using /api/asaas proxy")
+  return fetchViaProxy(endpoint, method, body)
+}
+
+// ====== Customer Functions ======
 
 export async function createAsaasCustomer(params: {
   name: string
@@ -132,16 +147,13 @@ export async function createAsaasCustomer(params: {
   addressNumber?: string
   notificationDisabled?: boolean
 }): Promise<AsaasCustomer> {
-  return callAsaasApi("/customers", {
-    method: "POST",
-    body: JSON.stringify(params),
-  })
+  return asaasRequest("/customers", "POST", params)
 }
 
 export async function getAsaasCustomerByCpfCnpj(
   cpfCnpj: string
 ): Promise<AsaasCustomer | null> {
-  const data = await callAsaasApi(`/customers?cpfCnpj=${cpfCnpj}`)
+  const data: any = await asaasRequest(`/customers?cpfCnpj=${cpfCnpj}`)
   return data.data?.[0] || null
 }
 
@@ -153,42 +165,36 @@ export async function updateAsaasCustomer(
     mobilePhone?: string
   }
 ): Promise<AsaasCustomer> {
-  return callAsaasApi(`/customers/${customerId}`, {
-    method: "PUT",
-    body: JSON.stringify(params),
-  })
+  return asaasRequest(`/customers/${customerId}`, "PUT", params)
 }
 
-// --- Payment functions ---
+// ====== Payment Functions ======
 
 export async function createAsaasPayment(
   params: CreatePaymentParams
 ): Promise<AsaasPayment> {
-  return callAsaasApi("/payments", {
-    method: "POST",
-    body: JSON.stringify(params),
-  })
+  return asaasRequest("/payments", "POST", params)
 }
 
 export async function getAsaasPayment(paymentId: string): Promise<AsaasPayment> {
-  return callAsaasApi(`/payments/${paymentId}`)
+  return asaasRequest(`/payments/${paymentId}`)
 }
 
 export async function getAsaasPaymentByExternalReference(
   externalReference: string
 ): Promise<AsaasPayment | null> {
-  const data = await callAsaasApi(
+  const data: any = await asaasRequest(
     `/payments?externalReference=${externalReference}`
   )
   return data.data?.[0] || null
 }
 
-// --- Notification functions ---
+// ====== Notification Functions ======
 
 export async function getAsaasCustomerNotifications(
   customerId: string
 ): Promise<any[]> {
-  const data = await callAsaasApi(`/customers/${customerId}/notifications`)
+  const data: any = await asaasRequest(`/customers/${customerId}/notifications`)
   return data.data || []
 }
 
@@ -201,10 +207,7 @@ export async function updateAsaasNotification(
     whatsappEnabledForCustomer?: boolean
   }
 ): Promise<any> {
-  return callAsaasApi(`/notifications/${notificationId}`, {
-    method: "PUT",
-    body: JSON.stringify(params),
-  })
+  return asaasRequest(`/notifications/${notificationId}`, "PUT", params)
 }
 
 export async function sendAsaasNotification(
@@ -230,8 +233,5 @@ export async function sendAsaasNotification(
 export async function resendAsaasPaymentNotification(
   paymentId: string
 ): Promise<any> {
-  return callAsaasApi(`/payments/${paymentId}/resendNotification`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
+  return asaasRequest(`/payments/${paymentId}/resendNotification`, "POST", {})
 }
