@@ -1,12 +1,11 @@
 /**
- * Asaas Payment Gateway Integration - v8 DEFINITIVE
+ * Asaas Payment Gateway - Direct API calls
  * 
- * ALL calls go through the /api/asaas API Route.
- * Server Actions CANNOT read process.env reliably in all environments.
- * The API Route CAN always read process.env.ASAAS_API_KEY.
- * 
- * This file is a thin wrapper that calls /api/asaas for every operation.
+ * Reads ASAAS_API_KEY from process.env at CALL TIME (not module level).
+ * Calls https://api.asaas.com/v3 directly. No proxy, no middleware.
  */
+
+const ASAAS_BASE = "https://api.asaas.com/v3"
 
 // ====== Types ======
 
@@ -54,66 +53,55 @@ export interface CreatePaymentParams {
   postalService?: boolean
 }
 
-// ====== Internal: Always call via API Route ======
+// ====== Core API Function ======
 
-function getAppBaseUrl(): string {
-  // In server context, use internal URL patterns
-  if (typeof window === "undefined") {
-    // VERCEL_URL is always available in Vercel deployments (including preview)
-    if (process.env.VERCEL_URL) {
-      return `https://${process.env.VERCEL_URL}`
-    }
-    if (process.env.NEXT_PUBLIC_APP_URL) {
-      return process.env.NEXT_PUBLIC_APP_URL
-    }
-    // For local development
-    return `http://localhost:${process.env.PORT || 3000}`
+function getApiKey(): string {
+  const key = process.env.ASAAS_API_KEY?.trim()
+  console.log("[v0] getApiKey called - key exists:", !!key, "key length:", key?.length || 0)
+  if (!key) {
+    // Log ALL env var keys that contain "ASAAS" for debugging
+    const allKeys = Object.keys(process.env)
+    const asaasKeys = allKeys.filter(k => k.toUpperCase().includes("ASAAS"))
+    console.log("[v0] Env vars with ASAAS:", asaasKeys.join(", ") || "NONE FOUND")
+    console.log("[v0] Total env vars:", allKeys.length)
+    throw new Error("ASAAS_API_KEY_NOT_SET")
   }
-  // In browser context, use relative URL
-  return ""
+  return key
 }
 
 async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
-  const baseUrl = getAppBaseUrl()
-  const url = `${baseUrl}/api/asaas`
+  const apiKey = getApiKey()
+  
+  const url = `${ASAAS_BASE}${endpoint}`
+  console.log("[v0] asaasRequest:", method, endpoint)
 
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        endpoint,
-        method,
-        data: body,
-      }),
-      // Ensure no caching
-      cache: "no-store",
-    })
-  } catch (fetchError: any) {
-    console.error("[asaas] Failed to reach /api/asaas:", fetchError.message)
-    throw new Error(
-      "Nao foi possivel conectar ao servico de pagamentos. Verifique se o servidor esta rodando."
-    )
+  const options: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": apiKey,
+    },
+    cache: "no-store",
   }
 
-  // Check if response is JSON
+  if (body && method !== "GET") {
+    options.body = JSON.stringify(body)
+  }
+
+  const res = await fetch(url, options)
+
   const contentType = res.headers.get("content-type") || ""
   if (!contentType.includes("application/json")) {
     const text = await res.text()
-    console.error("[asaas] /api/asaas returned non-JSON:", res.status, text.substring(0, 300))
-    throw new Error(
-      "ASAAS_API_KEY nao esta configurada ou o servidor retornou uma resposta invalida. Verifique as variaveis de ambiente."
-    )
+    console.error("[v0] Asaas returned non-JSON:", res.status, text.substring(0, 200))
+    throw new Error(`Asaas API retornou resposta invalida (${res.status})`)
   }
 
   const json = await res.json()
 
   if (!res.ok) {
-    const msg =
-      json.error ||
-      json.errors?.[0]?.description ||
-      `Erro na API do Asaas (${res.status})`
+    const msg = json.errors?.[0]?.description || json.error || `Erro Asaas (${res.status})`
+    console.error("[v0] Asaas API error:", res.status, JSON.stringify(json))
     throw new Error(msg)
   }
 

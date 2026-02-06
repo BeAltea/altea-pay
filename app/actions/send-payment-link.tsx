@@ -72,10 +72,10 @@ export async function sendPaymentLink(
           .update({ asaas_customer_id: asaasCustomerId })
           .eq("id", agreementId)
       } catch (asaasErr: any) {
-        console.error("Failed to create Asaas customer:", asaasErr)
-        const isKeyMissing = asaasErr.message?.includes("API_KEY") || asaasErr.message?.includes("nao configurada") || asaasErr.message?.includes("not configured")
-        if (isKeyMissing) {
-          return { success: false, error: "ASAAS_API_KEY nao esta configurada. Adicione a chave de API do Asaas nas variaveis de ambiente do projeto (Vars no menu lateral)." }
+        console.error("[v0] Failed to create Asaas customer. Error:", asaasErr.message)
+        console.error("[v0] Full error:", asaasErr)
+        if (asaasErr.message === "ASAAS_API_KEY_NOT_SET") {
+          return { success: false, error: "ASAAS_API_KEY nao foi encontrada pelo servidor. Tente fazer redeploy do projeto para que as variaveis de ambiente sejam carregadas." }
         }
         return { success: false, error: `Erro ao criar cliente no Asaas: ${asaasErr.message}` }
       }
