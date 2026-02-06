@@ -1,29 +1,12 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/server"
-
-// Inline Asaas API calls - no external module dependency
-const ASAAS_URL = "https://api.asaas.com/v3"
-
-async function asaasRequest(endpoint: string, method = "GET", body?: any) {
-  const key = process.env.ASAAS_API_KEY
-  if (!key) throw new Error("ASAAS_API_KEY nao configurada")
-
-  const res = await fetch(`${ASAAS_URL}${endpoint}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "access_token": key,
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  })
-
-  const data = await res.json()
-  if (!res.ok) {
-    throw new Error(data.errors?.[0]?.description || `Asaas error ${res.status}`)
-  }
-  return data
-}
+import {
+  updateAsaasCustomer,
+  getAsaasCustomerNotifications,
+  updateAsaasNotification,
+  createAsaasPayment,
+} from "@/lib/asaas"
 
 export async function sendPaymentLink(
   agreementId: string,
@@ -53,27 +36,26 @@ export async function sendPaymentLink(
     }
 
     // 1. Update contact info
-    const updateData: any = { notificationDisabled: false }
+    const updateData: { notificationDisabled: boolean; email?: string; mobilePhone?: string } = { notificationDisabled: false }
     if (contactInfo.email) updateData.email = contactInfo.email
     if (contactInfo.phone) {
       updateData.mobilePhone = contactInfo.phone.replace(/[^\d]/g, "")
     }
-    await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", updateData)
+    await updateAsaasCustomer(asaasCustomerId, updateData)
 
     // 2. Configure notifications
-    const notifData = await asaasRequest(`/customers/${asaasCustomerId}/notifications`)
-    const allNotifications = notifData.data || []
+    const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
 
     for (const notif of allNotifications) {
       if (notif.event === "PAYMENT_CREATED") {
-        await asaasRequest(`/notifications/${notif.id}`, "PUT", {
+        await updateAsaasNotification(notif.id, {
           enabled: true,
           emailEnabledForCustomer: channel === "email",
           smsEnabledForCustomer: channel === "sms",
           whatsappEnabledForCustomer: channel === "whatsapp",
         })
       } else {
-        await asaasRequest(`/notifications/${notif.id}`, "PUT", {
+        await updateAsaasNotification(notif.id, {
           enabled: false,
           emailEnabledForCustomer: false,
           smsEnabledForCustomer: false,
@@ -89,7 +71,7 @@ export async function sendPaymentLink(
 
     const paymentParams: any = {
       customer: asaasCustomerId,
-      billingType: "UNDEFINED",
+      billingType: "UNDEFINED" as const,
       value: installments > 1 ? installmentAmount : agreement.agreed_amount,
       dueDate: agreement.due_date,
       description: `Acordo de negociacao - ${customerName}${installments > 1 ? ` (Parcela 1/${installments})` : ""}`,
@@ -102,7 +84,7 @@ export async function sendPaymentLink(
       paymentParams.installmentValue = installmentAmount
     }
 
-    const asaasPayment = await asaasRequest("/payments", "POST", paymentParams)
+    const asaasPayment = await createAsaasPayment(paymentParams)
 
     // 4. Update agreement
     await supabase
@@ -117,11 +99,11 @@ export async function sendPaymentLink(
       .eq("id", agreementId)
 
     // 5. Disable notifications again
-    await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", { notificationDisabled: true })
+    await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
 
     const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
     if (paymentCreatedNotif) {
-      await asaasRequest(`/notifications/${paymentCreatedNotif.id}`, "PUT", {
+      await updateAsaasNotification(paymentCreatedNotif.id, {
         enabled: false,
         emailEnabledForCustomer: false,
         smsEnabledForCustomer: false,
