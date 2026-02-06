@@ -99,7 +99,7 @@
 │  │  │Collection │  │  Payment  │  │  Import   │  │  Reports  │          │  │
 │  │  │   Rules   │  │ Webhooks  │  │   API     │  │    API    │          │  │
 │  │  └───────────┘  └───────────┘  └───────────┘  └───────────┘          │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
+│  └──────────────────��────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │                        Server Actions                                 │  │
 │  │  Customer Actions │ Debt Actions │ Notification Actions │ Analysis   │  │
@@ -283,7 +283,7 @@ altea-pay/
 │   │   ├── auth/                # Auth endpoints
 │   │   ├── collection-rules/    # CRUD endpoints
 │   │   ├── cron/                # Scheduled jobs
-│   │   │   ├── sync-erp/        # ERP synchronization
+│   ��   │   ├── sync-erp/        # ERP synchronization
 │   │   │   ├── process-collection-rules/
 │   │   │   └── process-collection-ruler/
 │   │   ├── import/              # Data import
@@ -1186,7 +1186,7 @@ export async function GET(request: Request) {
 ### 7.1 Payment Flow
 
 \`\`\`
-┌─────────────────────────────────────────────────────────────────────────────┐
+┌──────────────────────────���──────────────────────────────────────────────────┐
 │                            PAYMENT FLOW                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
@@ -1330,7 +1330,7 @@ export async function GET(request: Request) {
 │  │                     COLLECTION ACTION                                │   │
 │  │                                                                      │   │
 │  │  AUTO (R1)         ASSISTED (R2)         MANUAL (R4)    REJECT      │   │
-│  │  ┌─────────┐       ┌─────────┐          ┌─────────┐    ┌─────────┐  │   │
+│  │  ┌─────────┐       ┌─────────┐          ┌───���─────┐    ┌─────────┐  │   │
 │  │  │Email+SMS│       │Operator │          │ Human   │    │ No      │  │   │
 │  │  │Immediate│       │ Review  │          │Collector│    │ Action  │  │   │
 │  │  └─────────┘       └─────────┘          └─────────┘    └─────────┘  │   │

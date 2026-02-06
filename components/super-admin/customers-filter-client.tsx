@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { Users, DollarSign, AlertTriangle, MapPin, Handshake, Trash2 } from "lucide-react"
@@ -22,12 +23,16 @@ type Customer = {
   totalDebt: number
   overdueDebt: number
   daysOverdue: number
+  negotiation_sent?: boolean
 }
 
 export function CustomersFilterClient({ customers, companyId }: { customers: Customer[]; companyId: string }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [daysSort, setDaysSort] = useState<"none" | "asc" | "desc">("none")
   const [amountSort, setAmountSort] = useState<"none" | "asc" | "desc">("none")
+  const [sentFilter, setSentFilter] = useState<"all" | "sent" | "not_sent">("all")
+  const [displayLimit, setDisplayLimit] = useState<number>(50)
+  const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const router = useRouter()
 
   const totalCustomers = customers.length
@@ -38,6 +43,9 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
 
   const filteredAndSortedCustomers = useMemo(() => {
     let result = customers.filter((customer) => {
+      if (sentFilter === "sent" && !customer.negotiation_sent) return false
+      if (sentFilter === "not_sent" && customer.negotiation_sent) return false
+
       if (!searchTerm) return true
       const searchLower = searchTerm.toLowerCase()
       return customer.name.toLowerCase().includes(searchLower) || customer.document.toLowerCase().includes(searchLower)
@@ -56,7 +64,32 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
     }
 
     return result
-  }, [customers, searchTerm, daysSort, amountSort])
+  }, [customers, searchTerm, daysSort, amountSort, sentFilter])
+
+  const displayedCustomers = useMemo(() => {
+    if (displayLimit === 0) return filteredAndSortedCustomers
+    return filteredAndSortedCustomers.slice(0, displayLimit)
+  }, [filteredAndSortedCustomers, displayLimit])
+
+  const toggleSelectCustomer = (id: string) => {
+    setSelectedCustomers((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedCustomers.size === displayedCustomers.length) {
+      setSelectedCustomers(new Set())
+    } else {
+      setSelectedCustomers(new Set(displayedCustomers.map((c) => c.id)))
+    }
+  }
 
   const getStatusLabel = (status: string) => {
     const statuses = {
@@ -168,7 +201,7 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
         </CardHeader>
         <CardContent>
           <div className="mb-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">Buscar Cliente</label>
                 <Input
@@ -204,11 +237,60 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Filtrar por Envio</label>
+                <Select value={sentFilter} onValueChange={(value: any) => setSentFilter(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="sent">Enviadas</SelectItem>
+                    <SelectItem value="not_sent">Não Enviadas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Exibir</label>
+                <Select value={String(displayLimit)} onValueChange={(value) => setDisplayLimit(Number(value))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="50" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="250">250</SelectItem>
+                    <SelectItem value="500">500</SelectItem>
+                    <SelectItem value="1000">1000</SelectItem>
+                    <SelectItem value="0">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            {selectedCustomers.size > 0 && (
+              <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  {selectedCustomers.size} cliente(s) selecionado(s)
+                </span>
+              </div>
+            )}
           </div>
 
+          {displayedCustomers.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b">
+              <Checkbox
+                checked={selectedCustomers.size === displayedCustomers.length && displayedCustomers.length > 0}
+                onCheckedChange={toggleSelectAll}
+                className="border-foreground/70"
+              />
+              <span className="text-sm font-medium text-muted-foreground">
+                Selecionar Todos ({displayedCustomers.length} de {filteredAndSortedCustomers.length})
+              </span>
+            </div>
+          )}
+
           <div className="space-y-3">
-            {filteredAndSortedCustomers.length === 0 ? (
+            {displayedCustomers.length === 0 ? (
               <div className="text-center py-12">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500 font-medium">
@@ -219,12 +301,17 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
                 </p>
               </div>
             ) : (
-              filteredAndSortedCustomers.map((customer) => (
+              displayedCustomers.map((customer) => (
                 <div
                   key={customer.id}
                   className="flex items-start sm:items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors gap-4"
                 >
                   <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                    <Checkbox
+                      checked={selectedCustomers.has(customer.id)}
+                      onCheckedChange={() => toggleSelectCustomer(customer.id)}
+                      className="mt-1 sm:mt-0 border-foreground/70"
+                    />
                     <Avatar className="flex-shrink-0">
                       <AvatarFallback className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                         {customer.name

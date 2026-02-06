@@ -1,0 +1,263 @@
+"use server"
+
+import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { revalidatePath } from "next/cache"
+
+interface SendBulkNegotiationsParams {
+  companyId: string
+  customerIds: string[]
+  discountType: "none" | "percentage" | "fixed"
+  discountValue: number
+  paymentMethods: string[]
+  notificationChannels: string[]
+}
+
+export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
+  try {
+    // Verify user is super admin
+    const authSupabase = await createClient()
+    const {
+      data: { user },
+    } = await authSupabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: "Nao autenticado", sent: 0 }
+    }
+
+    const { data: profile } = await authSupabase
+      .from("profiles")
+      .select("role, full_name")
+      .eq("id", user.id)
+      .single()
+
+    if (profile?.role !== "super_admin") {
+      return { success: false, error: "Sem permissao", sent: 0 }
+    }
+
+    const supabase = createAdminClient()
+    let sentCount = 0
+    const errors: string[] = []
+
+    for (const vmaxId of params.customerIds) {
+      try {
+        // Get VMAX record
+        const { data: vmax, error: vmaxError } = await supabase
+          .from("VMAX")
+          .select("*")
+          .eq("id", vmaxId)
+          .single()
+
+        if (vmaxError || !vmax) {
+          errors.push(`Cliente ${vmaxId}: registro nao encontrado`)
+          continue
+        }
+
+        const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+        const customerName = vmax.Cliente || "Cliente"
+        const customerPhone = (vmax["Telefone 1"] || vmax["Telefone 2"] || "").replace(/\D/g, "")
+        const customerEmail = vmax.Email || ""
+
+        // Parse debt value
+        const vencidoStr = String(vmax.Vencido || "0")
+        const originalAmount =
+          Number(
+            vencidoStr
+              .replace(/R\$/g, "")
+              .replace(/\s/g, "")
+              .replace(/\./g, "")
+              .replace(",", ".")
+          ) || 0
+
+        if (originalAmount <= 0) {
+          errors.push(`${customerName}: divida com valor zero`)
+          continue
+        }
+
+        // Calculate discount
+        let discountAmount = 0
+        if (params.discountType === "percentage" && params.discountValue > 0) {
+          discountAmount = (originalAmount * params.discountValue) / 100
+        } else if (params.discountType === "fixed" && params.discountValue > 0) {
+          discountAmount = Math.min(params.discountValue, originalAmount)
+        }
+
+        const agreedAmount = originalAmount - discountAmount
+        const discountPercentage =
+          originalAmount > 0 ? (discountAmount / originalAmount) * 100 : 0
+
+        // Create or get customer in DB
+        let customerId: string
+
+        const { data: existingCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("document", cpfCnpj)
+          .eq("company_id", params.companyId)
+          .maybeSingle()
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id
+          await supabase
+            .from("customers")
+            .update({
+              name: customerName,
+              phone: customerPhone,
+              email: customerEmail,
+            })
+            .eq("id", existingCustomer.id)
+        } else {
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              name: customerName,
+              document: cpfCnpj,
+              document_type: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
+              phone: customerPhone,
+              email: customerEmail,
+              company_id: params.companyId,
+              source_system: "VMAX",
+              external_id: vmaxId,
+            })
+            .select("id")
+            .single()
+
+          if (customerError || !newCustomer) {
+            errors.push(`${customerName}: erro ao criar cliente - ${customerError?.message}`)
+            continue
+          }
+          customerId = newCustomer.id
+        }
+
+        // Create or get debt
+        let debtId: string
+
+        const { data: existingDebt } = await supabase
+          .from("debts")
+          .select("id")
+          .eq("customer_id", customerId)
+          .eq("company_id", params.companyId)
+          .maybeSingle()
+
+        if (existingDebt) {
+          debtId = existingDebt.id
+          // Update debt amount if needed
+          await supabase
+            .from("debts")
+            .update({ amount: originalAmount, status: "in_negotiation" })
+            .eq("id", existingDebt.id)
+        } else {
+          const dueDate = new Date()
+          dueDate.setDate(dueDate.getDate() + 30)
+
+          const { data: newDebt, error: debtError } = await supabase
+            .from("debts")
+            .insert({
+              customer_id: customerId,
+              company_id: params.companyId,
+              amount: originalAmount,
+              due_date: dueDate.toISOString().split("T")[0],
+              description: `Divida de ${customerName}`,
+              status: "in_negotiation",
+              source_system: "VMAX",
+              external_id: vmaxId,
+            })
+            .select("id")
+            .single()
+
+          if (debtError || !newDebt) {
+            errors.push(`${customerName}: erro ao criar divida - ${debtError?.message}`)
+            continue
+          }
+          debtId = newDebt.id
+        }
+
+        // Create agreement
+        const dueDate = new Date()
+        dueDate.setDate(dueDate.getDate() + 30)
+
+        const { error: agreementError } = await supabase.from("agreements").insert({
+          debt_id: debtId,
+          customer_id: customerId,
+          user_id: user.id,
+          company_id: params.companyId,
+          original_amount: originalAmount,
+          agreed_amount: agreedAmount,
+          discount_amount: discountAmount,
+          discount_percentage: discountPercentage,
+          installments: 1,
+          installment_amount: agreedAmount,
+          due_date: dueDate.toISOString().split("T")[0],
+          status: "active",
+          payment_status: "pending",
+          attendant_name: profile.full_name || "Super Admin",
+          terms: JSON.stringify({
+            payment_methods: params.paymentMethods,
+            notification_channels: params.notificationChannels,
+            discount_type: params.discountType,
+            discount_value: params.discountValue,
+          }),
+        })
+
+        if (agreementError) {
+          errors.push(`${customerName}: erro ao criar acordo - ${agreementError.message}`)
+          continue
+        }
+
+        // Update VMAX negotiation status
+        await supabase
+          .from("VMAX")
+          .update({ negotiation_status: "sent" })
+          .eq("id", vmaxId)
+
+        // Record collection action for each notification channel
+        for (const channel of params.notificationChannels) {
+          await supabase.from("collection_actions").insert({
+            company_id: params.companyId,
+            customer_id: customerId,
+            debt_id: debtId,
+            action_type: channel,
+            status: "sent",
+            sent_by: user.id,
+            sent_at: new Date().toISOString(),
+            message: `Negociacao enviada via ${channel}. Valor original: R$ ${originalAmount.toFixed(2)}, Valor acordado: R$ ${agreedAmount.toFixed(2)}. Metodos de pagamento: ${params.paymentMethods.join(", ")}`,
+            metadata: {
+              payment_methods: params.paymentMethods,
+              notification_channels: params.notificationChannels,
+              discount_type: params.discountType,
+              discount_value: params.discountValue,
+              original_amount: originalAmount,
+              agreed_amount: agreedAmount,
+            },
+          })
+        }
+
+        sentCount++
+      } catch (innerError: any) {
+        errors.push(`Erro inesperado: ${innerError.message}`)
+      }
+    }
+
+    revalidatePath("/super-admin/negotiations")
+
+    if (sentCount === 0 && errors.length > 0) {
+      return {
+        success: false,
+        error: `Nenhuma negociacao enviada. Erros: ${errors.slice(0, 3).join("; ")}`,
+        sent: 0,
+      }
+    }
+
+    return {
+      success: true,
+      sent: sentCount,
+      errors: errors.length > 0 ? errors : undefined,
+    }
+  } catch (error: any) {
+    console.error("Error in sendBulkNegotiations:", error)
+    return {
+      success: false,
+      error: error.message || "Erro desconhecido",
+      sent: 0,
+    }
+  }
+}

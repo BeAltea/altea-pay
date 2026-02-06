@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { validateSendGridConfig } from "@/lib/notifications/sendgrid"
+import { sendBulkEmailViaSendGrid } from "@/lib/notifications/sendgrid"
 
 export const dynamic = "force-dynamic"
-
-interface RecipientData {
-  id: string
-  email: string
-}
-
-interface SendResult {
-  email: string
-  success: boolean
-  error?: string
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,37 +33,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Acesso negado. Apenas super admins podem enviar emails." }, { status: 403 })
     }
 
-    // Validate SendGrid configuration
-    const configValidation = await validateSendGridConfig()
-    if (!configValidation.valid) {
-      console.error("[v0] SendGrid config invalid:", configValidation.error)
-      return NextResponse.json({ error: configValidation.error }, { status: 500 })
-    }
-
     // Parse request body
     const body = await request.json()
-    const { companyId, recipients, subject, htmlBody, isTestMode } = body as {
-      companyId: string | null
-      recipients: RecipientData[]
-      subject: string
-      htmlBody: string
-      isTestMode?: boolean
-    }
+    const { companyId, recipientEmails, subject, htmlBody } = body
 
     console.log("[v0] Request:", {
       companyId,
-      recipientCount: recipients?.length,
+      recipientCount: recipientEmails?.length,
       subject,
       htmlBodyLength: htmlBody?.length,
-      isTestMode: isTestMode || false,
     })
 
-    // Validate required fields - companyId not required in test mode
-    if (!isTestMode && !companyId) {
+    // Validate required fields
+    if (!companyId) {
       return NextResponse.json({ error: "Empresa é obrigatória" }, { status: 400 })
     }
 
-    if (!recipients || recipients.length === 0) {
+    if (!recipientEmails || recipientEmails.length === 0) {
       return NextResponse.json({ error: "Selecione pelo menos um destinatário" }, { status: 400 })
     }
 
@@ -86,148 +61,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Corpo do email é obrigatório" }, { status: 400 })
     }
 
-    // Get SendGrid configuration
-    const apiKey = process.env.SENDGRID_API_KEY
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SENDGRID_SENDER_EMAIL || "noreply@alteapay.com"
-    const fromName = process.env.SENDGRID_FROM_NAME || process.env.SENDGRID_SENDER_NAME || "AlteaPay"
-    const replyTo = process.env.SENDGRID_REPLY_TO
+    // Send emails via SendGrid
+    console.log("[v0] Sending emails via SendGrid...")
+    const result = await sendBulkEmailViaSendGrid({
+      recipients: recipientEmails,
+      subject,
+      html: htmlBody,
+    })
 
-    // Strip HTML for plain text version
-    const textContent = htmlBody
-      .replace(/<[^>]*>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/\s+/g, " ")
-      .trim()
-
-    const adminClient = createAdminClient()
-    const results: SendResult[] = []
-    let totalSent = 0
-    let totalFailed = 0
-    const failedDetails: { email: string; error: string }[] = []
-
-    console.log(`[v0] Sending emails individually ${isTestMode ? "(TEST MODE - no tracking)" : "with tracking"}...`)
-
-    // Send emails individually and track each one (skip tracking in test mode)
-    for (const recipient of recipients) {
-      try {
-        // Build the request body for individual email
-        const requestBody: Record<string, unknown> = {
-          personalizations: [{ to: [{ email: recipient.email }] }],
-          from: {
-            email: fromEmail,
-            name: fromName,
-          },
-          subject,
-          content: [
-            { type: "text/plain", value: textContent },
-            { type: "text/html", value: htmlBody },
-          ],
-        }
-
-        // Add reply_to if configured
-        if (replyTo) {
-          requestBody.reply_to = { email: replyTo }
-        }
-
-        const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
-          const errorMessage = errorData.errors?.[0]?.message || `Erro HTTP ${response.status}`
-          console.error(`[v0] Failed to send to ${recipient.email}:`, errorMessage)
-
-          // Log failed send to tracking table (skip in test mode)
-          if (!isTestMode && companyId) {
-            try {
-              await adminClient.from("email_sent_tracking").insert({
-                user_id: recipient.id,
-                company_id: companyId,
-                email_subject: subject,
-                sent_at: new Date().toISOString(),
-                sent_by: user.id,
-                status: "failed",
-                error_message: errorMessage,
-              })
-            } catch (logError) {
-              console.warn("[v0] Could not log failed email send:", logError)
-            }
-          }
-
-          results.push({ email: recipient.email, success: false, error: errorMessage })
-          failedDetails.push({ email: recipient.email, error: errorMessage })
-          totalFailed++
-        } else {
-          console.log(`[v0] Successfully sent to ${recipient.email}`)
-
-          // Log successful send to tracking table (skip in test mode)
-          if (!isTestMode && companyId) {
-            try {
-              await adminClient.from("email_sent_tracking").insert({
-                user_id: recipient.id,
-                company_id: companyId,
-                email_subject: subject,
-                sent_at: new Date().toISOString(),
-                sent_by: user.id,
-                status: "sent",
-              })
-            } catch (logError) {
-              console.warn("[v0] Could not log successful email send:", logError)
-            }
-          }
-
-          results.push({ email: recipient.email, success: true })
-          totalSent++
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
-        console.error(`[v0] Exception sending to ${recipient.email}:`, errorMessage)
-
-        // Log failed send to tracking table (skip in test mode)
-        if (!isTestMode && companyId) {
-          try {
-            await adminClient.from("email_sent_tracking").insert({
-              user_id: recipient.id,
-              company_id: companyId,
-              email_subject: subject,
-              sent_at: new Date().toISOString(),
-              sent_by: user.id,
-              status: "failed",
-              error_message: errorMessage,
-            })
-          } catch (logError) {
-            console.warn("[v0] Could not log exception email send:", logError)
-          }
-        }
-
-        results.push({ email: recipient.email, success: false, error: errorMessage })
-        failedDetails.push({ email: recipient.email, error: errorMessage })
-        totalFailed++
-      }
+    if (!result.success) {
+      console.error("[v0] SendGrid error:", result.error)
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    console.log(`[v0] Completed: ${totalSent} sent, ${totalFailed} failed`)
+    // Log the send operation (optional - table may not exist)
+    try {
+      const adminClient = createAdminClient()
+      await adminClient.from("email_send_logs").insert({
+        company_id: companyId,
+        sender_id: user.id,
+        recipient_count: recipientEmails.length,
+        subject,
+        sent_at: new Date().toISOString(),
+      })
+      console.log("[v0] Email send logged successfully")
+    } catch (logError) {
+      // Table may not exist, that's fine - just log the warning
+      console.warn("[v0] Could not log email send (table may not exist):", logError)
+    }
     console.log("[v0] ========== END SEND EMAIL API ==========")
 
-    const modeLabel = isTestMode ? " (modo de teste)" : ""
     return NextResponse.json({
-      success: totalFailed === 0,
-      totalSent,
-      totalFailed,
-      message: totalFailed === 0
-        ? `Email enviado com sucesso para ${totalSent} usuário(s)${modeLabel}`
-        : `Email enviado para ${totalSent} usuário(s). Falha ao enviar para ${totalFailed} usuário(s).${modeLabel}`,
-      failedDetails: failedDetails.length > 0 ? failedDetails : undefined,
-      results,
+      success: true,
+      message: `Email enviado com sucesso para ${recipientEmails.length} destinatário(s)`,
+      recipientCount: recipientEmails.length,
     })
   } catch (error) {
     console.error("[v0] Send email API error:", error)
