@@ -6,16 +6,20 @@ export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.ASAAS_API_KEY
 
+    console.log("[v0] /api/asaas called - apiKey exists:", !!apiKey, "- apiKey length:", apiKey?.length || 0)
+
     if (!apiKey) {
-      console.error("ASAAS_API_KEY not found in API route environment")
+      console.error("[v0] ASAAS_API_KEY not found in API route process.env. Available env keys:", Object.keys(process.env).filter(k => k.includes("ASAAS") || k.includes("NEXT_PUBLIC")).join(", "))
       return NextResponse.json(
-        { error: "ASAAS_API_KEY not configured" },
+        { error: "ASAAS_API_KEY not configured in server environment" },
         { status: 500 }
       )
     }
 
     const body = await request.json()
     const { endpoint, method = "GET", data } = body
+
+    console.log("[v0] /api/asaas request - endpoint:", endpoint, "method:", method)
 
     if (!endpoint) {
       return NextResponse.json(
