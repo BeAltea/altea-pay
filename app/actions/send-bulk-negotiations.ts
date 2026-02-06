@@ -289,8 +289,6 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
             billingType = methodMapping[params.paymentMethods[0]]
           }
 
-          console.log(`[v0] send-bulk billingType mapping: paymentMethods=${JSON.stringify(params.paymentMethods)}, length=${params.paymentMethods.length}, billingType=${billingType}`)
-
           const paymentParams: any = {
             customer: asaasCustomerId,
             billingType,
@@ -301,10 +299,7 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
             postalService: false,
           }
 
-          console.log(`[v0] send-bulk creating Asaas payment with params:`, JSON.stringify(paymentParams))
-
           const asaasPayment = await createAsaasPayment(paymentParams)
-          console.log(`[v0] send-bulk Asaas payment created: id=${asaasPayment.id}, billingType=${asaasPayment.billingType}, invoiceUrl=${asaasPayment.invoiceUrl}`)
 
           // 5. Update agreement with Asaas payment info
           await supabase
