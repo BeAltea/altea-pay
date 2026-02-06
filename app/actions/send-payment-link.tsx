@@ -73,10 +73,6 @@ export async function sendPaymentLink(
           .eq("id", agreementId)
       } catch (asaasErr: any) {
         console.error("[v0] Failed to create Asaas customer. Error:", asaasErr.message)
-        console.error("[v0] Full error:", asaasErr)
-        if (asaasErr.message === "ASAAS_API_KEY_NOT_SET") {
-          return { success: false, error: "ASAAS_API_KEY nao foi encontrada pelo servidor. Tente fazer redeploy do projeto para que as variaveis de ambiente sejam carregadas." }
-        }
         return { success: false, error: `Erro ao criar cliente no Asaas: ${asaasErr.message}` }
       }
     }
