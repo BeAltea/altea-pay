@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { CardDescription } from "@/components/ui/card"
 import {
   Users,
   DollarSign,
@@ -25,6 +26,8 @@ import {
   Loader2,
   Handshake,
   CheckCircle,
+  Clock,
+  BarChart3,
 } from "lucide-react"
 import { toast } from "sonner"
 import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
@@ -201,6 +204,18 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       .filter((c) => selectedCustomers.has(c.id))
       .reduce((sum, c) => sum + c.totalDebt, 0)
   }, [customers, selectedCustomers])
+
+  const kpiStats = useMemo(() => {
+    const total = customers.length
+    const withNegotiation = customers.filter((c) => c.hasActiveNegotiation).length
+    const withoutNegotiation = total - withNegotiation
+    const totalDebt = customers.reduce((sum, c) => sum + c.totalDebt, 0)
+    const negotiatedDebt = customers
+      .filter((c) => c.hasActiveNegotiation)
+      .reduce((sum, c) => sum + c.totalDebt, 0)
+    const pendingDebt = totalDebt - negotiatedDebt
+    return { total, withNegotiation, withoutNegotiation, totalDebt, negotiatedDebt, pendingDebt }
+  }, [customers])
 
   return (
     <div className="space-y-6">
