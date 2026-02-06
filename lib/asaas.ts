@@ -1,6 +1,7 @@
 /**
- * Asaas Payment Gateway Integration - v4
- * All functions read process.env.ASAAS_API_KEY at runtime (never cached at module level)
+ * Asaas Payment Gateway Integration - v5
+ * Uses internal API route proxy to access ASAAS_API_KEY
+ * This avoids issues with process.env not being available in Server Actions
  */
 
 const ASAAS_BASE_URL = "https://api.asaas.com/v3"
@@ -52,43 +53,74 @@ export interface CreatePaymentParams {
 }
 
 // --- Core fetch helper ---
+// Tries direct process.env first, falls back to internal API route proxy
 
 async function callAsaasApi(endpoint: string, options?: RequestInit) {
-  // ALWAYS read from process.env at call time - never cache this
+  // Try reading API key directly first
   const apiKey = process.env.ASAAS_API_KEY
 
-  console.log("[v0] callAsaasApi - ASAAS_API_KEY present:", !!apiKey, "len:", apiKey?.length ?? 0)
+  if (apiKey && apiKey.trim() !== "") {
+    // Direct call - API key available in this runtime context
+    console.log("[v0] callAsaasApi DIRECT - key present, len:", apiKey.length)
+    
+    const url = `${ASAAS_BASE_URL}${endpoint}`
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        access_token: apiKey.trim(),
+        ...(options?.headers ?? {}),
+      },
+    })
 
-  if (!apiKey || apiKey.trim() === "") {
-    const envKeys = Object.keys(process.env).filter(
-      (k) => k.startsWith("ASAAS") || k.startsWith("NEXT_PUBLIC_SUPABASE")
-    )
-    console.error("[v0] ASAAS_API_KEY NOT FOUND. Available related keys:", envKeys.join(", "))
-    throw new Error(
-      "ASAAS_API_KEY environment variable is not configured. Please add it to your project settings."
-    )
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("[v0] Asaas API error:", response.status, JSON.stringify(data))
+      throw new Error(data.errors?.[0]?.description || `Asaas API error (${response.status})`)
+    }
+
+    return data
   }
 
-  const url = `${ASAAS_BASE_URL}${endpoint}`
-  console.log("[v0] Calling Asaas:", options?.method ?? "GET", url)
+  // Fallback: API key not available in this context, use internal proxy route
+  console.log("[v0] callAsaasApi PROXY FALLBACK - process.env.ASAAS_API_KEY not available, using /api/asaas")
+  
+  // Determine base URL for internal API call
+  let appUrl = "http://localhost:3000"
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    appUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_URL) {
+    appUrl = `https://${process.env.VERCEL_URL}`
+  }
+  
+  const method = options?.method || "GET"
+  let bodyData: any = undefined
+  if (options?.body) {
+    try {
+      bodyData = JSON.parse(options.body as string)
+    } catch {
+      bodyData = options.body
+    }
+  }
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      access_token: apiKey.trim(),
-      ...(options?.headers ?? {}),
-    },
+  const proxyResponse = await fetch(`${appUrl}/api/asaas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint,
+      method,
+      data: bodyData,
+    }),
   })
 
-  const data = await response.json()
+  const proxyData = await proxyResponse.json()
 
-  if (!response.ok) {
-    console.error("[v0] Asaas API error:", response.status, JSON.stringify(data))
-    throw new Error(data.errors?.[0]?.description || `Asaas API error (${response.status})`)
+  if (!proxyResponse.ok) {
+    throw new Error(proxyData.error || `Asaas proxy error (${proxyResponse.status})`)
   }
 
-  return data
+  return proxyData
 }
 
 // --- Customer functions ---
