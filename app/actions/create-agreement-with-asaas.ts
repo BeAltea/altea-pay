@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
+import { createAsaasCustomer, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
 
 export async function createAgreementWithAsaas(params: {
   vmaxId: string
@@ -115,15 +115,19 @@ export async function createAgreementWithAsaas(params: {
       debtId = newDebt.id
     }
 
-    // Step 3: Create or get customer in Asaas
+    // Step 3: Salvar dados do Asaas (so o cliente, cobranca sera criada ao enviar)
     let asaasCustomerId: string
 
     const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
 
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      // SEMPRE desabilitar notificacoes no cliente existente para evitar envio automatico
-      await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+      // Atualizar dados de contato com dados da VMAX
+      await updateAsaasCustomer(asaasCustomerId, {
+        email: customerEmail || undefined,
+        mobilePhone: customerPhone || undefined,
+        notificationDisabled: true,
+      })
     } else {
       const asaasCustomer = await createAsaasCustomer({
         name: customerName,
@@ -135,28 +139,10 @@ export async function createAgreementWithAsaas(params: {
       asaasCustomerId = asaasCustomer.id
     }
 
-    // Step 4: Create payment in Asaas
+    // Step 4: Salvar acordo no banco (SEM criar cobranca no Asaas ainda)
     const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
     const installmentAmount = params.agreedAmount / params.installments
 
-    const asaasPayment = await createAsaasPayment({
-      customer: asaasCustomerId,
-      billingType: "UNDEFINED",
-      value: params.installments > 1 ? installmentAmount : params.agreedAmount,
-      dueDate: params.dueDate,
-      description: `Acordo de negociacao - ${customerName}${
-        params.installments > 1 ? ` (Parcela 1/${params.installments})` : ""
-      }`,
-      externalReference: `agreement_${params.vmaxId}`,
-      postalService: false,
-      ...(params.installments > 1 && {
-        installmentCount: params.installments,
-        installmentValue: installmentAmount,
-      }),
-    })
-
-    // Step 5: Create agreement in our database
-    // user_id = the logged-in attendant (user.id), so RLS policies work
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .insert({
@@ -171,15 +157,10 @@ export async function createAgreementWithAsaas(params: {
         installments: params.installments,
         installment_amount: installmentAmount,
         due_date: params.dueDate,
-        status: "active",
+        status: "draft",
         attendant_name: params.attendantName,
         terms: params.terms,
-        // Save Asaas data directly to columns
         asaas_customer_id: asaasCustomerId,
-        asaas_payment_id: asaasPayment.id,
-        asaas_payment_url: asaasPayment.invoiceUrl || null,
-        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
-        asaas_boleto_url: asaasPayment.bankSlipUrl || null,
         payment_status: "pending",
       })
       .select()
@@ -189,15 +170,7 @@ export async function createAgreementWithAsaas(params: {
 
     return {
       success: true,
-      agreement: {
-        ...agreement,
-        asaas_payment_url: asaasPayment.invoiceUrl,
-        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl,
-        asaas_boleto_url: asaasPayment.bankSlipUrl,
-      },
-      paymentUrl: asaasPayment.invoiceUrl,
-      pixQrCodeUrl: asaasPayment.pixQrCodeUrl,
-      boletoUrl: asaasPayment.bankSlipUrl,
+      agreement,
     }
   } catch (error) {
     console.error("Error creating agreement with Asaas:", error)

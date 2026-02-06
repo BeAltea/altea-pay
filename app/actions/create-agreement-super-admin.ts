@@ -1,7 +1,7 @@
 "use server"
 
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, createAsaasPayment, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
+import { createAsaasCustomer, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
 
 export async function createAgreementSuperAdmin(params: {
   vmaxId: string
@@ -119,14 +119,17 @@ export async function createAgreementSuperAdmin(params: {
       debtId = newDebt.id
     }
 
-    // Asaas customer
+    // Asaas - so criar/atualizar cliente (cobranca sera criada ao enviar)
     let asaasCustomerId: string
 
     const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      // SEMPRE desabilitar notificacoes no cliente existente para evitar envio automatico
-      await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+      await updateAsaasCustomer(asaasCustomerId, {
+        email: customerEmail || undefined,
+        mobilePhone: customerPhone || undefined,
+        notificationDisabled: true,
+      })
     } else {
       const asaasCustomer = await createAsaasCustomer({
         name: customerName,
@@ -138,27 +141,10 @@ export async function createAgreementSuperAdmin(params: {
       asaasCustomerId = asaasCustomer.id
     }
 
-    // Asaas payment
+    // Salvar acordo no banco (SEM cobranca no Asaas)
     const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
     const installmentAmount = params.agreedAmount / params.installments
 
-    const asaasPayment = await createAsaasPayment({
-      customer: asaasCustomerId,
-      billingType: "UNDEFINED",
-      value: params.installments > 1 ? installmentAmount : params.agreedAmount,
-      dueDate: params.dueDate,
-      description: `Acordo de negociacao - ${customerName}${
-        params.installments > 1 ? ` (Parcela 1/${params.installments})` : ""
-      }`,
-      externalReference: `agreement_${params.vmaxId}`,
-      postalService: false,
-      ...(params.installments > 1 && {
-        installmentCount: params.installments,
-        installmentValue: installmentAmount,
-      }),
-    })
-
-    // Create agreement (using admin client, no RLS issues)
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .insert({
@@ -173,14 +159,10 @@ export async function createAgreementSuperAdmin(params: {
         installments: params.installments,
         installment_amount: installmentAmount,
         due_date: params.dueDate,
-        status: "active",
+        status: "draft",
         attendant_name: params.attendantName,
         terms: params.terms,
         asaas_customer_id: asaasCustomerId,
-        asaas_payment_id: asaasPayment.id,
-        asaas_payment_url: asaasPayment.invoiceUrl || null,
-        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
-        asaas_boleto_url: asaasPayment.bankSlipUrl || null,
         payment_status: "pending",
       })
       .select()
@@ -190,13 +172,7 @@ export async function createAgreementSuperAdmin(params: {
 
     return {
       success: true,
-      agreement: {
-        ...agreement,
-        asaas_payment_url: asaasPayment.invoiceUrl,
-        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl,
-        asaas_boleto_url: asaasPayment.bankSlipUrl,
-      },
-      paymentUrl: asaasPayment.invoiceUrl,
+      agreement,
     }
   } catch (error) {
     console.error("Error creating agreement (super admin):", error)
