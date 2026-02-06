@@ -23,7 +23,8 @@ import { toast } from "sonner"
 
 export const dynamic = "force-dynamic"
 
-export default async function ClienteDetalhesPage({ params }: { params: { id: string } }) {
+export default async function ClienteDetalhesPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createServerClient()
 
   const {
@@ -41,7 +42,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
     return <div className="p-8">Empresa não encontrada</div>
   }
 
-  const { data: cliente } = await supabase.from("VMAX").select("*").eq("id", params.id).single()
+  const { data: cliente } = await supabase.from("VMAX").select("*").eq("id", id).single()
 
   if (
     !cliente ||
@@ -79,7 +80,7 @@ export default async function ClienteDetalhesPage({ params }: { params: { id: st
 
     if (!profile?.company_id) redirect("/dashboard")
 
-    const result = await deleteCustomer(params.id, profile.company_id)
+    const result = await deleteCustomer(id, profile.company_id)
 
     if (result.success) {
       redirect("/dashboard/clientes")

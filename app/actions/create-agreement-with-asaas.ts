@@ -1,7 +1,29 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasCustomer, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
+
+// Inline Asaas API calls - no external module dependency
+const ASAAS_URL = "https://api.asaas.com/v3"
+
+async function asaasRequest(endpoint: string, method = "GET", body?: any) {
+  const key = process.env.ASAAS_API_KEY
+  if (!key) throw new Error("ASAAS_API_KEY nao configurada")
+
+  const res = await fetch(`${ASAAS_URL}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": key,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.errors?.[0]?.description || `Asaas error ${res.status}`)
+  }
+  return data
+}
 
 export async function createAgreementWithAsaas(params: {
   vmaxId: string
@@ -14,29 +36,20 @@ export async function createAgreementWithAsaas(params: {
   try {
     const supabase = await createClient()
 
-    // Get authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) throw new Error("Não autenticado")
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Nao autenticado")
 
-    // Get user profile to get company
     const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+    if (!profile?.company_id) throw new Error("Empresa nao encontrada")
 
-    if (!profile?.company_id) throw new Error("Empresa não encontrada")
-
-    // Get VMAX record
     const { data: vmaxRecord, error: vmaxError } = await supabase
       .from("VMAX")
       .select("*")
       .eq("id", params.vmaxId)
       .single()
 
-    if (vmaxError || !vmaxRecord) {
-      throw new Error("Registro não encontrado")
-    }
+    if (vmaxError || !vmaxRecord) throw new Error("Registro nao encontrado")
 
-    // Step 1: Create or get customer in our database
     const cpfCnpj = vmaxRecord["CPF/CNPJ"]?.replace(/[^\d]/g, "") || ""
     const customerName = vmaxRecord.Cliente || "Cliente"
     const customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || "").replace(/[^\d]/g, "")
@@ -53,7 +66,6 @@ export async function createAgreementWithAsaas(params: {
 
     if (existingCustomer) {
       customerId = existingCustomer.id
-      // Atualizar dados do customer com dados frescos da VMAX
       await supabase
         .from("customers")
         .update({ name: customerName, phone: customerPhone, email: customerEmail })
@@ -78,8 +90,6 @@ export async function createAgreementWithAsaas(params: {
       customerId = newCustomer.id
     }
 
-    // Step 2: Create or get debt
-    // Parse Brazilian format: "1.234,56" or "R$ 1.234,56" -> remove dots (thousands), replace comma with dot
     const vencidoStr = String(vmaxRecord.Vencido || "0")
     const originalAmount = Number(vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0
 
@@ -115,31 +125,30 @@ export async function createAgreementWithAsaas(params: {
       debtId = newDebt.id
     }
 
-    // Step 3: Salvar dados do Asaas (so o cliente, cobranca sera criada ao enviar)
+    // Asaas - inline calls
     let asaasCustomerId: string
 
-    const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
+    const searchData = await asaasRequest(`/customers?cpfCnpj=${cpfCnpj}`)
+    const existingAsaasCustomer = searchData.data?.[0] || null
 
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      // Atualizar dados de contato com dados da VMAX
-      await updateAsaasCustomer(asaasCustomerId, {
+      await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", {
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
         notificationDisabled: true,
       })
     } else {
-      const asaasCustomer = await createAsaasCustomer({
+      const newAsaasCustomer = await asaasRequest("/customers", "POST", {
         name: customerName,
-        cpfCnpj: cpfCnpj,
+        cpfCnpj,
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
         notificationDisabled: true,
       })
-      asaasCustomerId = asaasCustomer.id
+      asaasCustomerId = newAsaasCustomer.id
     }
 
-    // Step 4: Salvar acordo no banco (SEM criar cobranca no Asaas ainda)
     const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
     const installmentAmount = params.agreedAmount / params.installments
 
@@ -168,10 +177,7 @@ export async function createAgreementWithAsaas(params: {
 
     if (agreementError) throw agreementError
 
-    return {
-      success: true,
-      agreement,
-    }
+    return { success: true, agreement }
   } catch (error) {
     console.error("Error creating agreement with Asaas:", error)
     throw error

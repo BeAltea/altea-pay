@@ -10,19 +10,20 @@ export const dynamic = "force-dynamic"
 export default async function SuperAdminNegotiatePage({
   params,
 }: {
-  params: { id: string; customerId: string }
+  params: Promise<{ id: string; customerId: string }>
 }) {
+  const { id, customerId } = await params
   const supabase = createAdminClient()
 
   // Get customer data
-  const { data: customer } = await supabase.from("VMAX").select("*").eq("id", params.customerId).single()
+  const { data: customer } = await supabase.from("VMAX").select("*").eq("id", customerId).single()
 
   if (!customer) {
-    redirect(`/super-admin/companies/${params.id}`)
+    redirect(`/super-admin/companies/${id}`)
   }
 
   // Get company data
-  const { data: company } = await supabase.from("companies").select("*").eq("id", params.id).single()
+  const { data: company } = await supabase.from("companies").select("*").eq("id", id).single()
 
   // Parse Vencido value
   const vencidoStr = String(customer.Vencido || "0")
@@ -32,7 +33,7 @@ export default async function SuperAdminNegotiatePage({
   return (
     <div className="container mx-auto p-4 md:p-8 max-w-5xl space-y-6">
       <Link
-        href={`/super-admin/companies/${params.id}/customers`}
+        href={`/super-admin/companies/${id}/customers`}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -81,8 +82,8 @@ export default async function SuperAdminNegotiatePage({
 
       <div className="border-t pt-6">
         <NegotiationForm
-          customerId={params.customerId}
-          companyId={params.id}
+          customerId={customerId}
+          companyId={id}
           totalDebt={totalDebt}
           customerName={customer.Cliente}
           isSuperAdmin={true}

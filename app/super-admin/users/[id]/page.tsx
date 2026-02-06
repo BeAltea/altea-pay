@@ -46,12 +46,13 @@ interface LoginHistory {
   status: "success" | "failed"
 }
 
-export default async function UserDetailsPage({ params }: { params: { id: string } }) {
+export default async function UserDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
 
   // Mock data for user details
   const userDetails: UserDetails = {
-    id: params.id,
+    id: id,
     email: "admin@enel.com.br",
     full_name: "Maria Santos",
     role: "admin",

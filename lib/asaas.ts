@@ -1,11 +1,12 @@
-"use server"
+/**
+ * Asaas Payment Gateway Integration - v5
+ * Uses internal API route proxy to access ASAAS_API_KEY
+ * This avoids issues with process.env not being available in Server Actions
+ */
 
-const ASAAS_API_URL = "https://api.asaas.com/v3"
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY
+const ASAAS_BASE_URL = "https://api.asaas.com/v3"
 
-if (!ASAAS_API_KEY) {
-  throw new Error("ASAAS_API_KEY environment variable is required")
-}
+// --- Types ---
 
 export interface AsaasCustomer {
   id: string
@@ -51,25 +52,78 @@ export interface CreatePaymentParams {
   postalService?: boolean
 }
 
-async function asaasFetch(endpoint: string, options?: RequestInit) {
-  const response = await fetch(`${ASAAS_API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      access_token: ASAAS_API_KEY!,
-      ...options?.headers,
-    },
-  })
+// --- Core fetch helper ---
+// Tries direct process.env first, falls back to internal API route proxy
 
-  const data = await response.json()
+async function callAsaasApi(endpoint: string, options?: RequestInit) {
+  // Try reading API key directly first
+  const apiKey = process.env.ASAAS_API_KEY
 
-  if (!response.ok) {
-    console.error("[v0] Asaas API error:", data)
-    throw new Error(data.errors?.[0]?.description || "Asaas API error")
+  if (apiKey && apiKey.trim() !== "") {
+    // Direct call - API key available in this runtime context
+    console.log("[v0] callAsaasApi DIRECT - key present, len:", apiKey.length)
+    
+    const url = `${ASAAS_BASE_URL}${endpoint}`
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        access_token: apiKey.trim(),
+        ...(options?.headers ?? {}),
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("[v0] Asaas API error:", response.status, JSON.stringify(data))
+      throw new Error(data.errors?.[0]?.description || `Asaas API error (${response.status})`)
+    }
+
+    return data
   }
 
-  return data
+  // Fallback: API key not available in this context, use internal proxy route
+  console.log("[v0] callAsaasApi PROXY FALLBACK - process.env.ASAAS_API_KEY not available, using /api/asaas")
+  
+  // Determine base URL for internal API call
+  let appUrl = "http://localhost:3000"
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    appUrl = process.env.NEXT_PUBLIC_APP_URL
+  } else if (process.env.VERCEL_URL) {
+    appUrl = `https://${process.env.VERCEL_URL}`
+  }
+  
+  const method = options?.method || "GET"
+  let bodyData: any = undefined
+  if (options?.body) {
+    try {
+      bodyData = JSON.parse(options.body as string)
+    } catch {
+      bodyData = options.body
+    }
+  }
+
+  const proxyResponse = await fetch(`${appUrl}/api/asaas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      endpoint,
+      method,
+      data: bodyData,
+    }),
+  })
+
+  const proxyData = await proxyResponse.json()
+
+  if (!proxyResponse.ok) {
+    throw new Error(proxyData.error || `Asaas proxy error (${proxyResponse.status})`)
+  }
+
+  return proxyData
 }
+
+// --- Customer functions ---
 
 export async function createAsaasCustomer(params: {
   name: string
@@ -83,77 +137,90 @@ export async function createAsaasCustomer(params: {
   notificationDisabled?: boolean
 }): Promise<AsaasCustomer> {
   console.log("[v0] Creating Asaas customer:", params.cpfCnpj)
-
-  return asaasFetch("/customers", {
+  return callAsaasApi("/customers", {
     method: "POST",
     body: JSON.stringify(params),
   })
 }
 
-export async function getAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<AsaasCustomer | null> {
+export async function getAsaasCustomerByCpfCnpj(
+  cpfCnpj: string
+): Promise<AsaasCustomer | null> {
   console.log("[v0] Searching Asaas customer by CPF/CNPJ:", cpfCnpj)
-
-  const data = await asaasFetch(`/customers?cpfCnpj=${cpfCnpj}`)
-
+  const data = await callAsaasApi(`/customers?cpfCnpj=${cpfCnpj}`)
   return data.data?.[0] || null
 }
 
-export async function createAsaasPayment(params: CreatePaymentParams): Promise<AsaasPayment> {
-  console.log("[v0] Creating Asaas payment:", params)
-
-  return asaasFetch("/payments", {
-    method: "POST",
+export async function updateAsaasCustomer(
+  customerId: string,
+  params: {
+    notificationDisabled?: boolean
+    email?: string
+    mobilePhone?: string
+  }
+): Promise<AsaasCustomer> {
+  console.log("[v0] Updating Asaas customer:", customerId, params)
+  return callAsaasApi(`/customers/${customerId}`, {
+    method: "PUT",
     body: JSON.stringify(params),
   })
 }
 
-export async function updateAsaasCustomer(customerId: string, params: {
-  notificationDisabled?: boolean
-  email?: string
-  mobilePhone?: string
-}): Promise<AsaasCustomer> {
-  console.log("[v0] Updating Asaas customer:", customerId, params)
+// --- Payment functions ---
 
-  return asaasFetch(`/customers/${customerId}`, {
-    method: "PUT",
+export async function createAsaasPayment(
+  params: CreatePaymentParams
+): Promise<AsaasPayment> {
+  console.log("[v0] Creating Asaas payment:", JSON.stringify(params))
+  return callAsaasApi("/payments", {
+    method: "POST",
     body: JSON.stringify(params),
   })
 }
 
 export async function getAsaasPayment(paymentId: string): Promise<AsaasPayment> {
-  return asaasFetch(`/payments/${paymentId}`)
+  return callAsaasApi(`/payments/${paymentId}`)
 }
 
-export async function getAsaasPaymentByExternalReference(externalReference: string): Promise<AsaasPayment | null> {
-  const data = await asaasFetch(`/payments?externalReference=${externalReference}`)
-
+export async function getAsaasPaymentByExternalReference(
+  externalReference: string
+): Promise<AsaasPayment | null> {
+  const data = await callAsaasApi(
+    `/payments?externalReference=${externalReference}`
+  )
   return data.data?.[0] || null
 }
 
-// Buscar notificacoes de um cliente Asaas
-export async function getAsaasCustomerNotifications(customerId: string): Promise<any[]> {
-  const data = await asaasFetch(`/customers/${customerId}/notifications`)
+// --- Notification functions ---
+
+export async function getAsaasCustomerNotifications(
+  customerId: string
+): Promise<any[]> {
+  const data = await callAsaasApi(`/customers/${customerId}/notifications`)
   return data.data || []
 }
 
-// Atualizar notificacao especifica do Asaas
-export async function updateAsaasNotification(notificationId: string, params: {
-  enabled?: boolean
-  emailEnabledForCustomer?: boolean
-  smsEnabledForCustomer?: boolean
-  whatsappEnabledForCustomer?: boolean
-}): Promise<any> {
-  return asaasFetch(`/notifications/${notificationId}`, {
+export async function updateAsaasNotification(
+  notificationId: string,
+  params: {
+    enabled?: boolean
+    emailEnabledForCustomer?: boolean
+    smsEnabledForCustomer?: boolean
+    whatsappEnabledForCustomer?: boolean
+  }
+): Promise<any> {
+  return callAsaasApi(`/notifications/${notificationId}`, {
     method: "PUT",
     body: JSON.stringify(params),
   })
 }
 
-// Habilitar notificacoes do cliente e enviar por canal especifico
-export async function sendAsaasNotification(customerId: string, channel: "email" | "sms" | "whatsapp"): Promise<void> {
+export async function sendAsaasNotification(
+  customerId: string,
+  channel: "email" | "sms" | "whatsapp"
+): Promise<void> {
   const notifications = await getAsaasCustomerNotifications(customerId)
-  
-  // Encontrar notificacao PAYMENT_CREATED
+
   const paymentCreatedNotification = notifications.find(
     (n: any) => n.event === "PAYMENT_CREATED"
   )
@@ -168,9 +235,10 @@ export async function sendAsaasNotification(customerId: string, channel: "email"
   }
 }
 
-// Reenviar notificacao de uma cobranca Asaas
-export async function resendAsaasPaymentNotification(paymentId: string): Promise<any> {
-  return asaasFetch(`/payments/${paymentId}/resendNotification`, {
+export async function resendAsaasPaymentNotification(
+  paymentId: string
+): Promise<any> {
+  return callAsaasApi(`/payments/${paymentId}/resendNotification`, {
     method: "POST",
     body: JSON.stringify({}),
   })

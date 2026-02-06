@@ -8,32 +8,33 @@ import { ArrowLeft, Plus, Plug, CheckCircle, XCircle, Clock, Settings, AlertTria
 import { CreditAnalysisIntegration } from "@/components/erp/credit-analysis-integration"
 
 interface ERPIntegrationPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function ERPIntegrationPage({ params }: ERPIntegrationPageProps) {
+  const { id } = await params
   const supabase = await createClient()
 
   // Busca integrações da empresa
   const { data: integrations, error } = await supabase
     .from("erp_integrations")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .order("created_at", { ascending: false })
 
   // Busca logs recentes
   const { data: logs } = await supabase
     .from("integration_logs")
     .select("*")
-    .eq("company_id", params.id)
+    .eq("company_id", id)
     .order("created_at", { ascending: false })
     .limit(10)
 
   // Mock data para empresa
   const company = {
-    id: params.id,
+    id: id,
     name: "Enel Distribuição São Paulo",
   }
 
@@ -44,7 +45,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
         <div className="min-w-0">
           <div className="flex items-center space-x-3 mb-2">
             <Button asChild variant="outline" size="sm">
-              <Link href={`/super-admin/companies/${params.id}`}>
+              <Link href={`/super-admin/companies/${id}`}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Voltar
               </Link>
@@ -54,7 +55,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
           <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base mt-1">{company.name}</p>
         </div>
         <Button asChild>
-          <Link href={`/super-admin/companies/${params.id}/erp-integration/new`}>
+          <Link href={`/super-admin/companies/${id}/erp-integration/new`}>
             <Plus className="mr-2 h-4 w-4" />
             Nova Integração
           </Link>
@@ -139,7 +140,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
                 Comece criando uma nova integração com um ERP externo.
               </p>
               <Button asChild className="mt-6">
-                <Link href={`/super-admin/companies/${params.id}/erp-integration/new`}>
+                <Link href={`/super-admin/companies/${id}/erp-integration/new`}>
                   <Plus className="mr-2 h-4 w-4" />
                   Criar Primeira Integração
                 </Link>
@@ -183,7 +184,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
                     </div>
                     <div className="flex items-center space-x-2 flex-shrink-0">
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/super-admin/companies/${params.id}/erp-integration/${integration.id}`}>
+                        <Link href={`/super-admin/companies/${id}/erp-integration/${integration.id}`}>
                           <Settings className="h-4 w-4 mr-1" />
                           Configurar
                         </Link>
@@ -192,7 +193,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
                   </div>
 
                   <div className="border-t pt-4">
-                    <SyncButtons integrationId={integration.id} companyId={params.id} />
+                    <SyncButtons integrationId={integration.id} companyId={id} />
                   </div>
                 </div>
               ))}
@@ -201,7 +202,7 @@ export default async function ERPIntegrationPage({ params }: ERPIntegrationPageP
         </CardContent>
       </Card>
 
-      <CreditAnalysisIntegration companyId={params.id} />
+      <CreditAnalysisIntegration companyId={id} />
 
       {/* Logs Recentes */}
       {logs && logs.length > 0 && (

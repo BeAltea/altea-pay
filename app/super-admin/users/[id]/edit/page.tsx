@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { use, useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,7 +34,8 @@ interface Company {
   name: string
 }
 
-export default function EditUserPage({ params }: { params: { id: string } }) {
+export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -59,7 +60,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
       setIsFetching(true)
       try {
         // Fetch user data
-        const userResult = await getUserById(params.id)
+        const userResult = await getUserById(id)
         if (userResult.success && userResult.data) {
           const user = userResult.data
           setFormData({
@@ -102,7 +103,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     }
 
     fetchData()
-  }, [params.id, router, toast])
+  }, [id, router, toast])
 
   const handleInputChange = (field: keyof UserFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -114,7 +115,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
     try {
       const result = await updateUserProfile({
-        id: params.id,
+        id: id,
         full_name: formData.full_name,
         email: formData.email,
         role: formData.role,
@@ -132,7 +133,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
           title: "Sucesso",
           description: "Dados do usuário atualizados com sucesso!",
         })
-        router.push(`/super-admin/users/${params.id}`)
+        router.push(`/super-admin/users/${id}`)
       } else {
         toast({
           title: "Erro",
@@ -185,7 +186,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/users/${params.id}`}>
+            <Link href={`/super-admin/users/${id}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>
@@ -347,7 +348,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
         <div className="flex justify-end space-x-4">
           <Button type="button" variant="outline" asChild>
-            <Link href={`/super-admin/users/${params.id}`}>Cancelar</Link>
+            <Link href={`/super-admin/users/${id}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? (

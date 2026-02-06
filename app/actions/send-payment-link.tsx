@@ -1,12 +1,29 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/server"
-import {
-  createAsaasPayment,
-  updateAsaasCustomer,
-  getAsaasCustomerNotifications,
-  updateAsaasNotification,
-} from "@/lib/asaas"
+
+// Inline Asaas API calls - no external module dependency
+const ASAAS_URL = "https://api.asaas.com/v3"
+
+async function asaasRequest(endpoint: string, method = "GET", body?: any) {
+  const key = process.env.ASAAS_API_KEY
+  if (!key) throw new Error("ASAAS_API_KEY nao configurada")
+
+  const res = await fetch(`${ASAAS_URL}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": key,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.errors?.[0]?.description || `Asaas error ${res.status}`)
+  }
+  return data
+}
 
 export async function sendPaymentLink(
   agreementId: string,
@@ -20,7 +37,6 @@ export async function sendPaymentLink(
   try {
     const supabase = createAdminClient()
 
-    // Buscar acordo
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select("*")
@@ -32,35 +48,32 @@ export async function sendPaymentLink(
     }
 
     const asaasCustomerId = agreement.asaas_customer_id
-
     if (!asaasCustomerId) {
       return { success: false, error: "Cliente Asaas nao encontrado neste acordo." }
     }
 
-    // 1. Atualizar dados de contato do cliente no Asaas com dados da VMAX
+    // 1. Update contact info
     const updateData: any = { notificationDisabled: false }
     if (contactInfo.email) updateData.email = contactInfo.email
     if (contactInfo.phone) {
-      const cleanPhone = contactInfo.phone.replace(/[^\d]/g, "")
-      updateData.mobilePhone = cleanPhone
+      updateData.mobilePhone = contactInfo.phone.replace(/[^\d]/g, "")
     }
-    await updateAsaasCustomer(asaasCustomerId, updateData)
+    await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", updateData)
 
-    // 2. Configurar notificacoes: habilitar SOMENTE PAYMENT_CREATED no canal escolhido
-    const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
+    // 2. Configure notifications
+    const notifData = await asaasRequest(`/customers/${asaasCustomerId}/notifications`)
+    const allNotifications = notifData.data || []
 
     for (const notif of allNotifications) {
       if (notif.event === "PAYMENT_CREATED") {
-        // Habilitar SOMENTE no canal escolhido
-        await updateAsaasNotification(notif.id, {
+        await asaasRequest(`/notifications/${notif.id}`, "PUT", {
           enabled: true,
           emailEnabledForCustomer: channel === "email",
           smsEnabledForCustomer: channel === "sms",
           whatsappEnabledForCustomer: channel === "whatsapp",
         })
       } else {
-        // Desabilitar todos os outros eventos
-        await updateAsaasNotification(notif.id, {
+        await asaasRequest(`/notifications/${notif.id}`, "PUT", {
           enabled: false,
           emailEnabledForCustomer: false,
           smsEnabledForCustomer: false,
@@ -69,28 +82,29 @@ export async function sendPaymentLink(
       }
     }
 
-    // 3. AGORA criar a cobranca no Asaas - isso vai disparar a notificacao automaticamente
+    // 3. Create payment
     const customerName = contactInfo.customerName || "Cliente"
     const installmentAmount = agreement.installment_amount || agreement.agreed_amount
     const installments = agreement.installments || 1
 
-    const asaasPayment = await createAsaasPayment({
+    const paymentParams: any = {
       customer: asaasCustomerId,
       billingType: "UNDEFINED",
       value: installments > 1 ? installmentAmount : agreement.agreed_amount,
       dueDate: agreement.due_date,
-      description: `Acordo de negociacao - ${customerName}${
-        installments > 1 ? ` (Parcela 1/${installments})` : ""
-      }`,
+      description: `Acordo de negociacao - ${customerName}${installments > 1 ? ` (Parcela 1/${installments})` : ""}`,
       externalReference: `agreement_${agreementId}`,
       postalService: false,
-      ...(installments > 1 && {
-        installmentCount: installments,
-        installmentValue: installmentAmount,
-      }),
-    })
+    }
 
-    // 4. Atualizar o acordo com os dados da cobranca
+    if (installments > 1) {
+      paymentParams.installmentCount = installments
+      paymentParams.installmentValue = installmentAmount
+    }
+
+    const asaasPayment = await asaasRequest("/payments", "POST", paymentParams)
+
+    // 4. Update agreement
     await supabase
       .from("agreements")
       .update({
@@ -102,13 +116,12 @@ export async function sendPaymentLink(
       })
       .eq("id", agreementId)
 
-    // 5. Desabilitar notificacoes do cliente novamente para nao enviar automaticamente no futuro
-    await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+    // 5. Disable notifications again
+    await asaasRequest(`/customers/${asaasCustomerId}`, "PUT", { notificationDisabled: true })
 
-    // 6. Desabilitar PAYMENT_CREATED que habilitamos
     const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
     if (paymentCreatedNotif) {
-      await updateAsaasNotification(paymentCreatedNotif.id, {
+      await asaasRequest(`/notifications/${paymentCreatedNotif.id}`, "PUT", {
         enabled: false,
         emailEnabledForCustomer: false,
         smsEnabledForCustomer: false,
