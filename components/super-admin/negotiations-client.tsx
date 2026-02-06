@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { CardDescription } from "@/components/ui/card"
 import {
   Users,
   DollarSign,
@@ -25,6 +26,8 @@ import {
   Loader2,
   Handshake,
   CheckCircle,
+  Clock,
+  BarChart3,
 } from "lucide-react"
 import { toast } from "sonner"
 import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
@@ -202,6 +205,18 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       .reduce((sum, c) => sum + c.totalDebt, 0)
   }, [customers, selectedCustomers])
 
+  const kpiStats = useMemo(() => {
+    const total = customers.length
+    const withNegotiation = customers.filter((c) => c.hasActiveNegotiation).length
+    const withoutNegotiation = total - withNegotiation
+    const totalDebt = customers.reduce((sum, c) => sum + c.totalDebt, 0)
+    const negotiatedDebt = customers
+      .filter((c) => c.hasActiveNegotiation)
+      .reduce((sum, c) => sum + c.totalDebt, 0)
+    const pendingDebt = totalDebt - negotiatedDebt
+    return { total, withNegotiation, withoutNegotiation, totalDebt, negotiatedDebt, pendingDebt }
+  }, [customers])
+
   return (
     <div className="space-y-6">
       {/* Company selector */}
@@ -227,6 +242,76 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           </Select>
         </CardContent>
       </Card>
+
+      {/* KPI Cards */}
+      {!loading && selectedCompanyId && customers.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-l-blue-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total de Clientes</p>
+                  <p className="text-2xl font-bold">{kpiStats.total}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Negociacoes Enviadas</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{kpiStats.withNegotiation}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpiStats.total > 0 ? ((kpiStats.withNegotiation / kpiStats.total) * 100).toFixed(1) : 0}% do total
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-amber-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Pendentes de Envio</p>
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{kpiStats.withoutNegotiation}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpiStats.total > 0 ? ((kpiStats.withoutNegotiation / kpiStats.total) * 100).toFixed(1) : 0}% do total
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-red-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Divida Pendente</p>
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(kpiStats.pendingDebt)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    de {formatCurrency(kpiStats.totalDebt)} total
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (

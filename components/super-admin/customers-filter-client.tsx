@@ -9,10 +9,21 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { Users, DollarSign, AlertTriangle, MapPin, Handshake, Trash2 } from "lucide-react"
+import { Users, DollarSign, AlertTriangle, MapPin, Handshake, Trash2, Send, Loader2, Brain } from "lucide-react"
 import { deleteCustomer } from "@/app/actions/delete-customer"
+import { analyzeBatchCustomers } from "@/app/actions/analyze-customer-credit"
+import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 type Customer = {
   id: string
@@ -33,6 +44,13 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
   const [sentFilter, setSentFilter] = useState<"all" | "sent" | "not_sent">("all")
   const [displayLimit, setDisplayLimit] = useState<number>(50)
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
+  const [analyzing, setAnalyzing] = useState(false)
+  const [showNegotiationModal, setShowNegotiationModal] = useState(false)
+  const [sendingNegotiation, setSendingNegotiation] = useState(false)
+  const [discountType, setDiscountType] = useState<"none" | "percentage" | "fixed">("none")
+  const [discountValue, setDiscountValue] = useState<string>("")
+  const [paymentMethods, setPaymentMethods] = useState<Set<string>>(new Set())
+  const [notificationChannels, setNotificationChannels] = useState<Set<string>>(new Set())
   const router = useRouter()
 
   const totalCustomers = customers.length
@@ -89,6 +107,103 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
     } else {
       setSelectedCustomers(new Set(displayedCustomers.map((c) => c.id)))
     }
+  }
+
+  const handleBulkAnalysis = async () => {
+    if (selectedCustomers.size === 0) {
+      toast.error("Selecione pelo menos um cliente")
+      return
+    }
+    setAnalyzing(true)
+    try {
+      const selectedData = customers
+        .filter((c) => selectedCustomers.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          cpfCnpj: c.document.replace(/\D/g, ""),
+          valorDivida: c.totalDebt,
+        }))
+
+      const results = await analyzeBatchCustomers(selectedData)
+      const successCount = results.filter((r) => r.success).length
+      const errorCount = results.filter((r) => !r.success).length
+
+      if (successCount > 0) {
+        toast.success(`Analise enviada para ${successCount} cliente(s) com sucesso!`)
+      }
+      if (errorCount > 0) {
+        toast.error(`${errorCount} analise(s) falharam. Verifique os dados dos clientes.`)
+      }
+      router.refresh()
+    } catch (error) {
+      toast.error("Erro ao enviar analises em lote")
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const openNegotiationModal = () => {
+    if (selectedCustomers.size === 0) {
+      toast.error("Selecione pelo menos um cliente")
+      return
+    }
+    setDiscountType("none")
+    setDiscountValue("")
+    setPaymentMethods(new Set())
+    setNotificationChannels(new Set())
+    setShowNegotiationModal(true)
+  }
+
+  const handleSendNegotiations = async () => {
+    if (paymentMethods.size === 0) {
+      toast.error("Selecione pelo menos um metodo de pagamento")
+      return
+    }
+    if (notificationChannels.size === 0) {
+      toast.error("Selecione pelo menos um canal de notificacao")
+      return
+    }
+    setSendingNegotiation(true)
+    try {
+      const result = await sendBulkNegotiations({
+        companyId: companyId,
+        customerIds: Array.from(selectedCustomers),
+        discountType,
+        discountValue: discountValue ? Number(discountValue) : 0,
+        paymentMethods: Array.from(paymentMethods),
+        notificationChannels: Array.from(notificationChannels),
+      })
+      if (result.success) {
+        toast.success(`Negociacao enviada para ${result.sent} cliente(s) com sucesso!`)
+        setShowNegotiationModal(false)
+        setSelectedCustomers(new Set())
+        router.refresh()
+      } else {
+        toast.error(result.error || "Erro ao enviar negociacoes")
+      }
+    } catch (error) {
+      toast.error("Erro ao enviar negociacoes")
+    } finally {
+      setSendingNegotiation(false)
+    }
+  }
+
+  const togglePaymentMethod = (method: string) => {
+    setPaymentMethods((prev) => {
+      const next = new Set(prev)
+      if (next.has(method)) next.delete(method)
+      else next.add(method)
+      return next
+    })
+  }
+
+  const toggleNotificationChannel = (channel: string) => {
+    setNotificationChannels((prev) => {
+      const next = new Set(prev)
+      if (next.has(channel)) next.delete(channel)
+      else next.add(channel)
+      return next
+    })
   }
 
   const getStatusLabel = (status: string) => {
@@ -268,10 +383,38 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
               </div>
             </div>
             {selectedCustomers.size > 0 && (
-              <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
                 <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                   {selectedCustomers.size} cliente(s) selecionado(s)
                 </span>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    onClick={handleBulkAnalysis}
+                    disabled={analyzing}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {analyzing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analisando...
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="mr-2 h-4 w-4" />
+                        Enviar Analises ({selectedCustomers.size})
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={openNegotiationModal}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-gray-900"
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    Enviar Negociacoes ({selectedCustomers.size})
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -400,8 +543,111 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
               ))
             )}
           </div>
-        </CardContent>
-      </Card>
+  </CardContent>
+  </Card>
+
+      <Dialog open={showNegotiationModal} onOpenChange={setShowNegotiationModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enviar Negociacao</DialogTitle>
+            <DialogDescription>
+              Configure os parametros da negociacao para {selectedCustomers.size} cliente(s) selecionado(s).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Desconto (opcional)</Label>
+              <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem desconto (valor integral)</SelectItem>
+                  <SelectItem value="percentage">Percentual (%)</SelectItem>
+                  <SelectItem value="fixed">Valor fixo (R$)</SelectItem>
+                </SelectContent>
+              </Select>
+              {discountType !== "none" && (
+                <Input
+                  type="number"
+                  min="0"
+                  step={discountType === "percentage" ? "1" : "0.01"}
+                  max={discountType === "percentage" ? "100" : undefined}
+                  placeholder={discountType === "percentage" ? "Ex: 15" : "Ex: 500.00"}
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">
+                Metodo de Pagamento <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex flex-col gap-3">
+                {[
+                  { key: "boleto", label: "Boleto" },
+                  { key: "pix", label: "PIX" },
+                  { key: "credit_card", label: "Cartao de Credito" },
+                ].map((m) => (
+                  <div key={m.key} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`cpm-${m.key}`}
+                      checked={paymentMethods.has(m.key)}
+                      onCheckedChange={() => togglePaymentMethod(m.key)}
+                      className="border-foreground/70"
+                    />
+                    <Label htmlFor={`cpm-${m.key}`} className="text-sm cursor-pointer">{m.label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">
+                Canal de Notificacao <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex flex-col gap-3">
+                {[
+                  { key: "email", label: "E-mail" },
+                  { key: "sms", label: "SMS" },
+                  { key: "whatsapp", label: "WhatsApp" },
+                ].map((c) => (
+                  <div key={c.key} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`cnc-${c.key}`}
+                      checked={notificationChannels.has(c.key)}
+                      onCheckedChange={() => toggleNotificationChannel(c.key)}
+                      className="border-foreground/70"
+                    />
+                    <Label htmlFor={`cnc-${c.key}`} className="text-sm cursor-pointer">{c.label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNegotiationModal(false)} disabled={sendingNegotiation}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSendNegotiations}
+              disabled={sendingNegotiation || paymentMethods.size === 0 || notificationChannels.size === 0}
+              className="bg-yellow-500 hover:bg-yellow-600 text-gray-900"
+            >
+              {sendingNegotiation ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Confirmar Envio
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
