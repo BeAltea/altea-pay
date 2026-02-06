@@ -3,10 +3,6 @@
 const ASAAS_API_URL = "https://api.asaas.com/v3"
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY
 
-if (!ASAAS_API_KEY) {
-  throw new Error("ASAAS_API_KEY environment variable is required")
-}
-
 export interface AsaasCustomer {
   id: string
   name: string
@@ -52,6 +48,10 @@ export interface CreatePaymentParams {
 }
 
 async function asaasFetch(endpoint: string, options?: RequestInit) {
+  if (!ASAAS_API_KEY) {
+    throw new Error("ASAAS_API_KEY environment variable is not configured. Please add it to your project settings.")
+  }
+
   const response = await fetch(`${ASAAS_API_URL}${endpoint}`, {
     ...options,
     headers: {
