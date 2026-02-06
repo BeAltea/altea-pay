@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,29 +10,30 @@ import { DynamicCustomerForm } from "@/components/dashboard/dynamic-customer-for
 import { getCompanyTableName } from "@/app/actions/multi-tenant-actions"
 
 interface NewClientPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default function NewClientPage({ params }: NewClientPageProps) {
+  const { id } = use(params)
   const router = useRouter()
   const [companyInfo, setCompanyInfo] = useState<{ name: string; tableName: string } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadCompanyInfo() {
-      const result = await getCompanyTableName(params.id)
+      const result = await getCompanyTableName(id)
       if (result.success && result.companyName && result.tableName) {
         setCompanyInfo({ name: result.companyName, tableName: result.tableName })
       }
       setLoading(false)
     }
     loadCompanyInfo()
-  }, [params.id])
+  }, [id])
 
   const handleSuccess = () => {
-    router.push(`/super-admin/companies/${params.id}`)
+    router.push(`/super-admin/companies/${id}`)
   }
 
   if (loading) {
@@ -48,7 +49,7 @@ export default function NewClientPage({ params }: NewClientPageProps) {
       <div className="flex flex-col gap-6 p-8 max-w-4xl mx-auto">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/super-admin/companies/${params.id}`}>
+            <Link href={`/super-admin/companies/${id}`}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -65,7 +66,7 @@ export default function NewClientPage({ params }: NewClientPageProps) {
     <div className="flex flex-col gap-6 p-8 max-w-4xl mx-auto">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/super-admin/companies/${params.id}`}>
+          <Link href={`/super-admin/companies/${id}`}>
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
@@ -85,9 +86,9 @@ export default function NewClientPage({ params }: NewClientPageProps) {
         </CardHeader>
         <CardContent>
           <DynamicCustomerForm
-            companyId={params.id}
+            companyId={id}
             onSuccess={handleSuccess}
-            onCancel={() => router.push(`/super-admin/companies/${params.id}`)}
+            onCancel={() => router.push(`/super-admin/companies/${id}`)}
           />
         </CardContent>
       </Card>

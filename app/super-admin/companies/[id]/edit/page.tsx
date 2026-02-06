@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +27,8 @@ interface CompanyFormData {
   notes: string
 }
 
-export default function EditCompanyPage({ params }: { params: { id: string } }) {
+export default function EditCompanyPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 
@@ -60,7 +61,7 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
 
     alert("Dados da empresa atualizados com sucesso!")
     setIsLoading(false)
-    router.push(`/super-admin/companies/${params.id}`)
+    router.push(`/super-admin/companies/${id}`)
   }
 
   return (
@@ -85,7 +86,7 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/companies/${params.id}`}>
+            <Link href={`/super-admin/companies/${id}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>
@@ -220,7 +221,7 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
 
         <div className="flex justify-end space-x-4">
           <Button type="button" variant="outline" asChild>
-            <Link href={`/super-admin/companies/${params.id}`}>Cancelar</Link>
+            <Link href={`/super-admin/companies/${id}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? (

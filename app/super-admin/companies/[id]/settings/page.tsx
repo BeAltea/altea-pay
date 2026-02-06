@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,7 +36,8 @@ interface CompanySettings {
   }
 }
 
-export default function CompanySettingsPage({ params }: { params: { id: string } }) {
+export default function CompanySettingsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [isLoading, setIsLoading] = useState(false)
   const [settings, setSettings] = useState<CompanySettings>({
     notifications: {
@@ -125,7 +126,7 @@ export default function CompanySettingsPage({ params }: { params: { id: string }
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/companies/${params.id}`}>
+            <Link href={`/super-admin/companies/${id}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>

@@ -82,7 +82,7 @@ export default async function SuperAdminNegotiatePage({
 
       <div className="border-t pt-6">
         <NegotiationForm
-          customerId={params.customerId}
+          customerId={customerId}
           companyId={id}
           totalDebt={totalDebt}
           customerName={customer.Cliente}

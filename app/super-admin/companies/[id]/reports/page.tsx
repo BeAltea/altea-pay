@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,7 +19,8 @@ import {
   PieChart,
 } from "lucide-react"
 
-export default function CompanyReportsPage({ params }: { params: { id: string } }) {
+export default function CompanyReportsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [selectedPeriod, setSelectedPeriod] = useState("current-month")
 
   const companyName = "Enel Distribuição São Paulo"
@@ -46,7 +47,7 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
   }
 
   const handleExportReport = (reportType: string) => {
-    console.log("[v0] Exportando relatório:", reportType, "para empresa:", params.id)
+    console.log("[v0] Exportando relatório:", reportType, "para empresa:", id)
 
     const csvContent = `data:text/csv;charset=utf-8,Relatório ${reportType} - ${companyName}\\n\\nPeríodo: ${selectedPeriod}\\nTotal de Clientes: ${reportData.performance.totalCustomers}\\nTaxa de Recuperação: ${reportData.performance.recoveryRate}%\\n\\nExportado em: ${new Date().toLocaleString("pt-BR")}`
 
@@ -86,7 +87,7 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/companies/${params.id}`}>
+            <Link href={`/super-admin/companies/${id}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>
