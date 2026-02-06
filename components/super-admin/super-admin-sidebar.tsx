@@ -13,14 +13,12 @@ import {
   BarChart3,
   Settings,
   Shield,
-  FileText,
-  TrendingUp,
-  Database,
   Target,
   CreditCard,
   Sparkles,
   LayoutGrid,
   Mail,
+  Handshake,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -95,6 +93,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/collection-rules"),
     },
     {
+      name: "Negociações",
+      href: "/super-admin/negotiations",
+      icon: Handshake,
+      current: pathname.startsWith("/super-admin/negotiations"),
+    },
+    {
       name: "Enviar Email",
       href: "/super-admin/send-email",
       icon: Mail,
@@ -106,24 +110,7 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       icon: BarChart3,
       current: pathname.startsWith("/super-admin/reports"),
     },
-    {
-      name: "Analytics",
-      href: "/super-admin/analytics",
-      icon: TrendingUp,
-      current: pathname.startsWith("/super-admin/analytics"),
-    },
-    {
-      name: "Auditoria",
-      href: "/super-admin/audit",
-      icon: FileText,
-      current: pathname.startsWith("/super-admin/audit"),
-    },
-    {
-      name: "Sistema",
-      href: "/super-admin/system",
-      icon: Database,
-      current: pathname.startsWith("/super-admin/system"),
-    },
+
     {
       name: "Configurações",
       href: "/super-admin/settings",
