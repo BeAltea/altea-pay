@@ -286,10 +286,21 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
             }
           }
 
-          // 4. Create Asaas payment
+          // 4. Create Asaas payment - map selected payment methods to billingType
+          // If only one method selected, use that specific type. Otherwise use UNDEFINED.
+          let billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED" = "UNDEFINED"
+          const methodMapping: Record<string, "BOLETO" | "CREDIT_CARD" | "PIX"> = {
+            boleto: "BOLETO",
+            pix: "PIX",
+            credit_card: "CREDIT_CARD",
+          }
+          if (params.paymentMethods.length === 1 && methodMapping[params.paymentMethods[0]]) {
+            billingType = methodMapping[params.paymentMethods[0]]
+          }
+
           const paymentParams: any = {
             customer: asaasCustomerId,
-            billingType: "UNDEFINED" as const,
+            billingType,
             value: agreedAmount,
             dueDate: dueDateStr,
             description: `Acordo de negociacao - ${customerName}`,
@@ -328,6 +339,52 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           // Delete the draft agreement since payment failed
           await supabase.from("agreements").delete().eq("id", agreement.id)
           continue
+        }
+
+        // Send SMS directly via Twilio if SMS channel is selected (Asaas SMS may not be enabled)
+        if (params.notificationChannels.includes("sms") && customerPhone) {
+          try {
+            const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
+            
+            // Format phone number to international format
+            let formattedPhone = customerPhone.replace(/\D/g, "")
+            if (formattedPhone.length >= 10 && !formattedPhone.startsWith("55")) {
+              formattedPhone = "55" + formattedPhone
+            }
+            formattedPhone = "+" + formattedPhone
+
+            // Get payment URL from the agreement we just updated
+            const { data: updatedAgreement } = await supabase
+              .from("agreements")
+              .select("asaas_payment_url")
+              .eq("id", agreement.id)
+              .single()
+
+            const paymentUrl = updatedAgreement?.asaas_payment_url || ""
+
+            // Get company name
+            const { data: companyData } = await supabase
+              .from("companies")
+              .select("name")
+              .eq("id", params.companyId)
+              .single()
+
+            const smsBody = await generateDebtCollectionSMS({
+              customerName,
+              debtAmount: agreedAmount,
+              companyName: companyData?.name || "Empresa",
+              paymentLink: paymentUrl,
+            })
+
+            const smsResult = await sendSMS({ to: formattedPhone, body: smsBody })
+            if (!smsResult.success) {
+              console.log(`[sendBulkNegotiations] SMS Twilio falhou para ${customerName}: ${smsResult.error}`)
+            } else {
+              console.log(`[sendBulkNegotiations] SMS Twilio enviado para ${customerName}`)
+            }
+          } catch (smsErr: any) {
+            console.error(`[sendBulkNegotiations] Erro ao enviar SMS Twilio para ${customerName}:`, smsErr.message)
+          }
         }
 
         // Update VMAX negotiation status
