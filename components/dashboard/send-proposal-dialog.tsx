@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Mail, MessageSquare, Send } from "lucide-react"
+import { Mail, MessageSquare, Phone, Send } from "lucide-react"
 import { toast } from "sonner"
+
+type SendChannel = "email" | "whatsapp_phone1" | "whatsapp_phone2" | "sms_phone1" | "sms_phone2"
 
 interface SendProposalDialogProps {
   open: boolean
@@ -14,7 +16,8 @@ interface SendProposalDialogProps {
   agreementId: string
   customerName: string
   customerEmail?: string
-  customerPhone?: string
+  customerPhone1?: string
+  customerPhone2?: string
 }
 
 export function SendProposalDialog({
@@ -23,76 +26,51 @@ export function SendProposalDialog({
   agreementId,
   customerName,
   customerEmail,
-  customerPhone,
+  customerPhone1,
+  customerPhone2,
 }: SendProposalDialogProps) {
-  const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | "sms">("email")
+  const [sendingChannel, setSendingChannel] = useState<SendChannel>(
+    customerEmail ? "email" : customerPhone1 ? "whatsapp_phone1" : customerPhone2 ? "whatsapp_phone2" : "email"
+  )
   const [loading, setLoading] = useState(false)
-  const [email, setEmail] = useState(customerEmail)
-  const [phone, setPhone] = useState(customerPhone)
-  const [fetchingContacts, setFetchingContacts] = useState(false)
 
-  useEffect(() => {
-    async function fetchCustomerContacts() {
-      if (!agreementId || (email && phone)) return
-
-      setFetchingContacts(true)
-      try {
-        const { createClient } = await import("@/lib/supabase/client")
-        const supabase = createClient()
-
-        const { data: agreement } = await supabase
-          .from("agreements")
-          .select("customer_id, customers:customer_id(document, email, phone)")
-          .eq("id", agreementId)
-          .single()
-
-        if (agreement) {
-          const customer = agreement.customers as any
-          let customerEmail = customer?.email
-          let customerPhone = customer?.phone
-
-          // If customer data is missing, try to get from VMAX
-          if (!customerEmail || !customerPhone) {
-            const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
-
-            const { data: vmaxRecord } = await supabase
-              .from("VMAX")
-              .select('Email, "Telefone 1", "Telefone 2"')
-              .eq('"CPF/CNPJ"', cleanedDocument)
-              .single()
-
-            if (vmaxRecord) {
-              customerEmail = customerEmail || vmaxRecord.Email
-              customerPhone = customerPhone || vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"]
-            }
-          }
-
-          setEmail(customerEmail)
-          setPhone(customerPhone)
-        }
-      } catch (error) {
-        console.error("Error fetching customer contacts:", error)
-      } finally {
-        setFetchingContacts(false)
-      }
-    }
-
-    if (open) {
-      fetchCustomerContacts()
-    }
-  }, [open, agreementId, email, phone])
+  // Dados de contato vem DIRETO das props (que sao da VMAX)
+  const email = customerEmail
+  const phone1 = customerPhone1
+  const phone2 = customerPhone2
 
   const handleSend = async () => {
     setLoading(true)
 
     try {
+      // Map the channel to the action format and determine which phone to use
+      let actionChannel: "email" | "whatsapp" | "sms" = "email"
+      let selectedPhone: string | undefined
+
+      if (sendingChannel === "whatsapp_phone1") {
+        actionChannel = "whatsapp"
+        selectedPhone = phone1
+      } else if (sendingChannel === "whatsapp_phone2") {
+        actionChannel = "whatsapp"
+        selectedPhone = phone2
+      } else if (sendingChannel === "sms_phone1") {
+        actionChannel = "sms"
+        selectedPhone = phone1
+      } else if (sendingChannel === "sms_phone2") {
+        actionChannel = "sms"
+        selectedPhone = phone2
+      }
+
       const { sendPaymentLink } = await import("@/app/actions/send-payment-link")
-      const result = await sendPaymentLink(agreementId, sendingChannel)
+      const result = await sendPaymentLink(agreementId, actionChannel, {
+        email: email,
+        phone: selectedPhone || phone1 || phone2,
+        customerName: customerName,
+      })
 
       if (result.success) {
-        toast.success(
-          `Proposta enviada com sucesso via ${sendingChannel === "email" ? "E-mail" : sendingChannel === "whatsapp" ? "WhatsApp" : "SMS"}!`,
-        )
+        const channelLabel = actionChannel === "email" ? "e-mail" : actionChannel === "whatsapp" ? "WhatsApp" : "SMS"
+        toast.success(`Proposta enviada com sucesso via ${channelLabel}!`)
         onOpenChange(false)
       } else {
         toast.error(result.error || "Erro ao enviar proposta")
@@ -105,78 +83,105 @@ export function SendProposalDialog({
     }
   }
 
+  const ChannelOption = ({
+    value,
+    icon: Icon,
+    label,
+    detail,
+    disabled,
+  }: {
+    value: SendChannel
+    icon: typeof Mail
+    label: string
+    detail: string
+    disabled?: boolean
+  }) => (
+    <div
+      className={`flex items-center gap-3 border rounded-lg p-4 transition-colors ${
+        disabled
+          ? "opacity-50 cursor-not-allowed bg-muted/30"
+          : sendingChannel === value
+            ? "border-primary bg-primary/5 cursor-pointer"
+            : "border-border hover:border-primary/50 cursor-pointer"
+      }`}
+      onClick={() => !disabled && setSendingChannel(value)}
+    >
+      <RadioGroupItem value={value} id={value} disabled={disabled} />
+      <Icon className="h-5 w-5 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0">
+        <Label htmlFor={value} className={`font-medium ${disabled ? "" : "cursor-pointer"}`}>
+          {label}
+        </Label>
+        <p className="text-sm text-muted-foreground truncate">{detail}</p>
+      </div>
+    </div>
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Enviar Proposta para o Cliente</DialogTitle>
           <DialogDescription>
-            Escolha o canal de comunicação para enviar a proposta de acordo para {customerName}
+            Escolha o canal de comunicacao para enviar a proposta de acordo para {customerName}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {fetchingContacts ? (
-            <div className="text-center text-muted-foreground">Carregando informações de contato...</div>
-          ) : (
-            <RadioGroup value={sendingChannel} onValueChange={(value) => setSendingChannel(value as any)}>
+            <RadioGroup value={sendingChannel} onValueChange={(value) => setSendingChannel(value as SendChannel)}>
               <div className="space-y-3">
-                <div
-                  className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
-                    sendingChannel === "email" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => setSendingChannel("email")}
-                >
-                  <RadioGroupItem value="email" id="email" />
-                  <Mail className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <Label htmlFor="email" className="cursor-pointer font-medium">
-                      E-mail
-                    </Label>
-                    <p className="text-sm text-muted-foreground">{email || "Nenhum e-mail cadastrado"}</p>
-                  </div>
-                </div>
+                {/* Email option */}
+                <ChannelOption
+                  value="email"
+                  icon={Mail}
+                  label="E-mail"
+                  detail={email || "Nenhum e-mail cadastrado"}
+                  disabled={!email}
+                />
 
-                <div
-                  className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
-                    sendingChannel === "whatsapp"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => setSendingChannel("whatsapp")}
-                >
-                  <RadioGroupItem value="whatsapp" id="whatsapp" />
-                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <Label htmlFor="whatsapp" className="cursor-pointer font-medium">
-                      WhatsApp
-                    </Label>
-                    <p className="text-sm text-muted-foreground">{phone || "Nenhum telefone cadastrado"}</p>
-                  </div>
-                </div>
+                {/* WhatsApp - Telefone 1 */}
+                <ChannelOption
+                  value="whatsapp_phone1"
+                  icon={MessageSquare}
+                  label="WhatsApp - Telefone 1"
+                  detail={phone1 || "Nenhum telefone 1 cadastrado"}
+                  disabled={!phone1}
+                />
 
-                <div
-                  className={`flex items-center space-x-3 border rounded-lg p-4 cursor-pointer transition-colors ${
-                    sendingChannel === "sms" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => setSendingChannel("sms")}
-                >
-                  <RadioGroupItem value="sms" id="sms" />
-                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <Label htmlFor="sms" className="cursor-pointer font-medium">
-                      SMS
-                    </Label>
-                    <p className="text-sm text-muted-foreground">{phone || "Nenhum telefone cadastrado"}</p>
-                  </div>
-                </div>
+                {/* WhatsApp - Telefone 2 */}
+                {phone2 && (
+                  <ChannelOption
+                    value="whatsapp_phone2"
+                    icon={MessageSquare}
+                    label="WhatsApp - Telefone 2"
+                    detail={phone2}
+                  />
+                )}
+
+                {/* SMS - Telefone 1 */}
+                <ChannelOption
+                  value="sms_phone1"
+                  icon={Phone}
+                  label="SMS - Telefone 1"
+                  detail={phone1 || "Nenhum telefone 1 cadastrado"}
+                  disabled={!phone1}
+                />
+
+                {/* SMS - Telefone 2 */}
+                {phone2 && (
+                  <ChannelOption
+                    value="sms_phone2"
+                    icon={Phone}
+                    label="SMS - Telefone 2"
+                    detail={phone2}
+                  />
+                )}
               </div>
             </RadioGroup>
-          )}
 
           <div className="bg-muted rounded-lg p-3 text-sm text-muted-foreground">
             <p>
-              O cliente receberá um link de pagamento gerado pelo Asaas com os detalhes completos do acordo e as opções
+              O cliente recebera um link de pagamento gerado pelo Asaas com os detalhes completos do acordo e as opcoes
               de pagamento.
             </p>
           </div>
@@ -186,7 +191,7 @@ export function SendProposalDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>
-          <Button onClick={handleSend} disabled={loading || fetchingContacts}>
+          <Button onClick={handleSend} disabled={loading}>
             <Send className="w-4 h-4 mr-2" />
             {loading ? "Enviando..." : "Enviar Proposta"}
           </Button>

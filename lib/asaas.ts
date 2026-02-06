@@ -48,6 +48,7 @@ export interface CreatePaymentParams {
   externalReference?: string
   installmentCount?: number
   installmentValue?: number
+  postalService?: boolean
 }
 
 async function asaasFetch(endpoint: string, options?: RequestInit) {
@@ -79,6 +80,7 @@ export async function createAsaasCustomer(params: {
   postalCode?: string
   address?: string
   addressNumber?: string
+  notificationDisabled?: boolean
 }): Promise<AsaasCustomer> {
   console.log("[v0] Creating Asaas customer:", params.cpfCnpj)
 
@@ -105,6 +107,19 @@ export async function createAsaasPayment(params: CreatePaymentParams): Promise<A
   })
 }
 
+export async function updateAsaasCustomer(customerId: string, params: {
+  notificationDisabled?: boolean
+  email?: string
+  mobilePhone?: string
+}): Promise<AsaasCustomer> {
+  console.log("[v0] Updating Asaas customer:", customerId, params)
+
+  return asaasFetch(`/customers/${customerId}`, {
+    method: "PUT",
+    body: JSON.stringify(params),
+  })
+}
+
 export async function getAsaasPayment(paymentId: string): Promise<AsaasPayment> {
   return asaasFetch(`/payments/${paymentId}`)
 }
@@ -113,4 +128,50 @@ export async function getAsaasPaymentByExternalReference(externalReference: stri
   const data = await asaasFetch(`/payments?externalReference=${externalReference}`)
 
   return data.data?.[0] || null
+}
+
+// Buscar notificacoes de um cliente Asaas
+export async function getAsaasCustomerNotifications(customerId: string): Promise<any[]> {
+  const data = await asaasFetch(`/customers/${customerId}/notifications`)
+  return data.data || []
+}
+
+// Atualizar notificacao especifica do Asaas
+export async function updateAsaasNotification(notificationId: string, params: {
+  enabled?: boolean
+  emailEnabledForCustomer?: boolean
+  smsEnabledForCustomer?: boolean
+  whatsappEnabledForCustomer?: boolean
+}): Promise<any> {
+  return asaasFetch(`/notifications/${notificationId}`, {
+    method: "PUT",
+    body: JSON.stringify(params),
+  })
+}
+
+// Habilitar notificacoes do cliente e enviar por canal especifico
+export async function sendAsaasNotification(customerId: string, channel: "email" | "sms" | "whatsapp"): Promise<void> {
+  const notifications = await getAsaasCustomerNotifications(customerId)
+  
+  // Encontrar notificacao PAYMENT_CREATED
+  const paymentCreatedNotification = notifications.find(
+    (n: any) => n.event === "PAYMENT_CREATED"
+  )
+
+  if (paymentCreatedNotification) {
+    await updateAsaasNotification(paymentCreatedNotification.id, {
+      enabled: true,
+      emailEnabledForCustomer: channel === "email",
+      smsEnabledForCustomer: channel === "sms",
+      whatsappEnabledForCustomer: channel === "whatsapp",
+    })
+  }
+}
+
+// Reenviar notificacao de uma cobranca Asaas
+export async function resendAsaasPaymentNotification(paymentId: string): Promise<any> {
+  return asaasFetch(`/payments/${paymentId}/resendNotification`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
 }

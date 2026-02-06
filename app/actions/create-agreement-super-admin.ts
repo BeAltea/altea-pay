@@ -1,10 +1,11 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { createAsaasCustomer, getAsaasCustomerByCpfCnpj, updateAsaasCustomer } from "@/lib/asaas"
 
-export async function createAgreementWithAsaas(params: {
+export async function createAgreementSuperAdmin(params: {
   vmaxId: string
+  companyId: string
   agreedAmount: number
   installments: number
   dueDate: string
@@ -12,18 +13,21 @@ export async function createAgreementWithAsaas(params: {
   terms?: string
 }) {
   try {
-    const supabase = await createClient()
+    // Verify user is super admin
+    const authSupabase = await createClient()
+    const { data: { user } } = await authSupabase.auth.getUser()
+    if (!user) throw new Error("Nao autenticado")
 
-    // Get authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) throw new Error("Não autenticado")
+    const { data: profile } = await authSupabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
 
-    // Get user profile to get company
-    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single()
+    if (profile?.role !== "super_admin") throw new Error("Sem permissao")
 
-    if (!profile?.company_id) throw new Error("Empresa não encontrada")
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient()
 
     // Get VMAX record
     const { data: vmaxRecord, error: vmaxError } = await supabase
@@ -33,22 +37,22 @@ export async function createAgreementWithAsaas(params: {
       .single()
 
     if (vmaxError || !vmaxRecord) {
-      throw new Error("Registro não encontrado")
+      throw new Error("Registro nao encontrado")
     }
 
-    // Step 1: Create or get customer in our database
     const cpfCnpj = vmaxRecord["CPF/CNPJ"]?.replace(/[^\d]/g, "") || ""
     const customerName = vmaxRecord.Cliente || "Cliente"
     const customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || "").replace(/[^\d]/g, "")
     const customerEmail = vmaxRecord.Email || ""
 
+    // Create or get customer
     let customerId: string
 
     const { data: existingCustomer } = await supabase
       .from("customers")
-      .select("id, user_id")
+      .select("id")
       .eq("document", cpfCnpj)
-      .eq("company_id", profile.company_id)
+      .eq("company_id", params.companyId)
       .maybeSingle()
 
     if (existingCustomer) {
@@ -67,7 +71,7 @@ export async function createAgreementWithAsaas(params: {
           document_type: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
           phone: customerPhone,
           email: customerEmail,
-          company_id: profile.company_id,
+          company_id: params.companyId,
           source_system: "VMAX",
           external_id: params.vmaxId,
         })
@@ -78,18 +82,18 @@ export async function createAgreementWithAsaas(params: {
       customerId = newCustomer.id
     }
 
-    // Step 2: Create or get debt
-    // Parse Brazilian format: "1.234,56" or "R$ 1.234,56" -> remove dots (thousands), replace comma with dot
+    // Parse debt amount
     const vencidoStr = String(vmaxRecord.Vencido || "0")
     const originalAmount = Number(vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0
 
+    // Create or get debt
     let debtId: string
 
     const { data: existingDebt } = await supabase
       .from("debts")
       .select("id")
       .eq("customer_id", customerId)
-      .eq("company_id", profile.company_id)
+      .eq("company_id", params.companyId)
       .eq("external_id", params.vmaxId)
       .maybeSingle()
 
@@ -100,7 +104,7 @@ export async function createAgreementWithAsaas(params: {
         .from("debts")
         .insert({
           customer_id: customerId,
-          company_id: profile.company_id,
+          company_id: params.companyId,
           amount: originalAmount,
           due_date: params.dueDate,
           description: `Divida de ${customerName}`,
@@ -115,14 +119,12 @@ export async function createAgreementWithAsaas(params: {
       debtId = newDebt.id
     }
 
-    // Step 3: Salvar dados do Asaas (so o cliente, cobranca sera criada ao enviar)
+    // Asaas - so criar/atualizar cliente (cobranca sera criada ao enviar)
     let asaasCustomerId: string
 
     const existingAsaasCustomer = await getAsaasCustomerByCpfCnpj(cpfCnpj)
-
     if (existingAsaasCustomer) {
       asaasCustomerId = existingAsaasCustomer.id
-      // Atualizar dados de contato com dados da VMAX
       await updateAsaasCustomer(asaasCustomerId, {
         email: customerEmail || undefined,
         mobilePhone: customerPhone || undefined,
@@ -139,7 +141,7 @@ export async function createAgreementWithAsaas(params: {
       asaasCustomerId = asaasCustomer.id
     }
 
-    // Step 4: Salvar acordo no banco (SEM criar cobranca no Asaas ainda)
+    // Salvar acordo no banco (SEM cobranca no Asaas)
     const discountPercentage = ((originalAmount - params.agreedAmount) / originalAmount) * 100
     const installmentAmount = params.agreedAmount / params.installments
 
@@ -149,7 +151,7 @@ export async function createAgreementWithAsaas(params: {
         debt_id: debtId,
         customer_id: customerId,
         user_id: user.id,
-        company_id: profile.company_id,
+        company_id: params.companyId,
         original_amount: originalAmount,
         agreed_amount: params.agreedAmount,
         discount_amount: originalAmount - params.agreedAmount,
@@ -173,7 +175,7 @@ export async function createAgreementWithAsaas(params: {
       agreement,
     }
   } catch (error) {
-    console.error("Error creating agreement with Asaas:", error)
+    console.error("Error creating agreement (super admin):", error)
     throw error
   }
 }

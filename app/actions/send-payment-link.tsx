@@ -1,156 +1,131 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
-import { Resend } from "resend"
+import { createAdminClient } from "@/lib/supabase/server"
+import {
+  createAsaasPayment,
+  updateAsaasCustomer,
+  getAsaasCustomerNotifications,
+  updateAsaasNotification,
+} from "@/lib/asaas"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
-export async function sendPaymentLink(agreementId: string, channel: "email" | "sms" | "whatsapp") {
+export async function sendPaymentLink(
+  agreementId: string,
+  channel: "email" | "sms" | "whatsapp",
+  contactInfo: {
+    email?: string
+    phone?: string
+    customerName?: string
+  }
+) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
+    // Buscar acordo
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
-      .select(`
-        *,
-        customers!inner(id, name, document, email, phone),
-        companies!inner(id, name, cnpj)
-      `)
+      .select("*")
       .eq("id", agreementId)
       .single()
 
     if (agreementError || !agreement) {
-      return { success: false, error: "Acordo não encontrado" }
+      return { success: false, error: "Acordo nao encontrado" }
     }
 
-    const paymentUrl = agreement.asaas_payment_url
+    const asaasCustomerId = agreement.asaas_customer_id
 
-    if (!paymentUrl) {
-      return {
-        success: false,
-        error: "Link de pagamento não encontrado. Certifique-se de que a cobrança foi criada no Asaas.",
+    if (!asaasCustomerId) {
+      return { success: false, error: "Cliente Asaas nao encontrado neste acordo." }
+    }
+
+    // 1. Atualizar dados de contato do cliente no Asaas com dados da VMAX
+    const updateData: any = { notificationDisabled: false }
+    if (contactInfo.email) updateData.email = contactInfo.email
+    if (contactInfo.phone) {
+      const cleanPhone = contactInfo.phone.replace(/[^\d]/g, "")
+      updateData.mobilePhone = cleanPhone
+    }
+    await updateAsaasCustomer(asaasCustomerId, updateData)
+
+    // 2. Configurar notificacoes: habilitar SOMENTE PAYMENT_CREATED no canal escolhido
+    const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
+
+    for (const notif of allNotifications) {
+      if (notif.event === "PAYMENT_CREATED") {
+        // Habilitar SOMENTE no canal escolhido
+        await updateAsaasNotification(notif.id, {
+          enabled: true,
+          emailEnabledForCustomer: channel === "email",
+          smsEnabledForCustomer: channel === "sms",
+          whatsappEnabledForCustomer: channel === "whatsapp",
+        })
+      } else {
+        // Desabilitar todos os outros eventos
+        await updateAsaasNotification(notif.id, {
+          enabled: false,
+          emailEnabledForCustomer: false,
+          smsEnabledForCustomer: false,
+          whatsappEnabledForCustomer: false,
+        })
       }
     }
 
-    const customer = agreement.customers as any
-    const company = agreement.companies as any
-    const customerName = customer?.name || "Cliente"
-    let customerEmail = customer?.email
-    let customerPhone = customer?.phone
+    // 3. AGORA criar a cobranca no Asaas - isso vai disparar a notificacao automaticamente
+    const customerName = contactInfo.customerName || "Cliente"
+    const installmentAmount = agreement.installment_amount || agreement.agreed_amount
+    const installments = agreement.installments || 1
 
-    if (!customerEmail || !customerPhone) {
-      const cleanedDocument = customer?.document?.replace(/[^\d]/g, "") || ""
-      const { data: vmaxRecord } = await supabase
-        .from("VMAX")
-        .select("Email, Telefone")
-        .eq('"CPF/CNPJ"', cleanedDocument)
-        .single()
+    const asaasPayment = await createAsaasPayment({
+      customer: asaasCustomerId,
+      billingType: "UNDEFINED",
+      value: installments > 1 ? installmentAmount : agreement.agreed_amount,
+      dueDate: agreement.due_date,
+      description: `Acordo de negociacao - ${customerName}${
+        installments > 1 ? ` (Parcela 1/${installments})` : ""
+      }`,
+      externalReference: `agreement_${agreementId}`,
+      postalService: false,
+      ...(installments > 1 && {
+        installmentCount: installments,
+        installmentValue: installmentAmount,
+      }),
+    })
 
-      if (vmaxRecord) {
-        customerEmail = customerEmail || vmaxRecord.Email
-        customerPhone = customerPhone || vmaxRecord.Telefone
-      }
-    }
-
-    if (channel === "email") {
-      if (!customerEmail) {
-        return { success: false, error: "Cliente não possui e-mail cadastrado" }
-      }
-
-      const originalValue = agreement.original_amount || 0
-      const finalValue = agreement.agreed_amount || 0
-      const discount = originalValue - finalValue
-      const installments = agreement.installments || 1
-
-      const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Proposta de Acordo</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; margin: 0; padding: 0; }
-            .container { max-width: 600px; margin: 20px auto; background: white; border-radius: 8px; overflow: hidden; }
-            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
-            .content { padding: 30px; }
-            .detail-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            .detail-table td { padding: 12px; border-bottom: 1px solid #eee; }
-            .detail-table td:first-child { font-weight: bold; color: #666; }
-            .detail-table td:last-child { text-align: right; }
-            .discount { color: #10B981; font-weight: bold; }
-            .button { display: inline-block; padding: 15px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-            .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>Proposta de Acordo</h1>
-              <p>Sua negociação está pronta!</p>
-            </div>
-            <div class="content">
-              <p>Olá <strong>${customerName}</strong>,</p>
-              <p>Sua proposta de acordo foi gerada com sucesso. Confira os detalhes:</p>
-              <table class="detail-table">
-                <tr>
-                  <td>Empresa</td>
-                  <td>${company?.name || "N/A"}</td>
-                </tr>
-                <tr>
-                  <td>Valor Original</td>
-                  <td>R$ ${originalValue.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td>Desconto</td>
-                  <td class="discount">- R$ ${discount.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td>Valor Final</td>
-                  <td style="font-size: 20px; font-weight: bold; color: #667eea;">R$ ${finalValue.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td>Parcelas</td>
-                  <td>${installments}x de R$ ${(finalValue / installments).toFixed(2)}</td>
-                </tr>
-              </table>
-              <p style="text-align: center;">
-                <a href="${paymentUrl}" class="button">Ver Cobrança</a>
-              </p>
-              <p style="font-size: 12px; color: #666;">Este link de pagamento é seguro e foi gerado pelo sistema Asaas.</p>
-            </div>
-            <div class="footer">
-              <p>Este é um e-mail automático. Por favor, não responda.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
-
-      const { data, error } = await resend.emails.send({
-        from: `${company?.name || "Cobrança"} <onboarding@resend.dev>`,
-        to: [customerEmail],
-        subject: `Proposta de Acordo - ${customerName}`,
-        html: emailHtml,
+    // 4. Atualizar o acordo com os dados da cobranca
+    await supabase
+      .from("agreements")
+      .update({
+        asaas_payment_id: asaasPayment.id,
+        asaas_payment_url: asaasPayment.invoiceUrl || null,
+        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
+        asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+        status: "active",
       })
+      .eq("id", agreementId)
 
-      if (error) {
-        console.error("Resend error:", error)
-        return { success: false, error: "Erro ao enviar e-mail: " + error.message }
-      }
+    // 5. Desabilitar notificacoes do cliente novamente para nao enviar automaticamente no futuro
+    await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
 
-      return { success: true, data: { emailId: data?.id } }
+    // 6. Desabilitar PAYMENT_CREATED que habilitamos
+    const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
+    if (paymentCreatedNotif) {
+      await updateAsaasNotification(paymentCreatedNotif.id, {
+        enabled: false,
+        emailEnabledForCustomer: false,
+        smsEnabledForCustomer: false,
+        whatsappEnabledForCustomer: false,
+      })
     }
 
-    if (channel === "sms" || channel === "whatsapp") {
-      if (!customerPhone) {
-        return { success: false, error: "Cliente não possui telefone cadastrado" }
-      }
+    const channelLabel = channel === "email" ? "e-mail" : channel === "whatsapp" ? "WhatsApp" : "SMS"
 
-      return { success: false, error: "Envio por SMS/WhatsApp ainda não implementado" }
+    return {
+      success: true,
+      data: {
+        channel,
+        paymentUrl: asaasPayment.invoiceUrl,
+        message: `Cobranca criada e notificacao enviada via ${channelLabel}.`,
+      },
     }
-
-    return { success: false, error: "Canal inválido" }
   } catch (error: any) {
     console.error("Error in sendPaymentLink:", error)
     return { success: false, error: error.message || "Erro ao enviar proposta" }
