@@ -23,6 +23,8 @@ interface TopDebtor {
 interface RecentNegotiation {
   id: string
   customerId: string
+  customerName: string | null
+  customerCpfCnpj: string | null
   status: string
   value: number
   createdAt: string
@@ -269,10 +271,13 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                       >
                         <div>
                           <div className="text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
-                            {formatCurrency(neg.value)}
+                            {neg.customerName || `Cliente #${neg.customerId?.slice(0, 8) || "—"}`}
                           </div>
                           <div className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
-                            {formatDate(neg.createdAt)}
+                            {neg.customerCpfCnpj || formatCurrency(neg.value)}
+                          </div>
+                          <div className="text-xs mt-0.5" style={{ color: "var(--admin-text-muted)" }}>
+                            {formatCurrency(neg.value)} - {formatDate(neg.createdAt)}
                           </div>
                         </div>
                         <span

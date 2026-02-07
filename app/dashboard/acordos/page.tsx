@@ -44,11 +44,12 @@ export default async function AcordosPage() {
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })
 
-  // Fetch customer info for each agreement
+  // Fetch customer info for each agreement (check both VMAX and customers tables)
   const customerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
-  let customerMap = new Map()
+  let customerMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
 
   if (customerIds.length > 0) {
+    // First try VMAX table
     const { data: vmaxCustomers } = await supabase
       .from("VMAX")
       .select("id, Cliente, \"CPF/CNPJ\"")
@@ -58,6 +59,21 @@ export default async function AcordosPage() {
       vmaxCustomers.forEach((c: any) => {
         customerMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"] })
       })
+    }
+
+    // For any customer_ids not found in VMAX, try customers table
+    const missingIds = customerIds.filter(id => !customerMap.has(id))
+    if (missingIds.length > 0) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id, name, document")
+        .in("id", missingIds)
+
+      if (customers) {
+        customers.forEach((c: any) => {
+          customerMap.set(c.id, { name: c.name, cpfCnpj: c.document })
+        })
+      }
     }
   }
 

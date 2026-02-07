@@ -92,6 +92,39 @@ export default async function DashboardPage() {
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })
 
+  // Build customer name lookup map from agreements
+  const agreementCustomerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
+  let customerNameMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
+
+  if (agreementCustomerIds.length > 0) {
+    // First try VMAX table
+    const { data: vmaxCustomers } = await supabase
+      .from("VMAX")
+      .select("id, Cliente, \"CPF/CNPJ\"")
+      .in("id", agreementCustomerIds)
+
+    if (vmaxCustomers) {
+      vmaxCustomers.forEach((c: any) => {
+        customerNameMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"] })
+      })
+    }
+
+    // For any customer_ids not found in VMAX, try customers table
+    const missingIds = agreementCustomerIds.filter(id => !customerNameMap.has(id))
+    if (missingIds.length > 0) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id, name, document")
+        .in("id", missingIds)
+
+      if (customers) {
+        customers.forEach((c: any) => {
+          customerNameMap.set(c.id, { name: c.name, cpfCnpj: c.document })
+        })
+      }
+    }
+  }
+
   // Calculate stats
   const totalClientes = vmaxRecords.length
 
@@ -387,6 +420,11 @@ export default async function DashboardPage() {
                 }
                 const status = statusConfig[agreement.status] || statusConfig.draft
 
+                // Get customer info from lookup map
+                const customerInfo = customerNameMap.get(agreement.customer_id)
+                const customerName = customerInfo?.name || null
+                const customerCpfCnpj = customerInfo?.cpfCnpj || null
+
                 return (
                   <div
                     key={agreement.id}
@@ -396,10 +434,10 @@ export default async function DashboardPage() {
                     <div className="flex items-center justify-between mb-1.5">
                       <div>
                         <div className="text-[13px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
-                          Cliente #{agreement.customer_id?.slice(0, 8) || "—"}
+                          {customerName || `Cliente #${agreement.customer_id?.slice(0, 8) || "—"}`}
                         </div>
                         <div className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
-                          {installments}x de {formatCurrency(installmentAmount)}
+                          {customerCpfCnpj || `${installments}x de ${formatCurrency(installmentAmount)}`}
                         </div>
                       </div>
                       <span
