@@ -1,15 +1,12 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
 import {
   Search,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Eye,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -29,6 +26,7 @@ interface Cliente {
   hasAsaasCharge?: boolean
   "Dias Inad.": number
   Vencido: string
+  "Dt. Vcto"?: string  // Data de vencimento
   analysis_metadata: any
   behavioralData?: any
   restrictive_analysis_logs?: any
@@ -40,38 +38,54 @@ interface AdminClientesContentProps {
   company: { id: string; name: string } | null
 }
 
-type SortField = "name" | "creditScore" | "recoveryScore" | "negotiation"
+type SortField = "name" | "debtValue" | "debtDate"
 type SortDirection = "asc" | "desc"
 
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `R$ ${(value / 1000000).toFixed(1).replace(".", ",")}M`
-  } else if (value >= 1000) {
-    return `R$ ${(value / 1000).toFixed(1).replace(".", ",")}k`
+function formatCurrency(value: number | string | null): string {
+  if (value === null || value === undefined) return "R$ 0,00"
+
+  let numValue: number
+  if (typeof value === "string") {
+    // Parse Brazilian currency format: "R$ 1.234,56" or "1234.56"
+    const cleaned = value.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+    numValue = parseFloat(cleaned) || 0
+  } else {
+    numValue = value
   }
-  return `R$ ${value.toFixed(2).replace(".", ",")}`
+
+  return numValue.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  })
 }
 
-function getScoreColor(score: number | null): string {
-  if (score === null) return "var(--admin-text-muted)"
-  if (score >= 700) return "var(--admin-green)"
-  if (score >= 400) return "var(--admin-orange)"
-  return "var(--admin-red)"
+function parseDebtValue(value: string | number | null): number {
+  if (value === null || value === undefined) return 0
+  if (typeof value === "number") return value
+
+  // Parse Brazilian currency format: "R$ 1.234,56" or "1.234,56"
+  const cleaned = value.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+  return parseFloat(cleaned) || 0
 }
 
-function getScoreBarWidth(score: number | null): number {
-  if (score === null) return 0
-  return Math.min(100, Math.max(0, score / 10))
-}
-
-function getScoreClass(score: number | null): string {
-  if (score === null) return "—"
-  if (score >= 800) return "A"
-  if (score >= 700) return "B"
-  if (score >= 600) return "C"
-  if (score >= 500) return "D"
-  if (score >= 400) return "E"
-  return "F"
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "—"
+  try {
+    // Handle various date formats
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) {
+      // Try parsing Brazilian format DD/MM/YYYY
+      const parts = dateStr.split("/")
+      if (parts.length === 3) {
+        return dateStr // Already in correct format
+      }
+      return "—"
+    }
+    return date.toLocaleDateString("pt-BR")
+  } catch {
+    return "—"
+  }
 }
 
 function maskDocument(doc: string | null): string {
@@ -89,20 +103,12 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
-  const [creditScoreFilter, setCreditScoreFilter] = useState("all")
-  const [recoveryScoreFilter, setRecoveryScoreFilter] = useState("all")
   const [negotiationFilter, setNegotiationFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(50)
 
-  // Stats - uses ASAAS-backed negotiation status
+  // Stats
   const stats = useMemo(() => {
-    const withCreditScore = clientes.filter(c =>
-      c.credit_score !== null || c.restrictive_analysis_logs
-    ).length
-    const withRecoveryScore = clientes.filter(c =>
-      c.recovery_score !== null || c.behavioral_analysis_logs || c.behavioralData
-    ).length
     // Only count clients with REAL ASAAS charges as having negotiations
     const withNegotiation = clientes.filter(c =>
       c.asaasNegotiationStatus === "ATIVA_ASAAS" ||
@@ -111,8 +117,6 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
 
     return {
       total: clientes.length,
-      withCreditScore,
-      withRecoveryScore,
       withNegotiation
     }
   }, [clientes])
@@ -129,39 +133,23 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       )
     }
 
-    // Credit score filter
-    if (creditScoreFilter !== "all") {
-      filtered = filtered.filter(c => {
-        const score = c.credit_score
-        if (creditScoreFilter === "with") return score !== null
-        if (creditScoreFilter === "without") return score === null
-        if (creditScoreFilter === "high") return score !== null && score >= 700
-        if (creditScoreFilter === "medium") return score !== null && score >= 400 && score < 700
-        if (creditScoreFilter === "low") return score !== null && score < 400
-        return true
-      })
-    }
-
-    // Recovery score filter
-    if (recoveryScoreFilter !== "all") {
-      filtered = filtered.filter(c => {
-        const score = c.recovery_score ?? c.behavioralData?.recovery_score
-        if (recoveryScoreFilter === "with") return score !== null && score !== undefined
-        if (recoveryScoreFilter === "without") return score === null || score === undefined
-        if (recoveryScoreFilter === "high") return score !== null && score >= 700
-        if (recoveryScoreFilter === "medium") return score !== null && score >= 400 && score < 700
-        if (recoveryScoreFilter === "low") return score !== null && score < 400
-        return true
-      })
-    }
-
     // Negotiation filter - uses ASAAS-backed status
     if (negotiationFilter !== "all") {
       filtered = filtered.filter(c => {
-        // Only consider clients with REAL ASAAS charges as having active negotiations
-        const hasActiveNegotiation = c.asaasNegotiationStatus === "ATIVA_ASAAS" || c.asaasNegotiationStatus === "PAGO"
-        if (negotiationFilter === "with") return hasActiveNegotiation
-        if (negotiationFilter === "without") return !hasActiveNegotiation
+        const status = c.asaasNegotiationStatus
+        if (negotiationFilter === "em_andamento") {
+          return status === "ATIVA_ASAAS"
+        }
+        if (negotiationFilter === "paga") {
+          return status === "PAGO"
+        }
+        if (negotiationFilter === "em_atraso") {
+          // Em atraso: has ASAAS charge but overdue
+          return status === "ATIVA_ASAAS" && (c["Dias Inad."] || 0) > 0
+        }
+        if (negotiationFilter === "nenhuma") {
+          return !status || status === "NENHUMA" || status === "DRAFT" || status === "ATIVA"
+        }
         return true
       })
     }
@@ -173,23 +161,22 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         case "name":
           comparison = (a.Cliente || "").localeCompare(b.Cliente || "")
           break
-        case "creditScore":
-          comparison = (a.credit_score || 0) - (b.credit_score || 0)
+        case "debtValue":
+          const valueA = parseDebtValue(a.Vencido)
+          const valueB = parseDebtValue(b.Vencido)
+          comparison = valueA - valueB
           break
-        case "recoveryScore":
-          const scoreA = a.recovery_score ?? a.behavioralData?.recovery_score ?? 0
-          const scoreB = b.recovery_score ?? b.behavioralData?.recovery_score ?? 0
-          comparison = scoreA - scoreB
-          break
-        case "negotiation":
-          comparison = (a.approval_status || "").localeCompare(b.approval_status || "")
+        case "debtDate":
+          const dateA = a["Dt. Vcto"] ? new Date(a["Dt. Vcto"]).getTime() : 0
+          const dateB = b["Dt. Vcto"] ? new Date(b["Dt. Vcto"]).getTime() : 0
+          comparison = dateA - dateB
           break
       }
       return sortDirection === "asc" ? comparison : -comparison
     })
 
     return sorted
-  }, [clientes, searchTerm, creditScoreFilter, recoveryScoreFilter, negotiationFilter, sortField, sortDirection])
+  }, [clientes, searchTerm, negotiationFilter, sortField, sortDirection])
 
   const paginatedClientes = useMemo(() => {
     const start = (currentPage - 1) * perPage
@@ -214,6 +201,27 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
 
   const companyName = company?.name || "Empresa"
 
+  // Negotiation status configuration based on ASAAS data
+  const getNegotiationDisplay = (cliente: Cliente) => {
+    const status = cliente.asaasNegotiationStatus
+    const diasInad = cliente["Dias Inad."] || 0
+
+    // Check if overdue with active negotiation
+    if (status === "ATIVA_ASAAS" && diasInad > 0) {
+      return { label: "Em atraso", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
+    }
+
+    const config: Record<string, { label: string; color: string; bg: string }> = {
+      PAGO: { label: "Paga", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
+      ATIVA_ASAAS: { label: "Em andamento", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
+      ATIVA: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
+      DRAFT: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
+      NENHUMA: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
+    }
+
+    return config[status || "NENHUMA"] || { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -225,11 +233,11 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
           Clientes — {companyName}
         </h1>
         <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
-          Visualize scores de credito e recuperacao dos seus clientes
+          Visualize dividas e status de negociacao dos seus clientes
         </p>
       </div>
 
-      {/* Stats Row - Only showing Total de Clientes and Com Negociação Aberta */}
+      {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
         <div
           className="rounded-lg p-4"
@@ -242,36 +250,12 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             {stats.total.toLocaleString("pt-BR")}
           </div>
         </div>
-        {/* HIDDEN: Score stat cards - code preserved for future re-enablement
         <div
           className="rounded-lg p-4"
           style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
         >
           <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--admin-text-muted)" }}>
-            Com Score de Credito
-          </div>
-          <div className="text-xl font-bold" style={{ color: "var(--admin-purple)" }}>
-            {stats.withCreditScore.toLocaleString("pt-BR")}
-          </div>
-        </div>
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--admin-text-muted)" }}>
-            Com Score de Recuperacao
-          </div>
-          <div className="text-xl font-bold" style={{ color: "var(--admin-blue)" }}>
-            {stats.withRecoveryScore.toLocaleString("pt-BR")}
-          </div>
-        </div>
-        END HIDDEN */}
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--admin-text-muted)" }}>
-            Com Negociacao Aberta
+            Com Negociacao
           </div>
           <div className="text-xl font-bold" style={{ color: "var(--admin-green)" }}>
             {stats.withNegotiation.toLocaleString("pt-BR")}
@@ -303,54 +287,19 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             </div>
           </div>
 
-          {/* Score Credito Filter */}
-          <Select value={creditScoreFilter} onValueChange={setCreditScoreFilter}>
-            <SelectTrigger
-              className="w-[160px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Score Credito" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos Scores</SelectItem>
-              <SelectItem value="with">Com Score</SelectItem>
-              <SelectItem value="without">Sem Score</SelectItem>
-              <SelectItem value="high">Alto (700+)</SelectItem>
-              <SelectItem value="medium">Medio (400-699)</SelectItem>
-              <SelectItem value="low">Baixo (&lt;400)</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Score Recuperacao Filter */}
-          <Select value={recoveryScoreFilter} onValueChange={setRecoveryScoreFilter}>
-            <SelectTrigger
-              className="w-[180px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Score Recuperacao" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="with">Com Score</SelectItem>
-              <SelectItem value="without">Sem Score</SelectItem>
-              <SelectItem value="high">Alto (700+)</SelectItem>
-              <SelectItem value="medium">Medio (400-699)</SelectItem>
-              <SelectItem value="low">Baixo (&lt;400)</SelectItem>
-            </SelectContent>
-          </Select>
-
           {/* Negotiation Filter */}
           <Select value={negotiationFilter} onValueChange={setNegotiationFilter}>
             <SelectTrigger
-              className="w-[160px] border-0"
+              className="w-[180px] border-0"
               style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
             >
               <SelectValue placeholder="Negociacao" />
             </SelectTrigger>
             <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
               <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="with">Com Negociacao</SelectItem>
-              <SelectItem value="without">Sem Negociacao</SelectItem>
+              <SelectItem value="em_andamento">Em andamento</SelectItem>
+              <SelectItem value="paga">Paga</SelectItem>
+              <SelectItem value="nenhuma">Nenhuma</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -378,65 +327,43 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                 <th
                   className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
                   style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("creditScore")}
+                  onClick={() => toggleSort("debtValue")}
                 >
                   <div className="flex items-center gap-1">
-                    Score Credito
-                    <SortIcon field="creditScore" />
+                    Valor da Divida
+                    <SortIcon field="debtValue" />
                   </div>
                 </th>
                 <th
                   className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
                   style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("recoveryScore")}
+                  onClick={() => toggleSort("debtDate")}
                 >
                   <div className="flex items-center gap-1">
-                    Score Recuperacao
-                    <SortIcon field="recoveryScore" />
+                    Data da Divida
+                    <SortIcon field="debtDate" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("negotiation")}
-                >
-                  <div className="flex items-center gap-1">
-                    Negociacao
-                    <SortIcon field="negotiation" />
-                  </div>
-                </th>
-                <th
-                  className="text-right px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
                   style={{ color: "var(--admin-text-muted)" }}
                 >
-                  Acoes
+                  Status Negociacao
                 </th>
               </tr>
             </thead>
             <tbody>
               {paginatedClientes.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
+                  <td colSpan={4} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
                     <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     Nenhum cliente encontrado
                   </td>
                 </tr>
               ) : (
                 paginatedClientes.map((cliente) => {
-                  const creditScore = cliente.credit_score
-                  const recoveryScore = cliente.recovery_score ?? cliente.behavioralData?.recovery_score ?? null
-                  const recoveryClass = cliente.recovery_class ?? cliente.behavioralData?.recovery_class ?? null
-
-                  // Use ASAAS-backed negotiation status
-                  const negotiationStatus = cliente.asaasNegotiationStatus || "NENHUMA"
-                  const negotiationConfig: Record<string, { label: string; color: string; bg: string }> = {
-                    PAGO: { label: "Pago", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
-                    ATIVA_ASAAS: { label: "Cobranca Enviada", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
-                    ATIVA: { label: "Acordo Criado", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
-                    DRAFT: { label: "Rascunho", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
-                    NENHUMA: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
-                  }
-                  const negotiation = negotiationConfig[negotiationStatus] || { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" }
+                  const negotiation = getNegotiationDisplay(cliente)
+                  const debtValue = parseDebtValue(cliente.Vencido)
 
                   const initials = (cliente.Cliente || "?")
                     .split(" ")
@@ -471,63 +398,24 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                         </div>
                       </td>
 
-                      {/* Score Credito */}
+                      {/* Valor da Divida */}
                       <td className="px-4 py-3">
-                        {creditScore !== null ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold" style={{ color: getScoreColor(creditScore) }}>
-                              {creditScore}
-                            </span>
-                            <span className="text-xs font-semibold" style={{ color: "var(--admin-text-muted)" }}>
-                              {getScoreClass(creditScore)}
-                            </span>
-                            <div
-                              className="w-[50px] h-1.5 rounded-full overflow-hidden"
-                              style={{ background: "var(--admin-border)" }}
-                            >
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${getScoreBarWidth(creditScore)}%`,
-                                  background: getScoreColor(creditScore)
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm" style={{ color: "var(--admin-text-muted)" }}>—</span>
-                        )}
+                        <span
+                          className="text-sm font-semibold"
+                          style={{ color: debtValue > 0 ? "var(--admin-text-primary)" : "var(--admin-text-muted)" }}
+                        >
+                          {debtValue > 0 ? formatCurrency(debtValue) : "—"}
+                        </span>
                       </td>
 
-                      {/* Score Recuperacao */}
+                      {/* Data da Divida */}
                       <td className="px-4 py-3">
-                        {recoveryScore !== null ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold" style={{ color: getScoreColor(recoveryScore) }}>
-                              {recoveryScore}
-                            </span>
-                            <span className="text-xs font-semibold" style={{ color: "var(--admin-text-muted)" }}>
-                              {recoveryClass || getScoreClass(recoveryScore)}
-                            </span>
-                            <div
-                              className="w-[50px] h-1.5 rounded-full overflow-hidden"
-                              style={{ background: "var(--admin-border)" }}
-                            >
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${getScoreBarWidth(recoveryScore)}%`,
-                                  background: getScoreColor(recoveryScore)
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm" style={{ color: "var(--admin-text-muted)" }}>—</span>
-                        )}
+                        <span className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
+                          {formatDate(cliente["Dt. Vcto"])}
+                        </span>
                       </td>
 
-                      {/* Negociacao */}
+                      {/* Status Negociacao */}
                       <td className="px-4 py-3">
                         <span
                           className="inline-flex px-2.5 py-1 rounded-md text-[11px] font-semibold"
@@ -535,22 +423,6 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                         >
                           {negotiation.label}
                         </span>
-                      </td>
-
-                      {/* Acoes */}
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/dashboard/clientes/${cliente.id}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                          style={{
-                            background: "var(--admin-bg-tertiary)",
-                            color: "var(--admin-text-secondary)",
-                            border: "1px solid var(--admin-border)"
-                          }}
-                        >
-                          <Eye className="w-3 h-3" />
-                          Ver Detalhes
-                        </Link>
                       </td>
                     </tr>
                   )
@@ -566,7 +438,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
           style={{ borderTop: "1px solid var(--admin-bg-tertiary)" }}
         >
           <div className="text-sm" style={{ color: "var(--admin-text-muted)" }}>
-            Mostrando {((currentPage - 1) * perPage) + 1} - {Math.min(currentPage * perPage, filteredAndSortedClientes.length)} de {filteredAndSortedClientes.length} clientes
+            Mostrando {filteredAndSortedClientes.length > 0 ? ((currentPage - 1) * perPage) + 1 : 0} - {Math.min(currentPage * perPage, filteredAndSortedClientes.length)} de {filteredAndSortedClientes.length} clientes
           </div>
           <div className="flex items-center gap-2">
             <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setCurrentPage(1); }}>
