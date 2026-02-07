@@ -16,6 +16,7 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
+  CalendarClock,
 } from "lucide-react"
 
 interface Acordo {
@@ -32,6 +33,7 @@ interface Acordo {
   paymentStatus: string
   createdAt: string
   firstDueDate: string
+  daysOverdue: number
 }
 
 interface AdminAcordosContentProps {
@@ -39,7 +41,7 @@ interface AdminAcordosContentProps {
   company: { id: string; name: string } | null
 }
 
-type SortField = "cliente" | "valor" | "status" | "data"
+type SortField = "cliente" | "valor" | "status" | "data" | "tempo"
 type SortDirection = "asc" | "desc"
 
 function formatCurrency(value: number): string {
@@ -53,6 +55,28 @@ function formatDate(dateStr: string | null): string {
   } catch {
     return "—"
   }
+}
+
+function getDebtAgeColor(days: number): { text: string; bg: string } {
+  if (days <= 0) return { text: "var(--admin-green)", bg: "var(--admin-green-bg)" }
+  if (days <= 30) return { text: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
+  if (days <= 90) return { text: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
+  return { text: "var(--admin-red)", bg: "var(--admin-red-bg)" }
+}
+
+function formatDebtAge(days: number): string {
+  if (days <= 0) return "Em dia"
+  if (days < 30) return `${days} dias`
+  if (days < 365) {
+    const months = Math.floor(days / 30)
+    return `${months} ${months === 1 ? "mês" : "meses"}`
+  }
+  const years = Math.floor(days / 365)
+  const remainingMonths = Math.floor((days % 365) / 30)
+  if (remainingMonths > 0) {
+    return `${years}a ${remainingMonths}m`
+  }
+  return `${years} ${years === 1 ? "ano" : "anos"}`
 }
 
 export function AdminAcordosContent({ acordos, company }: AdminAcordosContentProps) {
@@ -145,6 +169,9 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
           break
         case "data":
           comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          break
+        case "tempo":
+          comparison = a.daysOverdue - b.daysOverdue
           break
       }
       return sortDirection === "asc" ? comparison : -comparison
@@ -395,6 +422,17 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
                 <th
                   className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
                   style={{ color: "var(--admin-text-muted)" }}
+                  onClick={() => toggleSort("tempo")}
+                >
+                  <div className="flex items-center gap-1">
+                    <CalendarClock className="h-3 w-3" />
+                    Tempo Dívida
+                    <SortIcon field="tempo" />
+                  </div>
+                </th>
+                <th
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("status")}
                 >
                   <div className="flex items-center gap-1">
@@ -423,7 +461,7 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
             <tbody>
               {paginatedAcordos.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
+                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
                     <Handshake className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     Nenhum acordo encontrado
                   </td>
@@ -480,6 +518,22 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
                             }}
                           />
                         </div>
+                      </td>
+
+                      {/* Tempo da Dívida */}
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const debtAgeColors = getDebtAgeColor(acordo.daysOverdue)
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                              style={{ background: debtAgeColors.bg, color: debtAgeColors.text }}
+                            >
+                              <CalendarClock className="w-3 h-3" />
+                              {formatDebtAge(acordo.daysOverdue)}
+                            </span>
+                          )
+                        })()}
                       </td>
 
                       {/* Status */}

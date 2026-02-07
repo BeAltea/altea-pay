@@ -46,18 +46,20 @@ export default async function AcordosPage() {
 
   // Fetch customer info for each agreement (check both VMAX and customers tables)
   const customerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
-  let customerMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
+  let customerMap = new Map<string, { name: string | null; cpfCnpj: string | null; daysOverdue: number }>()
 
   if (customerIds.length > 0) {
     // First try VMAX table
     const { data: vmaxCustomers } = await supabase
       .from("VMAX")
-      .select("id, Cliente, \"CPF/CNPJ\"")
+      .select("id, Cliente, \"CPF/CNPJ\", \"Dias Inad.\"")
       .in("id", customerIds)
 
     if (vmaxCustomers) {
       vmaxCustomers.forEach((c: any) => {
-        customerMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"] })
+        const diasInadStr = String(c["Dias Inad."] || "0")
+        const daysOverdue = Number(diasInadStr.replace(/\./g, "")) || 0
+        customerMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"], daysOverdue })
       })
     }
 
@@ -71,7 +73,7 @@ export default async function AcordosPage() {
 
       if (customers) {
         customers.forEach((c: any) => {
-          customerMap.set(c.id, { name: c.name, cpfCnpj: c.document })
+          customerMap.set(c.id, { name: c.name, cpfCnpj: c.document, daysOverdue: 0 })
         })
       }
     }
@@ -79,7 +81,7 @@ export default async function AcordosPage() {
 
   // Enrich agreements with customer info
   const acordos = (agreements || []).map((agreement: any) => {
-    const customer = customerMap.get(agreement.customer_id) || { name: null, cpfCnpj: null }
+    const customer = customerMap.get(agreement.customer_id) || { name: null, cpfCnpj: null, daysOverdue: 0 }
     return {
       id: agreement.id,
       customerId: agreement.customer_id,
@@ -94,6 +96,7 @@ export default async function AcordosPage() {
       paymentStatus: agreement.payment_status || "pending",
       createdAt: agreement.created_at,
       firstDueDate: agreement.first_due_date,
+      daysOverdue: customer.daysOverdue,
     }
   })
 

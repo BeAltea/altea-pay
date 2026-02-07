@@ -28,6 +28,8 @@ import {
   CheckCircle,
   Clock,
   BarChart3,
+  ArrowUpDown,
+  CalendarClock,
 } from "lucide-react"
 import { toast } from "sonner"
 import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
@@ -60,6 +62,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showModal, setShowModal] = useState(false)
   const [sending, setSending] = useState(false)
+  const [sortField, setSortField] = useState<"name" | "debt" | "debtAge" | null>(null)
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
 
   // Modal form state
   const [discountType, setDiscountType] = useState<"none" | "percentage" | "fixed">("none")
@@ -104,8 +108,55 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       const s = searchTerm.toLowerCase()
       return c.name.toLowerCase().includes(s) || c.document.toLowerCase().includes(s)
     })
+
+    // Apply sorting
+    if (sortField) {
+      result = [...result].sort((a, b) => {
+        let cmp = 0
+        if (sortField === "name") {
+          cmp = a.name.localeCompare(b.name)
+        } else if (sortField === "debt") {
+          cmp = a.totalDebt - b.totalDebt
+        } else if (sortField === "debtAge") {
+          cmp = a.daysOverdue - b.daysOverdue
+        }
+        return sortOrder === "asc" ? cmp : -cmp
+      })
+    }
+
     return result
-  }, [customers, searchTerm, negotiationFilter])
+  }, [customers, searchTerm, negotiationFilter, sortField, sortOrder])
+
+  const toggleSort = (field: "name" | "debt" | "debtAge") => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortOrder("desc")
+    }
+  }
+
+  const getDebtAgeColor = (days: number) => {
+    if (days <= 0) return { text: "text-green-600 dark:text-green-400", bg: "bg-green-100 dark:bg-green-900/30" }
+    if (days <= 30) return { text: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-100 dark:bg-yellow-900/30" }
+    if (days <= 90) return { text: "text-orange-600 dark:text-orange-400", bg: "bg-orange-100 dark:bg-orange-900/30" }
+    return { text: "text-red-600 dark:text-red-400", bg: "bg-red-100 dark:bg-red-900/30" }
+  }
+
+  const formatDebtAge = (days: number) => {
+    if (days <= 0) return "Em dia"
+    if (days < 30) return `${days} dias`
+    if (days < 365) {
+      const months = Math.floor(days / 30)
+      return `${months} ${months === 1 ? "mês" : "meses"}`
+    }
+    const years = Math.floor(days / 365)
+    const remainingMonths = Math.floor((days % 365) / 30)
+    if (remainingMonths > 0) {
+      return `${years}a ${remainingMonths}m`
+    }
+    return `${years} ${years === 1 ? "ano" : "anos"}`
+  }
 
   const displayedCustomers = useMemo(() => {
     if (displayLimit === 0) return filteredCustomers
@@ -405,69 +456,97 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               </div>
             )}
 
-            {/* Select all */}
+            {/* Select all and column headers */}
             <div className="flex items-center gap-2 mb-3 pb-3 border-b">
               <Checkbox
                 checked={selectedCustomers.size === displayedCustomers.length && displayedCustomers.length > 0}
                 onCheckedChange={toggleSelectAll}
-                className="border-foreground/70"
+                className="border-foreground/70 flex-shrink-0"
               />
-              <span className="text-sm font-medium text-muted-foreground">
-                Selecionar Todos ({displayedCustomers.length} de {filteredCustomers.length})
-              </span>
+              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-center">
+                <button
+                  onClick={() => toggleSort("name")}
+                  className="lg:col-span-2 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
+                >
+                  Cliente
+                  <ArrowUpDown className={`h-3 w-3 ${sortField === "name" ? "text-primary" : "opacity-50"}`} />
+                </button>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Cidade</span>
+                <button
+                  onClick={() => toggleSort("debt")}
+                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Dívida
+                  <ArrowUpDown className={`h-3 w-3 ${sortField === "debt" ? "text-primary" : "opacity-50"}`} />
+                </button>
+                <button
+                  onClick={() => toggleSort("debtAge")}
+                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <CalendarClock className="h-3 w-3" />
+                  Tempo Dívida
+                  <ArrowUpDown className={`h-3 w-3 ${sortField === "debtAge" ? "text-primary" : "opacity-50"}`} />
+                </button>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status</span>
+              </div>
             </div>
 
             {/* Customer list */}
             <div className="space-y-2">
-              {displayedCustomers.map((customer) => (
-                <div
-                  key={customer.id}
-                  className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <Checkbox
-                    checked={selectedCustomers.has(customer.id)}
-                    onCheckedChange={() => toggleSelect(customer.id)}
-                    className="border-foreground/70 flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-center">
-                    {/* Name + Document */}
-                    <div className="min-w-0 lg:col-span-2">
-                      <p className="text-sm font-medium truncate">{customer.name}</p>
-                      <p className="text-xs text-muted-foreground">{customer.document}</p>
-                    </div>
-                    {/* City */}
-                    <div className="text-sm text-muted-foreground truncate hidden lg:block">
-                      {customer.city || "-"}
-                    </div>
-                    {/* Debt */}
-                    <div className="flex items-center gap-1">
-                      <DollarSign className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                      <span className="text-sm font-semibold text-red-600 dark:text-red-400">
-                        {formatCurrency(customer.totalDebt)}
-                      </span>
-                      {customer.daysOverdue > 0 && (
-                        <Badge variant="destructive" className="ml-1 text-xs px-1.5 py-0">
-                          {customer.daysOverdue}d
+              {displayedCustomers.map((customer) => {
+                const debtAgeColors = getDebtAgeColor(customer.daysOverdue)
+                return (
+                  <div
+                    key={customer.id}
+                    className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <Checkbox
+                      checked={selectedCustomers.has(customer.id)}
+                      onCheckedChange={() => toggleSelect(customer.id)}
+                      className="border-foreground/70 flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-center">
+                      {/* Name + Document */}
+                      <div className="min-w-0 lg:col-span-2">
+                        <p className="text-sm font-medium truncate">{customer.name}</p>
+                        <p className="text-xs text-muted-foreground">{customer.document}</p>
+                      </div>
+                      {/* City */}
+                      <div className="text-sm text-muted-foreground truncate hidden lg:block">
+                        {customer.city || "-"}
+                      </div>
+                      {/* Debt */}
+                      <div className="flex items-center gap-1">
+                        <DollarSign className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                        <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                          {formatCurrency(customer.totalDebt)}
+                        </span>
+                      </div>
+                      {/* Tempo da Dívida */}
+                      <div>
+                        <Badge className={`${debtAgeColors.bg} ${debtAgeColors.text} border-0 text-xs font-medium`}>
+                          <CalendarClock className="mr-1 h-3 w-3" />
+                          {formatDebtAge(customer.daysOverdue)}
                         </Badge>
-                      )}
-                    </div>
-                    {/* Negotiation status */}
-                    <div>
-                      {customer.hasActiveNegotiation ? (
-                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
-                          <CheckCircle className="mr-1 h-3 w-3" />
-                          Negociacao enviada
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          Sem negociacao
-                        </Badge>
-                      )}
+                      </div>
+                      {/* Negotiation status */}
+                      <div>
+                        {customer.hasActiveNegotiation ? (
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
+                            <CheckCircle className="mr-1 h-3 w-3" />
+                            Negociacao enviada
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Sem negociacao
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             {displayedCustomers.length === 0 && (
