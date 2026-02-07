@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FileText, Search, Download, Calendar, DollarSign } from "lucide-react"
+import { FileText, Search, Download, Calendar, DollarSign, RefreshCw, Loader2 } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -71,6 +71,7 @@ export default function AgreementsPage() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [isAgreementDetailsOpen, setIsAgreementDetailsOpen] = useState(false)
   const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const { profile, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
@@ -182,6 +183,44 @@ export default function AgreementsPage() {
     const matchesStatus = statusFilter === "all" || payment.status === statusFilter
     return matchesSearch && matchesStatus
   })
+
+  async function handleSyncWithAsaas() {
+    setSyncing(true)
+    try {
+      const body = profile?.company_id ? { companyId: profile.company_id } : {}
+      const res = await fetch("/api/asaas/sync-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast({
+          title: "Sincronizado!",
+          description: data.message || `${data.results?.updated || 0} cobrancas atualizadas`,
+        })
+        // Reload data to reflect any status changes
+        fetchData()
+      } else {
+        toast({
+          title: "Erro",
+          description: data.error || "Erro ao sincronizar com ASAAS",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error syncing with ASAAS:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao sincronizar com ASAAS",
+        variant: "destructive",
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const totalRecovered = payments
     .filter((p) => p.status === "completed")
@@ -304,6 +343,18 @@ export default function AgreementsPage() {
             <SelectItem value="cancelled">Cancelado</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          onClick={handleSyncWithAsaas}
+          disabled={syncing}
+        >
+          {syncing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          Sincronizar ASAAS
+        </Button>
         <Button variant="outline">
           <Download className="mr-2 h-4 w-4" />
           Exportar

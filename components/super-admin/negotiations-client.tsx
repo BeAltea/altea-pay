@@ -30,6 +30,7 @@ import {
   BarChart3,
   ArrowUpDown,
   CalendarClock,
+  RefreshCw,
 } from "lucide-react"
 import { toast } from "sonner"
 import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
@@ -64,6 +65,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [sending, setSending] = useState(false)
   const [sortField, setSortField] = useState<"name" | "debt" | "debtAge" | null>(null)
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
+  const [syncing, setSyncing] = useState(false)
 
   // Modal form state
   const [discountType, setDiscountType] = useState<"none" | "percentage" | "fixed">("none")
@@ -258,6 +260,35 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
+  const handleSyncWithAsaas = async () => {
+    setSyncing(true)
+    try {
+      const body = selectedCompanyId ? { companyId: selectedCompanyId } : {}
+      const res = await fetch("/api/asaas/sync-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast.success(data.message || `Sincronizado! ${data.results?.updated || 0} cobrancas atualizadas`)
+        // Reload customers to reflect any status changes
+        if (selectedCompanyId) {
+          loadCustomers(selectedCompanyId)
+        }
+      } else {
+        toast.error(data.error || "Erro ao sincronizar com ASAAS")
+      }
+    } catch (error) {
+      console.error("Error syncing with ASAAS:", error)
+      toast.error("Erro ao sincronizar com ASAAS")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const totalDebtSelected = useMemo(() => {
     return customers
       .filter((c) => selectedCustomers.has(c.id))
@@ -388,14 +419,28 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               <CardTitle className="text-lg">
                 Clientes ({filteredCustomers.length} de {customers.length})
               </CardTitle>
-              <Button
-                onClick={openSendModal}
-                disabled={selectedCustomers.size === 0}
-                className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90"
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Enviar Negociacao ({selectedCustomers.size})
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleSyncWithAsaas}
+                  disabled={syncing}
+                >
+                  {syncing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Sincronizar ASAAS
+                </Button>
+                <Button
+                  onClick={openSendModal}
+                  disabled={selectedCustomers.size === 0}
+                  className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90"
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Enviar Negociacao ({selectedCustomers.size})
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
