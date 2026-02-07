@@ -161,8 +161,8 @@ export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
       className="sticky top-0 z-30 backdrop-blur-xl"
       style={{
         padding: "14px 32px",
-        background: "rgba(15, 17, 23, 0.8)",
-        borderBottom: "1px solid var(--admin-bg-tertiary)"
+        background: "var(--admin-bg-secondary)",
+        borderBottom: "1px solid var(--admin-border)"
       }}
     >
       <div className="flex items-center justify-between">
