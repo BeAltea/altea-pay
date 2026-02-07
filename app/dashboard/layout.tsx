@@ -1,8 +1,7 @@
 import type React from "react"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { Header } from "@/components/dashboard/header"
+import { AdminSidebarWrapper } from "@/components/dashboard/admin-sidebar-wrapper"
 
 export default async function DashboardLayout({
   children,
@@ -40,46 +39,47 @@ export default async function DashboardLayout({
     .eq("id", data.user.id)
     .single()
 
-  if (profileError || !profile) {
-    console.error("[v0] Dashboard Layout - Profile not found:", profileError)
+  let userProfile = profile
+
+  if (profileError || !userProfile) {
+    console.error("[Dashboard Layout] Profile not found:", profileError)
     if (profileError?.code === "PGRST116") {
-      // No rows returned
       const { data: newProfile, error: createError } = await supabase
         .from("profiles")
         .insert({
           id: data.user.id,
           email: data.user.email,
-          full_name: data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Usuário",
-          role: "user", // Role padrão
+          full_name: data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Usuario",
+          role: "admin",
         })
         .select("role, company_id, full_name, email")
         .single()
 
-      if (createError) {
-        console.error("[v0] Dashboard Layout - Erro ao criar perfil:", createError)
+      if (createError || !newProfile) {
+        console.error("[Dashboard Layout] Error creating profile:", createError)
         redirect("/auth/login")
       }
 
-      // Usar o perfil recém-criado
-      profile.role = newProfile?.role || "user"
-      profile.company_id = newProfile?.company_id
-      profile.full_name = newProfile?.full_name
-      profile.email = newProfile?.email
+      userProfile = newProfile
     } else {
       redirect("/auth/login")
     }
   }
 
-  if (profile.role === "super_admin") {
+  if (userProfile.role === "super_admin") {
     redirect("/super-admin")
   }
 
+  if (userProfile.role === "user") {
+    redirect("/user-dashboard")
+  }
+
   let company = null
-  if (profile.company_id) {
+  if (userProfile.company_id) {
     const { data: companyData } = await supabase
       .from("companies")
       .select("id, name")
-      .eq("id", profile.company_id)
+      .eq("id", userProfile.company_id)
       .single()
 
     company = companyData
@@ -88,27 +88,21 @@ export default async function DashboardLayout({
   const enhancedUser = {
     ...data.user,
     profile: {
-      role: profile.role,
-      company_id: profile.company_id,
-      full_name: profile.full_name,
+      role: userProfile.role,
+      company_id: userProfile.company_id,
+      full_name: userProfile.full_name,
       company: company,
     },
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block lg:w-64 lg:flex-shrink-0">
-        <Sidebar user={enhancedUser} />
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header user={enhancedUser} />
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-4 sm:p-6 lg:p-8">{children}</div>
-        </main>
-      </div>
+    <div
+      className="flex h-screen overflow-hidden"
+      style={{ background: "var(--admin-bg-primary)" }}
+    >
+      <AdminSidebarWrapper user={enhancedUser}>
+        {children}
+      </AdminSidebarWrapper>
     </div>
   )
 }
