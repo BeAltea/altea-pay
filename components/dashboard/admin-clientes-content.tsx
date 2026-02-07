@@ -229,8 +229,8 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         </p>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Stats Row - Only showing Total de Clientes and Com Negociação Aberta */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
         <div
           className="rounded-lg p-4"
           style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
@@ -242,6 +242,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             {stats.total.toLocaleString("pt-BR")}
           </div>
         </div>
+        {/* HIDDEN: Score stat cards - code preserved for future re-enablement
         <div
           className="rounded-lg p-4"
           style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
@@ -264,6 +265,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             {stats.withRecoveryScore.toLocaleString("pt-BR")}
           </div>
         </div>
+        END HIDDEN */}
         <div
           className="rounded-lg p-4"
           style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}

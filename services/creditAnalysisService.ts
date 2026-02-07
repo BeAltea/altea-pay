@@ -656,32 +656,40 @@ export async function analyzeDetailed(
   cpf: string,
   companyId?: string,
   userId?: string,
+  analysisType: "restrictive" | "behavioral" = "restrictive",
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    console.log("[v0] analyzeDetailed - Starting for CPF/CNPJ:", cpf)
+    console.log("[v0] analyzeDetailed - Starting for CPF/CNPJ:", cpf, "Type:", analysisType)
 
     const cleanCpf = cpf.replace(/\D/g, "")
     const isCnpj = cleanCpf.length === 14
     const documentType = isCnpj ? "CNPJ" : "CPF"
 
-    console.log("[v0] analyzeDetailed - Document type:", documentType)
+    console.log("[v0] analyzeDetailed - Document type:", documentType, "Analysis type:", analysisType)
 
-    // If companyId provided, use Assertiva service with ALL endpoints
+    // If companyId provided, use Assertiva service with appropriate endpoints
     if (companyId) {
-      const { analyzeDetailedWithCache } = await import("./assertivaService")
+      const { analyzeRestrictiveOnly, analyze360Full } = await import("./assertivaService")
 
-      console.log("[v0] analyzeDetailed - Calling Assertiva API for ALL endpoints...")
-
-      // This will call ALL 4 GET endpoints + POST behavioral analysis
-      const result = await analyzeDetailedWithCache(cpf, companyId, userId)
-
-      console.log("[v0] analyzeDetailed - Assertiva result:", {
-        success: result.success,
-        has_data: !!result.data,
-        data_keys: result.data ? Object.keys(result.data) : [],
-      })
-
-      return result
+      if (analysisType === "restrictive") {
+        console.log("[v0] analyzeDetailed - Calling Assertiva API for RESTRICTIVE analysis (3 GETs only)...")
+        const result = await analyzeRestrictiveOnly(cpf, companyId, userId)
+        console.log("[v0] analyzeDetailed - Restrictive result:", {
+          success: result.success,
+          has_data: !!result.data,
+          data_keys: result.data ? Object.keys(result.data) : [],
+        })
+        return result
+      } else {
+        console.log("[v0] analyzeDetailed - Calling Assertiva API for FULL 360 analysis (3 GETs + POST)...")
+        const result = await analyze360Full(cpf, companyId, userId)
+        console.log("[v0] analyzeDetailed - 360 result:", {
+          success: result.success,
+          has_data: !!result.data,
+          data_keys: result.data ? Object.keys(result.data) : [],
+        })
+        return result
+      }
     }
 
     // Check cache first
@@ -1112,8 +1120,8 @@ export async function runAnalysisTrigger(triggerId: string): Promise<{ success: 
               // Use analyzeFree with companyId to potentially log the request
               result = await analyzeFree(customer.document, trigger.company_id)
             } else {
-              // analyzeDetailed already uses companyId for Assertiva
-              result = await analyzeDetailed(customer.document, trigger.company_id, userId)
+              // analyzeDetailed - default to "restrictive" for trigger-based analysis
+              result = await analyzeDetailed(customer.document, trigger.company_id, userId, "restrictive")
             }
 
             // Armazenar resultado
@@ -1653,8 +1661,8 @@ export async function runAssertivaManualAnalysis(
               company_id: customer.company_id,
             })
 
-            // Pass companyId and customer.id (as userId) to analyzeDetailed
-            const analysisResult = await analyzeDetailed(customer.cpf, customer.company_id, customer.id)
+            // Pass companyId, customer.id (as userId), and analysisType to analyzeDetailed
+            const analysisResult = await analyzeDetailed(customer.cpf, customer.company_id, customer.id, analysisType)
 
             if (!analysisResult.success) {
               console.error(

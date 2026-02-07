@@ -13,6 +13,8 @@ import {
   ArrowUpRight,
   Eye,
   BarChart3,
+  CreditCard,
+  Sparkles,
 } from "lucide-react"
 
 interface CompanyStats {
@@ -138,6 +140,11 @@ export default async function SuperAdminDashboardPage() {
     .order("created_at", { ascending: false })
     .limit(3)
 
+  // Count total analyses for the 4th stat card
+  const { count: totalAnalyses } = await supabase
+    .from("credit_profiles")
+    .select("*", { count: "exact", head: true })
+
   const analysisActivities =
     recentAnalyses?.map((analysis) => ({
       id: analysis.id,
@@ -185,8 +192,8 @@ export default async function SuperAdminDashboardPage() {
         </div>
       </div>
 
-      {/* Global Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+      {/* Global Stats Cards - 4 cards in a row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-xs sm:text-sm font-medium">Total de Empresas</CardTitle>
@@ -217,6 +224,17 @@ export default async function SuperAdminDashboardPage() {
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000).toFixed(2)}k</div>
             <p className="text-xs text-muted-foreground">{totalStats.totalDebts.toLocaleString()} dívidas ativas</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Análises Realizadas</CardTitle>
+            <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="text-lg sm:text-2xl font-bold">{(totalAnalyses || 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Consultas de crédito</p>
           </CardContent>
         </Card>
       </div>
@@ -386,6 +404,47 @@ export default async function SuperAdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Analysis Section */}
+      <Card>
+        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+          <CardTitle className="text-base sm:text-lg lg:text-xl">Análises Rápidas</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Iniciar nova análise de clientes</CardDescription>
+        </CardHeader>
+        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Análise de Crédito Card */}
+            <Link href="/super-admin/analises" className="group">
+              <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-altea-gold dark:hover:border-altea-gold transition-all">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                    <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Análise de Crédito</h3>
+                    <p className="text-xs text-muted-foreground">Score Ações, Crédito e Recupere</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+
+            {/* Análise 360 Card */}
+            <Link href="/super-admin/analises/comportamental" className="group">
+              <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-altea-gold dark:hover:border-altea-gold transition-all">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-lg group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                    <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Análise 360</h3>
+                    <p className="text-xs text-muted-foreground">Análise completa + Comportamental</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
