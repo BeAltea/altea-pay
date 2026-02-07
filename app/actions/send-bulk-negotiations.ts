@@ -257,24 +257,33 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           continue
         }
 
-        // 3. Disable ALL Asaas notifications - we send our own via Resend/Twilio
+        // 3. Enable notification for the selected channel, then create payment
         try {
-          // Keep Asaas notifications disabled - we handle email/SMS ourselves
-          await updateAsaasCustomer(asaasCustomerId, {
-            notificationDisabled: true,
-            email: customerEmail || undefined,
-            mobilePhone: customerPhone || undefined,
-          })
+          // Update Asaas customer contact info and enable notifications
+          const updateData: { notificationDisabled: boolean; email?: string; mobilePhone?: string } = { notificationDisabled: false }
+          if (customerEmail) updateData.email = customerEmail
+          if (customerPhone) updateData.mobilePhone = customerPhone.replace(/[^\d]/g, "")
+          await updateAsaasCustomer(asaasCustomerId, updateData)
 
-          // Disable all Asaas notifications to prevent Asaas from sending its own emails
+          // Configure notifications - enable only PAYMENT_CREATED for the right channel
           const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
+
           for (const notif of allNotifications) {
-            await updateAsaasNotification(notif.id, {
-              enabled: false,
-              emailEnabledForCustomer: false,
-              smsEnabledForCustomer: false,
-              whatsappEnabledForCustomer: false,
-            })
+            if (notif.event === "PAYMENT_CREATED") {
+              await updateAsaasNotification(notif.id, {
+                enabled: true,
+                emailEnabledForCustomer: params.notificationChannels.includes("email"),
+                smsEnabledForCustomer: params.notificationChannels.includes("sms"),
+                whatsappEnabledForCustomer: params.notificationChannels.includes("whatsapp"),
+              })
+            } else {
+              await updateAsaasNotification(notif.id, {
+                enabled: false,
+                emailEnabledForCustomer: false,
+                smsEnabledForCustomer: false,
+                whatsappEnabledForCustomer: false,
+              })
+            }
           }
 
           // 4. Create Asaas payment - map selected payment methods to billingType
@@ -313,6 +322,18 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
             })
             .eq("id", agreement.id)
 
+          // 6. Disable notifications again
+          await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+
+          const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
+          if (paymentCreatedNotif) {
+            await updateAsaasNotification(paymentCreatedNotif.id, {
+              enabled: false,
+              emailEnabledForCustomer: false,
+              smsEnabledForCustomer: false,
+              whatsappEnabledForCustomer: false,
+            })
+          }
         } catch (asaasPaymentErr: any) {
           errors.push(`${customerName}: erro ao criar cobranca Asaas - ${asaasPaymentErr.message}`)
           // Delete the draft agreement since payment failed
@@ -320,76 +341,38 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           continue
         }
 
-        // === Send notifications ourselves (not via Asaas) ===
-        // Get the correct payment URL based on billingType
-        const { data: updatedAgreement } = await supabase
-          .from("agreements")
-          .select("asaas_payment_url, asaas_pix_qrcode_url, asaas_boleto_url")
-          .eq("id", agreement.id)
-          .single()
-
-        // Choose the best payment URL based on selected methods
-        let paymentUrl = updatedAgreement?.asaas_payment_url || ""
-        if (params.paymentMethods.length === 1) {
-          if (params.paymentMethods[0] === "boleto" && updatedAgreement?.asaas_boleto_url) {
-            paymentUrl = updatedAgreement.asaas_boleto_url
-          }
-          // For PIX and credit_card, invoiceUrl is the best option since it shows only the selected method
-        }
-
-        // Get company name
-        const { data: companyData } = await supabase
-          .from("companies")
-          .select("name")
-          .eq("id", params.companyId)
-          .single()
-
-        const companyName = companyData?.name || "Empresa"
-
-        // Send email via Resend (our own template)
-        if (params.notificationChannels.includes("email") && customerEmail) {
-          try {
-            const { sendEmail, generateDebtCollectionEmail } = await import("@/lib/notifications/email")
-            
-            const emailHtml = await generateDebtCollectionEmail({
-              customerName,
-              debtAmount: agreedAmount,
-              dueDate: dueDate.toISOString().split("T")[0],
-              companyName,
-              paymentLink: paymentUrl,
-            })
-
-            const emailResult = await sendEmail({
-              to: customerEmail,
-              subject: `${companyName} - Proposta de Acordo`,
-              html: emailHtml,
-            })
-
-            if (!emailResult.success) {
-              console.log(`[sendBulkNegotiations] Email Resend falhou para ${customerName}: ${emailResult.error}`)
-            } else {
-              console.log(`[sendBulkNegotiations] Email Resend enviado para ${customerName}`)
-            }
-          } catch (emailErr: any) {
-            console.error(`[sendBulkNegotiations] Erro ao enviar Email Resend para ${customerName}:`, emailErr.message)
-          }
-        }
-
-        // Send SMS via Twilio
+        // Send SMS directly via Twilio if SMS channel is selected (Asaas SMS may not be enabled)
         if (params.notificationChannels.includes("sms") && customerPhone) {
           try {
             const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
             
+            // Format phone number to international format
             let formattedPhone = customerPhone.replace(/\D/g, "")
             if (formattedPhone.length >= 10 && !formattedPhone.startsWith("55")) {
               formattedPhone = "55" + formattedPhone
             }
             formattedPhone = "+" + formattedPhone
 
+            // Get payment URL from the agreement we just updated
+            const { data: updatedAgreement } = await supabase
+              .from("agreements")
+              .select("asaas_payment_url")
+              .eq("id", agreement.id)
+              .single()
+
+            const paymentUrl = updatedAgreement?.asaas_payment_url || ""
+
+            // Get company name
+            const { data: companyData } = await supabase
+              .from("companies")
+              .select("name")
+              .eq("id", params.companyId)
+              .single()
+
             const smsBody = await generateDebtCollectionSMS({
               customerName,
               debtAmount: agreedAmount,
-              companyName,
+              companyName: companyData?.name || "Empresa",
               paymentLink: paymentUrl,
             })
 
@@ -401,48 +384,6 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
             }
           } catch (smsErr: any) {
             console.error(`[sendBulkNegotiations] Erro ao enviar SMS Twilio para ${customerName}:`, smsErr.message)
-          }
-        }
-
-        // Send WhatsApp notification (via Asaas - only for WhatsApp since we can't send WhatsApp ourselves)
-        if (params.notificationChannels.includes("whatsapp") && customerPhone) {
-          try {
-            // For WhatsApp, we still need to use Asaas since we don't have a WhatsApp API
-            // Temporarily enable WhatsApp notification for this customer, then disable
-            await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: false })
-            const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
-            const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
-            if (paymentCreatedNotif) {
-              await updateAsaasNotification(paymentCreatedNotif.id, {
-                enabled: true,
-                emailEnabledForCustomer: false,
-                smsEnabledForCustomer: false,
-                whatsappEnabledForCustomer: true,
-              })
-            }
-            // Resend the notification
-            const { resendAsaasPaymentNotification } = await import("@/lib/asaas")
-            const { data: agr } = await supabase
-              .from("agreements")
-              .select("asaas_payment_id")
-              .eq("id", agreement.id)
-              .single()
-            if (agr?.asaas_payment_id) {
-              await resendAsaasPaymentNotification(agr.asaas_payment_id)
-            }
-            // Disable again
-            await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
-            if (paymentCreatedNotif) {
-              await updateAsaasNotification(paymentCreatedNotif.id, {
-                enabled: false,
-                emailEnabledForCustomer: false,
-                smsEnabledForCustomer: false,
-                whatsappEnabledForCustomer: false,
-              })
-            }
-            console.log(`[sendBulkNegotiations] WhatsApp enviado via Asaas para ${customerName}`)
-          } catch (whatsappErr: any) {
-            console.error(`[sendBulkNegotiations] Erro ao enviar WhatsApp para ${customerName}:`, whatsappErr.message)
           }
         }
 

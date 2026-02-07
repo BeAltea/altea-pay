@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { endpoint, method = "GET", data } = body
 
-    console.log("[v0] /api/asaas request - endpoint:", endpoint, "method:", method, "data:", JSON.stringify(data)?.substring(0, 500))
+    console.log("[v0] /api/asaas request - endpoint:", endpoint, "method:", method)
 
     if (!endpoint) {
       return NextResponse.json(
