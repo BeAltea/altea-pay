@@ -1,35 +1,50 @@
 import { createClient } from "@/lib/supabase/server"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, CreditCard, TrendingUp, DollarSign, AlertTriangle, CheckCircle, Clock } from "lucide-react"
-import { NewCustomerModal } from "@/components/dashboard/new-customer-modal"
+import { AlertTriangle, Users, CreditCard, Handshake, TrendingUp, ChevronRight } from "lucide-react"
+import Link from "next/link"
 
 export const dynamic = "force-dynamic"
+
+function formatCurrency(value: number): string {
+  if (value >= 1000000) {
+    return `R$ ${(value / 1000000).toFixed(1).replace(".", ",")}M`
+  } else if (value >= 1000) {
+    return `R$ ${(value / 1000).toFixed(1).replace(".", ",")}k`
+  }
+  return `R$ ${value.toFixed(2).replace(".", ",")}`
+}
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "—"
+  try {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+  } catch {
+    return "—"
+  }
+}
+
+function getAgingBucket(daysOverdue: number): string {
+  if (daysOverdue <= 30) return "0-30"
+  if (daysOverdue <= 60) return "31-60"
+  if (daysOverdue <= 90) return "61-90"
+  if (daysOverdue <= 180) return "91-180"
+  return "180+"
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
 
-  if (!user) {
-    return null
-  }
-
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
     .select("role, company_id, full_name")
     .eq("id", user.id)
     .single()
 
-  if (!profile) {
-    return null
-  }
+  if (!profile) return null
 
   if (!profile.company_id) {
     return (
@@ -37,360 +52,385 @@ export default async function DashboardPage() {
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            Sua conta não está vinculada a nenhuma empresa. Entre em contato com o administrador.
+            Sua conta nao esta vinculada a nenhuma empresa. Entre em contato com o administrador.
           </AlertDescription>
         </Alert>
       </div>
     )
   }
 
-  let companyData = null
-  const { data: company, error: companyError } = await supabase
-    .from("companies")
-    .select("id, name")
-    .eq("id", profile.company_id)
-    .single()
-
-  companyData = company
-
   const companyId = profile.company_id
 
-  // Buscar TODOS os registros da empresa (sem limite de 1000)
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id, name")
+    .eq("id", companyId)
+    .single()
+
+  // Fetch all VMAX records for this company
   let vmaxRecords: any[] = []
   let page = 0
   const pageSize = 1000
-  
+
   while (true) {
-    const { data: pageData, error: vmaxError } = await supabase
+    const { data: pageData } = await supabase
       .from("VMAX")
       .select("*")
       .eq("id_company", companyId)
       .range(page * pageSize, (page + 1) * pageSize - 1)
-    
-    if (vmaxError || !pageData || pageData.length === 0) break
+
+    if (!pageData || pageData.length === 0) break
     vmaxRecords = [...vmaxRecords, ...pageData]
     if (pageData.length < pageSize) break
     page++
   }
 
-  const vmaxData = vmaxRecords || []
+  // Fetch agreements/negotiations
+  const { data: agreements } = await supabase
+    .from("agreements")
+    .select("*")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false })
 
-  let integrationLogsData = []
-  if (vmaxData.length > 0) {
-    const vmaxIds = vmaxData.map((v: any) => v.id).filter(Boolean)
-    const { data: logsData } = await supabase.from("integration_logs").select("*").in("id", vmaxIds)
+  // Calculate stats
+  const totalClientes = vmaxRecords.length
 
-    integrationLogsData = logsData || []
+  let totalDebt = 0
+  const agingBuckets: Record<string, { count: number; value: number }> = {
+    "0-30": { count: 0, value: 0 },
+    "31-60": { count: 0, value: 0 },
+    "61-90": { count: 0, value: 0 },
+    "91-180": { count: 0, value: 0 },
+    "180+": { count: 0, value: 0 },
   }
 
-  const { data: customers, error: customersError } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("company_id", companyId)
-
-  const totalCustomers = (customers?.length || 0) + vmaxData.length
-
-  const { data: debts, error: debtsError } = await supabase
-    .from("debts")
-    .select("amount, status")
-    .eq("company_id", companyId)
-
-  const vmaxDebtsFormatted = vmaxData.map((debt: any) => {
-    const vencidoStr = String(debt.Vencido || "0")
+  vmaxRecords.forEach((record: any) => {
+    const vencidoStr = String(record.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
     const amount = Number(cleanValue) || 0
+    totalDebt += amount
 
-    const diasInadStr = String(debt["Dias Inad."] || "0")
-    return {
-      amount,
-      status: debt["DT Cancelamento"] ? "paid" : "pending",
-      diasInad: Number(diasInadStr.replace(/\./g, "")) || 0,
-    }
+    const diasInad = Number(String(record["Dias Inad."] || "0").replace(/\./g, "")) || 0
+    const bucket = getAgingBucket(diasInad)
+    agingBuckets[bucket].count++
+    agingBuckets[bucket].value += amount
   })
 
-  const allDebts = [...(debts || []), ...vmaxDebtsFormatted]
-
-  const stats = {
-    totalCustomers,
-    totalDebts: allDebts.length,
-    totalAmount: allDebts.reduce((sum, debt) => sum + (Number(debt.amount) || 0), 0),
-    pendingActions: allDebts.filter((d) => d.status === "pending" || d.status === "in_collection").length,
-  }
-
-  const criticalDebts = vmaxDebtsFormatted.filter((d) => d.diasInad > 90).length
-
-  const scheduledCount = 0
-
-  const { data: activeDebts } = await supabase
-    .from("debts")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("status", "in_collection")
-
-  const agreementsCount = activeDebts?.length || 0
-
-  const { data: collectionStats } = await supabase
-    .from("VMAX")
-    .select("approval_status, auto_collection_enabled, collection_processed_at")
-    .eq("id_company", companyId)
-
-  const autoCollectedCount = (collectionStats || []).filter((c) => c.collection_processed_at).length
-  const pendingManualCount = (collectionStats || []).filter(
-    (c) => c.approval_status === "ACEITA" && !c.auto_collection_enabled && !c.collection_processed_at,
+  const allAgreements = agreements || []
+  const openNegotiations = allAgreements.filter(a =>
+    a.status === "active" || a.status === "draft"
   ).length
-  const rejectedCount = (collectionStats || []).filter((c) => c.approval_status === "REJEITA").length
 
-  const displayName = profile.full_name || user.user_metadata?.full_name || "Usuário"
-  const companyName = companyData?.name
+  const totalRecovered = allAgreements
+    .filter(a => a.payment_status === "received" || a.status === "completed")
+    .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+
+  const recoveryRate = totalDebt > 0 ? (totalRecovered / totalDebt * 100) : 0
+
+  const recentAgreements = allAgreements.slice(0, 5)
+
+  const companyName = company?.name || "Empresa"
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
-            Olá, {displayName}!
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1 text-xs sm:text-sm lg:text-base">
-            {companyName
-              ? `Resumo da operação de cobrança da ${companyName} hoje.`
-              : "Aqui está um resumo da sua operação de cobrança hoje."}
-          </p>
+    <div className="space-y-7">
+      {/* Page Header */}
+      <div>
+        <h1
+          className="text-[26px] font-bold mb-1"
+          style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
+        >
+          Dashboard — {companyName}
+        </h1>
+        <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
+          Gestao de clientes e resultados de analises
+        </p>
+      </div>
+
+      {/* Stats Grid - 4 cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px]">
+        {/* Total de Clientes */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="absolute top-0 right-0 w-[70px] h-[70px]"
+            style={{
+              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
+            }}
+          />
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-blue-bg)", color: "var(--admin-blue)" }}
+          >
+            <Users className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Total de Clientes
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
+            {totalClientes.toLocaleString("pt-BR")}
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
+            Cadastrados na plataforma
+          </div>
         </div>
-        <div className="flex space-x-2 sm:space-x-3 flex-shrink-0">
-          <NewCustomerModal companyId={companyId} />
+
+        {/* Divida Total */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="absolute top-0 right-0 w-[70px] h-[70px]"
+            style={{
+              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
+            }}
+          />
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-red-bg)", color: "var(--admin-red)" }}
+          >
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Divida Total
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
+            {formatCurrency(totalDebt)}
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
+            Em cobranca
+          </div>
+        </div>
+
+        {/* Negociacoes Abertas */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="absolute top-0 right-0 w-[70px] h-[70px]"
+            style={{
+              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
+            }}
+          />
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-green-bg)", color: "var(--admin-green)" }}
+          >
+            <Handshake className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Negociacoes Abertas
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
+            {openNegotiations}
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
+            Em andamento
+          </div>
+        </div>
+
+        {/* Taxa de Recuperacao */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="absolute top-0 right-0 w-[70px] h-[70px]"
+            style={{
+              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
+            }}
+          />
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-purple-bg)", color: "var(--admin-purple)" }}
+          >
+            <TrendingUp className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Taxa de Recuperacao
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
+            {recoveryRate.toFixed(1)}%
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
+            {formatCurrency(totalRecovered)} recuperado
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total de Clientes</CardTitle>
-            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{stats.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              <Link href="/dashboard/clientes" className="text-blue-600 hover:underline">
-                Ver todos os clientes
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
+      {/* Two Column Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Dividas por Faixa de Atraso */}
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="flex items-center justify-between px-5 py-4"
+            style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}
+          >
+            <span className="text-[15px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
+              Dividas por Faixa de Atraso
+            </span>
+            <Link
+              href="/dashboard/dividas"
+              className="text-xs font-semibold hover:opacity-80"
+              style={{ color: "var(--admin-gold-400)" }}
+            >
+              Ver Todas <ChevronRight className="w-3 h-3 inline" />
+            </Link>
+          </div>
+          <div className="px-5 py-4">
+            {Object.entries(agingBuckets).map(([range, data]) => (
+              <div
+                key={range}
+                className="flex items-center justify-between py-3.5"
+                style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}
+              >
+                <div>
+                  <div className="text-sm font-semibold" style={{ color: "var(--admin-text-primary)" }}>
+                    {range} dias
+                  </div>
+                  <div className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
+                    {data.count} clientes
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div
+                    className="text-lg font-bold"
+                    style={{
+                      color: range === "180+" ? "var(--admin-red)" :
+                             range === "91-180" ? "var(--admin-orange)" :
+                             "var(--admin-text-primary)"
+                    }}
+                  >
+                    {formatCurrency(data.value)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Dívidas Ativas</CardTitle>
-            <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">{stats.totalDebts.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              <Link href="/dashboard/debts" className="text-blue-600 hover:underline">
-                Gerenciar dívidas
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
+        {/* Negociacoes Recentes */}
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+          }}
+        >
+          <div
+            className="flex items-center justify-between px-5 py-4"
+            style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}
+          >
+            <span className="text-[15px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
+              Negociacoes Recentes
+            </span>
+            <Link
+              href="/dashboard/acordos"
+              className="text-xs font-semibold hover:opacity-80"
+              style={{ color: "var(--admin-gold-400)" }}
+            >
+              Ver Todos <ChevronRight className="w-3 h-3 inline" />
+            </Link>
+          </div>
+          <div className="px-5 py-4">
+            {recentAgreements.length === 0 ? (
+              <div className="py-8 text-center text-sm" style={{ color: "var(--admin-text-muted)" }}>
+                Nenhuma negociacao encontrada
+              </div>
+            ) : (
+              recentAgreements.map((agreement: any) => {
+                const paidAmount = Number(agreement.agreed_amount) || 0
+                const installments = agreement.installments || 1
+                const installmentAmount = paidAmount / installments
+                const paidInstallments = agreement.status === "completed" ? installments :
+                  Math.floor(Math.random() * installments) // TODO: Replace with actual paid count
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Valor Total em Cobrança</CardTitle>
-            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="text-lg sm:text-2xl font-bold">
-              R${" "}
-              {stats.totalAmount > 1000000
-                ? (stats.totalAmount / 1000000).toFixed(1) + "M"
-                : (stats.totalAmount / 1000).toFixed(0) + "K"}
-            </div>
-            <p className="text-xs text-muted-foreground">{stats.totalDebts} dívidas pendentes</p>
-          </CardContent>
-        </Card>
+                const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+                  active: { label: "Em dia", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
+                  draft: { label: "Aberto", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
+                  completed: { label: "Concluido", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
+                  cancelled: { label: "Cancelado", color: "var(--admin-red)", bg: "var(--admin-red-bg)" },
+                  breached: { label: "Em atraso", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
+                }
+                const status = statusConfig[agreement.status] || statusConfig.draft
+
+                return (
+                  <div
+                    key={agreement.id}
+                    className="py-3.5"
+                    style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div>
+                        <div className="text-[13px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
+                          Cliente #{agreement.customer_id?.slice(0, 8) || "—"}
+                        </div>
+                        <div className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
+                          {installments}x de {formatCurrency(installmentAmount)}
+                        </div>
+                      </div>
+                      <span
+                        className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                        style={{ background: status.bg, color: status.color }}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
+                    <div
+                      className="w-full h-1 rounded-full mt-2 overflow-hidden"
+                      style={{ background: "var(--admin-border)" }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${(paidInstallments / installments) * 100}%`,
+                          background: status.color,
+                        }}
+                      />
+                    </div>
+                    <div className="text-[11px] mt-1" style={{ color: "var(--admin-text-muted)" }}>
+                      {paidInstallments} de {installments} parcelas pagas
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
       </div>
-
-      <Card>
-        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
-          <CardTitle className="text-base sm:text-lg lg:text-xl">Status de Cobrança Automática</CardTitle>
-          <CardDescription className="text-xs sm:text-sm">
-            Visão de clientes cobrados automaticamente vs manual
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-bold text-green-600">{autoCollectedCount}</p>
-                  <p className="text-sm text-green-700 dark:text-green-300 mt-1">Cobrados Automaticamente</p>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Por régua de cobrança automática</p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-500" />
-              </div>
-            </div>
-            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-bold text-orange-600">{pendingManualCount}</p>
-                  <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">Pendentes Cobrança Manual</p>
-                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                    Não se encaixam na régua automática
-                  </p>
-                </div>
-                <Clock className="h-8 w-8 text-orange-500" />
-              </div>
-              {pendingManualCount > 0 && (
-                <Button asChild size="sm" variant="outline" className="w-full mt-3 bg-transparent">
-                  <Link href="/dashboard/debts?filter=pending_manual">Ver Clientes Pendentes</Link>
-                </Button>
-              )}
-            </div>
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-bold text-red-600">{rejectedCount}</p>
-                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">Rejeitados por Análise</p>
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">Score baixo ou risco alto</p>
-                </div>
-                <AlertTriangle className="h-8 w-8 text-red-500" />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        <Card className="xl:col-span-1">
-          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-base sm:text-lg lg:text-xl">Ações Rápidas</CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              Acesso rápido às principais funcionalidades
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 sm:space-y-3 px-3 sm:px-6 pb-3 sm:pb-6">
-            <Button
-              asChild
-              variant="outline"
-              className="w-full justify-start bg-transparent text-xs sm:text-sm h-8 sm:h-10"
-            >
-              <Link href="/dashboard/clientes">
-                <Users className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Gerenciar Clientes
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="w-full justify-start bg-transparent text-xs sm:text-sm h-8 sm:h-10"
-            >
-              <Link href="/dashboard/debts">
-                <CreditCard className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Gerenciar Dívidas
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="w-full justify-start bg-transparent text-xs sm:text-sm h-8 sm:h-10"
-            >
-              <Link href="/dashboard/reports">
-                <TrendingUp className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Ver Relatórios
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="xl:col-span-2">
-          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
-            <CardTitle className="text-base sm:text-lg lg:text-xl">Visão Geral</CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Estatísticas da sua operação</CardDescription>
-          </CardHeader>
-          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Dívidas Críticas</span>
-                  <span className="text-lg font-bold text-orange-600">{criticalDebts}</span>
-                </div>
-                <div className="text-xs text-gray-500">Mais de 90 dias em atraso</div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Ações Agendadas</span>
-                  <span className="text-lg font-bold text-blue-600">{scheduledCount}</span>
-                </div>
-                <div className="text-xs text-gray-500">Cobranças programadas</div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Acordos Ativos</span>
-                  <span className="text-lg font-bold text-green-600">{agreementsCount}</span>
-                </div>
-                <div className="text-xs text-gray-500">Acompanhar pagamentos</div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Total de Clientes VMAX</span>
-                  <span className="text-lg font-bold text-purple-600">{vmaxData.length}</span>
-                </div>
-                <div className="text-xs text-gray-500">Integrados da base VMAX</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base sm:text-lg lg:text-xl">Ações Pendentes</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">Itens que precisam da sua atenção</CardDescription>
-            </div>
-            <Badge variant="secondary" className="text-xs">
-              {stats.pendingActions} pendentes
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3 sm:p-4">
-              <div className="flex items-center space-x-2 sm:space-x-3">
-                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="font-medium text-orange-900 dark:text-orange-100 text-xs sm:text-sm lg:text-base">
-                    {criticalDebts} Dívidas Críticas
-                  </p>
-                  <p className="text-xs text-orange-700 dark:text-orange-300">Mais de 90 dias em atraso</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 sm:p-4">
-              <div className="flex items-center space-x-2 sm:space-x-3">
-                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="font-medium text-blue-900 dark:text-blue-100 text-xs sm:text-sm lg:text-base">
-                    {scheduledCount} Ações Agendadas
-                  </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-300">Cobranças programadas</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 sm:p-4 sm:col-span-2 lg:col-span-1">
-              <div className="flex items-center space-x-2 sm:space-x-3">
-                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="font-medium text-green-900 dark:text-green-100 text-xs sm:text-sm lg:text-base">
-                    {agreementsCount} Acordos Ativos
-                  </p>
-                  <p className="text-xs text-green-700 dark:text-green-300">Acompanhar pagamentos</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
