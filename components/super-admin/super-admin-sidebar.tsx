@@ -63,6 +63,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       current: pathname.startsWith("/super-admin/companies"),
     },
     {
+      name: "Clientes",
+      href: "/super-admin/clientes",
+      icon: Users,
+      current: pathname.startsWith("/super-admin/clientes"),
+    },
+    {
       name: "Análise Restritiva",
       href: "/super-admin/analises",
       icon: CreditCard,
