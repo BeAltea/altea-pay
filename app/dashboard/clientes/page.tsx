@@ -58,6 +58,40 @@ export default async function ClientesPage() {
       page++
     }
 
+    // Fetch agreements to determine actual ASAAS-backed negotiation status
+    const { data: agreements } = await supabase
+      .from("agreements")
+      .select("customer_id, status, payment_status, asaas_payment_id")
+      .eq("company_id", profile.company_id)
+
+    // Build a map of customer_id -> agreement status (based on ASAAS data)
+    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean }>()
+
+    ;(agreements || []).forEach((a: any) => {
+      const customerId = a.customer_id
+      if (!customerId) return
+
+      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false }
+      existing.hasAgreement = true
+
+      // Check if there's a real ASAAS charge
+      if (a.asaas_payment_id) {
+        existing.hasAsaasCharge = true
+      }
+
+      // Check if this agreement has been paid (via ASAAS)
+      if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+        existing.isPaid = true
+      }
+
+      // Check if this agreement is active (pending payment)
+      if ((a.status === "active" || a.status === "draft") && a.payment_status !== "received" && a.payment_status !== "confirmed") {
+        existing.isActive = true
+      }
+
+      agreementStatusMap.set(customerId, existing)
+    })
+
     // Get behavioral analyses
     const behavioralRes = await getAllBehavioralAnalyses()
     const allBehavioralAnalyses = behavioralRes.success ? behavioralRes.data : []
@@ -73,14 +107,31 @@ export default async function ClientesPage() {
       })
     }
 
-    // Enrich customer data with behavioral analysis
+    // Enrich customer data with behavioral analysis and ASAAS-backed negotiation status
     const clientes = (vmaxCustomers || []).map((cliente: any) => {
       const cpfCnpj = cliente["CPF/CNPJ"]?.replace(/[^\d]/g, "")
       const behavioralData = cpfCnpj ? behavioralMap.get(cpfCnpj) : null
 
+      // Get real agreement status from ASAAS data
+      const agreementStatus = agreementStatusMap.get(cliente.id)
+
+      // Determine negotiation status based on ASAAS data, NOT the legacy approval_status
+      let asaasNegotiationStatus = "NENHUMA"
+      if (agreementStatus?.isPaid) {
+        asaasNegotiationStatus = "PAGO"
+      } else if (agreementStatus?.isActive && agreementStatus?.hasAsaasCharge) {
+        asaasNegotiationStatus = "ATIVA_ASAAS" // Has ASAAS charge pending payment
+      } else if (agreementStatus?.isActive) {
+        asaasNegotiationStatus = "ATIVA" // Has agreement but no ASAAS charge yet
+      } else if (agreementStatus?.hasAgreement) {
+        asaasNegotiationStatus = "DRAFT" // Has draft agreement
+      }
+
       return {
         ...cliente,
         behavioralData,
+        asaasNegotiationStatus, // Real ASAAS-backed status
+        hasAsaasCharge: agreementStatus?.hasAsaasCharge || false,
       }
     })
 

@@ -25,6 +25,8 @@ interface Cliente {
   recovery_score: number | null
   recovery_class: string | null
   approval_status: string
+  asaasNegotiationStatus?: string  // Real ASAAS-backed status
+  hasAsaasCharge?: boolean
   "Dias Inad.": number
   Vencido: string
   analysis_metadata: any
@@ -93,7 +95,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(50)
 
-  // Stats
+  // Stats - uses ASAAS-backed negotiation status
   const stats = useMemo(() => {
     const withCreditScore = clientes.filter(c =>
       c.credit_score !== null || c.restrictive_analysis_logs
@@ -101,8 +103,10 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
     const withRecoveryScore = clientes.filter(c =>
       c.recovery_score !== null || c.behavioral_analysis_logs || c.behavioralData
     ).length
+    // Only count clients with REAL ASAAS charges as having negotiations
     const withNegotiation = clientes.filter(c =>
-      c.approval_status === "ACEITA" || c.approval_status === "ACEITA_ESPECIAL"
+      c.asaasNegotiationStatus === "ATIVA_ASAAS" ||
+      c.asaasNegotiationStatus === "PAGO"
     ).length
 
     return {
@@ -151,12 +155,13 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       })
     }
 
-    // Negotiation filter
+    // Negotiation filter - uses ASAAS-backed status
     if (negotiationFilter !== "all") {
       filtered = filtered.filter(c => {
-        const hasNegotiation = c.approval_status === "ACEITA" || c.approval_status === "ACEITA_ESPECIAL"
-        if (negotiationFilter === "with") return hasNegotiation
-        if (negotiationFilter === "without") return !hasNegotiation
+        // Only consider clients with REAL ASAAS charges as having active negotiations
+        const hasActiveNegotiation = c.asaasNegotiationStatus === "ATIVA_ASAAS" || c.asaasNegotiationStatus === "PAGO"
+        if (negotiationFilter === "with") return hasActiveNegotiation
+        if (negotiationFilter === "without") return !hasActiveNegotiation
         return true
       })
     }
@@ -420,11 +425,14 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                   const recoveryScore = cliente.recovery_score ?? cliente.behavioralData?.recovery_score ?? null
                   const recoveryClass = cliente.recovery_class ?? cliente.behavioralData?.recovery_class ?? null
 
-                  const negotiationStatus = cliente.approval_status
+                  // Use ASAAS-backed negotiation status
+                  const negotiationStatus = cliente.asaasNegotiationStatus || "NENHUMA"
                   const negotiationConfig: Record<string, { label: string; color: string; bg: string }> = {
-                    ACEITA: { label: "Aberta", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
-                    ACEITA_ESPECIAL: { label: "Em andamento", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
-                    REJEITA: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
+                    PAGO: { label: "Pago", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
+                    ATIVA_ASAAS: { label: "Cobranca Enviada", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
+                    ATIVA: { label: "Acordo Criado", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
+                    DRAFT: { label: "Rascunho", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
+                    NENHUMA: { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" },
                   }
                   const negotiation = negotiationConfig[negotiationStatus] || { label: "Nenhuma", color: "var(--admin-text-muted)", bg: "var(--admin-bg-tertiary)" }
 
