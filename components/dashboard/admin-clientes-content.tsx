@@ -26,7 +26,7 @@ interface Cliente {
   hasAsaasCharge?: boolean
   "Dias Inad.": number
   Vencido: string
-  "Dt. Vcto"?: string  // Data de vencimento
+  Vecto?: string  // Data de vencimento (from VMAX table)
   analysis_metadata: any
   behavioralData?: any
   restrictive_analysis_logs?: any
@@ -167,8 +167,8 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
           comparison = valueA - valueB
           break
         case "debtDate":
-          const dateA = a["Dt. Vcto"] ? new Date(a["Dt. Vcto"]).getTime() : 0
-          const dateB = b["Dt. Vcto"] ? new Date(b["Dt. Vcto"]).getTime() : 0
+          const dateA = a["Vecto"] ? new Date(a["Vecto"]).getTime() : 0
+          const dateB = b["Vecto"] ? new Date(b["Vecto"]).getTime() : 0
           comparison = dateA - dateB
           break
       }
@@ -411,7 +411,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                       {/* Data da Divida */}
                       <td className="px-4 py-3">
                         <span className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
-                          {formatDate(cliente["Dt. Vcto"])}
+                          {formatDate(cliente["Vecto"])}
                         </span>
                       </td>
 
