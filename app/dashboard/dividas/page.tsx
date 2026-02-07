@@ -55,7 +55,36 @@ export default async function DividasPage() {
     page++
   }
 
-  // Transform VMAX records to debt format
+  // Fetch agreements to determine actual payment status from ASAAS
+  const { data: agreements } = await supabase
+    .from("agreements")
+    .select("customer_id, status, payment_status")
+    .eq("company_id", companyId)
+
+  // Build a map of customer_id -> agreement status for proper debt status calculation
+  const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean }>()
+
+  ;(agreements || []).forEach((a: any) => {
+    const customerId = a.customer_id
+    if (!customerId) return
+
+    const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false }
+    existing.hasAgreement = true
+
+    // Check if this agreement has been paid (via ASAAS)
+    if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+      existing.isPaid = true
+    }
+
+    // Check if this agreement is active (pending payment)
+    if ((a.status === "active" || a.status === "draft") && a.payment_status !== "received" && a.payment_status !== "confirmed") {
+      existing.isActive = true
+    }
+
+    agreementStatusMap.set(customerId, existing)
+  })
+
+  // Transform VMAX records to debt format with corrected status logic
   const dividas = vmaxRecords.map((record: any) => {
     const vencidoStr = String(record.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
@@ -72,11 +101,12 @@ export default async function DividasPage() {
       }
     }
 
-    // Determine status
+    // Determine status based on ASAAS payment data - NOT the legacy "DT Cancelamento" field
+    const agreementStatus = agreementStatusMap.get(record.id)
     let status = "em_aberto"
-    if (record["DT Cancelamento"]) {
+    if (agreementStatus?.isPaid) {
       status = "quitada"
-    } else if (record.approval_status === "ACEITA" || record.approval_status === "ACEITA_ESPECIAL") {
+    } else if (agreementStatus?.isActive) {
       status = "em_negociacao"
     }
 
