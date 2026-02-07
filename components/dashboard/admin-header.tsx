@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Menu, Search, Bell, Sun, Moon } from "lucide-react"
+import { Menu, Search, Bell, Sun, Moon, User, Settings, LogOut, ChevronDown } from "lucide-react"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
 interface Notification {
   id: string
@@ -36,8 +38,10 @@ interface AdminHeaderProps {
 export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
+  const { toast } = useToast()
   const [mounted, setMounted] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -85,12 +89,40 @@ export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
       const target = event.target as Element
       if (!target.closest("[data-dropdown]")) {
         setShowNotifications(false)
+        setShowUserMenu(false)
       }
     }
 
     document.addEventListener("click", handleClickOutside)
     return () => document.removeEventListener("click", handleClickOutside)
   }, [])
+
+  const handleSignOut = async () => {
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut({ scope: "local" })
+
+      toast({
+        title: "Logout realizado",
+        description: "Voce foi desconectado com sucesso.",
+      })
+
+      if (typeof window !== "undefined") {
+        localStorage.clear()
+        sessionStorage.clear()
+      }
+
+      window.location.href = "/auth/login"
+    } catch (error) {
+      console.error("Sign out error:", error)
+      toast({
+        title: "Erro",
+        description: "Erro inesperado ao fazer logout.",
+        variant: "destructive",
+      })
+      window.location.href = "/auth/login"
+    }
+  }
 
   const handleNotificationClick = async (notificationId: string) => {
     try {
@@ -188,6 +220,7 @@ export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
               onClick={(e) => {
                 e.stopPropagation()
                 setShowNotifications(!showNotifications)
+                setShowUserMenu(false)
               }}
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-all relative"
               style={{
@@ -289,15 +322,108 @@ export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
             )}
           </div>
 
-          {/* User Avatar */}
-          <div
-            className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px] cursor-pointer"
-            style={{
-              background: "linear-gradient(135deg, var(--admin-gold-400), var(--admin-gold-600))",
-              color: "var(--admin-bg-primary)"
-            }}
-          >
-            {userInitials}
+          {/* User Menu */}
+          <div className="relative" data-dropdown>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowUserMenu(!showUserMenu)
+                setShowNotifications(false)
+              }}
+              className="flex items-center gap-2 p-1 rounded-lg transition-colors"
+              style={{
+                background: showUserMenu ? "var(--admin-bg-tertiary)" : "transparent"
+              }}
+            >
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px]"
+                style={{
+                  background: "linear-gradient(135deg, var(--admin-gold-400), var(--admin-gold-600))",
+                  color: "var(--admin-bg-primary)"
+                }}
+              >
+                {userInitials}
+              </div>
+              <div className="hidden md:block text-left">
+                <p
+                  className="text-sm font-medium truncate max-w-32"
+                  style={{ color: "var(--admin-text-primary)" }}
+                >
+                  {displayName}
+                </p>
+                <p
+                  className="text-xs truncate max-w-32"
+                  style={{ color: "var(--admin-text-muted)" }}
+                >
+                  {user?.profile?.company?.name || "Administrador"}
+                </p>
+              </div>
+              <ChevronDown
+                className="w-4 h-4 hidden sm:block"
+                style={{ color: "var(--admin-text-muted)" }}
+              />
+            </button>
+
+            {showUserMenu && (
+              <div
+                className="absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg z-50"
+                style={{
+                  background: "var(--admin-bg-secondary)",
+                  border: "1px solid var(--admin-border)"
+                }}
+              >
+                <div
+                  className="p-3"
+                  style={{ borderBottom: "1px solid var(--admin-border)" }}
+                >
+                  <p
+                    className="font-medium text-sm"
+                    style={{ color: "var(--admin-text-primary)" }}
+                  >
+                    {displayName}
+                  </p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: "var(--admin-text-muted)" }}
+                  >
+                    {user?.email}
+                  </p>
+                </div>
+                <div className="py-1">
+                  <Link
+                    href="/dashboard/configuracoes"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors"
+                    style={{ color: "var(--admin-text-secondary)" }}
+                    onClick={() => setShowUserMenu(false)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--admin-bg-tertiary)"
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent"
+                    }}
+                  >
+                    <Settings className="w-4 h-4" />
+                    Configuracoes
+                  </Link>
+                </div>
+                <div style={{ borderTop: "1px solid var(--admin-border)" }} className="py-1">
+                  <button
+                    onClick={handleSignOut}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors"
+                    style={{ color: "var(--admin-red)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--admin-red-bg)"
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent"
+                    }}
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sair da conta
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
