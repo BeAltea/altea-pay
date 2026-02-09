@@ -1,266 +1,406 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { TrendingUp, DollarSign, Users, Building2, Download, FileText, Calendar, Settings } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Building2,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Send,
+  Mail,
+  Percent,
+  ArrowUpRight,
+  ArrowDownRight,
+} from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from "recharts"
 
-interface CompanyReport {
+interface Company {
   id: string
   name: string
-  totalCustomers: number
-  totalDebts: number
-  totalAmount: number
-  recoveredAmount: number
-  recoveryRate: number
-  overdueDebts: number
-  monthlyGrowth: number
+}
+
+interface VmaxRecord {
+  id: string
+  id_company: string
+  Vencido: string
+  "CPF/CNPJ": string
+  "Dias Inad.": string | number
+  negotiation_status?: string
+  Cliente?: string
+}
+
+interface Agreement {
+  id: string
+  customer_id: string
+  company_id: string
+  status: string
+  asaas_status?: string
+  agreed_amount?: number
+  created_at: string
 }
 
 interface MonthlyData {
   month: string
-  recovered: number
-  target: number
-  companies: number
-  newDebts: number
+  label: string
+  received: number
+  debt: number
+}
+
+interface CompanyStats {
+  id: string
+  name: string
+  clients: number
+  totalDebt: number
+  received: number
+  recoveryRate: number
+  negSent: number
+  negPaid: number
+}
+
+// Format currency in BRL
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+// Format compact currency
+function formatCompactBRL(value: number): string {
+  if (value >= 1000000) {
+    return `R$ ${(value / 1000000).toFixed(1)}M`
+  } else if (value >= 1000) {
+    return `R$ ${(value / 1000).toFixed(1)}K`
+  }
+  return formatBRL(value)
+}
+
+// Parse VMAX currency value
+function parseVencido(v: VmaxRecord): number {
+  const vencidoStr = String(v.Vencido || "0")
+  const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+  return Number(cleanValue) || 0
+}
+
+// Check if VMAX record is paid
+function isPaid(v: VmaxRecord, paidDocs: Set<string>): boolean {
+  const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+  return paidDocs.has(doc) || v.negotiation_status === "PAGO"
 }
 
 export default function ReportsPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState("current-month")
-  const [reportData, setReportData] = useState<any>(null)
-  const [isReportOpen, setIsReportOpen] = useState(false)
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("all")
+  const [timeRange, setTimeRange] = useState<"12" | "24">("12")
   const [loading, setLoading] = useState(true)
-  const [realData, setRealData] = useState<any>(null)
 
+  // Data state
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [vmaxData, setVmaxData] = useState<VmaxRecord[]>([])
+  const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [paidDocsByCompany, setPaidDocsByCompany] = useState<Map<string, Set<string>>>(new Map())
+  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
+
+  // Fetch all data
   useEffect(() => {
-    const fetchRealData = async () => {
+    const fetchData = async () => {
       try {
         const supabase = createBrowserClient()
+        console.log("[Reports] Loading data...")
 
-        console.log("[v0] 📊 Carregando dados reais dos relatórios...")
+        // Fetch companies
+        const { data: companiesData } = await supabase
+          .from("companies")
+          .select("id, name")
+          .order("name")
 
-        const { data: companies, error: companiesError } = await supabase.from("companies").select("id, name")
+        setCompanies(companiesData || [])
 
-        if (companiesError) throw companiesError
+        // Fetch VMAX data with pagination
+        let allVmax: VmaxRecord[] = []
+        let page = 0
+        const pageSize = 1000
+        let hasMore = true
 
-        const { data: customers, error: customersError } = await supabase.from("customers").select(`
-            id,
-            company_id,
-            companies (name)
-          `)
+        while (hasMore) {
+          const { data: vmaxPage } = await supabase
+            .from("VMAX")
+            .select('id, id_company, Vencido, "CPF/CNPJ", "Dias Inad.", negotiation_status, Cliente')
+            .range(page * pageSize, (page + 1) * pageSize - 1)
 
-        if (customersError) throw customersError
-
-        const { data: vmaxCustomers, error: vmaxError } = await supabase.from("VMAX").select("id, Empresa")
-
-        if (vmaxError) throw vmaxError
-
-        const { data: debts, error: debtsError } = await supabase
-          .from("debts")
-          .select("id, customer_id, amount, status")
-
-        if (debtsError) throw debtsError
-
-        const { data: creditProfiles, error: profilesError } = await supabase.from("credit_profiles").select("*")
-
-        if (profilesError) throw profilesError
-
-        const totalCompanies = companies?.length || 0
-        const totalCustomers = (customers?.length || 0) + (vmaxCustomers?.length || 0)
-        const totalAmount = debts?.reduce((sum, debt) => sum + (debt.amount || 0), 0) || 0
-        const paidDebts = debts?.filter((d) => d.status === "paid") || []
-        const totalRecovered = paidDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-
-        const companiesReport = (companies || []).map((company: any) => {
-          const companyCustomers = customers?.filter((c) => c.company_id === company.id) || []
-          const companyDebts =
-            debts?.filter((d) => {
-              const customer = customers?.find((c) => c.id === d.customer_id)
-              return customer?.company_id === company.id
-            }) || []
-
-          const companyAmount = companyDebts.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-          const companyPaid = companyDebts.filter((d) => d.status === "paid")
-          const companyRecovered = companyPaid.reduce((sum, debt) => sum + (debt.amount || 0), 0)
-          const recoveryRate = companyAmount > 0 ? (companyRecovered / companyAmount) * 100 : 0
-
-          return {
-            id: company.id,
-            name: company.name,
-            totalCustomers: companyCustomers.length,
-            totalDebts: companyDebts.length,
-            totalAmount: companyAmount,
-            recoveredAmount: companyRecovered,
-            recoveryRate: recoveryRate,
-            overdueDebts: companyDebts.filter((d) => d.status === "overdue").length,
-            monthlyGrowth: 0,
+          if (vmaxPage && vmaxPage.length > 0) {
+            allVmax = [...allVmax, ...vmaxPage]
+            page++
+            hasMore = vmaxPage.length === pageSize
+          } else {
+            hasMore = false
           }
-        })
+        }
+        setVmaxData(allVmax)
+        console.log("[Reports] VMAX loaded:", allVmax.length)
 
-        const data = {
-          totalCompanies,
-          totalCustomers,
-          totalAmount,
-          totalRecovered,
-          companiesReport,
-          totalDebts: debts?.length || 0,
+        // Fetch agreements with pagination
+        let allAgreements: Agreement[] = []
+        page = 0
+        hasMore = true
+
+        while (hasMore) {
+          const { data: agreementsPage } = await supabase
+            .from("agreements")
+            .select("id, customer_id, company_id, status, asaas_status, agreed_amount, created_at")
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (agreementsPage && agreementsPage.length > 0) {
+            allAgreements = [...allAgreements, ...agreementsPage]
+            page++
+            hasMore = agreementsPage.length === pageSize
+          } else {
+            hasMore = false
+          }
+        }
+        setAgreements(allAgreements)
+        console.log("[Reports] Agreements loaded:", allAgreements.length)
+
+        // Fetch customers for document mapping
+        const { data: customers } = await supabase
+          .from("customers")
+          .select("id, document, company_id")
+
+        // Build paid documents map
+        const customerIdToDoc = new Map<string, string>()
+        for (const c of customers || []) {
+          if (c.document) {
+            customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+          }
         }
 
-        console.log("[v0] ✅ Dados reais carregados:", data)
-        setRealData(data)
+        const paidDocsMap = new Map<string, Set<string>>()
+        for (const a of allAgreements) {
+          if (a.status === "completed" || a.status === "paid") {
+            const doc = customerIdToDoc.get(a.customer_id)
+            if (doc && a.company_id) {
+              if (!paidDocsMap.has(a.company_id)) {
+                paidDocsMap.set(a.company_id, new Set())
+              }
+              paidDocsMap.get(a.company_id)!.add(doc)
+            }
+          }
+        }
+        setPaidDocsByCompany(paidDocsMap)
+
+        // Generate monthly data for chart
+        const months = generateMonthlyChartData(allAgreements, allVmax, 24)
+        setMonthlyData(months)
+
       } catch (error) {
-        console.error("[v0] ❌ Erro ao carregar dados reais:", error)
+        console.error("[Reports] Error loading data:", error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchRealData()
+    fetchData()
   }, [])
 
-  const globalStats = realData
-    ? {
-        totalCompanies: realData.totalCompanies,
-        totalCustomers: realData.totalCustomers,
-        totalDebts: realData.totalDebts,
-        totalAmount: realData.totalAmount,
-        totalRecovered: realData.totalRecovered,
-        totalOverdue:
-          realData.companiesReport?.reduce((sum: number, company: any) => sum + company.overdueDebts, 0) || 0,
-      }
-    : {
-        totalCompanies: 0,
-        totalCustomers: 0,
-        totalDebts: 0,
-        totalAmount: 0,
-        totalRecovered: 0,
-        totalOverdue: 0,
-      }
+  // Generate monthly chart data
+  function generateMonthlyChartData(
+    allAgreements: Agreement[],
+    allVmax: VmaxRecord[],
+    monthsCount: number
+  ): MonthlyData[] {
+    const data: MonthlyData[] = []
+    const now = new Date()
 
-  const companiesReport = realData?.companiesReport || []
-  const overallRecoveryRate =
-    globalStats.totalAmount > 0 ? (globalStats.totalRecovered / globalStats.totalAmount) * 100 : 0
+    for (let i = monthsCount - 1; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      const label = date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "")
 
-  const topPerformers = [...companiesReport].sort((a, b) => b.recoveryRate - a.recoveryRate).slice(0, 3)
-  const bottomPerformers = [...companiesReport].sort((a, b) => a.recoveryRate - b.recoveryRate).slice(0, 3)
+      // Calculate received amount for this month (from completed agreements)
+      const monthReceived = allAgreements
+        .filter((a) => {
+          if (a.status !== "completed" && a.status !== "paid") return false
+          const aDate = new Date(a.created_at)
+          return (
+            aDate.getFullYear() === date.getFullYear() &&
+            aDate.getMonth() === date.getMonth()
+          )
+        })
+        .reduce((sum, a) => sum + (a.agreed_amount || 0), 0)
 
-  const handleExportReport = () => {
-    console.log("[v0] Exportando relatório global para o período:", selectedPeriod)
+      // Estimate debt for this month (simplified - total divided by months)
+      const totalDebt = allVmax.reduce((sum, v) => sum + parseVencido(v), 0)
+      const monthDebt = totalDebt / monthsCount
 
-    const reportData = {
-      period: selectedPeriod,
-      globalStats,
-      companiesReport,
-      topPerformers,
-      bottomPerformers,
-      exportedAt: new Date().toISOString(),
+      data.push({
+        month: monthKey,
+        label,
+        received: monthReceived,
+        debt: monthDebt,
+      })
     }
 
-    const csvContent = `data:text/csv;charset=utf-8,Relatório Global - ${selectedPeriod}\\n\\nEstatísticas Globais:\\nTotal de Empresas,${globalStats.totalCompanies}\\nTotal de Clientes,${globalStats.totalCustomers}\\nVolume Total,R$ ${globalStats.totalAmount.toLocaleString("pt-BR")}\\nValor Recuperado,R$ ${globalStats.totalRecovered.toLocaleString("pt-BR")}\\nTaxa de Recuperação,${overallRecoveryRate.toFixed(1)}%\\n\\nExportado em: ${new Date().toLocaleString("pt-BR")}`
-
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
-    link.setAttribute("download", `relatorio-global-${selectedPeriod}-${new Date().toISOString().split("T")[0]}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-
-    alert(`Relatório global exportado com sucesso para o período: ${selectedPeriod}!`)
+    return data
   }
 
-  const handleGenerateReport = (reportType: string) => {
-    console.log("[v0] Gerando relatório do tipo:", reportType)
+  // Calculate metrics based on selected company
+  const metrics = useMemo(() => {
+    const companyFilter = selectedCompanyId === "all"
+      ? null
+      : selectedCompanyId
 
-    const reportTypes = {
-      monthly: {
-        title: "Relatório Mensal",
-        description: "Análise detalhada do desempenho mensal",
-        data: {
-          period: selectedPeriod,
-          totalRecovered: globalStats.totalRecovered,
-          targetRecovered: globalStats.totalAmount * 0.6,
-          companiesAnalyzed: globalStats.totalCompanies,
-          topPerformer: topPerformers[0],
-          insights: [
-            "Taxa de recuperação 12% acima do mês anterior",
-            "Enel Distribuição mostrou maior crescimento",
-            "Redução de 8% em dívidas em atraso",
-            "Meta mensal atingida em 113%",
-          ],
-          recommendations: [
-            "Aplicar estratégias da Enel nas outras empresas",
-            "Focar em clientes com dívidas de 30-60 dias",
-            "Implementar campanhas de negociação",
-          ],
-        },
-      },
-      trends: {
-        title: "Análise de Tendências",
-        description: "Identificação de padrões e tendências de recuperação",
-        data: {
-          trendDirection: "Crescimento",
-          growthRate: 0, // Historical data not available
-          seasonalPatterns: [
-            "Pico de recuperação no final do mês",
-            "Queda típica nos primeiros 10 dias",
-            "Melhores resultados às terças e quartas",
-          ],
-          predictedNextMonth: globalStats.totalRecovered * 1.15,
-          riskFactors: ["Aumento de 5% em inadimplentes crônicos", "Redução na taxa de contato telefônico"],
-        },
-      },
-      companies: {
-        title: "Relatório por Empresa",
-        description: "Análise comparativa detalhada entre empresas",
-        data: {
-          companiesAnalyzed: globalStats.totalCompanies,
-          bestPerformer: topPerformers[0],
-          worstPerformer: bottomPerformers[0],
-          averageRecoveryRate: overallRecoveryRate,
-          companyComparison: companiesReport.map((company) => ({
-            name: company.name,
-            performance: company.recoveryRate > overallRecoveryRate ? "Acima da média" : "Abaixo da média",
-            trend: company.monthlyGrowth > 0 ? "Crescimento" : "Declínio",
-          })),
-        },
-      },
-      custom: {
-        title: "Relatório Personalizado",
-        description: "Relatório customizado com métricas específicas",
-        data: {
-          customMetrics: [
-            "Taxa de conversão por canal",
-            "Tempo médio de recuperação",
-            "Efetividade por faixa de valor",
-            "Performance por região",
-          ],
-          dateRange: selectedPeriod,
-          filters: "Todas as empresas ativas",
-          specialAnalysis: "Análise de cohort de clientes",
-        },
-      },
+    // Filter VMAX data
+    const filteredVmax = companyFilter
+      ? vmaxData.filter((v) => v.id_company === companyFilter)
+      : vmaxData
+
+    // Filter agreements
+    const filteredAgreements = companyFilter
+      ? agreements.filter((a) => a.company_id === companyFilter)
+      : agreements
+
+    // Get paid docs for filtered companies
+    const getPaidDocs = (companyId: string): Set<string> => {
+      return paidDocsByCompany.get(companyId) || new Set()
     }
 
-    const selectedReport = reportTypes[reportType as keyof typeof reportTypes]
-    setReportData(selectedReport)
-    setIsReportOpen(true)
-  }
+    // Calculate metrics
+    const uniqueCompanies = new Set(filteredVmax.map((v) => v.id_company))
+    const uniqueClients = new Set(filteredVmax.map((v) => v["CPF/CNPJ"]?.replace(/\D/g, "")))
 
-  const handlePeriodChange = (newPeriod: string) => {
-    console.log("[v0] Mudando período para:", newPeriod)
-    setSelectedPeriod(newPeriod)
+    let totalDebt = 0
+    let totalReceived = 0
+
+    filteredVmax.forEach((v) => {
+      const amount = parseVencido(v)
+      const companyPaidDocs = getPaidDocs(v.id_company)
+      if (isPaid(v, companyPaidDocs)) {
+        totalReceived += amount
+      } else {
+        totalDebt += amount
+      }
+    })
+
+    const totalOriginal = totalDebt + totalReceived
+    const recoveryRate = totalOriginal > 0 ? (totalReceived / totalOriginal) * 100 : 0
+
+    // Negotiations metrics
+    const negSent = filteredAgreements.filter(
+      (a) => ["active", "pending", "draft"].includes(a.status)
+    ).length
+
+    const negOpened = filteredAgreements.filter(
+      (a) => a.asaas_status && ["PENDING", "RECEIVED", "CONFIRMED"].includes(a.asaas_status)
+    ).length
+
+    const negPaid = filteredAgreements.filter(
+      (a) => a.status === "completed" || a.status === "paid"
+    ).length
+
+    const negPaidRate = negSent > 0 ? (negPaid / negSent) * 100 : 0
+
+    return {
+      empresasAtivas: companyFilter ? 1 : uniqueCompanies.size,
+      totalClientes: uniqueClients.size,
+      dividaTotal: totalDebt,
+      totalRecebido: totalReceived,
+      recuperacao: recoveryRate,
+      negEnviadas: negSent,
+      negAbertas: negOpened,
+      negPagasRate: negPaidRate,
+    }
+  }, [selectedCompanyId, vmaxData, agreements, paidDocsByCompany])
+
+  // Calculate per-company stats
+  const companyStats = useMemo((): CompanyStats[] => {
+    return companies.map((company) => {
+      const companyVmax = vmaxData.filter((v) => v.id_company === company.id)
+      const companyAgreements = agreements.filter((a) => a.company_id === company.id)
+      const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
+
+      const uniqueClients = new Set(companyVmax.map((v) => v["CPF/CNPJ"]?.replace(/\D/g, "")))
+
+      let debt = 0
+      let received = 0
+      companyVmax.forEach((v) => {
+        const amount = parseVencido(v)
+        if (isPaid(v, companyPaidDocs)) {
+          received += amount
+        } else {
+          debt += amount
+        }
+      })
+
+      const total = debt + received
+      const rate = total > 0 ? (received / total) * 100 : 0
+
+      const negSent = companyAgreements.filter(
+        (a) => ["active", "pending", "draft"].includes(a.status)
+      ).length
+
+      const negPaid = companyAgreements.filter(
+        (a) => a.status === "completed" || a.status === "paid"
+      ).length
+
+      return {
+        id: company.id,
+        name: company.name,
+        clients: uniqueClients.size,
+        totalDebt: debt,
+        received,
+        recoveryRate: rate,
+        negSent,
+        negPaid,
+      }
+    }).sort((a, b) => b.recoveryRate - a.recoveryRate)
+  }, [companies, vmaxData, agreements, paidDocsByCompany])
+
+  // Filter chart data by time range
+  const chartData = useMemo(() => {
+    const count = timeRange === "12" ? 12 : 24
+    return monthlyData.slice(-count)
+  }, [monthlyData, timeRange])
+
+  // Handle company row click
+  const handleCompanyClick = (companyId: string) => {
+    setSelectedCompanyId(companyId)
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Carregando dados reais...</p>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Relatórios Globais</h1>
+          <p className="text-muted-foreground mt-1">Carregando dados...</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[...Array(8)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <Skeleton className="h-4 w-24 mb-2" />
+                <Skeleton className="h-8 w-32" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     )
@@ -268,278 +408,346 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Relatórios Globais</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Relatórios Globais</h1>
+          <p className="text-muted-foreground mt-1">
             Análise consolidada de todas as empresas e operações de cobrança.
           </p>
         </div>
-        <div className="flex space-x-3 flex-shrink-0">
-          <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Selecionar período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current-month">Mês Atual</SelectItem>
-              <SelectItem value="last-month">Mês Anterior</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={handleExportReport} variant="outline" className="flex items-center space-x-2 bg-transparent">
-            <Download className="h-4 w-4" />
-            <span>Exportar</span>
-          </Button>
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total de Empresas</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{globalStats.totalCompanies}</p>
-              </div>
-              <Building2 className="h-8 w-8 text-blue-600" />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              <span className="text-green-600">+2</span> novas este mês
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total de Clientes</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {globalStats.totalCustomers.toLocaleString("pt-BR")}
-                </p>
-              </div>
-              <Users className="h-8 w-8 text-green-600" />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              <span className="text-green-600">+0%</span> vs mês anterior
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Volume Total</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  R$ {globalStats.totalAmount.toLocaleString("pt-BR")}
-                </p>
-              </div>
-              <DollarSign className="h-8 w-8 text-yellow-600" />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">Valor total em cobrança</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Valor Recuperado</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  R$ {globalStats.totalRecovered.toLocaleString("pt-BR")}
-                </p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-green-600" />
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Taxa: <span className="text-green-600">{overallRecoveryRate.toFixed(1)}%</span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* SECTION 1: Live Overview Cards */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Gerar Relatórios</span>
-          </CardTitle>
-          <CardDescription>Selecione o tipo de relatório que deseja gerar com base nos dados atuais.</CardDescription>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Visão Geral ao Vivo
+              </CardTitle>
+              <CardDescription>Métricas em tempo real baseadas nos dados atuais</CardDescription>
+            </div>
+            <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
+              <SelectTrigger className="w-[250px]">
+                <SelectValue placeholder="Filtrar por empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as Empresas</SelectItem>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button
-              onClick={() => handleGenerateReport("monthly")}
-              variant="outline"
-              className="h-20 flex-col space-y-2 bg-transparent"
-            >
-              <Calendar className="h-6 w-6" />
-              <span className="text-sm">Relatório Mensal</span>
-            </Button>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Card 1: Empresas Ativas */}
+            {selectedCompanyId === "all" && (
+              <Card className="bg-muted/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">
+                        Empresas Ativas
+                      </p>
+                      <p className="text-2xl font-bold mt-1">{metrics.empresasAtivas}</p>
+                    </div>
+                    <Building2 className="h-8 w-8 text-blue-500 opacity-80" />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-            <Button
-              onClick={() => handleGenerateReport("trends")}
-              variant="outline"
-              className="h-20 flex-col space-y-2 bg-transparent"
-            >
-              <TrendingUp className="h-6 w-6" />
-              <span className="text-sm">Análise de Tendência</span>
-            </Button>
+            {/* Card 2: Total de Clientes */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      Total de Clientes
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {metrics.totalClientes.toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                  <Users className="h-8 w-8 text-green-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
 
-            <Button
-              onClick={() => handleGenerateReport("companies")}
-              variant="outline"
-              className="h-20 flex-col space-y-2 bg-transparent"
-            >
-              <Building2 className="h-6 w-6" />
-              <span className="text-sm">Por Empresa</span>
-            </Button>
+            {/* Card 3: Dívida Total */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      Dívida Total
+                    </p>
+                    <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">
+                      {formatCompactBRL(metrics.dividaTotal)}
+                    </p>
+                  </div>
+                  <DollarSign className="h-8 w-8 text-red-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
 
-            <Button
-              onClick={() => handleGenerateReport("custom")}
-              variant="outline"
-              className="h-20 flex-col space-y-2 bg-transparent"
-            >
-              <Settings className="h-6 w-6" />
-              <span className="text-sm">Personalizado</span>
-            </Button>
+            {/* Card 4: Total Recebido */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      Total Recebido
+                    </p>
+                    <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">
+                      {formatCompactBRL(metrics.totalRecebido)}
+                    </p>
+                  </div>
+                  <DollarSign className="h-8 w-8 text-green-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 5: % Recuperação */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      % Recuperação
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {metrics.recuperacao.toFixed(1)}%
+                    </p>
+                  </div>
+                  <Percent className="h-8 w-8 text-purple-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 6: Negociações Enviadas */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      Neg. Enviadas
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {metrics.negEnviadas.toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                  <Send className="h-8 w-8 text-orange-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 7: Negociações Abertas */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      Neg. Abertas
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {metrics.negAbertas.toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                  <Mail className="h-8 w-8 text-yellow-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 8: % Negociações Pagas */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">
+                      % Neg. Pagas
+                    </p>
+                    <p className="text-2xl font-bold mt-1">
+                      {metrics.negPagasRate.toFixed(1)}%
+                    </p>
+                  </div>
+                  <TrendingUp className="h-8 w-8 text-emerald-500 opacity-80" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-green-600">Top Performers</CardTitle>
-            <CardDescription>Empresas com melhor desempenho no período</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {topPerformers.map((company, index) => (
-                <div
-                  key={company.name}
-                  className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{company.name}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {company.totalCustomers.toLocaleString("pt-BR")} clientes
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-green-600">{company.recoveryRate.toFixed(1)}%</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      R$ {company.recoveredAmount.toLocaleString("pt-BR")}
-                    </p>
-                  </div>
-                </div>
-              ))}
+      {/* SECTION 2: Trend Graph */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle>Tendência de Recuperação</CardTitle>
+              <CardDescription>Evolução mensal de valores recebidos vs dívida total</CardDescription>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-red-600">Needs Attention</CardTitle>
-            <CardDescription>Empresas que precisam de atenção especial</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bottomPerformers.map((company, index) => (
-                <div
-                  key={company.name}
-                  className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{company.name}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {company.totalCustomers.toLocaleString("pt-BR")} clientes
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-red-600">{company.recoveryRate.toFixed(1)}%</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      R$ {company.recoveredAmount.toLocaleString("pt-BR")}
-                    </p>
-                  </div>
-                </div>
-              ))}
+            <div className="flex gap-2">
+              <Button
+                variant={timeRange === "12" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTimeRange("12")}
+              >
+                12 Meses
+              </Button>
+              <Button
+                variant={timeRange === "24" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTimeRange("24")}
+              >
+                24 Meses
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Dialog open={isReportOpen} onOpenChange={setIsReportOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
-              <span>{reportData?.title}</span>
-            </DialogTitle>
-            <DialogDescription>{reportData?.description}</DialogDescription>
-          </DialogHeader>
-
-          {reportData && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(reportData.data).map(([key, value]) => (
-                  <div key={key} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <h4 className="font-medium text-gray-900 dark:text-white capitalize mb-2">
-                      {key.replace(/([A-Z])/g, " $1").trim()}
-                    </h4>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {Array.isArray(value) ? (
-                        <ul className="list-disc list-inside space-y-1">
-                          {value.map((item, index) => (
-                            <li key={index}>{typeof item === "object" ? JSON.stringify(item) : item}</li>
-                          ))}
-                        </ul>
-                      ) : typeof value === "object" ? (
-                        <pre className="text-xs">{JSON.stringify(value, null, 2)}</pre>
-                      ) : (
-                        <p>{value}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <Button variant="outline" onClick={() => setIsReportOpen(false)}>
-                  Fechar
-                </Button>
-                <Button
-                  onClick={() => {
-                    const reportContent = `${reportData.title}\n\n${reportData.description}\n\n${JSON.stringify(reportData.data, null, 2)}`
-                    const blob = new Blob([reportContent], { type: "text/plain" })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement("a")
-                    a.href = url
-                    a.download = `${reportData.title.toLowerCase().replace(/\s+/g, "-")}.txt`
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                    URL.revokeObjectURL(url)
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorReceived" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorDebt" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tickFormatter={(value) => formatCompactBRL(value)}
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    formatBRL(value),
+                    name === "received" ? "Total Recebido" : "Dívida Total",
+                  ]}
+                  labelFormatter={(label) => `Mês: ${label}`}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    borderColor: "hsl(var(--border))",
+                    borderRadius: "8px",
                   }}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Baixar Relatório
-                </Button>
-              </div>
+                />
+                <Legend
+                  formatter={(value) =>
+                    value === "received" ? "Total Recebido" : "Dívida Total"
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="received"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#colorReceived)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="debt"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#colorDebt)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SECTION 3: Company Breakdown Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Desempenho por Empresa</CardTitle>
+          <CardDescription>
+            Clique em uma linha para filtrar os dados acima por essa empresa
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[400px]">
+            <div className="rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Empresa</th>
+                    <th className="text-right p-3 font-medium">Clientes</th>
+                    <th className="text-right p-3 font-medium">Dívida Total</th>
+                    <th className="text-right p-3 font-medium">Recebido</th>
+                    <th className="text-right p-3 font-medium">% Recuperação</th>
+                    <th className="text-right p-3 font-medium">Neg. Enviadas</th>
+                    <th className="text-right p-3 font-medium">Neg. Pagas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companyStats.map((company) => (
+                    <tr
+                      key={company.id}
+                      className={`border-t hover:bg-muted/50 cursor-pointer transition-colors ${
+                        selectedCompanyId === company.id ? "bg-muted" : ""
+                      }`}
+                      onClick={() => handleCompanyClick(company.id)}
+                    >
+                      <td className="p-3 font-medium">{company.name}</td>
+                      <td className="p-3 text-right">
+                        {company.clients.toLocaleString("pt-BR")}
+                      </td>
+                      <td className="p-3 text-right text-red-600 dark:text-red-400">
+                        {formatCompactBRL(company.totalDebt)}
+                      </td>
+                      <td className="p-3 text-right text-green-600 dark:text-green-400">
+                        {formatCompactBRL(company.received)}
+                      </td>
+                      <td className="p-3 text-right">
+                        <Badge
+                          variant={company.recoveryRate >= 50 ? "default" : "secondary"}
+                          className={
+                            company.recoveryRate >= 50
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                              : ""
+                          }
+                        >
+                          {company.recoveryRate.toFixed(1)}%
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-right">{company.negSent}</td>
+                      <td className="p-3 text-right">{company.negPaid}</td>
+                    </tr>
+                  ))}
+                  {companyStats.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                        Nenhuma empresa encontrada
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   )
 }

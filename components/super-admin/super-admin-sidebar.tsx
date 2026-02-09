@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   Mail,
   Handshake,
+  Calculator,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -132,6 +133,11 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           name: "Relatórios Globais",
           href: "/super-admin/reports",
           icon: BarChart3,
+        },
+        {
+          name: "Contabilidade",
+          href: "/super-admin/contabilidade",
+          icon: Calculator,
         },
       ],
     },
