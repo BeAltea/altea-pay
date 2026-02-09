@@ -48,10 +48,12 @@ type VmaxCustomer = {
   hasNegotiation: boolean // Any negotiation sent (for "Enviada" status)
   hasActiveNegotiation: boolean // Active (non-paid) negotiation
   isPaid?: boolean
+  isCancelled?: boolean // Was cancelled (can send new negotiation)
   email: string | null
   phone: string | null
   paymentStatus: string | null
   asaasStatus: string | null
+  agreementStatus?: string | null // Agreement status (active, cancelled, completed, etc.)
   asaasPaymentId?: string | null // ASAAS payment ID for cancellation
   agreementId?: string | null // Agreement ID for cancellation
 }
@@ -277,9 +279,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       return // STOP — do not proceed
     }
 
-    // 2. WARN — clients with active (unpaid) negotiation
+    // 2. WARN — clients with active (unpaid, non-cancelled) negotiation
+    // Cancelled negotiations don't trigger duplicate warning
     const customersWithExisting = selectedData.filter(
-      (c) => c.hasActiveNegotiation && !c.isPaid && c.status !== "paid"
+      (c) => c.hasActiveNegotiation && !c.isPaid && c.status !== "paid" && !c.isCancelled
     )
 
     if (customersWithExisting.length > 0) {
@@ -484,11 +487,16 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const paidCustomers = customers.filter((c) => c.isPaid || c.status === "paid")
     const paidCount = paidCustomers.length
 
-    // Customers with ANY negotiation sent (including paid) - "Negociações Enviadas"
-    const withNegotiation = customers.filter((c) => c.hasNegotiation).length
+    // Cancelled customers (can send new negotiation)
+    const cancelledCount = customers.filter((c) => c.isCancelled).length
 
-    // Customers without any negotiation - "Pendentes de Envio"
-    const withoutNegotiation = customers.filter((c) => !c.hasNegotiation).length
+    // Customers with ANY negotiation sent (including paid, NOT cancelled) - "Negociações Enviadas"
+    // Cancelled negotiations don't count as "Enviada"
+    const withNegotiation = customers.filter((c) => c.hasNegotiation && !c.isCancelled).length
+
+    // Customers without any negotiation OR with cancelled - "Pendentes de Envio"
+    // Cancelled customers can send new negotiation, so they count as pending
+    const withoutNegotiation = customers.filter((c) => !c.hasNegotiation || c.isCancelled).length
 
     // Total debt (all customers)
     const totalDebt = customers.reduce((sum, c) => sum + c.totalDebt, 0)
@@ -508,7 +516,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       totalDebt,
       recoveredDebt,
       pendingDebt,
-      paidCount
+      paidCount,
+      cancelledCount
     }
   }, [customers])
 
@@ -841,9 +850,14 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           {formatDebtAge(customer.daysOverdue)}
                         </Badge>
                       </div>
-                      {/* Status Negociação - Enviada / Sem negociação */}
+                      {/* Status Negociação - Enviada / Cancelada / Sem negociação */}
                       <div>
-                        {customer.hasNegotiation ? (
+                        {customer.isCancelled ? (
+                          <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
+                            <XCircle className="mr-1 h-3 w-3" />
+                            Cancelada
+                          </Badge>
+                        ) : customer.hasNegotiation ? (
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
                             <Send className="mr-1 h-3 w-3" />
                             Enviada
@@ -861,6 +875,11 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-xs">
                             <CheckCircle className="mr-1 h-3 w-3" />
                             Paga
+                          </Badge>
+                        ) : customer.isCancelled ? (
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Em aberto
                           </Badge>
                         ) : customer.hasNegotiation ? (
                           (() => {

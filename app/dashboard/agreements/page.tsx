@@ -124,16 +124,18 @@ export default function AgreementsPage() {
     return matchesSearch && matchesStatus
   })
 
-  // Stats calculated from agreements only
-  const totalAgreedValue = agreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+  // Stats calculated from active agreements only (exclude cancelled)
+  const activeAgreements = agreements.filter(a => a.status !== "cancelled")
+
+  const totalAgreedValue = activeAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const completedValue = agreements
     .filter(a => a.status === "completed")
     .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const averageInstallments =
-    agreements.length > 0
-      ? agreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / agreements.length
+    activeAgreements.length > 0
+      ? activeAgreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / activeAgreements.length
       : 0
 
   if (loading) {
@@ -161,7 +163,7 @@ export default function AgreementsPage() {
             <Handshake className="h-8 w-8 text-blue-500" />
             <div>
               <p className="text-sm text-muted-foreground">Total de Acordos</p>
-              <p className="text-2xl font-bold">{agreements.length}</p>
+              <p className="text-2xl font-bold">{activeAgreements.length}</p>
             </div>
           </div>
         </Card>

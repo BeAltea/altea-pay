@@ -126,17 +126,24 @@ export default async function DashboardPage() {
   }
 
   // Build map of customer_id -> agreement status (for ASAAS-backed negotiation status)
-  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean }>()
+  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean; isCancelled: boolean }>()
   const allAgreements = agreements || []
+  // Active agreements exclude cancelled for stats calculation
+  const activeAgreements = allAgreements.filter((a: any) => a.status !== "cancelled")
 
   allAgreements.forEach((a: any) => {
     const customerId = a.customer_id
     if (!customerId) return
 
-    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false }
+    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false, isCancelled: false }
 
-    // Check if there's a real ASAAS charge
-    if (a.asaas_payment_id) {
+    // Track if cancelled - cancelled agreements should not count as "sent"
+    if (a.status === "cancelled") {
+      existing.isCancelled = true
+    }
+
+    // Check if there's a real ASAAS charge (only count non-cancelled)
+    if (a.asaas_payment_id && a.status !== "cancelled") {
       existing.hasCharge = true
     }
 
@@ -195,16 +202,16 @@ export default async function DashboardPage() {
     }
   })
 
-  // Also count clients with charges but not in VMAX (edge case)
+  // Also count clients with charges but not in VMAX (edge case) - exclude cancelled
   if (negotiationsEnviadas === 0) {
-    negotiationsEnviadas = allAgreements.filter((a: any) => a.asaas_payment_id).length
+    negotiationsEnviadas = activeAgreements.filter((a: any) => a.asaas_payment_id).length
   }
 
-  const openNegotiations = allAgreements.filter(a =>
+  const openNegotiations = activeAgreements.filter(a =>
     a.status === "active" || a.status === "draft"
   ).length
 
-  const totalRecovered = allAgreements
+  const totalRecovered = activeAgreements
     .filter(a => a.payment_status === "received" || a.status === "completed")
     .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 

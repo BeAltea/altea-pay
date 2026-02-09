@@ -65,16 +65,24 @@ export default async function ClientesPage() {
       .eq("company_id", profile.company_id)
 
     // Build a map of customer_id -> agreement status (based on ASAAS data)
-    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean }>()
+    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean }>()
 
     ;(agreements || []).forEach((a: any) => {
       const customerId = a.customer_id
       if (!customerId) return
 
-      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false }
+      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false, isCancelled: false }
       existing.hasAgreement = true
 
-      // Check if there's a real ASAAS charge
+      // Track cancelled status - cancelled agreements mean customer is back to "Em aberto"
+      if (a.status === "cancelled") {
+        existing.isCancelled = true
+        // Don't count cancelled as active or having ASAAS charge
+        agreementStatusMap.set(customerId, existing)
+        return
+      }
+
+      // Check if there's a real ASAAS charge (only for non-cancelled)
       if (a.asaas_payment_id) {
         existing.hasAsaasCharge = true
       }
@@ -116,15 +124,19 @@ export default async function ClientesPage() {
       const agreementStatus = agreementStatusMap.get(cliente.id)
 
       // Determine negotiation status based on ASAAS data, NOT the legacy approval_status
+      // Cancelled agreements should not count - customer goes back to "Em aberto"
       let asaasNegotiationStatus = "NENHUMA"
       if (agreementStatus?.isPaid) {
         asaasNegotiationStatus = "PAGO"
+      } else if (agreementStatus?.isCancelled && !agreementStatus?.isActive) {
+        // Only cancelled, no active agreement - back to "Em aberto"
+        asaasNegotiationStatus = "NENHUMA"
       } else if (agreementStatus?.isActive && agreementStatus?.hasAsaasCharge) {
         asaasNegotiationStatus = "ATIVA_ASAAS" // Has ASAAS charge pending payment
       } else if (agreementStatus?.isActive) {
         asaasNegotiationStatus = "ATIVA" // Has agreement but no ASAAS charge yet
-      } else if (agreementStatus?.hasAgreement) {
-        asaasNegotiationStatus = "DRAFT" // Has draft agreement
+      } else if (agreementStatus?.hasAgreement && !agreementStatus?.isCancelled) {
+        asaasNegotiationStatus = "DRAFT" // Has draft agreement (not cancelled)
       }
 
       return {
