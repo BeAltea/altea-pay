@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useMobileSuperAdminSidebar } from "./super-admin-sidebar"
 import { cn } from "@/lib/utils"
 import { Building2, Users, BarChart3, FileText, TrendingUp, Database } from "lucide-react"
+import { secureSignOut } from "@/lib/auth-utils"
 
 interface Notification {
   id: string
@@ -86,37 +87,11 @@ export function SuperAdminHeader({ user }: SuperAdminHeaderProps) {
 
   const handleSignOut = async () => {
     console.log("[v0] SuperAdminHeader - Sign out initiated")
-    try {
-      const supabase = createClient()
-
-      await supabase.auth.signOut({ scope: "local" })
-
-      console.log("[v0] SuperAdminHeader - Sign out successful, redirecting...")
-
-      toast({
-        title: "Logout realizado",
-        description: "Você foi desconectado com sucesso.",
-      })
-
-      // Clear any local storage
-      if (typeof window !== "undefined") {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
-
-      // Force hard redirect to login page
-      window.location.href = "/auth/login"
-    } catch (error) {
-      console.error("[v0] SuperAdminHeader - Sign out exception:", error)
-      toast({
-        title: "Erro",
-        description: "Erro inesperado ao fazer logout.",
-        variant: "destructive",
-      })
-
-      // Force redirect even on error
-      window.location.href = "/auth/login"
-    }
+    toast({
+      title: "Logout realizado",
+      description: "Voce foi desconectado com sucesso.",
+    })
+    await secureSignOut({ reason: "user_initiated" })
   }
 
   const handleThemeToggle = () => {

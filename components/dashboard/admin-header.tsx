@@ -8,6 +8,7 @@ import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
+import { secureSignOut } from "@/lib/auth-utils"
 
 interface Notification {
   id: string
@@ -98,30 +99,11 @@ export function AdminHeader({ user, onMenuClick }: AdminHeaderProps) {
   }, [])
 
   const handleSignOut = async () => {
-    try {
-      const supabase = createClient()
-      await supabase.auth.signOut({ scope: "local" })
-
-      toast({
-        title: "Logout realizado",
-        description: "Voce foi desconectado com sucesso.",
-      })
-
-      if (typeof window !== "undefined") {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
-
-      window.location.href = "/auth/login"
-    } catch (error) {
-      console.error("Sign out error:", error)
-      toast({
-        title: "Erro",
-        description: "Erro inesperado ao fazer logout.",
-        variant: "destructive",
-      })
-      window.location.href = "/auth/login"
-    }
+    toast({
+      title: "Logout realizado",
+      description: "Voce foi desconectado com sucesso.",
+    })
+    await secureSignOut({ reason: "user_initiated" })
   }
 
   const handleNotificationClick = async (notificationId: string) => {
