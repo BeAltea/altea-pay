@@ -122,6 +122,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // DEBUG: Log a few customers with negotiations to trace the issue
+    const debugCustomers = vmaxCustomers.filter(v => v.Cliente?.includes("Pedro")).slice(0, 3)
+    if (debugCustomers.length > 0) {
+      console.log("[DEBUG] Pedro customers from VMAX:", debugCustomers.map(v => ({
+        id: v.id,
+        name: v.Cliente,
+        cpf: (v["CPF/CNPJ"] || "").replace(/\D/g, ""),
+        negotiation_status: v.negotiation_status,
+      })))
+      console.log("[DEBUG] docsWithCancelledAgreements:", Array.from(docsWithCancelledAgreements))
+      console.log("[DEBUG] docsWithActiveAgreements:", Array.from(docsWithActiveAgreements))
+      console.log("[DEBUG] docsWithAnyNegotiation:", Array.from(docsWithAnyNegotiation))
+    }
+
     // Also check VMAX negotiation_status field
     const customers = vmaxCustomers.map((vmax) => {
       const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")

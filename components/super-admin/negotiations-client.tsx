@@ -337,8 +337,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
         toast.success("Negociacao cancelada com sucesso")
         setShowCancelDialog(false)
         setCancellingCustomer(null)
-        // Reload customers to reflect the change
-        loadCustomers(selectedCompanyId)
+        // Force hard reload to ensure fresh data from server
+        window.location.reload()
       } else {
         toast.error(data.error || "Erro ao cancelar negociacao")
       }

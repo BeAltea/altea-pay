@@ -133,18 +133,17 @@ export async function POST(request: NextRequest) {
       console.log("[ASAAS Cancel] WARNING: No vmaxId provided - VMAX table NOT updated")
     }
     if (vmaxId) {
-      const { error: vmaxError } = await supabase
+      // Only update negotiation_status - VMAX may not have updated_at column
+      const { error: vmaxError, data: vmaxData } = await supabase
         .from("VMAX")
-        .update({
-          negotiation_status: null,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ negotiation_status: null })
         .eq("id", vmaxId)
+        .select("id, Cliente, negotiation_status")
 
       if (vmaxError) {
-        console.error("[ASAAS Cancel] Error updating VMAX:", vmaxError)
+        console.error("[ASAAS Cancel] Error updating VMAX:", vmaxError.message)
       } else {
-        console.log("[ASAAS Cancel] VMAX status reset:", vmaxId)
+        console.log("[ASAAS Cancel] VMAX status reset:", vmaxId, "Result:", vmaxData)
       }
     }
 
