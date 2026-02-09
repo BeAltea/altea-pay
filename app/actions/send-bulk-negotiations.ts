@@ -445,6 +445,56 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           }
         }
 
+        // ALWAYS send email via Resend when customer has an email address
+        if (customerEmail) {
+          try {
+            const { sendEmail, generateDebtCollectionEmail } = await import("@/lib/notifications/email")
+
+            // Get payment URL from the agreement we just updated
+            const { data: updatedAgreement } = await supabase
+              .from("agreements")
+              .select("asaas_payment_url, due_date")
+              .eq("id", agreement.id)
+              .single()
+
+            const paymentUrl = updatedAgreement?.asaas_payment_url || ""
+            const dueDate = updatedAgreement?.due_date
+              ? new Date(updatedAgreement.due_date).toLocaleDateString("pt-BR")
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("pt-BR")
+
+            // Get company name
+            const { data: companyData } = await supabase
+              .from("companies")
+              .select("name")
+              .eq("id", params.companyId)
+              .single()
+
+            const emailHtml = await generateDebtCollectionEmail({
+              customerName,
+              debtAmount: agreedAmount,
+              dueDate,
+              companyName: companyData?.name || "Empresa",
+              paymentLink: paymentUrl,
+            })
+
+            const emailResult = await sendEmail({
+              to: customerEmail,
+              subject: `Proposta de Negociação - ${companyData?.name || "AlteaPay"}`,
+              html: emailHtml,
+            })
+
+            if (!emailResult.success) {
+              console.log(`[sendBulkNegotiations] Email Resend falhou para ${customerName}: ${emailResult.error}`)
+            } else {
+              console.log(`[sendBulkNegotiations] Email Resend enviado para ${customerName} (${customerEmail})`)
+            }
+          } catch (emailErr: any) {
+            console.error(`[sendBulkNegotiations] Erro ao enviar Email Resend para ${customerName}:`, emailErr.message)
+          }
+        } else {
+          console.log(`[sendBulkNegotiations] Cliente ${customerName} sem email - pulando envio de email`)
+        }
+
         // Update VMAX negotiation status
         await supabase
           .from("VMAX")
