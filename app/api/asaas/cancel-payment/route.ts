@@ -6,11 +6,11 @@ import { createClient } from "@supabase/supabase-js"
  *
  * This endpoint handles cancellation comprehensively:
  * 1. Finds agreement by multiple fields (agreementId, asaas_payment_id, or both)
- * 2. Updates agreements table -> status: 'cancelled', payment_status: 'cancelled'
+ * 2. Updates ALL active agreements for the same customer -> status: 'cancelled'
  * 3. Updates debts table -> status: 'pending' (reopens the debt)
- * 4. Finds customer -> gets external_id -> clears VMAX negotiation_status to null
- * 5. Fallback: searches VMAX by CPF if no external_id
- * 6. Deletes from ASAAS (payment + optionally customer)
+ * 4. Deletes ALL ASAAS payments for the customer
+ * 5. Deletes ASAAS customer (with fallback to search by CPF)
+ * 6. Clears VMAX negotiation_status to null (multiple fallback methods)
  * 7. Logs EVERY step with success/error
  */
 
@@ -127,9 +127,13 @@ export async function POST(request: NextRequest) {
       console.log("[Cancel] WARNING: No ASAAS payment ID to delete")
     }
 
-    // ====== STEP 3: Update agreement in DB ======
+    // ====== STEP 3: Update agreement in DB + Cancel ALL active agreements for same customer ======
+    let cancelledAgreementsCount = 0
+    const allAsaasPaymentIds: string[] = []
+
     if (agreement) {
-      console.log("[Cancel] Updating agreement to cancelled...")
+      // First, cancel the target agreement
+      console.log("[Cancel] Updating target agreement to cancelled...")
       const { error: agreementError } = await supabase
         .from("agreements")
         .update({
@@ -143,6 +147,68 @@ export async function POST(request: NextRequest) {
         console.error("[Cancel] ERROR updating agreement:", agreementError.message)
       } else {
         console.log("[Cancel] SUCCESS: Agreement updated to cancelled")
+        cancelledAgreementsCount++
+      }
+
+      // Collect the payment ID
+      if (agreement.asaas_payment_id) {
+        allAsaasPaymentIds.push(agreement.asaas_payment_id)
+      }
+
+      // Now find and cancel ALL other active agreements for the same customer
+      if (agreement.customer_id) {
+        const { data: otherAgreements, error: otherError } = await supabase
+          .from("agreements")
+          .select("id, asaas_payment_id")
+          .eq("customer_id", agreement.customer_id)
+          .eq("status", "active")
+          .neq("id", agreement.id) // Exclude the one we already cancelled
+
+        if (otherError) {
+          console.error("[Cancel] ERROR finding other agreements:", otherError.message)
+        } else if (otherAgreements && otherAgreements.length > 0) {
+          console.log("[Cancel] Found", otherAgreements.length, "other active agreements for this customer")
+
+          for (const other of otherAgreements) {
+            // Cancel the agreement
+            const { error: cancelErr } = await supabase
+              .from("agreements")
+              .update({
+                status: "cancelled",
+                payment_status: "cancelled",
+                asaas_status: "DELETED",
+              })
+              .eq("id", other.id)
+
+            if (cancelErr) {
+              console.error("[Cancel] ERROR cancelling agreement", other.id, ":", cancelErr.message)
+            } else {
+              console.log("[Cancel] SUCCESS: Cancelled extra agreement:", other.id)
+              cancelledAgreementsCount++
+            }
+
+            // Collect payment ID for deletion
+            if (other.asaas_payment_id) {
+              allAsaasPaymentIds.push(other.asaas_payment_id)
+            }
+          }
+        } else {
+          console.log("[Cancel] No other active agreements for this customer")
+        }
+      }
+
+      // Delete ALL collected ASAAS payments
+      for (const paymentId of allAsaasPaymentIds) {
+        if (paymentId === paymentIdToDelete) continue // Already deleted above
+        try {
+          const delRes = await fetch(`${asaasUrl}/payments/${paymentId}`, {
+            method: "DELETE",
+            headers: { "access_token": apiKey, "Content-Type": "application/json" },
+          })
+          console.log("[Cancel] Deleted extra ASAAS payment:", paymentId, "status:", delRes.status)
+        } catch (e: any) {
+          console.log("[Cancel] Extra payment delete failed:", paymentId, e.message)
+        }
       }
     }
 
@@ -283,24 +349,113 @@ export async function POST(request: NextRequest) {
       console.log("[Cancel] WARNING: Could not find/update any VMAX record")
     }
 
-    // ====== STEP 6: Optionally delete ASAAS customer ======
-    // Only if we want to fully clean up (commented out for now to preserve customer for future)
-    /*
-    if (agreement?.asaas_customer_id) {
-      console.log("[Cancel] Deleting ASAAS customer:", agreement.asaas_customer_id)
+    // ====== STEP 6: Delete ASAAS customer ======
+    let asaasCustomerDeleted = false
+    const asaasCustomerId = agreement?.asaas_customer_id
+
+    if (asaasCustomerId && apiKey) {
+      console.log("[Cancel] Attempting to delete ASAAS customer:", asaasCustomerId)
       try {
-        await fetch(`${asaasUrl}/customers/${agreement.asaas_customer_id}`, {
+        const res = await fetch(`${asaasUrl}/customers/${asaasCustomerId}`, {
           method: "DELETE",
           headers: { "access_token": apiKey },
         })
-        console.log("[Cancel] ASAAS customer deleted")
+        console.log("[Cancel] ASAAS customer delete status:", res.status)
+
+        if (res.ok) {
+          console.log("[Cancel] SUCCESS: ASAAS customer deleted")
+          asaasCustomerDeleted = true
+        } else if (res.status === 409) {
+          // Customer has active charges — delete them first
+          console.log("[Cancel] Customer has active charges, deleting them first...")
+          const chargesRes = await fetch(
+            `${asaasUrl}/payments?customer=${asaasCustomerId}`,
+            { headers: { "access_token": apiKey } }
+          )
+          const charges = await chargesRes.json()
+
+          for (const charge of (charges.data || [])) {
+            if (charge.status !== "RECEIVED" && charge.status !== "CONFIRMED") {
+              await fetch(`${asaasUrl}/payments/${charge.id}`, {
+                method: "DELETE",
+                headers: { "access_token": apiKey },
+              })
+              console.log("[Cancel] Deleted ASAAS charge:", charge.id)
+            }
+          }
+
+          // Retry customer delete
+          const retryRes = await fetch(`${asaasUrl}/customers/${asaasCustomerId}`, {
+            method: "DELETE",
+            headers: { "access_token": apiKey },
+          })
+          console.log("[Cancel] ASAAS customer retry delete status:", retryRes.status)
+          if (retryRes.ok) {
+            asaasCustomerDeleted = true
+          }
+        } else if (res.status === 404) {
+          console.log("[Cancel] ASAAS customer already deleted (404)")
+          asaasCustomerDeleted = true
+        }
       } catch (e: any) {
-        console.log("[Cancel] ASAAS customer delete failed (may have other payments):", e.message)
+        console.log("[Cancel] ASAAS customer delete failed:", e.message)
+      }
+    } else if (!asaasCustomerId && agreement?.customer_id) {
+      // No asaas_customer_id stored — try to find by CPF
+      console.log("[Cancel] No asaas_customer_id, searching ASAAS by CPF...")
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("document")
+        .eq("id", agreement.customer_id)
+        .single()
+
+      if (customer?.document && apiKey) {
+        const normalizedCpf = customer.document.replace(/\D/g, "")
+        const searchRes = await fetch(
+          `${asaasUrl}/customers?cpfCnpj=${normalizedCpf}`,
+          { headers: { "access_token": apiKey } }
+        )
+        const searchData = await searchRes.json()
+
+        for (const asaasCust of (searchData.data || [])) {
+          console.log("[Cancel] Found ASAAS customer by CPF:", asaasCust.id)
+          // Delete all payments for this customer first
+          const paymentsRes = await fetch(
+            `${asaasUrl}/payments?customer=${asaasCust.id}`,
+            { headers: { "access_token": apiKey } }
+          )
+          const payments = await paymentsRes.json()
+
+          for (const payment of (payments.data || [])) {
+            if (payment.status !== "RECEIVED" && payment.status !== "CONFIRMED") {
+              await fetch(`${asaasUrl}/payments/${payment.id}`, {
+                method: "DELETE",
+                headers: { "access_token": apiKey },
+              })
+              console.log("[Cancel] Deleted ASAAS payment by CPF search:", payment.id)
+            }
+          }
+
+          // Then delete customer
+          const delRes = await fetch(`${asaasUrl}/customers/${asaasCust.id}`, {
+            method: "DELETE",
+            headers: { "access_token": apiKey },
+          })
+          console.log("[Cancel] Deleted ASAAS customer by CPF:", asaasCust.id, "status:", delRes.status)
+          if (delRes.ok) {
+            asaasCustomerDeleted = true
+          }
+        }
       }
     }
-    */
 
     console.log("[Cancel] === CANCEL OPERATION COMPLETE ===")
+    console.log("[Cancel] Summary:", {
+      agreementsCancelled: cancelledAgreementsCount,
+      asaasPaymentsDeleted: allAsaasPaymentIds.length,
+      asaasCustomerDeleted,
+      vmaxCleared: vmaxUpdated,
+    })
     console.log("=".repeat(60))
 
     return NextResponse.json({
@@ -308,7 +463,9 @@ export async function POST(request: NextRequest) {
       message: "Negotiation cancelled successfully",
       updated: {
         agreement: agreement?.id || null,
-        asaasPayment: paymentIdToDelete || null,
+        agreementsCancelled: cancelledAgreementsCount,
+        asaasPaymentsDeleted: allAsaasPaymentIds.length,
+        asaasCustomerDeleted,
         debt: debtIdToUpdate || null,
         vmax: vmaxUpdated,
       },
