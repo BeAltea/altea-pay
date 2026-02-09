@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,8 +36,8 @@ interface CompanySettings {
   }
 }
 
-export default function CompanySettingsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function CompanySettingsPage({ params }: { params: { id: string } }) {
+  const { id } = params
   const [isLoading, setIsLoading] = useState(false)
   const [settings, setSettings] = useState<CompanySettings>({
     notifications: {

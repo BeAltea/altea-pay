@@ -36,8 +36,7 @@ const navigation: NavSection[] = [
     label: "Gestao",
     items: [
       { name: "Clientes", href: "/dashboard/clientes", icon: Users },
-      { name: "Dividas", href: "/dashboard/dividas", icon: CreditCard },
-      { name: "Acordos", href: "/dashboard/acordos", icon: Handshake },
+      { name: "Acordos", href: "/dashboard/agreements", icon: Handshake },
     ]
   },
   {

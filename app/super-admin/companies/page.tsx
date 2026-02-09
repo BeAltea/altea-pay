@@ -50,6 +50,37 @@ async function fetchCompanies() {
     console.error("[v0] Error fetching admins:", adminsError)
   }
 
+  // Fetch completed agreements to identify paid customers
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, customer_id, status, company_id")
+    .eq("status", "completed")
+
+  // Fetch customers mapping to get documents
+  const { data: dbCustomers } = await supabase
+    .from("customers")
+    .select("id, document, company_id")
+
+  // Build map of customer_id -> document for paid agreements
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of dbCustomers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements (grouped by company)
+  const paidDocsByCompany = new Map<string, Set<string>>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc && a.company_id) {
+      if (!paidDocsByCompany.has(a.company_id)) {
+        paidDocsByCompany.set(a.company_id, new Set())
+      }
+      paidDocsByCompany.get(a.company_id)!.add(doc)
+    }
+  }
+
   // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
   let vmaxData: any[] = []
   let page = 0
@@ -98,7 +129,21 @@ async function fetchCompanies() {
     }))
     console.log(`[v0] Sample VMAX data (first 3):`, JSON.stringify(vmaxSampleData))
 
+    // Get paid documents for this company (from agreements)
+    const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
+
+    // Helper to check if a VMAX record is paid
+    // Only explicit payment indicators: negotiation_status === "PAGO" or document in paidDocs (from completed agreements)
+    // Do NOT use dtCancelamento alone - it means "cancelled" not necessarily "paid"
+    const isPaid = (v: any) => {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      // Only consider paid if explicit payment status
+      return companyPaidDocs.has(doc) || v.negotiation_status === "PAGO"
+    }
+
+    // Calculate total amount (excluding paid)
     const vmaxTotalAmount = companyVmaxData.reduce((sum, v, index) => {
+      if (isPaid(v)) return sum // Exclude paid debts
       const vencidoStr = String(v.Vencido || "0")
       const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
       const value = Number(cleanValue) || 0
@@ -113,7 +158,9 @@ async function fetchCompanies() {
 
     console.log(`[v0] Company ${company.name} - Final vmaxTotalAmount: ${vmaxTotalAmount}`)
 
+    // Filter overdue excluding paid debts
     const vmaxWithOverdue = companyVmaxData.filter((v) => {
+      if (isPaid(v)) return false // Exclude paid debts
       const diasInadStr = String(v["Dias Inad."] || "0")
       const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
       return diasInad > 0
@@ -127,8 +174,9 @@ async function fetchCompanies() {
           }, 0) / vmaxWithOverdue.length
         : 0
 
+    // Calculate recovered amount (paid debts)
     const paidAmount = companyVmaxData
-      .filter((v) => v["DT Cancelamento"])
+      .filter((v) => isPaid(v))
       .reduce((sum, v) => {
         const vencidoStr = String(v.Vencido || "0")
         const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
@@ -136,10 +184,12 @@ async function fetchCompanies() {
         return sum + value
       }, 0)
 
-    const recoveryRate = 0 // No recovery data available yet
+    // Calculate recovery rate properly
+    const totalOriginalAmount = vmaxTotalAmount + paidAmount
+    const recoveryRate = totalOriginalAmount > 0 ? (paidAmount / totalOriginalAmount) * 100 : 0
 
     const totalCustomers = companyVmaxData.length
-    const totalDebts = companyVmaxData.filter((v) => !v["DT Cancelamento"]).length
+    const totalDebts = companyVmaxData.filter((v) => !isPaid(v)).length
 
     console.log(
       `[v0] Company ${company.name} - totalAmount: ${vmaxTotalAmount}, VMAX records: ${companyVmaxData.length}`,

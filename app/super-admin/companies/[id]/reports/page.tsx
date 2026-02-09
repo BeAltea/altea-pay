@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,8 +19,8 @@ import {
   PieChart,
 } from "lucide-react"
 
-export default function CompanyReportsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function CompanyReportsPage({ params }: { params: { id: string } }) {
+  const { id } = params
   const [selectedPeriod, setSelectedPeriod] = useState("current-month")
 
   const companyName = "Enel Distribuição São Paulo"

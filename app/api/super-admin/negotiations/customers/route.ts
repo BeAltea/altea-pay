@@ -60,28 +60,58 @@ export async function GET(request: NextRequest) {
     }
 
     // Load existing agreements for this company to check negotiation status
+    // Include "completed" status to show completed negotiations (paid)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("customer_id, status")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id")
       .eq("company_id", companyId)
-      .in("status", ["active", "draft", "pending"])
+      .in("status", ["active", "draft", "pending", "completed"])
 
-    // Load customers mapping (document -> customer id) so we can match agreements
+    // Load customers mapping (document -> customer data) so we can match agreements and get contact info
     const { data: dbCustomers } = await supabase
       .from("customers")
-      .select("id, document")
+      .select("id, document, email, phone")
       .eq("company_id", companyId)
 
-    // Build set of documents that have active agreements
+    // Build maps for document -> customer id and document -> contact info
     const customerIdToDoc = new Map<string, string>()
+    const docToContactInfo = new Map<string, { email: string | null; phone: string | null }>()
     for (const c of dbCustomers || []) {
       customerIdToDoc.set(c.id, c.document)
+      // Store contact info by document (normalized - digits only)
+      const normalizedDoc = (c.document || "").replace(/\D/g, "")
+      if (normalizedDoc) {
+        docToContactInfo.set(normalizedDoc, { email: c.email, phone: c.phone })
+      }
     }
 
-    const docsWithAgreements = new Set<string>()
+    // Build maps for agreement status by customer document
+    const docsWithActiveAgreements = new Set<string>()
+    const docsWithPaidAgreements = new Set<string>()
+    const docsWithAnyNegotiation = new Set<string>() // Any negotiation sent (active or paid)
+    const docToPaymentStatus = new Map<string, {
+      paymentStatus: string | null;
+      asaasStatus: string | null;
+      agreementId: string | null;
+      asaasPaymentId: string | null;
+    }>()
     for (const a of agreements || []) {
       const doc = customerIdToDoc.get(a.customer_id)
-      if (doc) docsWithAgreements.add(doc)
+      if (doc) {
+        docsWithAnyNegotiation.add(doc) // Track all negotiations
+        if (a.status === "completed") {
+          docsWithPaidAgreements.add(doc)
+        } else {
+          docsWithActiveAgreements.add(doc)
+        }
+        // Store the payment status for this customer (latest agreement takes precedence)
+        docToPaymentStatus.set(doc, {
+          paymentStatus: a.payment_status || null,
+          asaasStatus: a.asaas_status || null,
+          agreementId: a.id || null,
+          asaasPaymentId: a.asaas_payment_id || null,
+        })
+      }
     }
 
     // Also check VMAX negotiation_status field
@@ -93,28 +123,60 @@ export async function GET(request: NextRequest) {
       const diasInadStr = String(vmax["Dias Inad."] || "0")
       const daysOverdue = Number(diasInadStr.replace(/\./g, "")) || 0
 
-      const hasActiveNegotiation =
-        docsWithAgreements.has(cpfCnpj) ||
+      // Check if paid (VMAX status or agreement status)
+      const isPaid =
+        docsWithPaidAgreements.has(cpfCnpj) ||
+        vmax.negotiation_status === "PAGO"
+
+      // Check if ANY negotiation was sent (paid or active) - for "Status Negociação" column
+      const hasNegotiation =
+        docsWithAnyNegotiation.has(cpfCnpj) ||
         (vmax.negotiation_status &&
-          ["active", "sent", "pending", "in_negotiation"].includes(
+          ["active", "sent", "pending", "in_negotiation", "PAGO"].includes(
             vmax.negotiation_status
           ))
 
+      // Check if has active negotiation (not paid) - for filtering
+      const hasActiveNegotiation =
+        !isPaid && (
+          docsWithActiveAgreements.has(cpfCnpj) ||
+          (vmax.negotiation_status &&
+            ["active", "sent", "pending", "in_negotiation"].includes(
+              vmax.negotiation_status
+            ))
+        )
+
       let status: "active" | "overdue" | "negotiating" | "paid" = "active"
-      if (hasActiveNegotiation) status = "negotiating"
+      if (isPaid) status = "paid"
+      else if (hasActiveNegotiation) status = "negotiating"
       else if (daysOverdue > 0) status = "overdue"
+
+      // Get contact info from customers table if VMAX doesn't have it
+      const contactInfo = docToContactInfo.get(cpfCnpj)
+      const email = vmax.Email || contactInfo?.email || null
+      const phone = vmax["Telefone 1"] || vmax["Telefone 2"] || contactInfo?.phone || null
+
+      // Get payment status from agreement
+      const paymentInfo = docToPaymentStatus.get(cpfCnpj)
 
       return {
         id: vmax.id,
         name: vmax.Cliente || "Cliente",
         document: vmax["CPF/CNPJ"] || "N/A",
         city: vmax.Cidade || null,
-        email: vmax.Email || null,
-        phone: vmax["Telefone 1"] || vmax["Telefone 2"] || null,
+        email,
+        phone,
         status,
-        totalDebt,
-        daysOverdue,
-        hasActiveNegotiation: !!hasActiveNegotiation,
+        totalDebt, // Always return original debt value
+        originalDebt: totalDebt, // Keep original for reference
+        daysOverdue: isPaid ? 0 : daysOverdue,
+        hasNegotiation: !!hasNegotiation, // Any negotiation sent (for "Enviada" status)
+        hasActiveNegotiation: !!hasActiveNegotiation, // Active (non-paid) negotiation
+        isPaid: !!isPaid,
+        paymentStatus: paymentInfo?.paymentStatus || null,
+        asaasStatus: paymentInfo?.asaasStatus || null,
+        agreementId: paymentInfo?.agreementId || null,
+        asaasPaymentId: paymentInfo?.asaasPaymentId || null,
       }
     })
 

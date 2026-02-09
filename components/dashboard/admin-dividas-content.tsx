@@ -2,17 +2,14 @@
 
 import { useState, useMemo } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
 import {
   Search,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Eye,
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  Calendar,
   Clock,
   DollarSign,
 } from "lucide-react"
@@ -101,8 +98,7 @@ export function AdminDividasContent({ dividas, company }: AdminDividasContentPro
     if (diasFilter !== "all") {
       filtered = filtered.filter(d => {
         if (diasFilter === "0-30") return d.diasAtraso <= 30
-        if (diasFilter === "31-60") return d.diasAtraso > 30 && d.diasAtraso <= 60
-        if (diasFilter === "61-90") return d.diasAtraso > 60 && d.diasAtraso <= 90
+        if (diasFilter === "31-90") return d.diasAtraso > 30 && d.diasAtraso <= 90
         if (diasFilter === "91-180") return d.diasAtraso > 90 && d.diasAtraso <= 180
         if (diasFilter === "180+") return d.diasAtraso > 180
         return true
@@ -296,8 +292,7 @@ export function AdminDividasContent({ dividas, company }: AdminDividasContentPro
             <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="0-30">0-30 dias</SelectItem>
-              <SelectItem value="31-60">31-60 dias</SelectItem>
-              <SelectItem value="61-90">61-90 dias</SelectItem>
+              <SelectItem value="31-90">31-90 dias</SelectItem>
               <SelectItem value="91-180">91-180 dias</SelectItem>
               <SelectItem value="180+">180+ dias</SelectItem>
             </SelectContent>
@@ -376,18 +371,12 @@ export function AdminDividasContent({ dividas, company }: AdminDividasContentPro
                 >
                   Status
                 </th>
-                <th
-                  className="text-right px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                  style={{ color: "var(--admin-text-muted)" }}
-                >
-                  Acoes
-                </th>
               </tr>
             </thead>
             <tbody>
               {paginatedDividas.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
+                  <td colSpan={5} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
                     <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     Nenhuma divida encontrada
                   </td>
@@ -444,22 +433,6 @@ export function AdminDividasContent({ dividas, company }: AdminDividasContentPro
                         >
                           {status.label}
                         </span>
-                      </td>
-
-                      {/* Acoes */}
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/dashboard/clientes/${divida.id}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                          style={{
-                            background: "var(--admin-bg-tertiary)",
-                            color: "var(--admin-text-secondary)",
-                            border: "1px solid var(--admin-border)"
-                          }}
-                        >
-                          <Eye className="w-3 h-3" />
-                          Ver Detalhes
-                        </Link>
                       </td>
                     </tr>
                   )

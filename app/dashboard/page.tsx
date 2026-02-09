@@ -125,10 +125,39 @@ export default async function DashboardPage() {
     }
   }
 
-  // Calculate stats
+  // Build map of customer_id -> agreement status (for ASAAS-backed negotiation status)
+  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean }>()
+  const allAgreements = agreements || []
+
+  allAgreements.forEach((a: any) => {
+    const customerId = a.customer_id
+    if (!customerId) return
+
+    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false }
+
+    // Check if there's a real ASAAS charge
+    if (a.asaas_payment_id) {
+      existing.hasCharge = true
+    }
+
+    // Check if paid
+    if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+      existing.isPaid = true
+    }
+
+    agreementStatusMap.set(customerId, existing)
+  })
+
+  // Calculate stats - matching super-admin Negociações page
   const totalClientes = vmaxRecords.length
 
   let totalDebt = 0
+  let pendingDebt = 0
+  let recoveredDebt = 0
+  let negotiationsEnviadas = 0
+  let negotiationsPendentes = 0
+  let negotiationsPagas = 0
+
   const agingBuckets: Record<string, { count: number; value: number }> = {
     "0-30": { count: 0, value: 0 },
     "31-60": { count: 0, value: 0 },
@@ -147,9 +176,30 @@ export default async function DashboardPage() {
     const bucket = getAgingBucket(diasInad)
     agingBuckets[bucket].count++
     agingBuckets[bucket].value += amount
+
+    // Check negotiation status from ASAAS data or VMAX negotiation_status
+    const agreementStatus = agreementStatusMap.get(record.id)
+    const isPaid = agreementStatus?.isPaid || record.negotiation_status === "PAGO"
+    const hasCharge = agreementStatus?.hasCharge || false
+
+    if (isPaid) {
+      negotiationsPagas++
+      recoveredDebt += amount
+    } else {
+      pendingDebt += amount
+      if (hasCharge) {
+        negotiationsEnviadas++
+      } else {
+        negotiationsPendentes++
+      }
+    }
   })
 
-  const allAgreements = agreements || []
+  // Also count clients with charges but not in VMAX (edge case)
+  if (negotiationsEnviadas === 0) {
+    negotiationsEnviadas = allAgreements.filter((a: any) => a.asaas_payment_id).length
+  }
+
   const openNegotiations = allAgreements.filter(a =>
     a.status === "active" || a.status === "draft"
   ).length
@@ -158,7 +208,11 @@ export default async function DashboardPage() {
     .filter(a => a.payment_status === "received" || a.status === "completed")
     .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
-  const recoveryRate = totalDebt > 0 ? (totalRecovered / totalDebt * 100) : 0
+  // Use the higher value between agreement-based and VMAX-based recovery
+  const finalRecoveredDebt = Math.max(recoveredDebt, totalRecovered)
+  const finalPendingDebt = totalDebt - finalRecoveredDebt
+
+  const recoveryRate = totalDebt > 0 ? (finalRecoveredDebt / totalDebt * 100) : 0
 
   const recentAgreements = allAgreements.slice(0, 5)
 
@@ -179,22 +233,17 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats Grid - 4 cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px]">
+      {/* Stats Grid - 6 cards matching super-admin Negociações */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-[14px]">
         {/* Total de Clientes */}
         <div
           className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
           style={{
             background: "var(--admin-bg-secondary)",
             border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid var(--admin-blue)",
           }}
         >
-          <div
-            className="absolute top-0 right-0 w-[70px] h-[70px]"
-            style={{
-              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
-            }}
-          />
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
             style={{ background: "var(--admin-blue-bg)", color: "var(--admin-blue)" }}
@@ -210,59 +259,17 @@ export default async function DashboardPage() {
           <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
             {totalClientes.toLocaleString("pt-BR")}
           </div>
-          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            Cadastrados na plataforma
-          </div>
         </div>
 
-        {/* Divida Total */}
+        {/* Negociacoes Enviadas */}
         <div
           className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
           style={{
             background: "var(--admin-bg-secondary)",
             border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid var(--admin-green)",
           }}
         >
-          <div
-            className="absolute top-0 right-0 w-[70px] h-[70px]"
-            style={{
-              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
-            }}
-          />
-          <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-            style={{ background: "var(--admin-red-bg)", color: "var(--admin-red)" }}
-          >
-            <CreditCard className="w-4 h-4" />
-          </div>
-          <div
-            className="text-xs uppercase tracking-wider font-medium mb-1"
-            style={{ color: "var(--admin-text-muted)" }}
-          >
-            Divida Total
-          </div>
-          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
-            {formatCurrency(totalDebt)}
-          </div>
-          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            Em cobranca
-          </div>
-        </div>
-
-        {/* Negociacoes Abertas */}
-        <div
-          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
-          style={{
-            background: "var(--admin-bg-secondary)",
-            border: "1px solid var(--admin-border)",
-          }}
-        >
-          <div
-            className="absolute top-0 right-0 w-[70px] h-[70px]"
-            style={{
-              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
-            }}
-          />
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
             style={{ background: "var(--admin-green-bg)", color: "var(--admin-green)" }}
@@ -273,33 +280,57 @@ export default async function DashboardPage() {
             className="text-xs uppercase tracking-wider font-medium mb-1"
             style={{ color: "var(--admin-text-muted)" }}
           >
-            Negociacoes Abertas
+            Negociacoes Enviadas
           </div>
-          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
-            {openNegotiations}
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-green)" }}>
+            {(negotiationsEnviadas + negotiationsPagas).toLocaleString("pt-BR")}
           </div>
           <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            Em andamento
+            {totalClientes > 0 ? (((negotiationsEnviadas + negotiationsPagas) / totalClientes) * 100).toFixed(1) : 0}% do total
           </div>
         </div>
 
-        {/* Taxa de Recuperacao */}
+        {/* Pendentes de Envio */}
         <div
           className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
           style={{
             background: "var(--admin-bg-secondary)",
             border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid var(--admin-orange)",
           }}
         >
           <div
-            className="absolute top-0 right-0 w-[70px] h-[70px]"
-            style={{
-              background: "radial-gradient(circle at top right, rgba(245, 166, 35, 0.05), transparent 70%)"
-            }}
-          />
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-orange-bg)", color: "var(--admin-orange)" }}
+          >
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Pendentes de Envio
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-orange)" }}>
+            {negotiationsPendentes.toLocaleString("pt-BR")}
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
+            {totalClientes > 0 ? ((negotiationsPendentes / totalClientes) * 100).toFixed(1) : 0}% do total
+          </div>
+        </div>
+
+        {/* Negociacoes Pagas */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid #10b981",
+          }}
+        >
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-            style={{ background: "var(--admin-purple-bg)", color: "var(--admin-purple)" }}
+            style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}
           >
             <TrendingUp className="w-4 h-4" />
           </div>
@@ -307,13 +338,65 @@ export default async function DashboardPage() {
             className="text-xs uppercase tracking-wider font-medium mb-1"
             style={{ color: "var(--admin-text-muted)" }}
           >
-            Taxa de Recuperacao
+            Negociacoes Pagas
           </div>
-          <div className="text-2xl font-bold" style={{ color: "var(--admin-text-primary)" }}>
-            {recoveryRate.toFixed(1)}%
+          <div className="text-2xl font-bold" style={{ color: "#10b981" }}>
+            {negotiationsPagas.toLocaleString("pt-BR")}
           </div>
           <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            {formatCurrency(totalRecovered)} recuperado
+            {(negotiationsEnviadas + negotiationsPagas) > 0 ? ((negotiationsPagas / (negotiationsEnviadas + negotiationsPagas)) * 100).toFixed(1) : 0}% das enviadas
+          </div>
+        </div>
+
+        {/* Divida Pendente */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid var(--admin-red)",
+          }}
+        >
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "var(--admin-red-bg)", color: "var(--admin-red)" }}
+          >
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Divida Pendente
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "var(--admin-red)" }}>
+            {formatCurrency(finalPendingDebt)}
+          </div>
+        </div>
+
+        {/* Divida Recuperada */}
+        <div
+          className="rounded-xl p-[18px] relative overflow-hidden transition-all hover:-translate-y-0.5"
+          style={{
+            background: "var(--admin-bg-secondary)",
+            border: "1px solid var(--admin-border)",
+            borderLeft: "4px solid #14b8a6",
+          }}
+        >
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+            style={{ background: "rgba(20, 184, 166, 0.1)", color: "#14b8a6" }}
+          >
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div
+            className="text-xs uppercase tracking-wider font-medium mb-1"
+            style={{ color: "var(--admin-text-muted)" }}
+          >
+            Divida Recuperada
+          </div>
+          <div className="text-2xl font-bold" style={{ color: "#14b8a6" }}>
+            {formatCurrency(finalRecoveredDebt)}
           </div>
         </div>
       </div>

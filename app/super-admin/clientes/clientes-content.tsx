@@ -66,12 +66,29 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
       ? clientes
       : clientes.filter(c => c.companyId === selectedCompany)
 
+    // Paid clients = negotiationStatus is "PAGO"
+    const paidClients = filtered.filter(c => c.negotiationStatus === "PAGO")
+
+    // Pending debt clients = NOT paid and has debt > 0
+    const pendingClients = filtered.filter(c =>
+      c.negotiationStatus !== "PAGO" && c.totalDebt > 0
+    )
+
+    // Pending debt value = sum of debts from non-paid clients only
+    const pendingDebtValue = pendingClients.reduce((sum, c) => sum + c.totalDebt, 0)
+
+    // In negotiation = has active ASAAS charge that is NOT yet paid
+    const inNegotiationClients = filtered.filter(c =>
+      c.negotiationStatus === "ATIVA_ASAAS" ||
+      (c.negotiationStatus === "ATIVA" && c.hasAsaasCharge)
+    )
+
     return {
       total: filtered.length,
-      withDebt: filtered.filter(c => c.daysOverdue > 0).length,
-      totalDebt: filtered.reduce((sum, c) => sum + c.totalDebt, 0),
-      paid: filtered.filter(c => c.negotiationStatus === "PAGO").length,
-      inNegotiation: filtered.filter(c => ["ATIVA", "ATIVA_ASAAS", "DRAFT"].includes(c.negotiationStatus)).length,
+      withPendingDebt: pendingClients.length,
+      pendingDebtValue,
+      paid: paidClients.length,
+      inNegotiation: inNegotiationClients.length,
     }
   }, [clientes, selectedCompany])
 
@@ -83,9 +100,14 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
       result = result.filter(c => c.companyId === selectedCompany)
     }
 
-    // Negotiation filter
+    // Status filter
     if (negotiationFilter !== "all") {
-      result = result.filter(c => c.negotiationStatus === negotiationFilter)
+      if (negotiationFilter === "pendente") {
+        // Show only clients with pending debt (NOT paid)
+        result = result.filter(c => c.negotiationStatus !== "PAGO" && c.totalDebt > 0)
+      } else {
+        result = result.filter(c => c.negotiationStatus === negotiationFilter)
+      }
     }
 
     // Search filter
@@ -177,16 +199,15 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
               </SelectContent>
             </Select>
             <Select value={negotiationFilter} onValueChange={setNegotiationFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <Handshake className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Negociacao" />
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="PAGO">Pago</SelectItem>
-                <SelectItem value="ATIVA_ASAAS">Cobranca Enviada</SelectItem>
-                <SelectItem value="ATIVA">Acordo Criado</SelectItem>
-                <SelectItem value="DRAFT">Rascunho</SelectItem>
+                <SelectItem value="all">Todos os Status</SelectItem>
+                <SelectItem value="pendente">Com Divida Pendente</SelectItem>
+                <SelectItem value="PAGO">Pagos</SelectItem>
+                <SelectItem value="ATIVA_ASAAS">Em Negociacao</SelectItem>
                 <SelectItem value="NENHUMA">Sem Negociacao</SelectItem>
               </SelectContent>
             </Select>
@@ -196,42 +217,42 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
               Total de Clientes
             </CardTitle>
-            <Users className="h-4 w-4 text-gray-400" />
+            <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total.toLocaleString()}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Com Divida
+              Com Divida Pendente
             </CardTitle>
             <AlertTriangle className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.withDebt.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-orange-600">{stats.withPendingDebt.toLocaleString()}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Valor Total
+              Divida Pendente
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-400" />
+            <DollarSign className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              R$ {(stats.totalDebt / 1000).toFixed(1)}k
+            <div className="text-2xl font-bold text-red-600">
+              {stats.pendingDebtValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
               Em Negociacao
@@ -242,7 +263,7 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
             <div className="text-2xl font-bold text-blue-600">{stats.inNegotiation}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-500 dark:text-gray-400">
               Pagos
@@ -318,12 +339,16 @@ export function SuperAdminClientesContent({ clientes, companies }: Props) {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="font-medium text-gray-900 dark:text-white">
+                    <p className={`font-medium ${cliente.negotiationStatus === "PAGO" ? "text-green-600 dark:text-green-400" : "text-gray-900 dark:text-white"}`}>
                       R$ {cliente.totalDebt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
-                    <p className={`text-sm ${cliente.daysOverdue > 90 ? "text-red-500" : cliente.daysOverdue > 30 ? "text-orange-500" : "text-gray-500"}`}>
-                      {cliente.daysOverdue > 0 ? `${cliente.daysOverdue} dias` : "Em dia"}
-                    </p>
+                    {cliente.negotiationStatus === "PAGO" ? (
+                      <p className="text-sm text-green-500">Pago</p>
+                    ) : (
+                      <p className={`text-sm ${cliente.daysOverdue > 90 ? "text-red-500" : cliente.daysOverdue > 30 ? "text-orange-500" : "text-gray-500"}`}>
+                        {cliente.daysOverdue > 0 ? `${cliente.daysOverdue} dias` : "Em dia"}
+                      </p>
+                    )}
                   </div>
                   <Badge
                     className={`${negotiationConfig[cliente.negotiationStatus]?.bg} ${negotiationConfig[cliente.negotiationStatus]?.color} border-0`}

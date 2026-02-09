@@ -73,21 +73,21 @@ export default function AgreementsPage() {
         return
       }
 
-      // If we have agreements, try to get customer info from VMAX
+      // If we have agreements, get customer info from customers table
       if (agreementsData && agreementsData.length > 0) {
         const customerIds = [...new Set(agreementsData.map(a => a.customer_id).filter(Boolean))]
 
         if (customerIds.length > 0) {
-          // Try VMAX table first
-          const { data: vmaxData } = await supabase
-            .from("VMAX")
-            .select('id, "Cliente", "CPF/CNPJ"')
+          // Fetch from customers table (where agreement.customer_id points)
+          const { data: customersData } = await supabase
+            .from("customers")
+            .select("id, name, document")
             .in("id", customerIds)
 
           const customerMap = new Map<string, { name: string; document: string }>()
-          if (vmaxData) {
-            vmaxData.forEach((c: any) => {
-              customerMap.set(c.id, { name: c.Cliente || "", document: c["CPF/CNPJ"] || "" })
+          if (customersData) {
+            customersData.forEach((c: any) => {
+              customerMap.set(c.id, { name: c.name || "", document: c.document || "" })
             })
           }
 
@@ -116,10 +116,10 @@ export default function AgreementsPage() {
   }
 
   const filteredAgreements = agreements.filter((agreement) => {
-    const matchesSearch =
+    // When searchTerm is empty, match all
+    const matchesSearch = !searchTerm ||
       agreement.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agreement.customer_document?.includes(searchTerm) ||
-      false
+      agreement.customer_document?.includes(searchTerm)
     const matchesStatus = statusFilter === "all" || agreement.status === statusFilter
     return matchesSearch && matchesStatus
   })

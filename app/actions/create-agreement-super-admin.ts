@@ -46,8 +46,31 @@ export async function createAgreementSuperAdmin(params: {
 
     const cpfCnpj = vmaxRecord["CPF/CNPJ"]?.replace(/[^\d]/g, "") || ""
     const customerName = vmaxRecord.Cliente || "Cliente"
-    const customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || "").replace(/[^\d]/g, "")
-    const customerEmail = vmaxRecord.Email || ""
+
+    // Get contact info from VMAX first, then fall back to customers table
+    let customerPhone = (vmaxRecord["Telefone 1"] || vmaxRecord["Telefone 2"] || vmaxRecord["Telefone"] || "").replace(/[^\d]/g, "")
+    let customerEmail = vmaxRecord.Email || ""
+
+    // If no contact info in VMAX, try to get from customers table
+    if (!customerPhone || !customerEmail) {
+      const { data: existingCustomerData } = await supabase
+        .from("customers")
+        .select("phone, email")
+        .eq("document", cpfCnpj)
+        .eq("company_id", params.companyId)
+        .maybeSingle()
+
+      if (existingCustomerData) {
+        if (!customerPhone && existingCustomerData.phone) {
+          customerPhone = existingCustomerData.phone.replace(/[^\d]/g, "")
+        }
+        if (!customerEmail && existingCustomerData.email) {
+          customerEmail = existingCustomerData.email
+        }
+      }
+    }
+
+    console.log("[ASAAS] Customer contact info:", { name: customerName, email: customerEmail, phone: customerPhone })
 
     // Create or get customer in DB
     let customerId: string
@@ -123,6 +146,8 @@ export async function createAgreementSuperAdmin(params: {
     }
 
     // Asaas - create or get customer (optional - only if ASAAS_API_KEY is configured)
+    // IMPORTANT: Do NOT send email to ASAAS - AlteaPay handles email via SendGrid/Resend
+    // Only send mobilePhone so ASAAS can send WhatsApp notifications
     let asaasCustomerId: string | null = null
 
     try {
@@ -130,21 +155,24 @@ export async function createAgreementSuperAdmin(params: {
 
       if (existingAsaasCustomer) {
         asaasCustomerId = existingAsaasCustomer.id
+        // Update with phone only (NO email)
         await updateAsaasCustomer(asaasCustomerId, {
-          email: customerEmail || undefined,
+          // email: DO NOT SEND - AlteaPay handles email
           mobilePhone: customerPhone || undefined,
-          notificationDisabled: true,
+          notificationDisabled: false,
         })
       } else {
+        // Create customer with phone only (NO email)
         const newAsaasCustomer = await createAsaasCustomer({
           name: customerName,
           cpfCnpj,
-          email: customerEmail || undefined,
+          // email: DO NOT SEND - AlteaPay handles email
           mobilePhone: customerPhone || undefined,
-          notificationDisabled: true,
+          notificationDisabled: false,
         })
         asaasCustomerId = newAsaasCustomer.id
       }
+      console.log("[ASAAS] Customer created/updated:", asaasCustomerId, "with phone only (no email)")
     } catch (asaasError: any) {
       // Asaas integration is optional - if API key is not configured, continue without it
       console.warn("Asaas integration skipped (API key may not be configured):", asaasError.message)

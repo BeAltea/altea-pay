@@ -32,11 +32,6 @@ const navigation = [
     icon: Users,
   },
   {
-    name: "Dívidas",
-    href: "/dashboard/debts",
-    icon: CreditCard,
-  },
-  {
     name: "Acordos",
     href: "/dashboard/agreements",
     icon: FileCheck,

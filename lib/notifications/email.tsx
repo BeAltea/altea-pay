@@ -39,15 +39,15 @@ export async function sendEmail({ to, subject, html, body, text }: SendEmailPara
     const resend = new Resend(process.env.RESEND_API_KEY)
 
     const { data, error } = await resend.emails.send({
-      from: "AlteaPay Cobranças <cobranca@alteapay.com>",
+      from: "AlteaPay Cobranças <relacionamento@alteapay.com>",
       to: [to],
       subject,
       html: html || body || "",
       text: text || stripHtml(html || body || ""),
-      replyTo: "suporte@alteapay.com",
+      replyTo: "relacionamento@alteapay.com",
       headers: {
         "X-Entity-Ref-ID": `alteapay-${Date.now()}`,
-        "List-Unsubscribe": "<mailto:suporte@alteapay.com?subject=unsubscribe>",
+        "List-Unsubscribe": "<mailto:relacionamento@alteapay.com?subject=unsubscribe>",
         Precedence: "bulk",
       },
       tags: [{ name: "category", value: "payment-reminder" }],
@@ -123,13 +123,10 @@ export async function generateDebtCollectionEmail({
                 
                 <!-- Header -->
                 <tr>
-                  <td style="padding: 30px 30px 20px 30px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px 8px 0 0;">
+                  <td style="padding: 30px 30px 20px 30px; text-align: center; background: linear-gradient(135deg, #1a1a2e 0%, #2d2d4a 100%); border-radius: 8px 8px 0 0;">
                     <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">
                       ${companyName}
                     </h1>
-                    <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 14px;">
-                      Sistema de Gestão Financeira
-                    </p>
                   </td>
                 </tr>
                 
@@ -192,7 +189,7 @@ export async function generateDebtCollectionEmail({
                     <table role="presentation" style="width: 100%; margin: 30px 0;">
                       <tr>
                         <td style="text-align: center;">
-                          <a href="${paymentLink}" style="display: inline-block; padding: 16px 48px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);">
+                          <a href="${paymentLink}" style="display: inline-block; padding: 16px 48px; background: linear-gradient(135deg, #d4a843 0%, #b8922e 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(212, 168, 67, 0.3);">
                             Acessar Área de Pagamento
                           </a>
                         </td>
@@ -202,7 +199,7 @@ export async function generateDebtCollectionEmail({
                     <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
                       Se você já realizou o pagamento, por favor desconsidere este email. 
                       Caso tenha alguma dúvida ou necessite de assistência, nossa equipe está à disposição 
-                      para ajudá-lo através do email suporte@alteapay.com
+                      para ajudá-lo através do email relacionamento@alteapay.com
                     </p>
                     
                     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
@@ -222,7 +219,7 @@ export async function generateDebtCollectionEmail({
                       Por favor, não responda diretamente a este email.
                     </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.5;">
-                      Para suporte: suporte@alteapay.com
+                      Para suporte: relacionamento@alteapay.com
                     </p>
                   </td>
                 </tr>

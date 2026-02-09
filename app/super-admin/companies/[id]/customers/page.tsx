@@ -19,6 +19,41 @@ export default async function ManageCustomersPage({ params }: { params: Promise<
     notFound()
   }
 
+  // Fetch completed agreements to identify paid customers (include payment date)
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, customer_id, status, payment_received_at, agreed_amount")
+    .eq("company_id", id)
+    .eq("status", "completed")
+
+  // Fetch customers mapping to get documents
+  const { data: dbCustomers } = await supabase
+    .from("customers")
+    .select("id, document")
+    .eq("company_id", id)
+
+  // Build map of customer_id -> document for paid agreements
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of dbCustomers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements and their payment dates
+  const paidDocs = new Set<string>()
+  const paidDocsInfo = new Map<string, { paymentDate: string | null; paidAmount: number }>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc) {
+      paidDocs.add(doc)
+      paidDocsInfo.set(doc, {
+        paymentDate: a.payment_received_at || null,
+        paidAmount: a.agreed_amount || 0,
+      })
+    }
+  }
+
   // Buscar SOMENTE da tabela VMAX (tabela customers foi descontinuada)
   let vmaxCustomers: any[] = []
   let page = 0
@@ -50,6 +85,23 @@ export default async function ManageCustomersPage({ params }: { params: Promise<
 
   console.log("[v0] TOTAL VMAX customers loaded (after pagination):", vmaxCustomers.length)
 
+  // Also check for paid status in VMAX negotiation_status
+  for (const v of vmaxCustomers || []) {
+    if (v.negotiation_status === "PAGO") {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      if (doc) {
+        paidDocs.add(doc)
+        // Use VMAX updated_at or current date as fallback for payment date
+        if (!paidDocsInfo.has(doc)) {
+          paidDocsInfo.set(doc, {
+            paymentDate: v.updated_at || new Date().toISOString(),
+            paidAmount: Number(String(v.Vencido || "0").replace(/[^\d,]/g, "").replace(",", ".")) || 0,
+          })
+        }
+      }
+    }
+  }
+
   const vmaxProcessed = (vmaxCustomers || []).map((vmax) => {
     const vencidoStr = String(vmax.Vencido || vmax.vencido || "0")
     const vencidoValue = Number(vencidoStr.replace(/[^\d,]/g, "").replace(",", "."))
@@ -58,12 +110,19 @@ export default async function ManageCustomersPage({ params }: { params: Promise<
     const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
     const primeiraVencida = vmax.Vecto || vmax.primeira_vencida
     const dtCancelamento = vmax["DT Cancelamento"] || vmax.dt_cancelamento
+    const doc = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+
+    // Check if this customer has a paid agreement
+    // Only explicit payment indicators: negotiation_status === "PAGO" or document in paidDocs (from completed agreements)
+    // Do NOT use dtCancelamento alone - it means "cancelled" not necessarily "paid"
+    const isPaid = paidDocs.has(doc) || vmax.negotiation_status === "PAGO"
+    const paidInfo = paidDocsInfo.get(doc)
 
     let status: "active" | "overdue" | "negotiating" | "paid" = "active"
-    if (diasInad > 0) {
-      status = "overdue"
-    } else if (dtCancelamento) {
+    if (isPaid) {
       status = "paid"
+    } else if (diasInad > 0) {
+      status = "overdue"
     }
 
     return {
@@ -75,11 +134,14 @@ export default async function ManageCustomersPage({ params }: { params: Promise<
       company_id: id,
       created_at: primeiraVencida || new Date().toISOString(),
       totalDebt: vencidoValue,
-      overdueDebt: diasInad > 0 ? vencidoValue : 0,
+      overdueDebt: isPaid ? 0 : (diasInad > 0 ? vencidoValue : 0),
       lastPayment: dtCancelamento || primeiraVencida || new Date().toISOString(),
       status,
       city: vmax.Cidade || vmax.cidade || null,
-      daysOverdue: diasInad,
+      daysOverdue: isPaid ? 0 : diasInad,
+      // Payment info for paid customers
+      paymentDate: isPaid ? (paidInfo?.paymentDate || null) : null,
+      paidAmount: isPaid ? (paidInfo?.paidAmount || vencidoValue) : 0,
     }
   })
 

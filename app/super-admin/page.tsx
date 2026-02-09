@@ -39,6 +39,37 @@ export default async function SuperAdminDashboardPage() {
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
 
+  // Fetch completed agreements to identify paid customers
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, customer_id, status, company_id")
+    .eq("status", "completed")
+
+  // Fetch customers mapping to get documents
+  const { data: dbCustomers } = await supabase
+    .from("customers")
+    .select("id, document, company_id")
+
+  // Build map of customer_id -> document for paid agreements
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of dbCustomers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements (grouped by company)
+  const paidDocsByCompany = new Map<string, Set<string>>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc && a.company_id) {
+      if (!paidDocsByCompany.has(a.company_id)) {
+        paidDocsByCompany.set(a.company_id, new Set())
+      }
+      paidDocsByCompany.get(a.company_id)!.add(doc)
+    }
+  }
+
   // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
   let allVmaxRecords: any[] = []
   let page = 0
@@ -85,19 +116,48 @@ export default async function SuperAdminDashboardPage() {
 
       const totalCustomers = vmaxCustomers?.length || 0
 
-      // SOMENTE dados da tabela VMAX
+      // Get paid documents for this company (from agreements)
+      const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
+
+      // Helper to check if a VMAX record is paid
+      // Only explicit payment indicators: negotiation_status === "PAGO" or document in paidDocs (from completed agreements)
+      // Do NOT use dtCancelamento alone - it means "cancelled" not necessarily "paid"
+      const isPaid = (v: any) => {
+        const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+        // Only consider paid if explicit payment status
+        return companyPaidDocs.has(doc) || v.negotiation_status === "PAGO"
+      }
+
+      // SOMENTE dados da tabela VMAX - exclude paid from overdue
       const vmaxOverdueDebts = vmaxCustomers?.filter((v) => {
+        if (isPaid(v)) return false // Exclude paid debts
         const diasInadStr = String(v["Dias Inad."] || "0")
         return (Number(diasInadStr.replace(/\./g, "")) || 0) > 0
       }).length || 0
 
+      // Calculate total amount (excluding paid)
       const vmaxTotalAmount =
         vmaxCustomers?.reduce((sum, v) => {
+          if (isPaid(v)) return sum // Exclude paid debts from total
           const vencidoStr = String(v.Vencido || "0")
           const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
           const value = Number(cleanValue) || 0
           return sum + value
         }, 0) || 0
+
+      // Calculate recovered amount (paid debts)
+      const vmaxRecoveredAmount =
+        vmaxCustomers?.reduce((sum, v) => {
+          if (!isPaid(v)) return sum // Only include paid debts
+          const vencidoStr = String(v.Vencido || "0")
+          const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+          const value = Number(cleanValue) || 0
+          return sum + value
+        }, 0) || 0
+
+      // Calculate recovery rate
+      const totalOriginalAmount = vmaxTotalAmount + vmaxRecoveredAmount
+      const recoveryRate = totalOriginalAmount > 0 ? (vmaxRecoveredAmount / totalOriginalAmount) * 100 : 0
 
       const { data: admins } = await supabase
         .from("profiles")
@@ -109,10 +169,10 @@ export default async function SuperAdminDashboardPage() {
         id: company.id,
         name: company.name,
         totalCustomers,
-        totalDebts: vmaxCustomers?.length || 0,
+        totalDebts: vmaxCustomers?.filter(v => !isPaid(v)).length || 0,
         totalAmount: vmaxTotalAmount,
-        recoveredAmount: 0,
-        recoveryRate: 0,
+        recoveredAmount: vmaxRecoveredAmount,
+        recoveryRate: Number(recoveryRate.toFixed(1)),
         overdueDebts: vmaxOverdueDebts,
         admins: admins?.length || 0,
       })
@@ -124,6 +184,7 @@ export default async function SuperAdminDashboardPage() {
     totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
     totalDebts: companiesStats.reduce((sum, company) => sum + company.totalDebts, 0),
     totalAmount: companiesStats.reduce((sum, company) => sum + company.totalAmount, 0),
+    totalRecovered: companiesStats.reduce((sum, company) => sum + company.recoveredAmount, 0),
     totalOverdue: companiesStats.reduce((sum, company) => sum + company.overdueDebts, 0),
     totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
   }

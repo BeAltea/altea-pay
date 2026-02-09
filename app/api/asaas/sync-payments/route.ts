@@ -176,15 +176,45 @@ export async function POST(request: NextRequest) {
 
           // Handle payment received
           if (newPaymentStatus === "received") {
-            agreementUpdate.status = "paid"
+            agreementUpdate.status = "completed"  // Use "completed" - it's in the DB constraint
             agreementUpdate.payment_received_at = new Date().toISOString()
+
+            console.log(`[ASAAS Sync] Payment RECEIVED for agreement ${agreement.id}, updating debt and VMAX...`)
 
             // Update debt to paid
             if (agreement.debt_id) {
-              await supabase
+              const { data: debtResult, error: debtError } = await supabase
                 .from("debts")
                 .update({ status: "paid", updated_at: new Date().toISOString() })
                 .eq("id", agreement.debt_id)
+                .select()
+
+              if (debtError) {
+                console.error(`[ASAAS Sync] Failed to update debt ${agreement.debt_id}:`, debtError)
+              } else {
+                console.log(`[ASAAS Sync] Debt ${agreement.debt_id} updated to paid:`, debtResult)
+              }
+
+              // Also update VMAX negotiation_status to reflect payment
+              // Get the debt's external_id which links to VMAX
+              const { data: debt } = await supabase
+                .from("debts")
+                .select("external_id")
+                .eq("id", agreement.debt_id)
+                .single()
+
+              if (debt?.external_id) {
+                const { error: vmaxError } = await supabase
+                  .from("VMAX")
+                  .update({ negotiation_status: "PAGO" })
+                  .eq("id", debt.external_id)
+
+                if (vmaxError) {
+                  console.error(`[ASAAS Sync] Failed to update VMAX ${debt.external_id}:`, vmaxError)
+                } else {
+                  console.log(`[ASAAS Sync] VMAX ${debt.external_id} updated to PAGO`)
+                }
+              }
             }
 
             // Create notification
@@ -203,20 +233,46 @@ export async function POST(request: NextRequest) {
           if (newPaymentStatus === "refunded" || asaasPayment.status === "DELETED") {
             agreementUpdate.status = "cancelled"
             if (agreement.debt_id) {
-              await supabase
+              const { error: debtError } = await supabase
                 .from("debts")
                 .update({ status: "pending", updated_at: new Date().toISOString() })
                 .eq("id", agreement.debt_id)
+
+              if (debtError) {
+                console.error(`[ASAAS Sync] Failed to revert debt ${agreement.debt_id}:`, debtError)
+              }
+
+              // Update VMAX negotiation_status
+              const { data: debt } = await supabase
+                .from("debts")
+                .select("external_id")
+                .eq("id", agreement.debt_id)
+                .single()
+
+              if (debt?.external_id) {
+                await supabase
+                  .from("VMAX")
+                  .update({ negotiation_status: "CANCELADA" })
+                  .eq("id", debt.external_id)
+              }
             }
           }
 
           // Update agreement
-          await supabase
+          console.log(`[ASAAS Sync] Updating agreement ${agreement.id}:`, agreementUpdate)
+          const { data: updateResult, error: updateError } = await supabase
             .from("agreements")
             .update(agreementUpdate)
             .eq("id", agreement.id)
+            .select()
 
-          results.updated++
+          if (updateError) {
+            console.error(`[ASAAS Sync] Failed to update agreement ${agreement.id}:`, updateError)
+            results.errors.push(`${agreement.id}: ${updateError.message}`)
+          } else {
+            console.log(`[ASAAS Sync] Agreement ${agreement.id} updated successfully:`, updateResult)
+            results.updated++
+          }
         } else {
           // Status unchanged, just update sync timestamp
           await supabase

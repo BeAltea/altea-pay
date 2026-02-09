@@ -65,8 +65,45 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
 
         const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
         const customerName = vmax.Cliente || "Cliente"
-        const customerPhone = (vmax["Telefone 1"] || vmax["Telefone 2"] || "").replace(/\D/g, "")
-        const customerEmail = vmax.Email || ""
+
+        // Get contact info from VMAX first
+        let customerPhone = (vmax["Telefone 1"] || vmax["Telefone 2"] || vmax["Telefone"] || "").replace(/\D/g, "")
+        let customerEmail = vmax.Email || ""
+
+        console.log("[ASAAS] VMAX raw data:", {
+          Email: vmax.Email,
+          "Telefone 1": vmax["Telefone 1"],
+          "Telefone 2": vmax["Telefone 2"],
+          cpfCnpj,
+          companyId: params.companyId
+        })
+
+        // ALWAYS try to get from customers table to ensure we have contact info
+        const { data: existingCustomerData, error: customerQueryError } = await supabase
+          .from("customers")
+          .select("phone, email")
+          .eq("document", cpfCnpj)
+          .eq("company_id", params.companyId)
+          .maybeSingle()
+
+        console.log("[ASAAS] Customer query result:", {
+          existingCustomerData,
+          customerQueryError: customerQueryError?.message,
+          cpfCnpj,
+          companyId: params.companyId
+        })
+
+        if (existingCustomerData) {
+          // Use customer table data if available (prefer it over VMAX)
+          if (existingCustomerData.phone) {
+            customerPhone = existingCustomerData.phone.replace(/\D/g, "")
+          }
+          if (existingCustomerData.email) {
+            customerEmail = existingCustomerData.email
+          }
+        }
+
+        console.log("[ASAAS] Final contact info:", { name: customerName, email: customerEmail, phone: customerPhone })
 
         if (!cpfCnpj) {
           errors.push(`${customerName}: sem CPF/CNPJ cadastrado`)
@@ -194,25 +231,56 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
         // ====== ASAAS INTEGRATION (same as sendPaymentLink) ======
 
         // 1. Create or find Asaas customer
+        // IMPORTANT: Do NOT send email to ASAAS - AlteaPay handles email via SendGrid/Resend
+        // Only send mobilePhone so ASAAS can send WhatsApp notifications
         let asaasCustomerId: string | null = null
         try {
           const existingAsaas = await getAsaasCustomerByCpfCnpj(cpfCnpj)
           if (existingAsaas) {
             asaasCustomerId = existingAsaas.id
+            // Update with phone only (NO email) - clear email if it exists
             await updateAsaasCustomer(asaasCustomerId, {
-              email: customerEmail || undefined,
               mobilePhone: customerPhone || undefined,
-              notificationDisabled: true,
+              notificationDisabled: false,
             })
           } else {
+            // Create customer with phone only (NO email)
             const newAsaas = await createAsaasCustomer({
               name: customerName,
               cpfCnpj,
-              email: customerEmail || undefined,
+              // email: DO NOT SEND - ASAAS won't be able to send emails
               mobilePhone: customerPhone || undefined,
-              notificationDisabled: true,
+              notificationDisabled: false,
             })
             asaasCustomerId = newAsaas.id
+          }
+          console.log("[ASAAS] Customer created/updated:", asaasCustomerId, "with phone only (no email)")
+
+          // Configure PAYMENT_CREATED notification:
+          // - WhatsApp only if selected (ASAAS has the phone)
+          // - Email DISABLED (AlteaPay sends via Resend)
+          // - SMS DISABLED (AlteaPay sends via Twilio if needed)
+          try {
+            const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
+            const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
+
+            if (paymentCreatedNotif) {
+              const enableWhatsApp = params.notificationChannels.includes("whatsapp")
+              await updateAsaasNotification(paymentCreatedNotif.id, {
+                enabled: enableWhatsApp, // Only enable if WhatsApp selected
+                emailEnabledForCustomer: false, // NEVER - AlteaPay sends email
+                smsEnabledForCustomer: false, // NEVER - AlteaPay sends SMS via Twilio
+                whatsappEnabledForCustomer: enableWhatsApp,
+              })
+              console.log("[ASAAS] PAYMENT_CREATED notification configured:", {
+                email: false,
+                sms: false,
+                whatsapp: enableWhatsApp,
+              })
+            }
+          } catch (notifErr: any) {
+            console.warn("[ASAAS] Failed to configure notifications:", notifErr.message)
+            // Continue anyway - customer creation succeeded
           }
         } catch (asaasErr: any) {
           errors.push(`${customerName}: erro Asaas cliente - ${asaasErr.message}`)
@@ -257,26 +325,8 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           continue
         }
 
-        // 3. Disable ALL Asaas notifications - we send our own via Resend/Twilio
+        // 3. Create Asaas payment (notifications are already enabled on the customer)
         try {
-          // Keep Asaas notifications disabled - we handle email/SMS ourselves
-          await updateAsaasCustomer(asaasCustomerId, {
-            notificationDisabled: true,
-            email: customerEmail || undefined,
-            mobilePhone: customerPhone || undefined,
-          })
-
-          // Disable all Asaas notifications to prevent Asaas from sending its own emails
-          const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
-          for (const notif of allNotifications) {
-            await updateAsaasNotification(notif.id, {
-              enabled: false,
-              emailEnabledForCustomer: false,
-              smsEnabledForCustomer: false,
-              whatsappEnabledForCustomer: false,
-            })
-          }
-
           // 4. Create Asaas payment - map selected payment methods to billingType
           // If only one method selected, use that specific type. Otherwise use UNDEFINED.
           let billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED" = "UNDEFINED"
@@ -404,23 +454,21 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           }
         }
 
-        // Send WhatsApp notification (via Asaas - only for WhatsApp since we can't send WhatsApp ourselves)
+        // Send WhatsApp notification via Asaas (WhatsApp only - email/SMS disabled)
         if (params.notificationChannels.includes("whatsapp") && customerPhone) {
           try {
-            // For WhatsApp, we still need to use Asaas since we don't have a WhatsApp API
-            // Temporarily enable WhatsApp notification for this customer, then disable
-            await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: false })
+            // Ensure WhatsApp is enabled for PAYMENT_CREATED (email/SMS always disabled)
             const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
             const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
             if (paymentCreatedNotif) {
               await updateAsaasNotification(paymentCreatedNotif.id, {
                 enabled: true,
-                emailEnabledForCustomer: false,
-                smsEnabledForCustomer: false,
+                emailEnabledForCustomer: false, // NEVER - AlteaPay sends email
+                smsEnabledForCustomer: false, // NEVER - AlteaPay sends SMS via Twilio
                 whatsappEnabledForCustomer: true,
               })
             }
-            // Resend the notification
+            // Resend the notification to trigger WhatsApp
             const { resendAsaasPaymentNotification } = await import("@/lib/asaas")
             const { data: agr } = await supabase
               .from("agreements")
@@ -429,16 +477,6 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
               .single()
             if (agr?.asaas_payment_id) {
               await resendAsaasPaymentNotification(agr.asaas_payment_id)
-            }
-            // Disable again
-            await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
-            if (paymentCreatedNotif) {
-              await updateAsaasNotification(paymentCreatedNotif.id, {
-                enabled: false,
-                emailEnabledForCustomer: false,
-                smsEnabledForCustomer: false,
-                whatsappEnabledForCustomer: false,
-              })
             }
             console.log(`[sendBulkNegotiations] WhatsApp enviado via Asaas para ${customerName}`)
           } catch (whatsappErr: any) {

@@ -31,6 +31,7 @@ import {
   ArrowUpDown,
   CalendarClock,
   RefreshCw,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
@@ -42,10 +43,17 @@ type VmaxCustomer = {
   city: string | null
   status: "active" | "overdue" | "negotiating" | "paid"
   totalDebt: number
+  originalDebt?: number
   daysOverdue: number
-  hasActiveNegotiation: boolean
+  hasNegotiation: boolean // Any negotiation sent (for "Enviada" status)
+  hasActiveNegotiation: boolean // Active (non-paid) negotiation
+  isPaid?: boolean
   email: string | null
   phone: string | null
+  paymentStatus: string | null
+  asaasStatus: string | null
+  asaasPaymentId?: string | null // ASAAS payment ID for cancellation
+  agreementId?: string | null // Agreement ID for cancellation
 }
 
 type Company = {
@@ -58,7 +66,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [customers, setCustomers] = useState<VmaxCustomer[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [negotiationFilter, setNegotiationFilter] = useState<"all" | "with" | "without">("all")
+  const [negotiationFilter, setNegotiationFilter] = useState<"all" | "enviada" | "sem_negociacao">("all")
+  const [debtStatusFilter, setDebtStatusFilter] = useState<"all" | "em_aberto" | "aguardando" | "paga" | "vencida">("all")
   const [displayLimit, setDisplayLimit] = useState<number>(50)
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showModal, setShowModal] = useState(false)
@@ -72,6 +81,15 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [discountValue, setDiscountValue] = useState<string>("")
   const [paymentMethods, setPaymentMethods] = useState<Set<string>>(new Set())
   const [notificationChannels, setNotificationChannels] = useState<Set<string>>(new Set())
+
+  // Duplicate warning dialog state
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [duplicateCustomers, setDuplicateCustomers] = useState<VmaxCustomer[]>([])
+
+  // Cancel negotiation dialog state
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [cancellingCustomer, setCancellingCustomer] = useState<VmaxCustomer | null>(null)
+  const [cancelling, setCancelling] = useState(false)
 
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
@@ -94,6 +112,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     setSelectedCompanyId(companyId)
     setSearchTerm("")
     setNegotiationFilter("all")
+    setDebtStatusFilter("all")
     setSelectedCustomers(new Set())
     if (companyId) {
       loadCustomers(companyId)
@@ -104,8 +123,33 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
   const filteredCustomers = useMemo(() => {
     let result = customers.filter((c) => {
-      if (negotiationFilter === "with" && !c.hasActiveNegotiation) return false
-      if (negotiationFilter === "without" && c.hasActiveNegotiation) return false
+      // Status Negociação filter
+      if (negotiationFilter === "enviada" && !c.hasNegotiation) return false
+      if (negotiationFilter === "sem_negociacao" && c.hasNegotiation) return false
+
+      // Status Dívida filter
+      const isPaidStatus = c.isPaid || c.status === "paid" ||
+        c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
+        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+
+      if (debtStatusFilter === "em_aberto") {
+        // Em aberto: debt not paid, no ASAAS charge
+        if (isPaidStatus || c.hasNegotiation) return false
+      }
+      if (debtStatusFilter === "aguardando") {
+        // Aguardando pagamento: ASAAS charge PENDING
+        if (c.asaasStatus !== "PENDING" && c.paymentStatus !== "pending") return false
+      }
+      if (debtStatusFilter === "paga") {
+        // Paga: ASAAS status RECEIVED/CONFIRMED or debt status paid
+        if (!isPaidStatus) return false
+      }
+      if (debtStatusFilter === "vencida") {
+        // Vencida: ASAAS status OVERDUE
+        if (c.asaasStatus !== "OVERDUE" && c.paymentStatus !== "overdue") return false
+      }
+
+      // Search filter
       if (!searchTerm) return true
       const s = searchTerm.toLowerCase()
       return c.name.toLowerCase().includes(s) || c.document.toLowerCase().includes(s)
@@ -127,7 +171,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     }
 
     return result
-  }, [customers, searchTerm, negotiationFilter, sortField, sortOrder])
+  }, [customers, searchTerm, negotiationFilter, debtStatusFilter, sortField, sortOrder])
 
   const toggleSort = (field: "name" | "debt" | "debtAge") => {
     if (sortField === field) {
@@ -145,19 +189,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     return { text: "text-red-600 dark:text-red-400", bg: "bg-red-100 dark:bg-red-900/30" }
   }
 
+  // Always show exact days - no conversion to months/years
   const formatDebtAge = (days: number) => {
     if (days <= 0) return "Em dia"
-    if (days < 30) return `${days} dias`
-    if (days < 365) {
-      const months = Math.floor(days / 30)
-      return `${months} ${months === 1 ? "mês" : "meses"}`
-    }
-    const years = Math.floor(days / 365)
-    const remainingMonths = Math.floor((days % 365) / 30)
-    if (remainingMonths > 0) {
-      return `${years}a ${remainingMonths}m`
-    }
-    return `${years} ${years === 1 ? "ano" : "anos"}`
+    return `${days} dias`
   }
 
   const displayedCustomers = useMemo(() => {
@@ -166,6 +201,13 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   }, [filteredCustomers, displayLimit])
 
   const toggleSelect = (id: string) => {
+    // Find the customer and check if paid
+    const customer = customers.find((c) => c.id === id)
+    if (customer && isCustomerPaid(customer)) {
+      toast.error("Nao e possivel selecionar cliente com divida quitada")
+      return
+    }
+
     setSelectedCustomers((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -174,11 +216,24 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     })
   }
 
+  // Helper to check if a customer is paid (cannot select for negotiation)
+  const isCustomerPaid = (c: VmaxCustomer) => {
+    return c.isPaid || c.status === "paid" ||
+      c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
+      c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+  }
+
+  // Only selectable customers (not paid)
+  const selectableCustomers = useMemo(() => {
+    return displayedCustomers.filter((c) => !isCustomerPaid(c))
+  }, [displayedCustomers])
+
   const toggleSelectAll = () => {
-    if (selectedCustomers.size === displayedCustomers.length) {
+    // Only select customers that are NOT paid
+    if (selectedCustomers.size === selectableCustomers.length && selectableCustomers.length > 0) {
       setSelectedCustomers(new Set())
     } else {
-      setSelectedCustomers(new Set(displayedCustomers.map((c) => c.id)))
+      setSelectedCustomers(new Set(selectableCustomers.map((c) => c.id)))
     }
   }
 
@@ -205,11 +260,91 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       toast.error("Selecione pelo menos um cliente")
       return
     }
+
+    const selectedData = customers.filter((c) => selectedCustomers.has(c.id))
+
+    // 1. BLOCK — clients with paid debts cannot receive new negotiations
+    const paidClients = selectedData.filter(
+      (c) => c.isPaid || c.status === "paid" ||
+        c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
+        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+    )
+
+    if (paidClients.length > 0) {
+      const names = paidClients.slice(0, 3).map((c) => c.name).join(", ")
+      const moreText = paidClients.length > 3 ? ` e mais ${paidClients.length - 3}` : ""
+      toast.error(`Nao e possivel enviar negociacao para clientes com divida quitada: ${names}${moreText}`)
+      return // STOP — do not proceed
+    }
+
+    // 2. WARN — clients with active (unpaid) negotiation
+    const customersWithExisting = selectedData.filter(
+      (c) => c.hasActiveNegotiation && !c.isPaid && c.status !== "paid"
+    )
+
+    if (customersWithExisting.length > 0) {
+      // Show duplicate warning dialog
+      setDuplicateCustomers(customersWithExisting)
+      setShowDuplicateWarning(true)
+      return
+    }
+
+    // 3. No issues, open modal directly
     setDiscountType("none")
     setDiscountValue("")
     setPaymentMethods(new Set())
     setNotificationChannels(new Set())
     setShowModal(true)
+  }
+
+  const confirmSendWithDuplicates = () => {
+    setShowDuplicateWarning(false)
+    setDuplicateCustomers([])
+    setDiscountType("none")
+    setDiscountValue("")
+    setPaymentMethods(new Set())
+    setNotificationChannels(new Set())
+    setShowModal(true)
+  }
+
+  const handleCancelNegotiation = (customer: VmaxCustomer) => {
+    setCancellingCustomer(customer)
+    setShowCancelDialog(true)
+  }
+
+  const confirmCancelNegotiation = async () => {
+    if (!cancellingCustomer) return
+
+    setCancelling(true)
+    try {
+      const response = await fetch("/api/asaas/cancel-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agreementId: cancellingCustomer.agreementId,
+          asaasPaymentId: cancellingCustomer.asaasPaymentId,
+          vmaxId: cancellingCustomer.id,
+          companyId: selectedCompanyId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success("Negociacao cancelada com sucesso")
+        setShowCancelDialog(false)
+        setCancellingCustomer(null)
+        // Reload customers to reflect the change
+        loadCustomers(selectedCompanyId)
+      } else {
+        toast.error(data.error || "Erro ao cancelar negociacao")
+      }
+    } catch (error) {
+      console.error("Error cancelling negotiation:", error)
+      toast.error("Erro ao cancelar negociacao")
+    } finally {
+      setCancelling(false)
+    }
   }
 
   const handleSendNegotiations = async () => {
@@ -260,6 +395,53 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
+  // Abbreviated currency for stat cards (k/M suffix)
+  const formatCurrencyShort = (value: number): string => {
+    if (value >= 1000000) {
+      return `R$ ${(value / 1000000).toFixed(1).replace(".", ",")}M`
+    }
+    if (value >= 10000) {
+      return `R$ ${(value / 1000).toFixed(0)}k`
+    }
+    if (value >= 1000) {
+      return `R$ ${(value / 1000).toFixed(1).replace(".", ",")}k`
+    }
+    return `R$ ${value.toFixed(2).replace(".", ",")}`
+  }
+
+  // Helper to format payment status for display
+  const getPaymentStatusInfo = (paymentStatus: string | null, asaasStatus: string | null) => {
+    // Map payment_status to display info
+    const statusMap: Record<string, { label: string; className: string }> = {
+      pending: { label: "Aguardando", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
+      confirmed: { label: "Confirmado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+      received: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+      overdue: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+      refunded: { label: "Reembolsado", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+      refund_requested: { label: "Reembolso Solicitado", className: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
+    }
+
+    if (paymentStatus && statusMap[paymentStatus]) {
+      return statusMap[paymentStatus]
+    }
+
+    // Fallback to ASAAS status if available
+    if (asaasStatus) {
+      const asaasMap: Record<string, { label: string; className: string }> = {
+        PENDING: { label: "Aguardando", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
+        CONFIRMED: { label: "Confirmado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+        RECEIVED: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+        OVERDUE: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+        REFUNDED: { label: "Reembolsado", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+      }
+      if (asaasMap[asaasStatus]) {
+        return asaasMap[asaasStatus]
+      }
+    }
+
+    return null
+  }
+
   const handleSyncWithAsaas = async () => {
     setSyncing(true)
     try {
@@ -297,14 +479,37 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
   const kpiStats = useMemo(() => {
     const total = customers.length
-    const withNegotiation = customers.filter((c) => c.hasActiveNegotiation).length
-    const withoutNegotiation = total - withNegotiation
+
+    // Paid customers (completed negotiations)
+    const paidCustomers = customers.filter((c) => c.isPaid || c.status === "paid")
+    const paidCount = paidCustomers.length
+
+    // Customers with ANY negotiation sent (including paid) - "Negociações Enviadas"
+    const withNegotiation = customers.filter((c) => c.hasNegotiation).length
+
+    // Customers without any negotiation - "Pendentes de Envio"
+    const withoutNegotiation = customers.filter((c) => !c.hasNegotiation).length
+
+    // Total debt (all customers)
     const totalDebt = customers.reduce((sum, c) => sum + c.totalDebt, 0)
-    const negotiatedDebt = customers
-      .filter((c) => c.hasActiveNegotiation)
+
+    // Recovered debt (paid customers)
+    const recoveredDebt = paidCustomers.reduce((sum, c) => sum + c.totalDebt, 0)
+
+    // Pending debt (non-paid customers)
+    const pendingDebt = customers
+      .filter((c) => !c.isPaid && c.status !== "paid")
       .reduce((sum, c) => sum + c.totalDebt, 0)
-    const pendingDebt = totalDebt - negotiatedDebt
-    return { total, withNegotiation, withoutNegotiation, totalDebt, negotiatedDebt, pendingDebt }
+
+    return {
+      total,
+      withNegotiation,
+      withoutNegotiation,
+      totalDebt,
+      recoveredDebt,
+      pendingDebt,
+      paidCount
+    }
   }, [customers])
 
   return (
@@ -335,7 +540,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       {/* KPI Cards */}
       {!loading && selectedCompanyId && customers.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -361,7 +566,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <Send className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
               </div>
             </CardContent>
@@ -384,18 +589,56 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
             </CardContent>
           </Card>
 
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Negociacoes Pagas</p>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{kpiStats.paidCount}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpiStats.withNegotiation > 0 ? ((kpiStats.paidCount / kpiStats.withNegotiation) * 100).toFixed(1) : 0}% das enviadas
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="border-l-4 border-l-red-500">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Divida Pendente</p>
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(kpiStats.pendingDebt)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    de {formatCurrency(kpiStats.totalDebt)} total
+                  <p
+                    className="text-2xl font-bold text-red-600 dark:text-red-400"
+                    title={formatCurrency(kpiStats.pendingDebt)}
+                  >
+                    {formatCurrencyShort(kpiStats.pendingDebt)}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-teal-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Divida Recuperada</p>
+                  <p
+                    className="text-2xl font-bold text-teal-600 dark:text-teal-400"
+                    title={formatCurrency(kpiStats.recoveredDebt)}
+                  >
+                    {formatCurrencyShort(kpiStats.recoveredDebt)}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-teal-100 dark:bg-teal-950 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-teal-600 dark:text-teal-400" />
                 </div>
               </div>
             </CardContent>
@@ -445,7 +688,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           </CardHeader>
           <CardContent>
             {/* Filters */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Buscar</Label>
                 <div className="relative">
@@ -459,15 +702,30 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </div>
               </div>
               <div>
-                <Label className="text-sm font-medium mb-2 block">Status de Negociacao</Label>
+                <Label className="text-sm font-medium mb-2 block">Status Negociação</Label>
                 <Select value={negotiationFilter} onValueChange={(v: any) => setNegotiationFilter(v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="with">Com negociacao em andamento</SelectItem>
-                    <SelectItem value="without">Sem negociacao</SelectItem>
+                    <SelectItem value="enviada">Enviada</SelectItem>
+                    <SelectItem value="sem_negociacao">Sem negociação</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Status Dívida</Label>
+                <Select value={debtStatusFilter} onValueChange={(v: any) => setDebtStatusFilter(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="em_aberto">Em aberto</SelectItem>
+                    <SelectItem value="aguardando">Aguardando pagamento</SelectItem>
+                    <SelectItem value="paga">Paga</SelectItem>
+                    <SelectItem value="vencida">Vencida</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -504,11 +762,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
             {/* Select all and column headers */}
             <div className="flex items-center gap-2 mb-3 pb-3 border-b">
               <Checkbox
-                checked={selectedCustomers.size === displayedCustomers.length && displayedCustomers.length > 0}
+                checked={selectedCustomers.size === selectableCustomers.length && selectableCustomers.length > 0}
                 onCheckedChange={toggleSelectAll}
+                disabled={selectableCustomers.length === 0}
                 className="border-foreground/70 flex-shrink-0"
               />
-              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-center">
+              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-2 items-center">
                 <button
                   onClick={() => toggleSort("name")}
                   className="lg:col-span-2 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
@@ -532,7 +791,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   Tempo Dívida
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "debtAge" ? "text-primary" : "opacity-50"}`} />
                 </button>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status</span>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Negociação</span>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Dívida</span>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Ações</span>
               </div>
             </div>
 
@@ -540,17 +801,23 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
             <div className="space-y-2">
               {displayedCustomers.map((customer) => {
                 const debtAgeColors = getDebtAgeColor(customer.daysOverdue)
+                const isPaid = isCustomerPaid(customer)
                 return (
                   <div
                     key={customer.id}
-                    className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors"
+                    className={`flex items-center gap-3 p-3 border border-border rounded-lg transition-colors ${
+                      isPaid
+                        ? "opacity-50 cursor-not-allowed bg-muted/30"
+                        : "hover:bg-muted/50"
+                    }`}
                   >
                     <Checkbox
                       checked={selectedCustomers.has(customer.id)}
                       onCheckedChange={() => toggleSelect(customer.id)}
+                      disabled={isPaid}
                       className="border-foreground/70 flex-shrink-0"
                     />
-                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-center">
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-2 items-center">
                       {/* Name + Document */}
                       <div className="min-w-0 lg:col-span-2">
                         <p className="text-sm font-medium truncate">{customer.name}</p>
@@ -560,10 +827,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                       <div className="text-sm text-muted-foreground truncate hidden lg:block">
                         {customer.city || "-"}
                       </div>
-                      {/* Debt */}
+                      {/* Debt - always show original value */}
                       <div className="flex items-center gap-1">
-                        <DollarSign className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                        <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                        <DollarSign className={`h-3.5 w-3.5 flex-shrink-0 ${customer.isPaid ? "text-green-500" : "text-red-500"}`} />
+                        <span className={`text-sm font-semibold ${customer.isPaid ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                           {formatCurrency(customer.totalDebt)}
                         </span>
                       </div>
@@ -574,18 +841,70 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           {formatDebtAge(customer.daysOverdue)}
                         </Badge>
                       </div>
-                      {/* Negotiation status */}
+                      {/* Status Negociação - Enviada / Sem negociação */}
                       <div>
-                        {customer.hasActiveNegotiation ? (
+                        {customer.hasNegotiation ? (
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Negociacao enviada
+                            <Send className="mr-1 h-3 w-3" />
+                            Enviada
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-xs text-muted-foreground">
-                            <AlertTriangle className="mr-1 h-3 w-3" />
-                            Sem negociacao
+                            <Clock className="mr-1 h-3 w-3" />
+                            Sem negociação
                           </Badge>
+                        )}
+                      </div>
+                      {/* Status Dívida - Paga / Em aberto / Aguardando / Vencida */}
+                      <div>
+                        {customer.isPaid || customer.status === "paid" ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-xs">
+                            <CheckCircle className="mr-1 h-3 w-3" />
+                            Paga
+                          </Badge>
+                        ) : customer.hasNegotiation ? (
+                          (() => {
+                            const statusInfo = getPaymentStatusInfo(customer.paymentStatus, customer.asaasStatus)
+                            if (statusInfo) {
+                              return (
+                                <Badge className={`${statusInfo.className} text-xs`}>
+                                  {statusInfo.label}
+                                </Badge>
+                              )
+                            }
+                            return (
+                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs">
+                                Aguardando
+                              </Badge>
+                            )
+                          })()
+                        ) : (
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Em aberto
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Actions column - Cancel button */}
+                      <div className="hidden lg:flex justify-center">
+                        {/* Show Cancel if has ASAAS payment and status is PENDING or OVERDUE */}
+                        {customer.asaasPaymentId &&
+                         customer.asaasStatus !== "RECEIVED" &&
+                         customer.asaasStatus !== "CONFIRMED" &&
+                         customer.asaasStatus !== "DELETED" ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={() => handleCancelNegotiation(customer)}
+                          >
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            Cancelar
+                          </Button>
+                        ) : customer.asaasStatus === "DELETED" ? (
+                          <span className="text-xs text-muted-foreground">Cancelada</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </div>
                     </div>
@@ -743,6 +1062,98 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 <>
                   <Send className="mr-2 h-4 w-4" />
                   Confirmar Envio
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Warning Dialog */}
+      <Dialog open={showDuplicateWarning} onOpenChange={setShowDuplicateWarning}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Negociação já enviada
+            </DialogTitle>
+            <DialogDescription>
+              Os seguintes clientes já possuem uma negociação ativa:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 max-h-48 overflow-y-auto">
+              {duplicateCustomers.map((c) => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-yellow-100 dark:border-yellow-900 last:border-0">
+                  <span className="text-sm font-medium">{c.name}</span>
+                  <Badge className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                    {c.asaasStatus || c.paymentStatus || "Pendente"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              Enviar uma nova negociação criará uma nova cobrança no ASAAS. A cobrança anterior continuará ativa.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDuplicateWarning(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmSendWithDuplicates}
+              className="bg-yellow-500 hover:bg-yellow-600 text-gray-900"
+            >
+              Sim, enviar nova negociação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Negotiation Confirmation Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              Cancelar Negociação
+            </DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja cancelar a negociação de{" "}
+              <span className="font-semibold">{cancellingCustomer?.name}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              A cobrança será removida do ASAAS e o cliente não receberá mais notificações sobre este pagamento.
+              O status da dívida voltará para "Em aberto".
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCancelDialog(false)
+                setCancellingCustomer(null)
+              }}
+              disabled={cancelling}
+            >
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmCancelNegotiation}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelando...
+                </>
+              ) : (
+                <>
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Sim, cancelar negociação
                 </>
               )}
             </Button>

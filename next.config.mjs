@@ -10,10 +10,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // NOTE: Do NOT put ASAAS_API_KEY in env or serverRuntimeConfig.
-  // The env block inlines values at BUILD TIME, so if the key wasn't set
-  // during build, it stays empty forever. Server Actions and API routes
-  // can read process.env.ASAAS_API_KEY directly at runtime.
+  env: {
+    ASAAS_API_KEY: process.env.ASAAS_API_KEY,
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.externals = config.externals || []

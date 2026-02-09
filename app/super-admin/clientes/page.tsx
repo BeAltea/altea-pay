@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { SuperAdminClientesContent } from "./clientes-content"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export default async function SuperAdminClientesPage() {
   const supabase = createAdminClient()

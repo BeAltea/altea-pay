@@ -55,13 +55,14 @@ export async function sendPaymentLink(
         if (existingAsaas) {
           asaasCustomerId = existingAsaas.id
         } else {
-          // Create new customer in Asaas
+          // Create new customer in Asaas with phone only (NO email)
+          // IMPORTANT: Do NOT send email - AlteaPay handles email via SendGrid/Resend
           const newAsaas = await createAsaasCustomer({
             name: customer.name || contactInfo.customerName || "Cliente",
             cpfCnpj,
-            email: customer.email || contactInfo.email || undefined,
+            // email: DO NOT SEND - AlteaPay handles email
             mobilePhone: customer.phone || contactInfo.phone?.replace(/[^\d]/g, "") || undefined,
-            notificationDisabled: true,
+            notificationDisabled: false,
           })
           asaasCustomerId = newAsaas.id
         }
@@ -77,23 +78,22 @@ export async function sendPaymentLink(
       }
     }
 
-    // 1. Update contact info
-    const updateData: { notificationDisabled: boolean; email?: string; mobilePhone?: string } = { notificationDisabled: false }
-    if (contactInfo.email) updateData.email = contactInfo.email
+    // 1. Update contact info - phone only (NO email to ASAAS)
+    const updateData: { notificationDisabled: boolean; mobilePhone?: string } = { notificationDisabled: false }
     if (contactInfo.phone) {
       updateData.mobilePhone = contactInfo.phone.replace(/[^\d]/g, "")
     }
     await updateAsaasCustomer(asaasCustomerId, updateData)
 
-    // 2. Configure notifications
+    // 2. Configure notifications - WhatsApp only, email/SMS disabled (AlteaPay handles those)
     const allNotifications = await getAsaasCustomerNotifications(asaasCustomerId)
 
     for (const notif of allNotifications) {
       if (notif.event === "PAYMENT_CREATED") {
         await updateAsaasNotification(notif.id, {
-          enabled: true,
-          emailEnabledForCustomer: channel === "email",
-          smsEnabledForCustomer: channel === "sms",
+          enabled: channel === "whatsapp", // Only enable if WhatsApp
+          emailEnabledForCustomer: false, // NEVER - AlteaPay handles email
+          smsEnabledForCustomer: false, // NEVER - AlteaPay handles SMS via Twilio
           whatsappEnabledForCustomer: channel === "whatsapp",
         })
       } else {
@@ -172,20 +172,9 @@ export async function sendPaymentLink(
       })
       .eq("id", agreementId)
 
-    // 5. Disable notifications again
-    await updateAsaasCustomer(asaasCustomerId, { notificationDisabled: true })
+    // 5. Keep notifications enabled - ASAAS will send based on customer contact info
 
-    const paymentCreatedNotif = allNotifications.find((n: any) => n.event === "PAYMENT_CREATED")
-    if (paymentCreatedNotif) {
-      await updateAsaasNotification(paymentCreatedNotif.id, {
-        enabled: false,
-        emailEnabledForCustomer: false,
-        smsEnabledForCustomer: false,
-        whatsappEnabledForCustomer: false,
-      })
-    }
-
-    // Send SMS directly via Twilio when SMS channel is selected (Asaas SMS may not be active)
+    // Send SMS directly via Twilio when SMS channel is selected (as additional notification)
     if (channel === "sms" && contactInfo.phone) {
       try {
         const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
