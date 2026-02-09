@@ -53,7 +53,11 @@ interface Recipient {
   id: string
   name: string
   email: string
+  daysOverdue: number
 }
+
+type SortField = "name" | "dias" | null
+type SortDirection = "asc" | "desc"
 
 interface SendEmailFormProps {
   companies: Company[]
@@ -116,6 +120,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   const [isTestMode, setIsTestMode] = useState(false)
   const [testEmailsInput, setTestEmailsInput] = useState("")
 
+  // Sort state
+  const [sortField, setSortField] = useState<SortField>("dias")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+
   // Parse test emails
   const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
 
@@ -148,6 +156,37 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
     return filtered
   }, [companyRecipients, searchTerm, emailStatusFilter, emailTrackingMap])
+
+  // Apply sorting to filtered recipients
+  const sortedRecipients = useMemo(() => {
+    const list = [...filteredRecipients]
+
+    if (sortField === "dias") {
+      list.sort((a, b) => {
+        const daysA = a.daysOverdue || 0
+        const daysB = b.daysOverdue || 0
+        return sortDirection === "desc" ? daysB - daysA : daysA - daysB
+      })
+    } else if (sortField === "name") {
+      list.sort((a, b) => {
+        const nameA = (a.name || "").toLowerCase()
+        const nameB = (b.name || "").toLowerCase()
+        return sortDirection === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA)
+      })
+    }
+
+    return list
+  }, [filteredRecipients, sortField, sortDirection])
+
+  // Handle column sort click
+  const handleSortClick = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+    } else {
+      setSortField(field)
+      setSortDirection(field === "dias" ? "desc" : "asc") // Default: most overdue first for dias
+    }
+  }
 
   // Get selected recipients' data (id and email)
   const selectedRecipientsData = useMemo(() => {
@@ -525,15 +564,37 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                     {/* Table Header */}
                     <div className="flex items-center gap-3 p-3 border-b bg-muted/50 rounded-t-lg font-medium text-sm">
                       <div className="w-6"></div>
-                      <div className="flex-1 min-w-0">Nome</div>
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer hover:text-primary transition-colors flex items-center gap-1"
+                        onClick={() => handleSortClick("name")}
+                      >
+                        Nome {sortField === "name" ? (sortDirection === "desc" ? "↓" : "↑") : "↕"}
+                      </div>
+                      <div
+                        className="w-24 text-center hidden sm:flex items-center justify-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                        onClick={() => handleSortClick("dias")}
+                      >
+                        Tempo Dívida {sortField === "dias" ? (sortDirection === "desc" ? "↓" : "↑") : "↕"}
+                      </div>
                       <div className="w-48 text-center hidden sm:block">Email</div>
                       <div className="w-44 text-center hidden md:block">Status do Envio</div>
                     </div>
 
                     {/* Recipient Rows */}
                     <div className="space-y-1 mt-1">
-                      {filteredRecipients.map((recipient) => {
+                      {sortedRecipients.map((recipient) => {
                         const status = getEmailStatus(recipient.id)
+                        const days = recipient.daysOverdue || 0
+                        const daysColor =
+                          days === 0
+                            ? "text-gray-400"
+                            : days > 365
+                              ? "text-red-600 dark:text-red-400"
+                              : days > 180
+                                ? "text-orange-500 dark:text-orange-400"
+                                : days > 90
+                                  ? "text-yellow-600 dark:text-yellow-400"
+                                  : "text-green-600 dark:text-green-400"
                         return (
                           <div
                             key={recipient.id}
@@ -558,6 +619,14 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                                   <span className="text-muted-foreground">Não enviado</span>
                                 )}
                               </p>
+                              <p className={`text-xs sm:hidden mt-1 ${daysColor}`}>
+                                {days > 0 ? `${days} dias` : "—"}
+                              </p>
+                            </div>
+                            <div className="w-24 text-center hidden sm:block">
+                              <span className={`text-sm font-medium ${daysColor}`}>
+                                {days > 0 ? `${days} dias` : "—"}
+                              </span>
                             </div>
                             <div className="w-48 text-center hidden sm:block">
                               <p className="text-xs text-muted-foreground truncate">
@@ -578,7 +647,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                           </div>
                         )
                       })}
-                      {filteredRecipients.length === 0 && (
+                      {sortedRecipients.length === 0 && (
                         <p className="text-center text-muted-foreground py-4">
                           {searchTerm || emailStatusFilter !== "all"
                             ? "Nenhum destinatário encontrado com os filtros aplicados"

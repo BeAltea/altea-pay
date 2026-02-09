@@ -9,6 +9,7 @@ interface EmailRecipient {
   client_name: string | null
   client_email: string
   company_id: string
+  daysOverdue?: number
 }
 
 interface EmailTrackingRecord {
@@ -64,6 +65,58 @@ async function fetchData() {
 
   console.log("[v0] Fetched", allRecipients.length, "email recipients")
 
+  // Fetch VMAX data to get debt days (Dias Inad.)
+  let vmaxData: any[] = []
+  page = 0
+  hasMore = true
+
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxError } = await supabase
+      .from("VMAX")
+      .select('id, Email, "CPF/CNPJ", "Dias Inad.", id_company')
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (vmaxError) {
+      console.error("[v0] Error fetching VMAX:", vmaxError)
+      break
+    }
+
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] Fetched", vmaxData.length, "VMAX records for debt days")
+
+  // Create a map of email -> max days overdue (by company)
+  const emailToDaysMap = new Map<string, number>()
+  for (const v of vmaxData) {
+    const email = (v.Email || "").toLowerCase().trim()
+    const companyId = v.id_company
+    if (email && companyId) {
+      const diasInadStr = String(v["Dias Inad."] || "0")
+      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
+      // Use company_id + email as key to handle same email in different companies
+      const key = `${companyId}:${email}`
+      // Keep the max days overdue if there are multiple records
+      const existing = emailToDaysMap.get(key) || 0
+      if (diasInad > existing) {
+        emailToDaysMap.set(key, diasInad)
+      }
+    }
+  }
+
+  // Enrich recipients with debt days
+  for (const recipient of allRecipients) {
+    const email = recipient.client_email.toLowerCase().trim()
+    const key = `${recipient.company_id}:${email}`
+    recipient.daysOverdue = emailToDaysMap.get(key) || 0
+  }
+
   // Fetch email tracking data - get the latest successful send for each user
   let allTracking: EmailTrackingRecord[] = []
   page = 0
@@ -106,7 +159,7 @@ async function fetchData() {
   console.log("[v0] Created tracking map for", Object.keys(emailTrackingMap).length, "users")
 
   // Group recipients by company
-  const recipientsMap: Record<string, { id: string; name: string; email: string }[]> = {}
+  const recipientsMap: Record<string, { id: string; name: string; email: string; daysOverdue: number }[]> = {}
   for (const recipient of allRecipients) {
     if (!recipientsMap[recipient.company_id]) {
       recipientsMap[recipient.company_id] = []
@@ -115,6 +168,7 @@ async function fetchData() {
       id: recipient.id,
       name: recipient.client_name || recipient.client_email,
       email: recipient.client_email,
+      daysOverdue: recipient.daysOverdue || 0,
     })
   }
 
