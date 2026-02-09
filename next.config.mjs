@@ -10,9 +10,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  env: {
-    ASAAS_API_KEY: process.env.ASAAS_API_KEY,
-  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.externals = config.externals || []

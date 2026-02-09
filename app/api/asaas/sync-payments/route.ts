@@ -39,7 +39,13 @@ async function getBaseUrl(): Promise<string> {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 }
 
-async function fetchAsaasPaymentStatus(paymentId: string): Promise<any> {
+interface AsaasPaymentResult {
+  status: "found" | "deleted" | "error"
+  data?: any
+  error?: string
+}
+
+async function fetchAsaasPaymentStatus(paymentId: string): Promise<AsaasPaymentResult> {
   const baseUrl = await getBaseUrl()
 
   const response = await fetch(`${baseUrl}/api/asaas`, {
@@ -51,12 +57,24 @@ async function fetchAsaasPaymentStatus(paymentId: string): Promise<any> {
     }),
   })
 
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Failed to fetch payment ${paymentId}: ${error}`)
+  // Check for 404 - payment was deleted from ASAAS
+  if (response.status === 404) {
+    return { status: "deleted" }
   }
 
-  return response.json()
+  if (!response.ok) {
+    const error = await response.text()
+    return { status: "error", error: `Failed to fetch payment ${paymentId}: ${error}` }
+  }
+
+  const data = await response.json()
+
+  // Also check if ASAAS returns an error in the response body indicating not found
+  if (data?.errors?.some((e: any) => e.code === "invalid_action" || e.description?.includes("not found"))) {
+    return { status: "deleted" }
+  }
+
+  return { status: "found", data }
 }
 
 export async function POST(request: NextRequest) {
@@ -136,8 +154,73 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch current status from ASAAS
-        const asaasPayment = await fetchAsaasPaymentStatus(agreement.asaas_payment_id)
+        const asaasResult = await fetchAsaasPaymentStatus(agreement.asaas_payment_id)
         results.synced++
+
+        // Handle deleted payments (404 from ASAAS)
+        if (asaasResult.status === "deleted") {
+          console.log(`[ASAAS Sync] Payment ${agreement.asaas_payment_id} was DELETED from ASAAS`)
+
+          // Mark agreement as cancelled
+          const { error: cancelError } = await supabase
+            .from("agreements")
+            .update({
+              status: "cancelled",
+              payment_status: "cancelled",
+              asaas_status: "DELETED",
+              cancelled_at: new Date().toISOString(),
+              asaas_last_synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", agreement.id)
+
+          if (cancelError) {
+            console.error(`[ASAAS Sync] Failed to cancel agreement ${agreement.id}:`, cancelError)
+            results.errors.push(`${agreement.id}: ${cancelError.message}`)
+          } else {
+            console.log(`[ASAAS Sync] Agreement ${agreement.id} marked as cancelled (ASAAS deleted)`)
+            results.updated++
+          }
+
+          // Update debt to overdue
+          if (agreement.debt_id) {
+            await supabase
+              .from("debts")
+              .update({ status: "overdue", updated_at: new Date().toISOString() })
+              .eq("id", agreement.debt_id)
+
+            // Clear VMAX negotiation_status
+            const { data: debt } = await supabase
+              .from("debts")
+              .select("external_id")
+              .eq("id", agreement.debt_id)
+              .single()
+
+            if (debt?.external_id) {
+              const { error: vmaxError } = await supabase
+                .from("VMAX")
+                .update({ negotiation_status: null })
+                .eq("id", debt.external_id)
+
+              if (vmaxError) {
+                console.error(`[ASAAS Sync] Failed to clear VMAX ${debt.external_id}:`, vmaxError)
+              } else {
+                console.log(`[ASAAS Sync] VMAX ${debt.external_id} negotiation_status cleared`)
+              }
+            }
+          }
+
+          continue // Move to next agreement
+        }
+
+        // Handle error fetching payment
+        if (asaasResult.status === "error") {
+          console.error(`[ASAAS Sync] Error fetching payment ${agreement.asaas_payment_id}:`, asaasResult.error)
+          results.errors.push(`${agreement.id}: ${asaasResult.error}`)
+          continue
+        }
+
+        const asaasPayment = asaasResult.data
 
         // Map ASAAS status to our payment_status
         const statusMap: Record<string, string> = {
