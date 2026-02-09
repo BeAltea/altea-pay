@@ -9,9 +9,11 @@ import { createClient } from "@supabase/supabase-js"
  * 2. Updates ALL active agreements for the same customer -> status: 'cancelled'
  * 3. Updates debts table -> status: 'pending' (reopens the debt)
  * 4. Deletes ALL ASAAS payments for the customer
- * 5. Deletes ASAAS customer (with fallback to search by CPF)
+ * 5. Deletes ASAAS customer by stored ID (if available)
  * 6. Clears VMAX negotiation_status to null (multiple fallback methods)
- * 7. Logs EVERY step with success/error
+ * 7. ALWAYS searches by CPF and deletes ALL remaining ASAAS customers
+ *    (handles duplicates created across multiple negotiations)
+ * 8. Logs EVERY step with success/error
  */
 
 const supabase = createClient(
@@ -400,52 +402,76 @@ export async function POST(request: NextRequest) {
       } catch (e: any) {
         console.log("[Cancel] ASAAS customer delete failed:", e.message)
       }
-    } else if (!asaasCustomerId && agreement?.customer_id) {
-      // No asaas_customer_id stored — try to find by CPF
-      console.log("[Cancel] No asaas_customer_id, searching ASAAS by CPF...")
+    }
+
+    // ====== STEP 7: ALWAYS search by CPF and delete ALL remaining ASAAS customers ======
+    // (Multiple customers may have been created across multiple negotiations)
+    let totalAsaasCustomersDeleted = asaasCustomerDeleted ? 1 : 0
+
+    if (agreement?.customer_id && apiKey) {
       const { data: customer } = await supabase
         .from("customers")
         .select("document")
         .eq("id", agreement.customer_id)
         .single()
 
-      if (customer?.document && apiKey) {
-        const normalizedCpf = customer.document.replace(/\D/g, "")
-        const searchRes = await fetch(
-          `${asaasUrl}/customers?cpfCnpj=${normalizedCpf}`,
-          { headers: { "access_token": apiKey } }
-        )
-        const searchData = await searchRes.json()
+      if (customer?.document) {
+        const cpf = customer.document.replace(/\D/g, "")
+        console.log("[Cancel] Searching ASAAS for ALL customers with CPF:", cpf)
 
-        for (const asaasCust of (searchData.data || [])) {
-          console.log("[Cancel] Found ASAAS customer by CPF:", asaasCust.id)
-          // Delete all payments for this customer first
-          const paymentsRes = await fetch(
-            `${asaasUrl}/payments?customer=${asaasCust.id}`,
+        let hasMore = true
+        let offset = 0
+
+        while (hasMore) {
+          const searchRes = await fetch(
+            `${asaasUrl}/customers?cpfCnpj=${cpf}&offset=${offset}&limit=100`,
             { headers: { "access_token": apiKey } }
           )
-          const payments = await paymentsRes.json()
+          const searchData = await searchRes.json()
+          const customers = searchData.data || []
 
-          for (const payment of (payments.data || [])) {
-            if (payment.status !== "RECEIVED" && payment.status !== "CONFIRMED") {
-              await fetch(`${asaasUrl}/payments/${payment.id}`, {
-                method: "DELETE",
-                headers: { "access_token": apiKey },
-              })
-              console.log("[Cancel] Deleted ASAAS payment by CPF search:", payment.id)
+          console.log("[Cancel] Found", customers.length, "ASAAS customers with this CPF (offset:", offset, ")")
+
+          for (const asaasCust of customers) {
+            // Skip if this is the one we already deleted
+            if (asaasCust.id === asaasCustomerId && asaasCustomerDeleted) {
+              console.log("[Cancel] Skipping already deleted customer:", asaasCust.id)
+              continue
+            }
+
+            // First delete all payments for this customer
+            const paymentsRes = await fetch(
+              `${asaasUrl}/payments?customer=${asaasCust.id}&limit=100`,
+              { headers: { "access_token": apiKey } }
+            )
+            const paymentsData = await paymentsRes.json()
+
+            for (const payment of (paymentsData.data || [])) {
+              if (payment.status !== "RECEIVED" && payment.status !== "CONFIRMED") {
+                await fetch(`${asaasUrl}/payments/${payment.id}`, {
+                  method: "DELETE",
+                  headers: { "access_token": apiKey },
+                })
+                console.log("[Cancel] Deleted remaining ASAAS payment:", payment.id)
+              }
+            }
+
+            // Then delete the customer
+            const delRes = await fetch(`${asaasUrl}/customers/${asaasCust.id}`, {
+              method: "DELETE",
+              headers: { "access_token": apiKey },
+            })
+            console.log("[Cancel] Deleted ASAAS customer:", asaasCust.id, "Name:", asaasCust.name, "Status:", delRes.status)
+            if (delRes.ok || delRes.status === 404) {
+              totalAsaasCustomersDeleted++
             }
           }
 
-          // Then delete customer
-          const delRes = await fetch(`${asaasUrl}/customers/${asaasCust.id}`, {
-            method: "DELETE",
-            headers: { "access_token": apiKey },
-          })
-          console.log("[Cancel] Deleted ASAAS customer by CPF:", asaasCust.id, "status:", delRes.status)
-          if (delRes.ok) {
-            asaasCustomerDeleted = true
-          }
+          hasMore = searchData.hasMore === true
+          offset += 100
         }
+
+        console.log("[Cancel] Total ASAAS customers deleted by CPF search:", totalAsaasCustomersDeleted)
       }
     }
 
@@ -453,7 +479,7 @@ export async function POST(request: NextRequest) {
     console.log("[Cancel] Summary:", {
       agreementsCancelled: cancelledAgreementsCount,
       asaasPaymentsDeleted: allAsaasPaymentIds.length,
-      asaasCustomerDeleted,
+      asaasCustomersDeleted: totalAsaasCustomersDeleted,
       vmaxCleared: vmaxUpdated,
     })
     console.log("=".repeat(60))
@@ -465,7 +491,7 @@ export async function POST(request: NextRequest) {
         agreement: agreement?.id || null,
         agreementsCancelled: cancelledAgreementsCount,
         asaasPaymentsDeleted: allAsaasPaymentIds.length,
-        asaasCustomerDeleted,
+        asaasCustomersDeleted: totalAsaasCustomersDeleted,
         debt: debtIdToUpdate || null,
         vmax: vmaxUpdated,
       },
