@@ -50,13 +50,17 @@ export function NegotiationFormClient({ customer }: { customer: Customer }) {
     setLoading(true)
 
     try {
+      const termsPayload = JSON.stringify({
+        text: terms || `Acordo para ${customer.name} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+        payment_methods: [paymentMethod],
+      })
       const result = await createAgreementWithAsaas({
         vmaxId: customer.id,
         agreedAmount: finalAmount,
         installments: Number(installments),
         dueDate: dueDate,
         attendantName: attendantName || undefined,
-        terms: terms || `Acordo para ${customer.name} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+        terms: termsPayload,
       })
 
       if (result.success && result.agreement) {

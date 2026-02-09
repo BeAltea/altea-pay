@@ -362,7 +362,6 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
               status: "active",
             })
             .eq("id", agreement.id)
-
         } catch (asaasPaymentErr: any) {
           errors.push(`${customerName}: erro ao criar cobranca Asaas - ${asaasPaymentErr.message}`)
           // Delete the draft agreement since payment failed
@@ -370,76 +369,38 @@ export async function sendBulkNegotiations(params: SendBulkNegotiationsParams) {
           continue
         }
 
-        // === Send notifications ourselves (not via Asaas) ===
-        // Get the correct payment URL based on billingType
-        const { data: updatedAgreement } = await supabase
-          .from("agreements")
-          .select("asaas_payment_url, asaas_pix_qrcode_url, asaas_boleto_url")
-          .eq("id", agreement.id)
-          .single()
-
-        // Choose the best payment URL based on selected methods
-        let paymentUrl = updatedAgreement?.asaas_payment_url || ""
-        if (params.paymentMethods.length === 1) {
-          if (params.paymentMethods[0] === "boleto" && updatedAgreement?.asaas_boleto_url) {
-            paymentUrl = updatedAgreement.asaas_boleto_url
-          }
-          // For PIX and credit_card, invoiceUrl is the best option since it shows only the selected method
-        }
-
-        // Get company name
-        const { data: companyData } = await supabase
-          .from("companies")
-          .select("name")
-          .eq("id", params.companyId)
-          .single()
-
-        const companyName = companyData?.name || "Empresa"
-
-        // Send email via Resend (our own template)
-        if (params.notificationChannels.includes("email") && customerEmail) {
-          try {
-            const { sendEmail, generateDebtCollectionEmail } = await import("@/lib/notifications/email")
-            
-            const emailHtml = await generateDebtCollectionEmail({
-              customerName,
-              debtAmount: agreedAmount,
-              dueDate: dueDate.toISOString().split("T")[0],
-              companyName,
-              paymentLink: paymentUrl,
-            })
-
-            const emailResult = await sendEmail({
-              to: customerEmail,
-              subject: `${companyName} - Proposta de Acordo`,
-              html: emailHtml,
-            })
-
-            if (!emailResult.success) {
-              console.log(`[sendBulkNegotiations] Email Resend falhou para ${customerName}: ${emailResult.error}`)
-            } else {
-              console.log(`[sendBulkNegotiations] Email Resend enviado para ${customerName}`)
-            }
-          } catch (emailErr: any) {
-            console.error(`[sendBulkNegotiations] Erro ao enviar Email Resend para ${customerName}:`, emailErr.message)
-          }
-        }
-
-        // Send SMS via Twilio
+        // Send SMS directly via Twilio if SMS channel is selected (Asaas SMS may not be enabled)
         if (params.notificationChannels.includes("sms") && customerPhone) {
           try {
             const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
             
+            // Format phone number to international format
             let formattedPhone = customerPhone.replace(/\D/g, "")
             if (formattedPhone.length >= 10 && !formattedPhone.startsWith("55")) {
               formattedPhone = "55" + formattedPhone
             }
             formattedPhone = "+" + formattedPhone
 
+            // Get payment URL from the agreement we just updated
+            const { data: updatedAgreement } = await supabase
+              .from("agreements")
+              .select("asaas_payment_url")
+              .eq("id", agreement.id)
+              .single()
+
+            const paymentUrl = updatedAgreement?.asaas_payment_url || ""
+
+            // Get company name
+            const { data: companyData } = await supabase
+              .from("companies")
+              .select("name")
+              .eq("id", params.companyId)
+              .single()
+
             const smsBody = await generateDebtCollectionSMS({
               customerName,
               debtAmount: agreedAmount,
-              companyName,
+              companyName: companyData?.name || "Empresa",
               paymentLink: paymentUrl,
             })
 

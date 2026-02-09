@@ -63,14 +63,12 @@ export function NegotiationForm({
     setLoading(true)
 
     try {
-      // Build terms as JSON with payment_methods so Asaas billing type can be resolved
-      const termsJson = JSON.stringify({
-        payment_methods: [paymentMethod],
-        description: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
-      })
-
       if (isSuperAdmin) {
         const { createAgreementSuperAdmin } = await import("@/app/actions/create-agreement-super-admin")
+        const termsPayload = JSON.stringify({
+          text: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+          payment_methods: [paymentMethod],
+        })
         const result = await createAgreementSuperAdmin({
           vmaxId: customerId,
           companyId: companyId,
@@ -78,7 +76,7 @@ export function NegotiationForm({
           installments: Number(installments),
           dueDate: dueDate,
           attendantName: attendantName || undefined,
-          terms: termsJson,
+          terms: termsPayload,
         })
 
         if (result.success && result.agreement) {
@@ -90,13 +88,17 @@ export function NegotiationForm({
         }
       } else {
         const { createAgreementWithAsaas } = await import("@/app/actions/create-agreement-with-asaas")
+        const termsPayload2 = JSON.stringify({
+          text: terms || `Acordo para ${customerName} - ${installments}x de R$ ${installmentValue.toFixed(2)}`,
+          payment_methods: [paymentMethod],
+        })
         const result = await createAgreementWithAsaas({
           vmaxId: customerId,
           agreedAmount: finalAmount,
           installments: Number(installments),
           dueDate: dueDate,
           attendantName: attendantName || undefined,
-          terms: termsJson,
+          terms: termsPayload2,
         })
 
         if (result.success && result.agreement) {
