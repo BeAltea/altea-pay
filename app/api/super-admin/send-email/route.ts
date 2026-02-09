@@ -4,6 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { validateSendGridConfig } from "@/lib/notifications/sendgrid"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "Pragma": "no-cache",
+}
 
 interface RecipientData {
   id: string
@@ -29,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       console.error("[v0] Authentication error:", authError?.message)
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: noCacheHeaders })
     }
 
     // Check if user is super admin
@@ -41,14 +47,14 @@ export async function POST(request: NextRequest) {
 
     if (profileError || !profile || profile.role !== "super_admin") {
       console.error("[v0] Not a super admin:", profileError?.message)
-      return NextResponse.json({ error: "Acesso negado. Apenas super admins podem enviar emails." }, { status: 403 })
+      return NextResponse.json({ error: "Acesso negado. Apenas super admins podem enviar emails." }, { status: 403, headers: noCacheHeaders })
     }
 
     // Validate SendGrid configuration
     const configValidation = await validateSendGridConfig()
     if (!configValidation.valid) {
       console.error("[v0] SendGrid config invalid:", configValidation.error)
-      return NextResponse.json({ error: configValidation.error }, { status: 500 })
+      return NextResponse.json({ error: configValidation.error }, { status: 500, headers: noCacheHeaders })
     }
 
     // Parse request body
@@ -71,19 +77,19 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields - companyId not required in test mode
     if (!isTestMode && !companyId) {
-      return NextResponse.json({ error: "Empresa é obrigatória" }, { status: 400 })
+      return NextResponse.json({ error: "Empresa é obrigatória" }, { status: 400, headers: noCacheHeaders })
     }
 
     if (!recipients || recipients.length === 0) {
-      return NextResponse.json({ error: "Selecione pelo menos um destinatário" }, { status: 400 })
+      return NextResponse.json({ error: "Selecione pelo menos um destinatário" }, { status: 400, headers: noCacheHeaders })
     }
 
     if (!subject || subject.trim() === "") {
-      return NextResponse.json({ error: "Assunto é obrigatório" }, { status: 400 })
+      return NextResponse.json({ error: "Assunto é obrigatório" }, { status: 400, headers: noCacheHeaders })
     }
 
     if (!htmlBody || htmlBody.trim() === "") {
-      return NextResponse.json({ error: "Corpo do email é obrigatório" }, { status: 400 })
+      return NextResponse.json({ error: "Corpo do email é obrigatório" }, { status: 400, headers: noCacheHeaders })
     }
 
     // Get SendGrid configuration
@@ -228,12 +234,12 @@ export async function POST(request: NextRequest) {
         : `Email enviado para ${totalSent} usuário(s). Falha ao enviar para ${totalFailed} usuário(s).${modeLabel}`,
       failedDetails: failedDetails.length > 0 ? failedDetails : undefined,
       results,
-    })
+    }, { headers: noCacheHeaders })
   } catch (error) {
     console.error("[v0] Send email API error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro interno do servidor" },
-      { status: 500 },
+      { status: 500, headers: noCacheHeaders },
     )
   }
 }

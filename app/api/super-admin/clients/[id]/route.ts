@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createClient as createAuthClient } from "@/lib/supabase/server"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
+// Cache-busting headers for all responses
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "Pragma": "no-cache",
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -41,7 +50,7 @@ export async function GET(
 
     const authResult = await verifySuperAdmin()
     if ("error" in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: noCacheHeaders })
     }
 
     // Fetch full client data from company table
@@ -52,7 +61,7 @@ export async function GET(
       .single()
 
     if (clientError) {
-      return NextResponse.json({ error: clientError.message }, { status: 500 })
+      return NextResponse.json({ error: clientError.message }, { status: 500, headers: noCacheHeaders })
     }
 
     // Also get data from customers table if exists (for email/phone)
@@ -73,10 +82,10 @@ export async function GET(
       }
     }
 
-    return NextResponse.json(clientData)
+    return NextResponse.json(clientData, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[Get Client] Exception:", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500, headers: noCacheHeaders })
   }
 }
 
@@ -91,12 +100,12 @@ export async function PUT(
     const { tableName, companyId, ...updateData } = body
 
     if (!tableName) {
-      return NextResponse.json({ error: "tableName is required" }, { status: 400 })
+      return NextResponse.json({ error: "tableName is required" }, { status: 400, headers: noCacheHeaders })
     }
 
     const authResult = await verifySuperAdmin()
     if ("error" in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: noCacheHeaders })
     }
 
     console.log("[Update Client] ID:", id, "Table:", tableName)
@@ -116,7 +125,7 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Update Client] Error:", updateError.message)
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+      return NextResponse.json({ error: updateError.message }, { status: 500, headers: noCacheHeaders })
     }
 
     // Also update customers table if email/phone changed
@@ -143,10 +152,10 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true }, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[Update Client] Exception:", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500, headers: noCacheHeaders })
   }
 }
 
@@ -161,13 +170,13 @@ export async function DELETE(
     if (!id || !tableName) {
       return NextResponse.json(
         { error: "Missing client ID or table name" },
-        { status: 400 }
+        { status: 400, headers: noCacheHeaders }
       )
     }
 
     const authResult = await verifySuperAdmin()
     if ("error" in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: noCacheHeaders })
     }
 
     console.log("[Delete Client] ID:", id, "Table:", tableName, "Company:", companyId)
@@ -328,13 +337,13 @@ export async function DELETE(
 
     if (error) {
       console.error("[Delete Client] Error deleting from", tableName, ":", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: error.message }, { status: 500, headers: noCacheHeaders })
     }
 
     console.log("[Delete Client] Client deleted successfully from", tableName)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true }, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[Delete Client] Exception:", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500, headers: noCacheHeaders })
   }
 }

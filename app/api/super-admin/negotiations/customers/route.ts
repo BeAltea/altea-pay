@@ -2,6 +2,12 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "Pragma": "no-cache",
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +18,7 @@ export async function GET(request: NextRequest) {
     } = await authSupabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
+      return NextResponse.json({ error: "Nao autenticado" }, { status: 401, headers: noCacheHeaders })
     }
 
     const { data: profile } = await authSupabase
@@ -22,12 +28,12 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (profile?.role !== "super_admin") {
-      return NextResponse.json({ error: "Sem permissao" }, { status: 403 })
+      return NextResponse.json({ error: "Sem permissao" }, { status: 403, headers: noCacheHeaders })
     }
 
     const companyId = request.nextUrl.searchParams.get("companyId")
     if (!companyId) {
-      return NextResponse.json({ error: "companyId obrigatorio" }, { status: 400 })
+      return NextResponse.json({ error: "companyId obrigatorio" }, { status: 400, headers: noCacheHeaders })
     }
 
     const supabase = createAdminClient()
@@ -206,12 +212,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ customers })
+    return NextResponse.json({ customers }, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[v0] Error in negotiations customers API:", error)
     return NextResponse.json(
       { error: error.message || "Erro interno" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     )
   }
 }
