@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js"
  * This endpoint handles cancellation comprehensively:
  * 1. Finds agreement by multiple fields (agreementId, asaas_payment_id, or both)
  * 2. Updates agreements table -> status: 'cancelled', payment_status: 'cancelled'
- * 3. Updates debts table -> status: 'overdue'
+ * 3. Updates debts table -> status: 'pending' (reopens the debt)
  * 4. Finds customer -> gets external_id -> clears VMAX negotiation_status to null
  * 5. Fallback: searches VMAX by CPF if no external_id
  * 6. Deletes from ASAAS (payment + optionally customer)
@@ -136,8 +136,6 @@ export async function POST(request: NextRequest) {
           status: "cancelled",
           payment_status: "cancelled",
           asaas_status: "DELETED",
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         })
         .eq("id", agreement.id)
 
@@ -148,22 +146,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ====== STEP 4: Update debt to overdue ======
+    // ====== STEP 4: Update debt to pending (reopens the debt) ======
     const debtIdToUpdate = agreement?.debt_id || debtId
     if (debtIdToUpdate) {
-      console.log("[Cancel] Updating debt to overdue:", debtIdToUpdate)
+      console.log("[Cancel] Updating debt to pending:", debtIdToUpdate)
       const { error: debtError } = await supabase
         .from("debts")
         .update({
-          status: "overdue",
-          updated_at: new Date().toISOString(),
+          status: "pending",
         })
         .eq("id", debtIdToUpdate)
 
       if (debtError) {
         console.error("[Cancel] ERROR updating debt:", debtError.message)
       } else {
-        console.log("[Cancel] SUCCESS: Debt updated to overdue")
+        console.log("[Cancel] SUCCESS: Debt updated to pending")
       }
     } else {
       console.log("[Cancel] WARNING: No debt_id to update")

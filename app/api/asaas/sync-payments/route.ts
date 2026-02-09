@@ -168,9 +168,7 @@ export async function POST(request: NextRequest) {
               status: "cancelled",
               payment_status: "cancelled",
               asaas_status: "DELETED",
-              cancelled_at: new Date().toISOString(),
               asaas_last_synced_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
             })
             .eq("id", agreement.id)
 
@@ -182,11 +180,11 @@ export async function POST(request: NextRequest) {
             results.updated++
           }
 
-          // Update debt to overdue
+          // Update debt to pending (reopens the debt)
           if (agreement.debt_id) {
             await supabase
               .from("debts")
-              .update({ status: "overdue", updated_at: new Date().toISOString() })
+              .update({ status: "pending" })
               .eq("id", agreement.debt_id)
 
             // Clear VMAX negotiation_status
