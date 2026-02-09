@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
     const docsWithPaidAgreements = new Set<string>()
     const docsWithCancelledAgreements = new Set<string>() // Cancelled negotiations
     const docsWithAnyNegotiation = new Set<string>() // Any negotiation sent (active or paid, NOT cancelled)
+    const docToCancelledCount = new Map<string, number>() // Count of cancelled agreements per customer
     const docToPaymentStatus = new Map<string, {
       paymentStatus: string | null;
       asaasStatus: string | null;
@@ -102,6 +103,8 @@ export async function GET(request: NextRequest) {
       if (normalizedDoc) {
         if (a.status === "cancelled") {
           docsWithCancelledAgreements.add(normalizedDoc)
+          // Increment cancelled count for this customer
+          docToCancelledCount.set(normalizedDoc, (docToCancelledCount.get(normalizedDoc) || 0) + 1)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
           docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed negotiations
@@ -112,13 +115,17 @@ export async function GET(request: NextRequest) {
           }
         }
         // Store the payment status for this customer (latest agreement takes precedence)
-        docToPaymentStatus.set(normalizedDoc, {
-          paymentStatus: a.payment_status || null,
-          asaasStatus: a.asaas_status || null,
-          agreementId: a.id || null,
-          asaasPaymentId: a.asaas_payment_id || null,
-          agreementStatus: a.status || null,
-        })
+        // Only store if this is the latest non-cancelled agreement OR there's no active agreement
+        const existingStatus = docToPaymentStatus.get(normalizedDoc)
+        if (!existingStatus || a.status !== "cancelled") {
+          docToPaymentStatus.set(normalizedDoc, {
+            paymentStatus: a.payment_status || null,
+            asaasStatus: a.asaas_status || null,
+            agreementId: a.id || null,
+            asaasPaymentId: a.asaas_payment_id || null,
+            agreementStatus: a.status || null,
+          })
+        }
       }
     }
 
@@ -190,6 +197,7 @@ export async function GET(request: NextRequest) {
         hasActiveNegotiation: !!hasActiveNegotiation, // Active (non-paid) negotiation
         isPaid: !!isPaid,
         isCancelled: !!isCancelled, // Was cancelled (can send new negotiation)
+        cancelledCount: docToCancelledCount.get(cpfCnpj) || 0, // Number of cancelled negotiations
         paymentStatus: paymentInfo?.paymentStatus || null,
         asaasStatus: paymentInfo?.asaasStatus || null,
         agreementStatus: paymentInfo?.agreementStatus || null,

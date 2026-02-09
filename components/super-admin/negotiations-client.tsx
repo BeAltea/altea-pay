@@ -49,6 +49,7 @@ type VmaxCustomer = {
   hasActiveNegotiation: boolean // Active (non-paid) negotiation
   isPaid?: boolean
   isCancelled?: boolean // Was cancelled (can send new negotiation)
+  cancelledCount?: number // Number of cancelled negotiations for this customer
   email: string | null
   phone: string | null
   paymentStatus: string | null
@@ -488,7 +489,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const paidCount = paidCustomers.length
 
     // Cancelled customers (can send new negotiation)
-    const cancelledCount = customers.filter((c) => c.isCancelled).length
+    const cancelledCustomersCount = customers.filter((c) => c.isCancelled).length
+
+    // Total cancelled negotiations (sum of cancelledCount across all customers)
+    const totalCancelledNegotiations = customers.reduce((sum, c) => sum + (c.cancelledCount || 0), 0)
 
     // Customers with ANY negotiation sent (including paid, NOT cancelled) - "Negociações Enviadas"
     // Cancelled negotiations don't count as "Enviada"
@@ -517,7 +521,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       recoveredDebt,
       pendingDebt,
       paidCount,
-      cancelledCount
+      cancelledCustomersCount,
+      totalCancelledNegotiations
     }
   }, [customers])
 
@@ -549,7 +554,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       {/* KPI Cards */}
       {!loading && selectedCompanyId && customers.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -610,6 +615,23 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </div>
                 <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
                   <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-gray-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Negociacoes Canceladas</p>
+                  <p className="text-2xl font-bold text-gray-600 dark:text-gray-400">{kpiStats.totalCancelledNegotiations}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpiStats.cancelledCustomersCount} cliente(s)
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <XCircle className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                 </div>
               </div>
             </CardContent>
@@ -776,7 +798,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 disabled={selectableCustomers.length === 0}
                 className="border-foreground/70 flex-shrink-0"
               />
-              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-2 items-center">
+              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-9 gap-2 items-center">
                 <button
                   onClick={() => toggleSort("name")}
                   className="lg:col-span-2 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
@@ -802,6 +824,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Negociação</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Dívida</span>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Canceladas</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Ações</span>
               </div>
             </div>
@@ -826,7 +849,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                       disabled={isPaid}
                       className="border-foreground/70 flex-shrink-0"
                     />
-                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-2 items-center">
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-9 gap-2 items-center">
                       {/* Name + Document */}
                       <div className="min-w-0 lg:col-span-2">
                         <p className="text-sm font-medium truncate">{customer.name}</p>
@@ -902,6 +925,16 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                             <AlertTriangle className="mr-1 h-3 w-3" />
                             Em aberto
                           </Badge>
+                        )}
+                      </div>
+                      {/* Canceladas column - count of cancelled negotiations */}
+                      <div className="hidden lg:flex justify-center">
+                        {customer.cancelledCount && customer.cancelledCount > 0 ? (
+                          <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                            {customer.cancelledCount}x
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
                       </div>
                       {/* Actions column - Cancel button */}
