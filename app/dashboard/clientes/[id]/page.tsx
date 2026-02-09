@@ -1,9 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { redirect, notFound } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -19,7 +15,6 @@ import {
 } from "lucide-react"
 import { ExportCustomerPDFButton } from "@/components/dashboard/export-customer-pdf-button"
 import { deleteCustomer } from "@/app/actions/delete-customer"
-import { toast } from "sonner"
 
 export const dynamic = "force-dynamic"
 
@@ -92,31 +87,45 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
   return (
     <div className="flex flex-col gap-4 md:gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-        <Button asChild variant="ghost" size="icon" className="shrink-0">
-          <Link href="/dashboard/clientes">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
+        <Link
+          href="/dashboard/clientes"
+          className="shrink-0 p-2 rounded-lg transition-colors hover:bg-[var(--admin-bg-tertiary)]"
+          style={{ color: "var(--admin-text-secondary)" }}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
         <div className="flex-1 min-w-0 w-full">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight break-words">
-            Análise Restritiva Completa
+          <h1
+            className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight break-words"
+            style={{ color: "var(--admin-text-primary)" }}
+          >
+            Analise Restritiva Completa
           </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
-            Dados completos da análise restritiva do cliente
+          <p
+            className="text-xs sm:text-sm mt-1 break-words"
+            style={{ color: "var(--admin-text-secondary)" }}
+          >
+            Dados completos da analise restritiva do cliente
           </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="default" size="sm">
-            <Link href={`/dashboard/clientes/${cliente.id}/negotiate`}>
-              <Handshake className="h-4 w-4 mr-2" />
-              Negociar
-            </Link>
-          </Button>
+          <Link
+            href={`/dashboard/clientes/${cliente.id}/negotiate`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{ background: "var(--admin-green)", color: "#fff" }}
+          >
+            <Handshake className="h-4 w-4" />
+            Negociar
+          </Link>
           <form action={handleDelete}>
-            <Button type="submit" variant="destructive" size="sm">
-              <Trash2 className="h-4 w-4 mr-2" />
+            <button
+              type="submit"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{ background: "rgba(240, 104, 104, 0.15)", color: "var(--admin-red)", border: "1px solid rgba(240, 104, 104, 0.3)" }}
+            >
+              <Trash2 className="h-4 w-4" />
               Excluir
-            </Button>
+            </button>
           </form>
           <ExportCustomerPDFButton customerId={cliente.id} customerName={cliente.Cliente} />
         </div>
@@ -124,75 +133,101 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 w-full">
         {/* Score de Crédito */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400">
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-xs sm:text-sm font-medium flex items-center gap-2"
+              style={{ color: "var(--admin-purple)" }}
+            >
               <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">SCORE DE CRÉDITO</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Análise Restritiva</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {(() => {
-                const creditoScore = assertiva_data?.credito?.resposta?.score?.pontos
-                const displayScore = creditoScore === 0 ? 5 : creditoScore || cliente.credit_score || 0
-                const scoreClass = assertiva_data?.credito?.resposta?.score?.classe || "N/A"
-                const scoreFaixa = assertiva_data?.credito?.resposta?.score?.faixa?.titulo || "N/A"
-                const scoreFaixaDescricao = assertiva_data?.credito?.resposta?.score?.faixa?.descricao || ""
-
-                return (
-                  <>
-                    <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
-                      {displayScore}
-                    </div>
-                    <p className="text-xs sm:text-sm font-medium text-foreground">Classe {scoreClass}</p>
-                    <p className="text-xs sm:text-sm font-medium text-purple-600 dark:text-purple-400 break-words">
-                      {scoreFaixa}
-                    </p>
-                    {scoreFaixaDescricao && (
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed break-words">
-                        {scoreFaixaDescricao}
-                      </p>
-                    )}
-                  </>
-                )
-              })()}
+              <span className="truncate">SCORE DE CREDITO</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Analise Restritiva
+            </div>
+          </div>
+          <div className="space-y-2">
+            {(() => {
+              const creditoScore = assertiva_data?.credito?.resposta?.score?.pontos
+              const displayScore = creditoScore === 0 ? 5 : creditoScore || cliente.credit_score || 0
+              const scoreClass = assertiva_data?.credito?.resposta?.score?.classe || "N/A"
+              const scoreFaixa = assertiva_data?.credito?.resposta?.score?.faixa?.titulo || "N/A"
+              const scoreFaixaDescricao = assertiva_data?.credito?.resposta?.score?.faixa?.descricao || ""
+
+              return (
+                <>
+                  <div className="text-4xl sm:text-5xl font-bold" style={{ color: "var(--admin-purple)" }}>
+                    {displayScore}
+                  </div>
+                  <p className="text-xs sm:text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                    Classe {scoreClass}
+                  </p>
+                  <p
+                    className="text-xs sm:text-sm font-medium break-words"
+                    style={{ color: "var(--admin-purple)" }}
+                  >
+                    {scoreFaixa}
+                  </p>
+                  {scoreFaixaDescricao && (
+                    <p
+                      className="text-xs mt-2 leading-relaxed break-words"
+                      style={{ color: "var(--admin-text-muted)" }}
+                    >
+                      {scoreFaixaDescricao}
+                    </p>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
 
         {/* Sanções CEIS */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">Sanções CEIS</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Empresas Inidôneas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl sm:text-5xl font-bold text-red-600 dark:text-red-400">
-              {assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-xs sm:text-sm font-medium flex items-center gap-2"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" style={{ color: "var(--admin-red)" }} />
+              <span className="truncate">Sancoes CEIS</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Empresas Inidoneas
+            </div>
+          </div>
+          <div className="text-4xl sm:text-5xl font-bold" style={{ color: "var(--admin-red)" }}>
+            {assertiva_data?.credito?.resposta?.ceis?.qtdOcorrencias || 0}
+          </div>
+        </div>
 
         {/* Punições CNEP */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
-              <Shield className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-              <span className="truncate">Punições CNEP</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Empresas Punidas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl sm:text-5xl font-bold text-orange-600 dark:text-orange-400">
-              {assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-xs sm:text-sm font-medium flex items-center gap-2"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              <Shield className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" style={{ color: "var(--admin-orange)" }} />
+              <span className="truncate">Punicoes CNEP</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Empresas Punidas
+            </div>
+          </div>
+          <div className="text-4xl sm:text-5xl font-bold" style={{ color: "var(--admin-orange)" }}>
+            {assertiva_data?.credito?.resposta?.cnep?.qtdOcorrencias || 0}
+          </div>
+        </div>
       </div>
 
       {(() => {
@@ -202,45 +237,64 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
         if (!creditScore && !recoveryScore) return null
 
         return (
-          <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 overflow-hidden">
-            <CardHeader className="pb-3">
+          <div
+            className="rounded-xl overflow-hidden p-4"
+            style={{
+              background: "var(--admin-bg-secondary)",
+              border: "1px solid var(--admin-gold-400)",
+            }}
+          >
+            <div className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                <div
+                  className="text-xl sm:text-2xl font-bold flex items-center gap-2"
+                  style={{ color: "var(--admin-gold-400)" }}
+                >
                   <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
-                  <span className="truncate">Análise Comportamental</span>
-                </CardTitle>
-                {/* Data da última análise - usa updated_at se existir, senão created_at */}
+                  <span className="truncate">Analise Comportamental</span>
+                </div>
                 {(behavioralAnalysis?.updated_at || behavioralAnalysis?.created_at) && (
-                  <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                  <span
+                    className="px-2 py-1 rounded-md text-xs font-medium"
+                    style={{ background: "var(--admin-gold-bg)", color: "var(--admin-gold-400)" }}
+                  >
                     {new Date(behavioralAnalysis.updated_at || behavioralAnalysis.created_at).toLocaleDateString("pt-BR")}
-                  </Badge>
+                  </span>
                 )}
               </div>
-              <CardDescription className="text-xs sm:text-sm">
-                Dados consolidados da análise comportamental do cliente
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+              <p className="text-xs sm:text-sm" style={{ color: "var(--admin-text-secondary)" }}>
+                Dados consolidados da analise comportamental do cliente
+              </p>
+            </div>
+            <div className="space-y-6">
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 {/* Score de Crédito Comportamental */}
                 {creditScore && (
-                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Crédito</p>
+                  <div
+                    className="p-4 rounded-lg"
+                    style={{ background: "var(--admin-blue-bg)", border: "1px solid var(--admin-border)" }}
+                  >
+                    <p className="text-xs sm:text-sm mb-2" style={{ color: "var(--admin-text-muted)" }}>
+                      Score de Credito
+                    </p>
                     <div className="flex items-end gap-3">
-                      <div className="text-3xl sm:text-4xl font-bold text-blue-600 dark:text-blue-400">
+                      <div className="text-3xl sm:text-4xl font-bold" style={{ color: "var(--admin-blue)" }}>
                         {creditScore.pontos}
                       </div>
-                      <Badge className="mb-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                      <span
+                        className="mb-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                        style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-blue)" }}
+                      >
                         Classe {creditScore.classe}
-                      </Badge>
+                      </span>
                     </div>
                     {creditScore.faixa?.titulo && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-medium">
+                      <p className="text-xs mt-2 font-medium" style={{ color: "var(--admin-blue)" }}>
                         {creditScore.faixa.titulo}
                       </p>
                     )}
                     {creditScore.faixa?.descricao && (
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                      <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--admin-text-muted)" }}>
                         {creditScore.faixa.descricao}
                       </p>
                     )}
@@ -249,23 +303,31 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
 
                 {/* Score de Recuperação Comportamental */}
                 {recoveryScore && (
-                  <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">Score de Recuperação</p>
+                  <div
+                    className="p-4 rounded-lg"
+                    style={{ background: "var(--admin-orange-bg)", border: "1px solid var(--admin-border)" }}
+                  >
+                    <p className="text-xs sm:text-sm mb-2" style={{ color: "var(--admin-text-muted)" }}>
+                      Score de Recuperacao
+                    </p>
                     <div className="flex items-end gap-3">
-                      <div className="text-3xl sm:text-4xl font-bold text-orange-600 dark:text-orange-400">
+                      <div className="text-3xl sm:text-4xl font-bold" style={{ color: "var(--admin-orange)" }}>
                         {recoveryScore.pontos}
                       </div>
-                      <Badge className="mb-1 bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">
+                      <span
+                        className="mb-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                        style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-orange)" }}
+                      >
                         Classe {recoveryScore.classe}
-                      </Badge>
+                      </span>
                     </div>
                     {recoveryScore.faixa?.titulo && (
-                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-2 font-medium">
+                      <p className="text-xs mt-2 font-medium" style={{ color: "var(--admin-orange)" }}>
                         {recoveryScore.faixa.titulo}
                       </p>
                     )}
                     {recoveryScore.faixa?.descricao && (
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                      <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--admin-text-muted)" }}>
                         {recoveryScore.faixa.descricao}
                       </p>
                     )}
@@ -275,21 +337,30 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
 
               {/* Protestos da Análise Comportamental */}
               {behavioralData?.acoes?.resposta?.protestos && (
-                <div className="p-4 rounded-lg bg-white dark:bg-gray-900 border">
+                <div
+                  className="p-4 rounded-lg"
+                  style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)" }}
+                >
                   <div className="flex items-center gap-2 mb-3 sm:mb-4">
-                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    <p className="text-sm font-semibold">Protestos</p>
+                    <AlertTriangle className="h-4 w-4" style={{ color: "var(--admin-red)" }} />
+                    <p className="text-sm font-semibold" style={{ color: "var(--admin-text-primary)" }}>
+                      Protestos
+                    </p>
                   </div>
                   <div className="grid gap-2 grid-cols-2">
                     <div>
-                      <p className="text-xs text-muted-foreground">Quantidade</p>
-                      <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                      <p className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
+                        Quantidade
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: "var(--admin-red)" }}>
                         {behavioralData.acoes.resposta.protestos.qtdProtestos || 0}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Valor Total</p>
-                      <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                      <p className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
+                        Valor Total
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: "var(--admin-red)" }}>
                         {behavioralData.acoes.resposta.protestos.valorTotal
                           ? new Intl.NumberFormat("pt-BR", {
                               style: "currency",
@@ -304,283 +375,376 @@ export default async function ClienteDetalhesPage({ params }: { params: Promise<
 
               {/* Faturamento Estimado da Análise Comportamental */}
               {behavioralData?.credito?.resposta?.faturamentoEstimado?.valor && (
-                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-2">Faturamento Estimado</p>
-                  <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
+                <div
+                  className="p-4 rounded-lg"
+                  style={{ background: "var(--admin-green-bg)", border: "1px solid var(--admin-border)" }}
+                >
+                  <p className="text-xs sm:text-sm mb-2" style={{ color: "var(--admin-text-muted)" }}>
+                    Faturamento Estimado
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-bold" style={{ color: "var(--admin-green)" }}>
                     {new Intl.NumberFormat("pt-BR", {
                       style: "currency",
                       currency: "BRL",
                     }).format(behavioralData.credito.resposta.faturamentoEstimado.valor)}
                   </div>
                   {behavioralData.credito.resposta.faturamentoEstimado.faixa && (
-                    <p className="text-xs text-muted-foreground mt-2">
+                    <p className="text-xs mt-2" style={{ color: "var(--admin-text-muted)" }}>
                       Faixa: {behavioralData.credito.resposta.faturamentoEstimado.faixa}
                     </p>
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )
       })()}
 
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <Building2 className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Informações do Cliente</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+      <div
+        className="rounded-xl overflow-hidden p-4"
+        style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+      >
+        <div className="pb-3">
+          <div
+            className="text-base sm:text-lg font-semibold flex items-center gap-2"
+            style={{ color: "var(--admin-text-primary)" }}
+          >
+            <Building2 className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-blue)" }} />
+            <span className="truncate">Informacoes do Cliente</span>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
           <div className="min-w-0">
-            <p className="text-xs sm:text-sm text-muted-foreground mb-1">NOME COMPLETO</p>
-            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente.Cliente}</p>
+            <p className="text-xs sm:text-sm mb-1" style={{ color: "var(--admin-text-muted)" }}>
+              NOME COMPLETO
+            </p>
+            <p
+              className="text-sm sm:text-base font-medium break-words"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              {cliente.Cliente}
+            </p>
           </div>
           <div className="min-w-0">
-            <p className="text-xs sm:text-sm text-muted-foreground mb-1">CPF/CNPJ</p>
-            <p className="text-sm sm:text-base font-medium text-foreground break-words">{cliente["CPF/CNPJ"]}</p>
+            <p className="text-xs sm:text-sm mb-1" style={{ color: "var(--admin-text-muted)" }}>
+              CPF/CNPJ
+            </p>
+            <p
+              className="text-sm sm:text-base font-medium break-words"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              {cliente["CPF/CNPJ"]}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {assertiva_data?.recupere?.resposta?.score && (
-        <Card className="border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-purple-600 dark:text-purple-400">
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-purple)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-base sm:text-lg font-semibold flex items-center gap-2"
+              style={{ color: "var(--admin-purple)" }}
+            >
               <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
               <span className="truncate">Score Recupere</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Probabilidade de negociação e recuperação</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
+            </div>
+            <p className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Probabilidade de negociacao e recuperacao
+            </p>
+          </div>
+          <div className="space-y-3 sm:space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex-1">
-                <div className="text-4xl sm:text-5xl font-bold text-purple-600 dark:text-purple-400">
+                <div className="text-4xl sm:text-5xl font-bold" style={{ color: "var(--admin-purple)" }}>
                   {assertiva_data.recupere.resposta.score.pontos}
                 </div>
-                <p className="text-xs sm:text-sm font-medium text-foreground mt-2">
+                <p className="text-xs sm:text-sm font-medium mt-2" style={{ color: "var(--admin-text-primary)" }}>
                   Classe {assertiva_data.recupere.resposta.score.classe}
                 </p>
               </div>
-              <Badge
-                variant="outline"
-                className="text-xs sm:text-base px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700 shrink-0"
+              <span
+                className="text-xs sm:text-base px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg shrink-0"
+                style={{ background: "var(--admin-purple-bg)", color: "var(--admin-purple)", border: "1px solid var(--admin-border)" }}
               >
-                {assertiva_data.recupere.resposta.score.faixa?.titulo || "Índice de acordo"}
-              </Badge>
+                {assertiva_data.recupere.resposta.score.faixa?.titulo || "Indice de acordo"}
+              </span>
             </div>
             {assertiva_data.recupere.resposta.score.faixa?.descricao && (
-              <div className="bg-white dark:bg-gray-900 rounded-lg p-3 sm:p-4 border border-purple-200 dark:border-purple-800">
-                <p className="text-xs sm:text-sm text-foreground leading-relaxed break-words">
+              <div
+                className="rounded-lg p-3 sm:p-4"
+                style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)" }}
+              >
+                <p
+                  className="text-xs sm:text-sm leading-relaxed break-words"
+                  style={{ color: "var(--admin-text-primary)" }}
+                >
                   {assertiva_data.recupere.resposta.score.faixa.descricao}
                 </p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {assertiva_data?.credito?.resposta?.faturamentoEstimado !== undefined && (
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-base sm:text-lg font-semibold flex items-center gap-2"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-green)" }} />
               <span className="truncate">Faturamento Estimado</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Estimativa de faturamento anual</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
-              {typeof assertiva_data.credito.resposta.faturamentoEstimado.valor === "number" &&
-              assertiva_data.credito.resposta.faturamentoEstimado.valor > 0
-                ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    assertiva_data.credito.resposta.faturamentoEstimado.valor,
-                  )
-                : "Não informado"}
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Estimativa de faturamento anual
+            </p>
+          </div>
+          <div className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--admin-green)" }}>
+            {typeof assertiva_data.credito.resposta.faturamentoEstimado.valor === "number" &&
+            assertiva_data.credito.resposta.faturamentoEstimado.valor > 0
+              ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                  assertiva_data.credito.resposta.faturamentoEstimado.valor,
+                )
+              : "Nao informado"}
+          </div>
+        </div>
       )}
 
       {assertiva_data?.credito?.resposta?.rendaPresumida?.valor && (
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-base sm:text-lg font-semibold flex items-center gap-2"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-green)" }} />
               <span className="truncate">Renda Presumida</span>
-            </CardTitle>
-            <CardDescription className="text-xs truncate">Estimativa de renda mensal</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400 break-words">
-              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                assertiva_data.credito.resposta.rendaPresumida.valor,
-              )}
             </div>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-2 break-words">
-              Faixa: {assertiva_data.credito.resposta.rendaPresumida.faixa || "N/A"}
+            <p className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+              Estimativa de renda mensal
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--admin-green)" }}>
+            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+              assertiva_data.credito.resposta.rendaPresumida.valor,
+            )}
+          </div>
+          <p className="text-xs sm:text-sm mt-2 break-words" style={{ color: "var(--admin-text-muted)" }}>
+            Faixa: {assertiva_data.credito.resposta.rendaPresumida.faixa || "N/A"}
+          </p>
+        </div>
       )}
 
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Protestos Públicos</span>
-          </CardTitle>
-          <CardDescription className="text-xs truncate">Protestos registrados em cartório</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {assertiva_data?.acoes?.resposta?.protestos?.list &&
-          assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
-            <div className="space-y-3 sm:space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                <span className="text-xs sm:text-sm font-medium">Total de Protestos:</span>
-                <Badge variant="destructive" className="text-sm sm:text-base">
-                  {assertiva_data.acoes.resposta.protestos.qtdProtestos}
-                </Badge>
-              </div>
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                <span className="text-xs sm:text-sm font-medium">Valor Total:</span>
-                <span className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
-                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                    assertiva_data.acoes.resposta.protestos.valorTotal,
-                  )}
-                </span>
-              </div>
-              <Separator />
-              <div className="space-y-2 sm:space-y-3 max-h-64 overflow-y-auto">
-                {assertiva_data.acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
-                  >
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs sm:text-sm break-words">{protesto.cartorio}</p>
-                        <p className="text-xs text-muted-foreground break-words">
-                          {protesto.cidade} - {protesto.uf}
-                        </p>
-                      </div>
-                      <Badge variant="destructive" className="shrink-0 text-xs">
-                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(protesto.valor)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <div
+        className="rounded-xl overflow-hidden p-4"
+        style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+      >
+        <div className="pb-3">
+          <div
+            className="text-base sm:text-lg font-semibold flex items-center gap-2"
+            style={{ color: "var(--admin-text-primary)" }}
+          >
+            <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-red)" }} />
+            <span className="truncate">Protestos Publicos</span>
+          </div>
+          <p className="text-xs truncate" style={{ color: "var(--admin-text-muted)" }}>
+            Protestos registrados em cartorio
+          </p>
+        </div>
+        {assertiva_data?.acoes?.resposta?.protestos?.list &&
+        assertiva_data.acoes.resposta.protestos.list.length > 0 ? (
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+              <span className="text-xs sm:text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                Total de Protestos:
+              </span>
+              <span
+                className="px-2 py-1 rounded-md text-sm sm:text-base font-medium"
+                style={{ background: "var(--admin-red-bg)", color: "var(--admin-red)" }}
+              >
+                {assertiva_data.acoes.resposta.protestos.qtdProtestos}
+              </span>
             </div>
-          ) : (
-            <p className="text-xs sm:text-sm text-muted-foreground">Informação não disponível</p>
-          )}
-        </CardContent>
-      </Card>
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+              <span className="text-xs sm:text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                Valor Total:
+              </span>
+              <span className="text-base sm:text-lg font-bold break-words" style={{ color: "var(--admin-red)" }}>
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                  assertiva_data.acoes.resposta.protestos.valorTotal,
+                )}
+              </span>
+            </div>
+            <div style={{ borderTop: "1px solid var(--admin-border)" }} />
+            <div className="space-y-2 sm:space-y-3 max-h-64 overflow-y-auto">
+              {assertiva_data.acoes.resposta.protestos.list.map((protesto: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-lg"
+                  style={{ background: "var(--admin-red-bg)", border: "1px solid var(--admin-border)" }}
+                >
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-xs sm:text-sm break-words" style={{ color: "var(--admin-text-primary)" }}>
+                        {protesto.cartorio}
+                      </p>
+                      <p className="text-xs break-words" style={{ color: "var(--admin-text-muted)" }}>
+                        {protesto.cidade} - {protesto.uf}
+                      </p>
+                    </div>
+                    <span
+                      className="shrink-0 text-xs px-2 py-1 rounded-md font-medium"
+                      style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-red)" }}
+                    >
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(protesto.valor)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs sm:text-sm" style={{ color: "var(--admin-text-muted)" }}>
+            Informacao nao disponivel
+          </p>
+        )}
+      </div>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-            <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Débitos</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
-          assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
+      <div
+        className="rounded-xl overflow-hidden p-4"
+        style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+      >
+        <div className="pb-3">
+          <div
+            className="text-base sm:text-lg font-semibold flex items-center gap-2"
+            style={{ color: "var(--admin-text-primary)" }}
+          >
+            <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-red)" }} />
+            <span className="truncate">Debitos</span>
+          </div>
+        </div>
+        {assertiva_data?.credito?.resposta?.registrosDebitos?.list &&
+        assertiva_data.credito.resposta.registrosDebitos.list.length > 0 ? (
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3 sm:mb-4">
+              <p className="text-xs sm:text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                Total: {assertiva_data.credito.resposta.registrosDebitos.qtdDebitos} debito(s)
+              </p>
+              <p className="text-base sm:text-lg font-bold break-words" style={{ color: "var(--admin-red)" }}>
+                {typeof assertiva_data.credito.resposta.registrosDebitos.valorTotal === "number"
+                  ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                      assertiva_data.credito.resposta.registrosDebitos.valorTotal,
+                    )
+                  : "N/A"}
+              </p>
+            </div>
+            {assertiva_data.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
+              <div
+                key={idx}
+                className="rounded-lg p-3 sm:p-4 space-y-2"
+                style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)" }}
+              >
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-xs sm:text-sm break-words" style={{ color: "var(--admin-text-primary)" }}>
+                      {debito.credor || "N/A"}
+                    </p>
+                    <p className="text-xs break-words" style={{ color: "var(--admin-text-muted)" }}>
+                      {debito.tipoDevedor?.titulo || ""}
+                    </p>
+                  </div>
+                  <span
+                    className="shrink-0 text-xs px-2 py-1 rounded-md font-medium"
+                    style={{ background: "var(--admin-red-bg)", color: "var(--admin-red)" }}
+                  >
+                    {typeof debito.valor === "number"
+                      ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(debito.valor)
+                      : "N/A"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+                  <div>
+                    <p style={{ color: "var(--admin-text-muted)" }}>Vencimento</p>
+                    <p style={{ color: "var(--admin-text-primary)" }} className="break-words">{debito.dataVencimento || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: "var(--admin-text-muted)" }}>Cidade/UF</p>
+                    <p style={{ color: "var(--admin-text-primary)" }} className="break-words">
+                      {debito.cidade || "N/A"}/{debito.uf || "N/A"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs sm:text-sm" style={{ color: "var(--admin-text-muted)" }}>Nenhum debito encontrado</p>
+        )}
+      </div>
+
+      {assertiva_data?.credito?.resposta?.chequesSemFundoCCF && (
+        <div
+          className="rounded-xl overflow-hidden p-4"
+          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+        >
+          <div className="pb-3">
+            <div
+              className="text-base sm:text-lg font-semibold flex items-center gap-2"
+              style={{ color: "var(--admin-text-primary)" }}
+            >
+              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: "var(--admin-orange)" }} />
+              <span className="truncate">Cheques sem Fundo (CCF)</span>
+            </div>
+          </div>
+          {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
             <div className="space-y-3 sm:space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3 sm:mb-4">
-                <p className="text-xs sm:text-sm font-medium">
-                  Total: {assertiva_data.credito.resposta.registrosDebitos.qtdDebitos} débito(s)
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <p className="text-xs sm:text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                  Total: {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias} ocorrencia(s)
                 </p>
-                <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
-                  {typeof assertiva_data.credito.resposta.registrosDebitos.valorTotal === "number"
-                    ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                        assertiva_data.credito.resposta.registrosDebitos.valorTotal,
-                      )
-                    : "N/A"}
+                <p className="text-base sm:text-lg font-bold break-words" style={{ color: "var(--admin-red)" }}>
+                  {assertiva_data.credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
                 </p>
               </div>
-              {assertiva_data.credito.resposta.registrosDebitos.list.map((debito: any, idx: number) => (
-                <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-xs sm:text-sm text-foreground break-words">
-                        {debito.credor || "N/A"}
-                      </p>
-                      <p className="text-xs text-muted-foreground break-words">{debito.tipoDevedor?.titulo || ""}</p>
-                    </div>
-                    <Badge variant="destructive" className="shrink-0 text-xs">
-                      {typeof debito.valor === "number"
-                        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(debito.valor)
-                        : "N/A"}
-                    </Badge>
-                  </div>
+              {assertiva_data.credito.resposta.chequesSemFundoCCF.list?.map((cheque: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="rounded-lg p-3 sm:p-4 space-y-2"
+                  style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)" }}
+                >
+                  <p className="font-medium text-xs sm:text-sm break-words" style={{ color: "var(--admin-text-primary)" }}>
+                    Banco: {cheque.banco || "N/A"}
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <div>
-                      <p className="text-muted-foreground">Vencimento</p>
-                      <p className="text-foreground break-words">{debito.dataVencimento || "N/A"}</p>
+                      <p style={{ color: "var(--admin-text-muted)" }}>Agencia</p>
+                      <p style={{ color: "var(--admin-text-primary)" }} className="break-words">{cheque.agencia || "N/A"}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Cidade/UF</p>
-                      <p className="text-foreground break-words">
-                        {debito.cidade || "N/A"}/{debito.uf || "N/A"}
-                      </p>
+                      <p style={{ color: "var(--admin-text-muted)" }}>Data</p>
+                      <p style={{ color: "var(--admin-text-primary)" }} className="break-words">{cheque.data || "N/A"}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs sm:text-sm text-muted-foreground">Nenhum débito encontrado</p>
+            <p className="text-xs sm:text-sm" style={{ color: "var(--admin-green)" }}>
+              Nenhum cheque sem fundo encontrado
+            </p>
           )}
-        </CardContent>
-      </Card>
-
-      {assertiva_data?.credito?.resposta?.chequesSemFundoCCF && (
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-              <span className="truncate">Cheques sem Fundo (CCF)</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias > 0 ? (
-              <div className="space-y-3 sm:space-y-4">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                  <p className="text-xs sm:text-sm font-medium">
-                    Total: {assertiva_data.credito.resposta.chequesSemFundoCCF.qtdOcorrencias} ocorrência(s)
-                  </p>
-                  <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 break-words">
-                    {assertiva_data.credito.resposta.chequesSemFundoCCF.valorTotal || "N/A"}
-                  </p>
-                </div>
-                {assertiva_data.credito.resposta.chequesSemFundoCCF.list?.map((cheque: any, idx: number) => (
-                  <div key={idx} className="border rounded-lg p-3 sm:p-4 space-y-2">
-                    <p className="font-medium text-xs sm:text-sm text-foreground break-words">
-                      Banco: {cheque.banco || "N/A"}
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Agência</p>
-                        <p className="text-foreground break-words">{cheque.agencia || "N/A"}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Data</p>
-                        <p className="text-foreground break-words">{cheque.data || "N/A"}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs sm:text-sm text-green-600 dark:text-green-400">
-                ✓ Nenhum cheque sem fundo encontrado
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        </div>
       )}
     </div>
   )

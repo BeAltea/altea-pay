@@ -130,9 +130,15 @@ export async function createAsaasCustomer(params: {
   postalCode?: string
   address?: string
   addressNumber?: string
+  province?: string
   notificationDisabled?: boolean
+  externalReference?: string
 }): Promise<AsaasCustomer> {
-  return asaasRequest("/customers", "POST", params)
+  // Remove undefined/empty values before sending
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([_, v]) => v !== undefined && v !== "")
+  )
+  return asaasRequest("/customers", "POST", cleanParams)
 }
 
 export async function getAsaasCustomerByCpfCnpj(
@@ -145,12 +151,23 @@ export async function getAsaasCustomerByCpfCnpj(
 export async function updateAsaasCustomer(
   customerId: string,
   params: {
-    notificationDisabled?: boolean
+    name?: string
     email?: string
+    phone?: string
     mobilePhone?: string
+    postalCode?: string
+    address?: string
+    addressNumber?: string
+    province?: string
+    notificationDisabled?: boolean
+    externalReference?: string
   }
 ): Promise<AsaasCustomer> {
-  return asaasRequest(`/customers/${customerId}`, "PUT", params)
+  // Remove undefined values before sending
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([_, v]) => v !== undefined && v !== "")
+  )
+  return asaasRequest(`/customers/${customerId}`, "PUT", cleanParams)
 }
 
 // ====== Payment Functions ======

@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,13 +10,13 @@ import { DynamicCustomerForm } from "@/components/dashboard/dynamic-customer-for
 import { getCompanyTableName } from "@/app/actions/multi-tenant-actions"
 
 interface NewClientPageProps {
-  params: Promise<{
+  params: {
     id: string
-  }>
+  }
 }
 
 export default function NewClientPage({ params }: NewClientPageProps) {
-  const { id } = use(params)
+  const { id } = params
   const router = useRouter()
   const [companyInfo, setCompanyInfo] = useState<{ name: string; tableName: string } | null>(null)
   const [loading, setLoading] = useState(true)

@@ -13,6 +13,8 @@ import {
   ArrowUpRight,
   Eye,
   BarChart3,
+  CreditCard,
+  Sparkles,
 } from "lucide-react"
 
 interface CompanyStats {
@@ -36,6 +38,37 @@ export default async function SuperAdminDashboardPage() {
   const supabase = createAdminClient()
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
+
+  // Fetch completed agreements to identify paid customers
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, customer_id, status, company_id")
+    .eq("status", "completed")
+
+  // Fetch customers mapping to get documents
+  const { data: dbCustomers } = await supabase
+    .from("customers")
+    .select("id, document, company_id")
+
+  // Build map of customer_id -> document for paid agreements
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of dbCustomers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements (grouped by company)
+  const paidDocsByCompany = new Map<string, Set<string>>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc && a.company_id) {
+      if (!paidDocsByCompany.has(a.company_id)) {
+        paidDocsByCompany.set(a.company_id, new Set())
+      }
+      paidDocsByCompany.get(a.company_id)!.add(doc)
+    }
+  }
 
   // Buscar TODOS os registros VMAX (paginação para superar limite de 1000)
   let allVmaxRecords: any[] = []
@@ -83,19 +116,48 @@ export default async function SuperAdminDashboardPage() {
 
       const totalCustomers = vmaxCustomers?.length || 0
 
-      // SOMENTE dados da tabela VMAX
+      // Get paid documents for this company (from agreements)
+      const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
+
+      // Helper to check if a VMAX record is paid
+      // Only explicit payment indicators: negotiation_status === "PAGO" or document in paidDocs (from completed agreements)
+      // Do NOT use dtCancelamento alone - it means "cancelled" not necessarily "paid"
+      const isPaid = (v: any) => {
+        const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+        // Only consider paid if explicit payment status
+        return companyPaidDocs.has(doc) || v.negotiation_status === "PAGO"
+      }
+
+      // SOMENTE dados da tabela VMAX - exclude paid from overdue
       const vmaxOverdueDebts = vmaxCustomers?.filter((v) => {
+        if (isPaid(v)) return false // Exclude paid debts
         const diasInadStr = String(v["Dias Inad."] || "0")
         return (Number(diasInadStr.replace(/\./g, "")) || 0) > 0
       }).length || 0
 
+      // Calculate total amount (excluding paid)
       const vmaxTotalAmount =
         vmaxCustomers?.reduce((sum, v) => {
+          if (isPaid(v)) return sum // Exclude paid debts from total
           const vencidoStr = String(v.Vencido || "0")
           const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
           const value = Number(cleanValue) || 0
           return sum + value
         }, 0) || 0
+
+      // Calculate recovered amount (paid debts)
+      const vmaxRecoveredAmount =
+        vmaxCustomers?.reduce((sum, v) => {
+          if (!isPaid(v)) return sum // Only include paid debts
+          const vencidoStr = String(v.Vencido || "0")
+          const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+          const value = Number(cleanValue) || 0
+          return sum + value
+        }, 0) || 0
+
+      // Calculate recovery rate
+      const totalOriginalAmount = vmaxTotalAmount + vmaxRecoveredAmount
+      const recoveryRate = totalOriginalAmount > 0 ? (vmaxRecoveredAmount / totalOriginalAmount) * 100 : 0
 
       const { data: admins } = await supabase
         .from("profiles")
@@ -107,10 +169,10 @@ export default async function SuperAdminDashboardPage() {
         id: company.id,
         name: company.name,
         totalCustomers,
-        totalDebts: vmaxCustomers?.length || 0,
+        totalDebts: vmaxCustomers?.filter(v => !isPaid(v)).length || 0,
         totalAmount: vmaxTotalAmount,
-        recoveredAmount: 0,
-        recoveryRate: 0,
+        recoveredAmount: vmaxRecoveredAmount,
+        recoveryRate: Number(recoveryRate.toFixed(1)),
         overdueDebts: vmaxOverdueDebts,
         admins: admins?.length || 0,
       })
@@ -122,6 +184,7 @@ export default async function SuperAdminDashboardPage() {
     totalCustomers: companiesStats.reduce((sum, company) => sum + company.totalCustomers, 0),
     totalDebts: companiesStats.reduce((sum, company) => sum + company.totalDebts, 0),
     totalAmount: companiesStats.reduce((sum, company) => sum + company.totalAmount, 0),
+    totalRecovered: companiesStats.reduce((sum, company) => sum + company.recoveredAmount, 0),
     totalOverdue: companiesStats.reduce((sum, company) => sum + company.overdueDebts, 0),
     totalAdmins: companiesStats.reduce((sum, company) => sum + company.admins, 0),
   }
@@ -137,6 +200,11 @@ export default async function SuperAdminDashboardPage() {
     .select("id, name, company_id, created_at, score, analysis_type, companies(name)")
     .order("created_at", { ascending: false })
     .limit(3)
+
+  // Count total analyses for the 4th stat card
+  const { count: totalAnalyses } = await supabase
+    .from("credit_profiles")
+    .select("*", { count: "exact", head: true })
 
   const analysisActivities =
     recentAnalyses?.map((analysis) => ({
@@ -185,8 +253,8 @@ export default async function SuperAdminDashboardPage() {
         </div>
       </div>
 
-      {/* Global Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+      {/* Global Stats Cards - 4 cards in a row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="text-xs sm:text-sm font-medium">Total de Empresas</CardTitle>
@@ -217,6 +285,17 @@ export default async function SuperAdminDashboardPage() {
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="text-lg sm:text-2xl font-bold">R$ {(totalStats.totalAmount / 1000).toFixed(2)}k</div>
             <p className="text-xs text-muted-foreground">{totalStats.totalDebts.toLocaleString()} dívidas ativas</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Análises Realizadas</CardTitle>
+            <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="text-lg sm:text-2xl font-bold">{(totalAnalyses || 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Consultas de crédito</p>
           </CardContent>
         </Card>
       </div>
@@ -386,6 +465,47 @@ export default async function SuperAdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Analysis Section */}
+      <Card>
+        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+          <CardTitle className="text-base sm:text-lg lg:text-xl">Análises Rápidas</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Iniciar nova análise de clientes</CardDescription>
+        </CardHeader>
+        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Análise de Crédito Card */}
+            <Link href="/super-admin/analises" className="group">
+              <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-altea-gold dark:hover:border-altea-gold transition-all">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                    <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Análise de Crédito</h3>
+                    <p className="text-xs text-muted-foreground">Score Ações, Crédito e Recupere</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+
+            {/* Análise 360 Card */}
+            <Link href="/super-admin/analises/comportamental" className="group">
+              <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-altea-gold dark:hover:border-altea-gold transition-all">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-lg group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                    <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Análise 360</h3>
+                    <p className="text-xs text-muted-foreground">Análise completa + Comportamental</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

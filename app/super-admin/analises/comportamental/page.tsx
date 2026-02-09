@@ -99,19 +99,68 @@ export default function ComportamentalPage() {
         customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.document?.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesCompany = filterCompany === "all" || customer.company_id === filterCompany
-      // Filtro por status de análise
-      const hasAnalysis = customer.recovery_score !== null || customer.analysis_metadata !== null
-      const matchesStatus = filterStatus === "all" || 
-        (filterStatus === "pending" && !hasAnalysis) || 
+      // Filtro por status de análise COMPORTAMENTAL/360
+      // Verifica se tem análise comportamental COMPLETA (não restritiva)
+      // behavioral_analysis_logs contém os dados da análise 360
+      // Também verifica se os dados possuem scores válidos (recupere ou credito)
+      const behavioralLogs = customer.behavioral_analysis_logs
+      const hasBehavioralData = behavioralLogs !== null && behavioralLogs !== undefined
+
+      // Verificar se há scores válidos nos logs comportamentais
+      let hasValidScores = false
+      if (hasBehavioralData && typeof behavioralLogs === 'object') {
+        const recupereScore = behavioralLogs?.recupere?.resposta?.score?.pontos
+        const creditoScore = behavioralLogs?.credito?.resposta?.score?.pontos
+        hasValidScores = (recupereScore !== null && recupereScore !== undefined) ||
+                         (creditoScore !== null && creditoScore !== undefined)
+      }
+
+      // Também verificar se recovery_score está preenchido (campo extraído)
+      const hasRecoveryScore = customer.recovery_score !== null && customer.recovery_score !== undefined
+
+      // Considera que tem análise 360 se tem logs comportamentais COM scores válidos OU recovery_score
+      const hasAnalysis = (hasBehavioralData && hasValidScores) || hasRecoveryScore
+
+      const matchesStatus = filterStatus === "all" ||
+        (filterStatus === "pending" && !hasAnalysis) ||
         (filterStatus === "completed" && hasAnalysis)
       return matchesSearch && matchesCompany && matchesStatus
     })
     .map((customer) => {
-      const analysis = pendingAnalyses.find((a) => a.cpf?.replace(/\D/g, "") === customer.document?.replace(/\D/g, ""))
+      // Primeiro tenta encontrar nos pendingAnalyses (credit_profiles)
+      const pendingAnalysis = pendingAnalyses.find((a) => a.cpf?.replace(/\D/g, "") === customer.document?.replace(/\D/g, ""))
+
+      // Também verifica behavioral_analysis_logs (VMAX) que pode conter análises que não estão em credit_profiles
+      const behavioralLogs = customer.behavioral_analysis_logs
+      const hasBehavioralData = behavioralLogs !== null && behavioralLogs !== undefined && typeof behavioralLogs === 'object'
+
+      // Verificar se há scores válidos nos logs comportamentais
+      let hasValidBehavioralScores = false
+      if (hasBehavioralData) {
+        const recupereScore = behavioralLogs?.recupere?.resposta?.score?.pontos
+        const creditoScore = behavioralLogs?.credito?.resposta?.score?.pontos
+        hasValidBehavioralScores = (recupereScore !== null && recupereScore !== undefined) ||
+                                   (creditoScore !== null && creditoScore !== undefined)
+      }
+
+      // Considera que tem análise se tem pendingAnalysis OU behavioral_analysis_logs com scores
+      const hasAnalysis = !!pendingAnalysis || hasValidBehavioralScores
+
+      // Dados da análise: prioriza pendingAnalysis, mas usa behavioral_analysis_logs se não tiver
+      let analysisData = pendingAnalysis
+      if (!pendingAnalysis && hasValidBehavioralScores) {
+        // Construir objeto compatível com o esperado pelo display
+        analysisData = {
+          data: behavioralLogs,
+          created_at: customer.behavioral_analysis_date,
+          cpf: customer.document,
+        }
+      }
+
       return {
         ...customer,
-        hasAnalysis: !!analysis,
-        analysisData: analysis,
+        hasAnalysis,
+        analysisData,
       }
     })
     .sort((a, b) => {
@@ -146,9 +195,24 @@ export default function ComportamentalPage() {
       customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.document?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCompany = filterCompany === "all" || customer.company_id === filterCompany
-    const hasAnalysis = customer.recovery_score !== null || customer.analysis_metadata !== null
-    const matchesStatus = filterStatus === "all" || 
-      (filterStatus === "pending" && !hasAnalysis) || 
+
+    // Mesma lógica do filtro principal - análise COMPORTAMENTAL/360
+    const behavioralLogs = customer.behavioral_analysis_logs
+    const hasBehavioralData = behavioralLogs !== null && behavioralLogs !== undefined
+
+    let hasValidScores = false
+    if (hasBehavioralData && typeof behavioralLogs === 'object') {
+      const recupereScore = behavioralLogs?.recupere?.resposta?.score?.pontos
+      const creditoScore = behavioralLogs?.credito?.resposta?.score?.pontos
+      hasValidScores = (recupereScore !== null && recupereScore !== undefined) ||
+                       (creditoScore !== null && creditoScore !== undefined)
+    }
+
+    const hasRecoveryScore = customer.recovery_score !== null && customer.recovery_score !== undefined
+    const hasAnalysis = (hasBehavioralData && hasValidScores) || hasRecoveryScore
+
+    const matchesStatus = filterStatus === "all" ||
+      (filterStatus === "pending" && !hasAnalysis) ||
       (filterStatus === "completed" && hasAnalysis)
     return matchesSearch && matchesCompany && matchesStatus
   }).length

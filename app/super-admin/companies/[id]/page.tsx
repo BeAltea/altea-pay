@@ -86,36 +86,81 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
 
   console.log("[v0] TOTAL VMAX records for company (after pagination):", vmaxData.length)
 
+  // Fetch completed agreements (paid negotiations) to calculate recovered amount
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, agreed_amount, customer_id, debt_id")
+    .eq("company_id", id)
+    .eq("status", "completed")
+
+  // Get customer IDs with paid agreements
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, document")
+    .eq("company_id", id)
+
+  // Build map of customer_id -> document
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of customers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements
+  const paidDocs = new Set<string>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc) paidDocs.add(doc)
+  }
+
+  // Also check VMAX negotiation_status for PAGO
+  for (const v of vmaxData || []) {
+    if (v.negotiation_status === "PAGO") {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      if (doc) paidDocs.add(doc)
+    }
+  }
+
   // SOMENTE dados da tabela VMAX
   const totalCustomers = vmaxData.length
   const totalDebts = vmaxData.filter((v) => !v["DT Cancelamento"]).length
 
-  const vmaxTotalAmount =
-    vmaxData?.reduce((sum, v) => {
-      const vencidoStr = String(v.Vencido || "0")
-      // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
-      const cleanValue = vencidoStr
-        .replace(/R\$/g, "")
-        .replace(/\s/g, "")
-        .replace(/\./g, "") // Remove dots used as thousands separator
-        .replace(",", ".") // Convert comma to dot for decimal
-      const value = Number(cleanValue) || 0
-      return sum + value
-    }, 0) || 0
+  // Calculate total and recovered amounts
+  let vmaxTotalAmount = 0
+  let vmaxRecoveredAmount = 0
+  let vmaxPendingOverdue = 0
 
-  // SOMENTE dados VMAX
-  const totalAmount = vmaxTotalAmount
-  const recoveredAmount = 0 // Não há dados de pagamentos na VMAX ainda
-  const recoveryRate = 0
+  for (const v of vmaxData || []) {
+    const vencidoStr = String(v.Vencido || "0")
+    // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
+    const cleanValue = vencidoStr
+      .replace(/R\$/g, "")
+      .replace(/\s/g, "")
+      .replace(/\./g, "") // Remove dots used as thousands separator
+      .replace(",", ".") // Convert comma to dot for decimal
+    const value = Number(cleanValue) || 0
 
-  const vmaxOverdueDebts =
-    vmaxData?.filter((v) => {
+    vmaxTotalAmount += value
+
+    const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+    if (paidDocs.has(doc)) {
+      vmaxRecoveredAmount += value
+    } else {
+      // Check if overdue (only count non-paid)
       const diasInadStr = String(v["Dias Inad."] || "0")
-      // Remove ponto usado como separador de milhar no formato brasileiro
       const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
-      return diasInad > 0
-    }).length || 0
-  const totalOverdueDebts = vmaxOverdueDebts
+      if (diasInad > 0) {
+        vmaxPendingOverdue++
+      }
+    }
+  }
+
+  // Calculate stats
+  const totalAmount = vmaxTotalAmount
+  const recoveredAmount = vmaxRecoveredAmount
+  const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+  const totalOverdueDebts = vmaxPendingOverdue
 
   const admins = adminsData?.length || 0
 

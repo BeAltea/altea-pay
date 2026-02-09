@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { use, useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,8 +34,8 @@ interface Company {
   name: string
 }
 
-export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function EditUserPage({ params }: { params: { id: string } }) {
+  const { id } = params
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)

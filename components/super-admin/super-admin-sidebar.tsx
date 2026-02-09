@@ -45,79 +45,119 @@ export function useMobileSuperAdminSidebar() {
 
 export { MobileSuperAdminSidebarContext }
 
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  hidden?: boolean
+}
+
+interface NavSection {
+  label: string
+  items: NavItem[]
+}
+
 export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
   const pathname = usePathname()
   const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileSuperAdminSidebar()
 
-  const navigation = [
+  // Grouped navigation with section labels
+  const navigationSections: NavSection[] = [
     {
-      name: "Dashboard",
-      href: "/super-admin",
-      icon: LayoutDashboard,
-      current: pathname === "/super-admin",
+      label: "PRINCIPAL",
+      items: [
+        {
+          name: "Dashboard",
+          href: "/super-admin",
+          icon: LayoutDashboard,
+        },
+        {
+          name: "Empresas",
+          href: "/super-admin/companies",
+          icon: Building2,
+        },
+        {
+          name: "Clientes",
+          href: "/super-admin/clientes",
+          icon: Users,
+        },
+      ],
     },
     {
-      name: "Empresas",
-      href: "/super-admin/companies",
-      icon: Building2,
-      current: pathname.startsWith("/super-admin/companies"),
+      label: "ANÁLISES",
+      items: [
+        {
+          name: "Análise de Crédito",
+          href: "/super-admin/analises",
+          icon: CreditCard,
+        },
+        {
+          name: "Análise 360",
+          href: "/super-admin/analises/comportamental",
+          icon: Sparkles,
+        },
+        // Hidden: Análise Consolidada (code preserved but not visible)
+        {
+          name: "Análise Consolidada",
+          href: "/super-admin/analises/consolidada",
+          icon: LayoutGrid,
+          hidden: true,
+        },
+      ],
     },
     {
-      name: "Análise Restritiva",
-      href: "/super-admin/analises",
-      icon: CreditCard,
-      current: pathname === "/super-admin/analises",
+      label: "OPERAÇÕES",
+      items: [
+        {
+          name: "Réguas de Cobrança",
+          href: "/super-admin/collection-rules",
+          icon: Target,
+        },
+        {
+          name: "Enviar Email",
+          href: "/super-admin/send-email",
+          icon: Mail,
+        },
+        {
+          name: "Negociações",
+          href: "/super-admin/negotiations",
+          icon: Handshake,
+        },
+      ],
     },
     {
-      name: "Análise Comportamental",
-      href: "/super-admin/analises/comportamental",
-      icon: Sparkles,
-      current: pathname.startsWith("/super-admin/analises/comportamental"),
+      label: "RELATÓRIOS",
+      items: [
+        {
+          name: "Relatórios Globais",
+          href: "/super-admin/reports",
+          icon: BarChart3,
+        },
+      ],
     },
     {
-      name: "Análise Consolidada",
-      href: "/super-admin/analises/consolidada",
-      icon: LayoutGrid,
-      current: pathname.startsWith("/super-admin/analises/consolidada"),
-    },
-    {
-      name: "Usuários",
-      href: "/super-admin/users",
-      icon: Users,
-      current: pathname.startsWith("/super-admin/users"),
-    },
-    {
-      name: "Réguas de Cobrança",
-      href: "/super-admin/collection-rules",
-      icon: Target,
-      current: pathname.startsWith("/super-admin/collection-rules"),
-    },
-    {
-      name: "Negociações",
-      href: "/super-admin/negotiations",
-      icon: Handshake,
-      current: pathname.startsWith("/super-admin/negotiations"),
-    },
-    {
-      name: "Enviar Email",
-      href: "/super-admin/send-email",
-      icon: Mail,
-      current: pathname.startsWith("/super-admin/send-email"),
-    },
-    {
-      name: "Relatórios Globais",
-      href: "/super-admin/reports",
-      icon: BarChart3,
-      current: pathname.startsWith("/super-admin/reports"),
-    },
-
-    {
-      name: "Configurações",
-      href: "/super-admin/settings",
-      icon: Settings,
-      current: pathname.startsWith("/super-admin/settings"),
+      label: "SISTEMA",
+      items: [
+        {
+          name: "Usuários",
+          href: "/super-admin/users",
+          icon: Users,
+        },
+        {
+          name: "Configurações",
+          href: "/super-admin/settings",
+          icon: Settings,
+        },
+      ],
     },
   ]
+
+  const isItemActive = (href: string) => {
+    if (href === "/super-admin") {
+      return pathname === "/super-admin"
+    }
+    return pathname.startsWith(href)
+  }
 
   const SidebarContent = () => (
     <>
@@ -139,24 +179,49 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navigation.map((item) => (
-          <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
-            <Button
-              variant={item.current ? "secondary" : "ghost"}
-              className={cn(
-                "w-full justify-start text-left h-10 px-3 transition-all duration-200",
-                item.current
-                  ? "bg-altea-gold/10 text-altea-navy dark:bg-[oklch(0.82_0.18_85)] dark:text-[oklch(0.12_0.02_240)] font-semibold"
-                  : "text-gray-700 dark:text-[oklch(0.92_0_0)] hover:bg-gray-100 dark:hover:bg-[oklch(0.2_0.02_240)] hover:text-gray-900 dark:hover:text-[oklch(0.98_0_0)]",
-              )}
-            >
-              <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{item.name}</span>
-            </Button>
-          </Link>
-        ))}
+      {/* Navigation with grouped sections */}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {navigationSections.map((section) => {
+          // Filter out hidden items
+          const visibleItems = section.items.filter(item => !item.hidden)
+
+          // Don't render section if all items are hidden
+          if (visibleItems.length === 0) return null
+
+          return (
+            <div key={section.label} className="mb-4">
+              {/* Section Label */}
+              <div className="px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[2px] text-gray-400 dark:text-gray-500">
+                  {section.label}
+                </span>
+              </div>
+
+              {/* Section Items */}
+              <div className="space-y-1">
+                {visibleItems.map((item) => {
+                  const isActive = isItemActive(item.href)
+                  return (
+                    <Link key={item.name} href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button
+                        variant={isActive ? "secondary" : "ghost"}
+                        className={cn(
+                          "w-full justify-start text-left h-10 px-3 transition-all duration-200",
+                          isActive
+                            ? "bg-altea-gold/10 text-altea-navy dark:bg-[oklch(0.82_0.18_85)] dark:text-[oklch(0.12_0.02_240)] font-semibold"
+                            : "text-gray-700 dark:text-[oklch(0.92_0_0)] hover:bg-gray-100 dark:hover:bg-[oklch(0.2_0.02_240)] hover:text-gray-900 dark:hover:text-[oklch(0.98_0_0)]",
+                        )}
+                      >
+                        <item.icon className="mr-3 h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{item.name}</span>
+                      </Button>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </nav>
 
       {/* User Info */}

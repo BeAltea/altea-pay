@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { use, useState } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,8 +27,8 @@ interface CompanyFormData {
   notes: string
 }
 
-export default function EditCompanyPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function EditCompanyPage({ params }: { params: { id: string } }) {
+  const { id } = params
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 

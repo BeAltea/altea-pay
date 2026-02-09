@@ -222,7 +222,11 @@ function detectDocumentType(documento: string): "pf" | "pj" {
   return clean.length === 11 ? "pf" : "pj"
 }
 
-export async function analyzeDetailedWithCache(
+/**
+ * Análise RESTRITIVA: Apenas 3 endpoints GET (Score Ações, Score Crédito, Score Recupere)
+ * Usado na página "Análise de Crédito" / "Análise Restritiva"
+ */
+export async function analyzeRestrictiveOnly(
   cpf: string,
   companyId: string,
   userId?: string,
@@ -231,18 +235,21 @@ export async function analyzeDetailedWithCache(
     const cleanDoc = cpf.replace(/\D/g, "")
     const tipo = detectDocumentType(cleanDoc)
 
+    console.log("[v0] analyzeRestrictiveOnly - Starting RESTRICTIVE analysis (3 GETs only)", { documento: cleanDoc, tipo })
+
     const result: any = {
       documento: cleanDoc,
       tipo: tipo === "pf" ? "CPF" : "CNPJ",
       timestamp: new Date().toISOString(),
+      analysisType: "restrictive",
     }
 
-    // Call endpoints sequentially with 500ms delay between each
+    // Call only 3 GET endpoints sequentially with 500ms delay between each
     try {
       result.acoes = await getAssertivaData(tipo, cleanDoc, "acoes")
       await new Promise((resolve) => setTimeout(resolve, 500))
     } catch (error: any) {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Ações failed:", error.message)
+      console.error("[v0] analyzeRestrictiveOnly - ❌ Ações failed:", error.message)
       result.acoes_error = error.message
     }
 
@@ -251,7 +258,85 @@ export async function analyzeDetailedWithCache(
       result.score_credito = result.credito.score
       await new Promise((resolve) => setTimeout(resolve, 500))
     } catch (error: any) {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Crédito failed:", error.message)
+      console.error("[v0] analyzeRestrictiveOnly - ❌ Crédito failed:", error.message)
+      result.credito_error = error.message
+    }
+
+    try {
+      result.recupere = await getAssertivaData(tipo, cleanDoc, "recupere")
+      result.score_recupere = typeof result.recupere.score === "number" ? result.recupere.score : null
+    } catch (error: any) {
+      console.error("[v0] analyzeRestrictiveOnly - ❌ Recupere failed:", error.message)
+      result.recupere_error = error.message
+    }
+
+    // NO behavioral POST call for restrictive analysis
+
+    const scores = [result.credito?.score, result.recupere?.score].filter((s) => typeof s === "number")
+
+    if (scores.length > 0) {
+      result.score_geral = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    }
+
+    console.log("[v0] analyzeRestrictiveOnly - Completed RESTRICTIVE analysis", {
+      documento: cleanDoc,
+      has_acoes: !!result.acoes,
+      has_credito: !!result.credito,
+      has_recupere: !!result.recupere,
+      score_geral: result.score_geral,
+    })
+
+    return {
+      success: true,
+      data: result,
+      cached: false,
+    }
+  } catch (error: any) {
+    console.error("[v0] analyzeRestrictiveOnly - Error:", error)
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+}
+
+/**
+ * Análise 360 COMPLETA: 3 endpoints GET + 1 POST comportamental
+ * Usado na página "Análise 360" / "Análise Comportamental"
+ */
+export async function analyze360Full(
+  cpf: string,
+  companyId: string,
+  userId?: string,
+): Promise<{ success: boolean; data?: any; cached?: boolean; error?: string }> {
+  try {
+    const cleanDoc = cpf.replace(/\D/g, "")
+    const tipo = detectDocumentType(cleanDoc)
+
+    console.log("[v0] analyze360Full - Starting FULL 360 analysis (3 GETs + POST)", { documento: cleanDoc, tipo })
+
+    const result: any = {
+      documento: cleanDoc,
+      tipo: tipo === "pf" ? "CPF" : "CNPJ",
+      timestamp: new Date().toISOString(),
+      analysisType: "behavioral",
+    }
+
+    // Call all 3 GET endpoints sequentially with 500ms delay between each
+    try {
+      result.acoes = await getAssertivaData(tipo, cleanDoc, "acoes")
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error: any) {
+      console.error("[v0] analyze360Full - ❌ Ações failed:", error.message)
+      result.acoes_error = error.message
+    }
+
+    try {
+      result.credito = await getAssertivaData(tipo, cleanDoc, "credito")
+      result.score_credito = result.credito.score
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    } catch (error: any) {
+      console.error("[v0] analyze360Full - ❌ Crédito failed:", error.message)
       result.credito_error = error.message
     }
 
@@ -260,15 +345,16 @@ export async function analyzeDetailedWithCache(
       result.score_recupere = typeof result.recupere.score === "number" ? result.recupere.score : null
       await new Promise((resolve) => setTimeout(resolve, 500))
     } catch (error: any) {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Recupere failed:", error.message)
+      console.error("[v0] analyze360Full - ❌ Recupere failed:", error.message)
       result.recupere_error = error.message
     }
 
+    // POST behavioral analysis (async with callback)
     try {
       result.analise_comportamental = await postAssertivaComportamental(tipo, cleanDoc)
       result.id_consulta = result.analise_comportamental.idConsulta
     } catch (error: any) {
-      console.error("[v0] analyzeDetailedWithCache - ❌ Análise Comportamental failed:", error.message)
+      console.error("[v0] analyze360Full - ❌ Análise Comportamental failed:", error.message)
       result.analise_comportamental_error = error.message
     }
 
@@ -278,18 +364,42 @@ export async function analyzeDetailedWithCache(
       result.score_geral = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
     }
 
+    console.log("[v0] analyze360Full - Completed FULL 360 analysis", {
+      documento: cleanDoc,
+      has_acoes: !!result.acoes,
+      has_credito: !!result.credito,
+      has_recupere: !!result.recupere,
+      has_comportamental: !!result.analise_comportamental,
+      id_consulta: result.id_consulta,
+      score_geral: result.score_geral,
+    })
+
     return {
       success: true,
       data: result,
       cached: false,
     }
   } catch (error: any) {
-    console.error("[v0] analyzeDetailedWithCache - Error:", error)
+    console.error("[v0] analyze360Full - Error:", error)
     return {
       success: false,
       error: error.message,
     }
   }
+}
+
+/**
+ * @deprecated Use analyzeRestrictiveOnly or analyze360Full instead
+ * Kept for backward compatibility - calls ALL 4 endpoints
+ */
+export async function analyzeDetailedWithCache(
+  cpf: string,
+  companyId: string,
+  userId?: string,
+): Promise<{ success: boolean; data?: any; cached?: boolean; error?: string }> {
+  // For backward compatibility, delegate to analyze360Full
+  console.log("[v0] analyzeDetailedWithCache - DEPRECATED: Delegating to analyze360Full")
+  return analyze360Full(cpf, companyId, userId)
 }
 
 export async function processBatchAnalysis(

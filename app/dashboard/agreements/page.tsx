@@ -6,20 +6,10 @@ import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FileText, Search, Download, Calendar, DollarSign } from "lucide-react"
+import { FileText, Search, Calendar, DollarSign, Handshake } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
-import { useToast } from "@/hooks/use-toast"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
 
 interface Agreement {
   id: string
@@ -32,160 +22,114 @@ interface Agreement {
   installment_amount: number
   status: string
   created_at: string
-  customer: {
-    name: string
-    document: string
-  }
-  debt: {
-    description: string
-    due_date: string
-  }
-}
-
-interface Payment {
-  id: string
-  debt_id: string
-  customer_id: string
-  amount: number
-  payment_date: string
-  payment_method: string
-  status: string
-  created_at: string
-  customer: {
-    name: string
-    document: string
-  }
-  debt: {
-    description: string
-  }
+  customer_name?: string
+  customer_document?: string
+  debt_description?: string
+  debt_due_date?: string
 }
 
 export default function AgreementsPage() {
   const [agreements, setAgreements] = useState<Agreement[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [activeTab, setActiveTab] = useState<"agreements" | "payments">("agreements")
-  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null)
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
-  const [isAgreementDetailsOpen, setIsAgreementDetailsOpen] = useState(false)
-  const [isPaymentDetailsOpen, setIsPaymentDetailsOpen] = useState(false)
   const { profile, loading: authLoading } = useAuth()
-  const { toast } = useToast()
   const supabase = createClient()
 
   useEffect(() => {
     if (authLoading) return
 
     if (profile?.company_id) {
-      fetchData()
+      fetchAgreements()
     } else {
       console.log("[v0] Agreements - No company_id, skipping fetch")
       setLoading(false)
-      toast({
-        title: "Aviso",
-        description: "Empresa não identificada. Entre em contato com o suporte.",
-        variant: "destructive",
-      })
     }
-  }, [profile?.company_id, activeTab, authLoading])
+  }, [profile?.company_id, authLoading])
 
-  async function fetchData() {
+  async function fetchAgreements() {
+    if (!profile?.company_id) {
+      console.log("[v0] No company_id, skipping fetch")
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
+    console.log("[v0] Fetching agreements for company:", profile.company_id)
+
     try {
-      if (activeTab === "agreements") {
-        await fetchAgreements()
-      } else {
-        await fetchPayments()
+      // Fetch agreements without joins (relationships may not exist)
+      const { data: agreementsData, error: agreementsError } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: false })
+
+      if (agreementsError) {
+        console.error("[v0] Error fetching agreements:", agreementsError)
+        // Don't throw - just show empty state
+        setAgreements([])
+        setLoading(false)
+        return
       }
+
+      // If we have agreements, get customer info from customers table
+      if (agreementsData && agreementsData.length > 0) {
+        const customerIds = [...new Set(agreementsData.map(a => a.customer_id).filter(Boolean))]
+
+        if (customerIds.length > 0) {
+          // Fetch from customers table (where agreement.customer_id points)
+          const { data: customersData } = await supabase
+            .from("customers")
+            .select("id, name, document")
+            .in("id", customerIds)
+
+          const customerMap = new Map<string, { name: string; document: string }>()
+          if (customersData) {
+            customersData.forEach((c: any) => {
+              customerMap.set(c.id, { name: c.name || "", document: c.document || "" })
+            })
+          }
+
+          // Enrich agreements with customer data
+          const enrichedAgreements = agreementsData.map(agreement => ({
+            ...agreement,
+            customer_name: customerMap.get(agreement.customer_id)?.name || null,
+            customer_document: customerMap.get(agreement.customer_id)?.document || null,
+          }))
+
+          setAgreements(enrichedAgreements)
+        } else {
+          setAgreements(agreementsData)
+        }
+      } else {
+        setAgreements([])
+      }
+
+      console.log("[v0] Fetched agreements:", agreementsData?.length || 0)
     } catch (error: any) {
-      console.error("[v0] Agreements - Error fetching data:", error)
-      toast({
-        title: "Erro ao carregar dados",
-        description: error.message,
-        variant: "destructive",
-      })
+      console.error("[v0] Unexpected error fetching agreements:", error)
+      setAgreements([])
     } finally {
       setLoading(false)
     }
   }
 
-  async function fetchAgreements() {
-    if (!profile?.company_id) {
-      console.log("[v0] No company_id, skipping fetch")
-      return
-    }
-
-    console.log("[v0] Fetching agreements for company:", profile.company_id)
-
-    const { data, error } = await supabase
-      .from("agreements")
-      .select(`
-        *,
-        customer:customers(name, document),
-        debt:debts(description, due_date)
-      `)
-      .eq("company_id", profile.company_id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("[v0] Error fetching agreements:", error)
-      throw error
-    }
-
-    console.log("[v0] Fetched agreements:", data?.length || 0)
-    setAgreements(data || [])
-  }
-
-  async function fetchPayments() {
-    if (!profile?.company_id) {
-      console.log("[v0] No company_id, skipping fetch")
-      return
-    }
-
-    console.log("[v0] Fetching payments for company:", profile.company_id)
-
-    const { data, error } = await supabase
-      .from("payments")
-      .select(`
-        *,
-        customer:customers(name, document),
-        debt:debts(description)
-      `)
-      .eq("company_id", profile.company_id)
-      .order("payment_date", { ascending: false })
-
-    if (error) {
-      console.error("[v0] Error fetching payments:", error)
-      throw error
-    }
-
-    console.log("[v0] Fetched payments:", data?.length || 0)
-    setPayments(data || [])
-  }
-
   const filteredAgreements = agreements.filter((agreement) => {
-    const matchesSearch =
-      agreement.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agreement.customer?.document?.includes(searchTerm) ||
-      false
+    // When searchTerm is empty, match all
+    const matchesSearch = !searchTerm ||
+      agreement.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      agreement.customer_document?.includes(searchTerm)
     const matchesStatus = statusFilter === "all" || agreement.status === statusFilter
     return matchesSearch && matchesStatus
   })
 
-  const filteredPayments = payments.filter((payment) => {
-    const matchesSearch =
-      payment.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.customer?.document?.includes(searchTerm) ||
-      false
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  // Stats calculated from agreements only
+  const totalAgreedValue = agreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
-  const totalRecovered = payments
-    .filter((p) => p.status === "completed")
-    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  const completedValue = agreements
+    .filter(a => a.status === "completed")
+    .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const averageInstallments =
     agreements.length > 0
@@ -206,15 +150,15 @@ export default function AgreementsPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Acordos e Pagamentos</h1>
-        <p className="text-muted-foreground">Gerencie acordos de negociação e pagamentos recebidos</p>
+        <h1 className="text-3xl font-bold">Acordos</h1>
+        <p className="text-muted-foreground">Acompanhe os acordos de negociação com seus clientes</p>
       </div>
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <FileText className="h-8 w-8 text-blue-500" />
+            <Handshake className="h-8 w-8 text-blue-500" />
             <div>
               <p className="text-sm text-muted-foreground">Total de Acordos</p>
               <p className="text-2xl font-bold">{agreements.length}</p>
@@ -226,12 +170,12 @@ export default function AgreementsPage() {
           <div className="flex items-center gap-3">
             <DollarSign className="h-8 w-8 text-green-500" />
             <div>
-              <p className="text-sm text-muted-foreground">Valor Recuperado</p>
+              <p className="text-sm text-muted-foreground">Valor Concluído</p>
               <p className="text-2xl font-bold">
                 {new Intl.NumberFormat("pt-BR", {
                   style: "currency",
                   currency: "BRL",
-                }).format(totalRecovered)}
+                }).format(completedValue)}
               </p>
             </div>
           </div>
@@ -251,35 +195,16 @@ export default function AgreementsPage() {
           <div className="flex items-center gap-3">
             <FileText className="h-8 w-8 text-orange-500" />
             <div>
-              <p className="text-sm text-muted-foreground">Pagamentos</p>
-              <p className="text-2xl font-bold">{payments.length}</p>
+              <p className="text-sm text-muted-foreground">Valor Total Acordado</p>
+              <p className="text-2xl font-bold">
+                {new Intl.NumberFormat("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }).format(totalAgreedValue)}
+              </p>
             </div>
           </div>
         </Card>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        <button
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === "agreements"
-              ? "border-b-2 border-primary text-primary"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-          onClick={() => setActiveTab("agreements")}
-        >
-          Acordos ({agreements.length})
-        </button>
-        <button
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === "payments"
-              ? "border-b-2 border-primary text-primary"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-          onClick={() => setActiveTab("payments")}
-        >
-          Pagamentos ({payments.length})
-        </button>
       </div>
 
       {/* Filters */}
@@ -304,223 +229,16 @@ export default function AgreementsPage() {
             <SelectItem value="cancelled">Cancelado</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Exportar
-        </Button>
       </div>
 
-      {/* Agreement Details Dialog */}
-      <Dialog open={isAgreementDetailsOpen} onOpenChange={setIsAgreementDetailsOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Acordo</DialogTitle>
-            <DialogDescription>Informações completas sobre o acordo de negociação</DialogDescription>
-          </DialogHeader>
-          {selectedAgreement && (
-            <div className="space-y-6">
-              {/* Customer Info */}
-              <div>
-                <h3 className="font-semibold mb-3 text-lg">Informações do Cliente</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Nome</p>
-                    <p className="font-medium">{selectedAgreement.customer?.name || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Documento</p>
-                    <p className="font-medium font-mono">{selectedAgreement.customer?.document || "N/A"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Agreement Info */}
-              <div>
-                <h3 className="font-semibold mb-3 text-lg">Informações do Acordo</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valor Original</p>
-                    <p className="font-medium text-lg">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(Number(selectedAgreement.original_amount) || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valor Acordado</p>
-                    <p className="font-medium text-lg text-green-600">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(Number(selectedAgreement.agreed_amount) || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Desconto</p>
-                    <p className="font-medium text-green-600">
-                      {Number(selectedAgreement.discount_percentage || 0).toFixed(1)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Economia</p>
-                    <p className="font-medium text-green-600">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(
-                        (Number(selectedAgreement.original_amount) || 0) -
-                          (Number(selectedAgreement.agreed_amount) || 0),
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Número de Parcelas</p>
-                    <p className="font-medium">{Number(selectedAgreement.installments) || 0}x</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valor da Parcela</p>
-                    <p className="font-medium">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(Number(selectedAgreement.installment_amount) || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge
-                      variant={
-                        selectedAgreement.status === "active"
-                          ? "default"
-                          : selectedAgreement.status === "completed"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {selectedAgreement.status === "active"
-                        ? "Ativo"
-                        : selectedAgreement.status === "completed"
-                          ? "Concluído"
-                          : "Cancelado"}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Data de Criação</p>
-                    <p className="font-medium">{new Date(selectedAgreement.created_at).toLocaleDateString("pt-BR")}</p>
-                  </div>
-                  {selectedAgreement.debt?.description && (
-                    <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground">Descrição da Dívida</p>
-                      <p className="font-medium">{selectedAgreement.debt.description}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAgreementDetailsOpen(false)}>
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Payment Details Dialog */}
-      <Dialog open={isPaymentDetailsOpen} onOpenChange={setIsPaymentDetailsOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Pagamento</DialogTitle>
-            <DialogDescription>Informações completas sobre o pagamento recebido</DialogDescription>
-          </DialogHeader>
-          {selectedPayment && (
-            <div className="space-y-6">
-              {/* Customer Info */}
-              <div>
-                <h3 className="font-semibold mb-3 text-lg">Informações do Cliente</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Nome</p>
-                    <p className="font-medium">{selectedPayment.customer?.name || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Documento</p>
-                    <p className="font-medium font-mono">{selectedPayment.customer?.document || "N/A"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Info */}
-              <div>
-                <h3 className="font-semibold mb-3 text-lg">Informações do Pagamento</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valor Pago</p>
-                    <p className="font-medium text-lg text-green-600">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(Number(selectedPayment.amount) || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Data do Pagamento</p>
-                    <p className="font-medium">{new Date(selectedPayment.payment_date).toLocaleDateString("pt-BR")}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Método de Pagamento</p>
-                    <p className="font-medium capitalize">{selectedPayment.payment_method}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge
-                      variant={
-                        selectedPayment.status === "completed"
-                          ? "default"
-                          : selectedPayment.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {selectedPayment.status === "completed"
-                        ? "Confirmado"
-                        : selectedPayment.status === "pending"
-                          ? "Pendente"
-                          : "Cancelado"}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Data de Registro</p>
-                    <p className="font-medium">{new Date(selectedPayment.created_at).toLocaleDateString("pt-BR")}</p>
-                  </div>
-                  {selectedPayment.debt?.description && (
-                    <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground">Descrição da Dívida</p>
-                      <p className="font-medium">{selectedPayment.debt.description}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDetailsOpen(false)}>
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Content */}
-      {activeTab === "agreements" ? (
-        <div className="space-y-4">
+      <div className="space-y-4">
           {filteredAgreements.map((agreement) => (
             <Card key={agreement.id} className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{agreement.customer?.name || "Cliente não identificado"}</h3>
+                    <h3 className="font-semibold">{agreement.customer_name || "Cliente não identificado"}</h3>
                     <Badge
                       variant={
                         agreement.status === "active"
@@ -538,7 +256,7 @@ export default function AgreementsPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    {agreement.customer?.document || "N/A"} • {agreement.debt?.description || "Sem descrição"}
+                    {agreement.customer_document || "N/A"}
                   </p>
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
@@ -575,94 +293,17 @@ export default function AgreementsPage() {
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedAgreement(agreement)
-                    setIsAgreementDetailsOpen(true)
-                  }}
-                >
-                  Ver Detalhes
-                </Button>
               </div>
             </Card>
           ))}
 
           {filteredAgreements.length === 0 && (
             <Card className="p-12 text-center">
+              <Handshake className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">Nenhum acordo encontrado</p>
             </Card>
           )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredPayments.map((payment) => (
-            <Card key={payment.id} className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{payment.customer?.name || "Cliente não identificado"}</h3>
-                    <Badge
-                      variant={
-                        payment.status === "completed"
-                          ? "default"
-                          : payment.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {payment.status === "completed"
-                        ? "Confirmado"
-                        : payment.status === "pending"
-                          ? "Pendente"
-                          : "Cancelado"}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {payment.customer?.document || "N/A"} • {payment.debt?.description || "Sem descrição"}
-                  </p>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Valor</p>
-                      <p className="font-medium text-green-600">
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(Number(payment.amount) || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Data do Pagamento</p>
-                      <p className="font-medium">{new Date(payment.payment_date).toLocaleDateString("pt-BR")}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Método</p>
-                      <p className="font-medium capitalize">{payment.payment_method}</p>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedPayment(payment)
-                    setIsPaymentDetailsOpen(true)
-                  }}
-                >
-                  Ver Comprovante
-                </Button>
-              </div>
-            </Card>
-          ))}
-
-          {filteredPayments.length === 0 && (
-            <Card className="p-12 text-center">
-              <p className="text-muted-foreground">Nenhum pagamento encontrado</p>
-            </Card>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

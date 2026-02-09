@@ -13,7 +13,7 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { useMobileSidebar } from "./sidebar"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, CreditCard, Upload, Target, BarChart3 } from "lucide-react"
+import { LayoutDashboard, Users, CreditCard, Upload, Target, BarChart3, FileCheck } from "lucide-react"
 
 interface HeaderProps {
   user?: {
@@ -389,7 +389,7 @@ export function Header({ user }: HeaderProps) {
                   {[
                     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
                     { name: "Clientes", href: "/dashboard/clientes", icon: Users },
-                    { name: "Dívidas", href: "/dashboard/debts", icon: CreditCard },
+                    { name: "Acordos", href: "/dashboard/agreements", icon: FileCheck },
                     { name: "Importar Dados", href: "/dashboard/import", icon: Upload },
                     { name: "Réguas de Cobrança", href: "/dashboard/collection-rules", icon: Target },
                     { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
