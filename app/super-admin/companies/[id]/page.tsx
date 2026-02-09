@@ -122,44 +122,50 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     }
   }
 
-  // SOMENTE dados da tabela VMAX
-  const totalCustomers = vmaxData.length
-  const totalDebts = vmaxData.filter((v) => !v["DT Cancelamento"]).length
+  // Helper to check if a VMAX record is paid (same logic as companies list page)
+  const isPaid = (v: any) => {
+    const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+    return paidDocs.has(doc) || v.negotiation_status === "PAGO"
+  }
 
-  // Calculate total and recovered amounts
-  let vmaxTotalAmount = 0
-  let vmaxRecoveredAmount = 0
-  let vmaxPendingOverdue = 0
-
-  for (const v of vmaxData || []) {
+  // Helper to parse Vencido value
+  const parseVencido = (v: any) => {
     const vencidoStr = String(v.Vencido || "0")
-    // Remove "R$", spaces, dots (thousands separator), and convert comma to dot
     const cleanValue = vencidoStr
       .replace(/R\$/g, "")
       .replace(/\s/g, "")
-      .replace(/\./g, "") // Remove dots used as thousands separator
-      .replace(",", ".") // Convert comma to dot for decimal
-    const value = Number(cleanValue) || 0
-
-    vmaxTotalAmount += value
-
-    const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
-    if (paidDocs.has(doc)) {
-      vmaxRecoveredAmount += value
-    } else {
-      // Check if overdue (only count non-paid)
-      const diasInadStr = String(v["Dias Inad."] || "0")
-      const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
-      if (diasInad > 0) {
-        vmaxPendingOverdue++
-      }
-    }
+      .replace(/\./g, "")
+      .replace(",", ".")
+    return Number(cleanValue) || 0
   }
 
-  // Calculate stats
-  const totalAmount = vmaxTotalAmount
+  // SOMENTE dados da tabela VMAX
+  const totalCustomers = vmaxData.length
+  const totalDebts = vmaxData.filter((v) => !isPaid(v)).length // Count only unpaid debts
+
+  // Calculate pending amount (excluding paid) - same as list page
+  const vmaxPendingAmount = vmaxData
+    .filter((v) => !isPaid(v))
+    .reduce((sum, v) => sum + parseVencido(v), 0)
+
+  // Calculate recovered amount (paid debts)
+  const vmaxRecoveredAmount = vmaxData
+    .filter((v) => isPaid(v))
+    .reduce((sum, v) => sum + parseVencido(v), 0)
+
+  // Count overdue (only non-paid)
+  const vmaxPendingOverdue = vmaxData.filter((v) => {
+    if (isPaid(v)) return false
+    const diasInadStr = String(v["Dias Inad."] || "0")
+    const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
+    return diasInad > 0
+  }).length
+
+  // Calculate stats (matching list page logic)
+  const totalOriginalAmount = vmaxPendingAmount + vmaxRecoveredAmount
+  const totalAmount = vmaxPendingAmount // Display pending amount (same as list page "Volume")
   const recoveredAmount = vmaxRecoveredAmount
-  const recoveryRate = totalAmount > 0 ? (recoveredAmount / totalAmount) * 100 : 0
+  const recoveryRate = totalOriginalAmount > 0 ? (recoveredAmount / totalOriginalAmount) * 100 : 0
   const totalOverdueDebts = vmaxPendingOverdue
 
   const admins = adminsData?.length || 0
@@ -236,7 +242,7 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     address: typeof companyData.address === "string" ? companyData.address : companyData.address || "N/A",
     segment: companyData.segment || "N/A",
     totalCustomers,
-    totalDebts: totalDebts + (vmaxData?.length || 0),
+    totalDebts, // Count of unpaid debts (not doubled)
     totalAmount: totalAmount,
     recoveredAmount,
     recoveryRate,
@@ -250,9 +256,11 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     name: company.name,
     totalCustomers,
     totalDebts: company.totalDebts,
-    totalAmount: totalAmount,
+    pendingAmount: vmaxPendingAmount,
+    recoveredAmount: vmaxRecoveredAmount,
+    totalOriginalAmount,
+    recoveryRate: recoveryRate.toFixed(1) + "%",
     vmaxRecords: vmaxData?.length || 0,
-    vmaxTotalAmount,
   })
 
   return (
