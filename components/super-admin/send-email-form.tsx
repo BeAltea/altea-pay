@@ -42,6 +42,10 @@ import {
   ChevronDown,
   ChevronUp,
   FlaskConical,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react"
 
 interface Company {
@@ -124,6 +128,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   const [sortField, setSortField] = useState<SortField>("dias")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 50
+
   // Parse test emails
   const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
 
@@ -178,6 +186,15 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     return list
   }, [filteredRecipients, sortField, sortDirection])
 
+  // Pagination calculations
+  const totalFiltered = sortedRecipients.length
+  const totalPages = Math.ceil(totalFiltered / ITEMS_PER_PAGE)
+  const paginatedRecipients = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE
+    const end = start + ITEMS_PER_PAGE
+    return sortedRecipients.slice(start, end)
+  }, [sortedRecipients, currentPage, ITEMS_PER_PAGE])
+
   // Handle column sort click
   const handleSortClick = (field: SortField) => {
     if (sortField === field) {
@@ -186,6 +203,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
       setSortField(field)
       setSortDirection(field === "dias" ? "desc" : "asc") // Default: most overdue first for dias
     }
+    setCurrentPage(1) // Reset to first page on sort change
   }
 
   // Get selected recipients' data (id and email)
@@ -201,6 +219,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setSelectedRecipientIds(new Set())
     setSearchTerm("")
     setEmailStatusFilter("all")
+    setCurrentPage(1)
   }
 
   // Handle test mode toggle
@@ -217,10 +236,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setResult(null)
   }
 
-  // Handle select all - only selects filtered recipients
+  // Handle select all - selects ALL filtered recipients (not just current page)
   const handleSelectAll = () => {
-    const filteredIds = new Set(filteredRecipients.map((r) => r.id))
-    setSelectedRecipientIds(filteredIds)
+    const allFilteredIds = new Set(sortedRecipients.map((r) => r.id))
+    setSelectedRecipientIds(allFilteredIds)
   }
 
   // Handle deselect all
@@ -465,7 +484,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-sm">
-                  {selectedRecipientIds.size} selecionado(s) de {filteredRecipients.length} filtrado(s)
+                  {selectedRecipientIds.size} selecionado(s) de {totalFiltered} filtrado(s)
                 </Badge>
               </div>
             </div>
@@ -497,7 +516,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                         id="search-name"
                         placeholder="Digite o nome para filtrar..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value)
+                          setCurrentPage(1)
+                        }}
                         className="pl-10"
                       />
                     </div>
@@ -510,7 +532,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                     </Label>
                     <RadioGroup
                       value={emailStatusFilter}
-                      onValueChange={(value) => setEmailStatusFilter(value as EmailStatusFilter)}
+                      onValueChange={(value) => {
+                        setEmailStatusFilter(value as EmailStatusFilter)
+                        setCurrentPage(1)
+                      }}
                       className="flex flex-wrap gap-4"
                     >
                       <div className="flex items-center space-x-2">
@@ -548,6 +573,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                           setSortField("dias")
                           setSortDirection(value as SortDirection)
                         }
+                        setCurrentPage(1)
                       }}
                     >
                       <SelectTrigger className="w-full md:w-[250px]">
@@ -571,7 +597,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                     className="gap-2"
                   >
                     <CheckSquare className="h-4 w-4" />
-                    Selecionar Todos ({filteredRecipients.length})
+                    Selecionar Todos ({totalFiltered})
                   </Button>
                   <Button
                     variant="outline"
@@ -609,7 +635,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
                     {/* Recipient Rows */}
                     <div className="space-y-1 mt-1">
-                      {sortedRecipients.map((recipient) => {
+                      {paginatedRecipients.map((recipient) => {
                         const status = getEmailStatus(recipient.id)
                         const days = recipient.daysOverdue || 0
                         const daysColor =
@@ -674,7 +700,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                           </div>
                         )
                       })}
-                      {sortedRecipients.length === 0 && (
+                      {paginatedRecipients.length === 0 && (
                         <p className="text-center text-muted-foreground py-4">
                           {searchTerm || emailStatusFilter !== "all"
                             ? "Nenhum destinatário encontrado com os filtros aplicados"
@@ -684,6 +710,58 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                     </div>
                   </div>
                 </ScrollArea>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} a {Math.min(currentPage * ITEMS_PER_PAGE, totalFiltered)} de {totalFiltered} destinatários
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="h-8 px-2 gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="hidden sm:inline">Anterior</span>
+                      </Button>
+                      <span className="px-3 py-1 text-sm font-medium">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="h-8 px-2 gap-1"
+                      >
+                        <span className="hidden sm:inline">Próxima</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </CardContent>
