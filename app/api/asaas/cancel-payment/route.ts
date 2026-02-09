@@ -133,12 +133,10 @@ export async function POST(request: NextRequest) {
       console.log("[ASAAS Cancel] WARNING: No vmaxId provided - VMAX table NOT updated")
     }
     if (vmaxId) {
+      // Note: VMAX table doesn't have updated_at column, only update negotiation_status
       const { error: vmaxError } = await supabase
         .from("VMAX")
-        .update({
-          negotiation_status: null,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ negotiation_status: null })
         .eq("id", vmaxId)
 
       if (vmaxError) {

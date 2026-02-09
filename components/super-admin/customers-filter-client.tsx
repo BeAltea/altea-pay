@@ -66,7 +66,8 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
 
       if (response.ok) {
         toast.success(`Cliente ${customer.name} excluído com sucesso`)
-        router.refresh()
+        // Hard reload to ensure fresh data from server
+        window.location.reload()
       } else {
         const error = await response.json()
         toast.error(error.error || "Erro ao excluir cliente")
@@ -122,7 +123,8 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
         setShowEditModal(false)
         setEditingCustomer(null)
         setEditData(null)
-        router.refresh()
+        // Hard reload to ensure fresh data from server
+        window.location.reload()
       } else {
         const error = await response.json()
         toast.error(error.error || "Erro ao salvar cliente")
@@ -154,7 +156,8 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
 
       if (response.ok) {
         toast.success("Dívida reativada com sucesso")
-        router.refresh()
+        // Hard reload to ensure fresh data from server
+        window.location.reload()
       } else {
         const error = await response.json()
         toast.error(error.error || "Erro ao reativar dívida")
