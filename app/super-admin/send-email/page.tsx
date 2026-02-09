@@ -17,6 +17,7 @@ interface EmailTrackingRecord {
   user_id: string
   sent_at: string
   status: "sent" | "failed"
+  email_subject: string
 }
 
 async function fetchData() {
@@ -125,7 +126,7 @@ async function fetchData() {
   while (hasMore) {
     const { data: trackingPage, error: trackingError } = await supabase
       .from("email_sent_tracking")
-      .select("id, user_id, sent_at, status")
+      .select("id, user_id, sent_at, status, email_subject")
       .eq("status", "sent")
       .order("sent_at", { ascending: false })
       .range(page * pageSize, (page + 1) * pageSize - 1)
@@ -147,13 +148,30 @@ async function fetchData() {
 
   console.log("[v0] Fetched", allTracking.length, "tracking records")
 
-  // Create a map of user_id -> latest sent_at timestamp
-  const emailTrackingMap: Record<string, string> = {}
+  // Create a map of user_id -> email tracking data with history
+  const emailTrackingMap: Record<string, {
+    sentAt: string
+    subject: string
+    status: string
+    history: Array<{ sentAt: string; subject: string; status: string }>
+  }> = {}
+
   for (const record of allTracking) {
-    // Since we order by sent_at DESC, the first occurrence for each user_id is the latest
     if (!emailTrackingMap[record.user_id]) {
-      emailTrackingMap[record.user_id] = record.sent_at
+      // First record is the latest (ordered by sent_at DESC)
+      emailTrackingMap[record.user_id] = {
+        sentAt: record.sent_at,
+        subject: record.email_subject,
+        status: record.status,
+        history: [],
+      }
     }
+    // Add to history (all records for this user)
+    emailTrackingMap[record.user_id].history.push({
+      sentAt: record.sent_at,
+      subject: record.email_subject,
+      status: record.status,
+    })
   }
 
   console.log("[v0] Created tracking map for", Object.keys(emailTrackingMap).length, "users")

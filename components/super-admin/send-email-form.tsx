@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -60,13 +61,20 @@ interface Recipient {
   daysOverdue: number
 }
 
+interface EmailTrackingData {
+  sentAt: string
+  subject: string
+  status: string
+  history: Array<{ sentAt: string; subject: string; status: string }>
+}
+
 type SortField = "name" | "dias" | null
 type SortDirection = "asc" | "desc"
 
 interface SendEmailFormProps {
   companies: Company[]
   recipientsMap: Record<string, Recipient[]>
-  emailTrackingMap: Record<string, string>
+  emailTrackingMap: Record<string, EmailTrackingData>
 }
 
 type EmailStatusFilter = "all" | "sent" | "not_sent"
@@ -109,6 +117,7 @@ function parseTestEmails(input: string): string[] {
 }
 
 export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: SendEmailFormProps) {
+  const router = useRouter()
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("")
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set())
   const [subject, setSubject] = useState("")
@@ -131,6 +140,9 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 50
+
+  // Expanded row state
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Parse test emails
   const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
@@ -315,6 +327,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
           setSubject("")
           setHtmlBody("")
         }
+
+        // Refresh the page data to update email tracking status
+        // This refreshes server components without a full page reload
+        router.refresh()
       }
     } catch (error) {
       setResult({
@@ -327,12 +343,29 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   }
 
   // Get email status for a recipient
-  const getEmailStatus = (recipientId: string): { sent: boolean; date: string | null } => {
-    const sentAt = emailTrackingMap[recipientId]
-    if (sentAt) {
-      return { sent: true, date: formatDateBrazilian(sentAt) }
+  const getEmailStatus = (recipientId: string): {
+    sent: boolean
+    date: string | null
+    subject: string | null
+    history: Array<{ sentAt: string; subject: string; status: string }>
+  } => {
+    const tracking = emailTrackingMap[recipientId]
+    if (tracking) {
+      return {
+        sent: true,
+        date: formatDateBrazilian(tracking.sentAt),
+        subject: tracking.subject,
+        history: tracking.history,
+      }
     }
-    return { sent: false, date: null }
+    return { sent: false, date: null, subject: null, history: [] }
+  }
+
+  // Toggle expanded row
+  const handleRowExpand = (recipientId: string, e: React.MouseEvent) => {
+    // Don't expand if clicking on checkbox
+    if ((e.target as HTMLElement).closest('[data-checkbox]')) return
+    setExpandedId(expandedId === recipientId ? null : recipientId)
   }
 
   // Check if should show email composition
@@ -638,6 +671,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                       {paginatedRecipients.map((recipient) => {
                         const status = getEmailStatus(recipient.id)
                         const days = recipient.daysOverdue || 0
+                        const isExpanded = expandedId === recipient.id
                         const daysColor =
                           days === 0
                             ? "text-gray-400"
@@ -649,54 +683,119 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                                   ? "text-yellow-600 dark:text-yellow-400"
                                   : "text-green-600 dark:text-green-400"
                         return (
-                          <div
-                            key={recipient.id}
-                            className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                            onClick={() => handleRecipientToggle(recipient.id)}
-                          >
-                            <Checkbox
-                              checked={selectedRecipientIds.has(recipient.id)}
-                              onCheckedChange={() => handleRecipientToggle(recipient.id)}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate">{recipient.name}</p>
-                              <p className="text-xs text-muted-foreground truncate sm:hidden">
-                                {recipient.email}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate md:hidden mt-1">
-                                {status.sent ? (
-                                  <span className="text-green-600 dark:text-green-400">
-                                    Enviado em {status.date}
+                          <div key={recipient.id}>
+                            <div
+                              className={`flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors ${isExpanded ? "bg-muted/30" : ""}`}
+                              onClick={(e) => handleRowExpand(recipient.id, e)}
+                            >
+                              <div data-checkbox onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selectedRecipientIds.has(recipient.id)}
+                                  onCheckedChange={() => handleRecipientToggle(recipient.id)}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground text-xs">
+                                    {isExpanded ? "▼" : "▶"}
                                   </span>
+                                  <p className="font-medium text-sm truncate">{recipient.name}</p>
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate sm:hidden ml-4">
+                                  {recipient.email}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate md:hidden mt-1 ml-4">
+                                  {status.sent ? (
+                                    <span className="text-green-600 dark:text-green-400">
+                                      Enviado em {status.date}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">Não enviado</span>
+                                  )}
+                                </p>
+                                <p className={`text-xs sm:hidden mt-1 ml-4 ${daysColor}`}>
+                                  {days > 0 ? `${days} dias` : "—"}
+                                </p>
+                              </div>
+                              <div className="w-24 text-center hidden sm:block">
+                                <span className={`text-sm font-medium ${daysColor}`}>
+                                  {days > 0 ? `${days} dias` : "—"}
+                                </span>
+                              </div>
+                              <div className="w-48 text-center hidden sm:block">
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {recipient.email}
+                                </p>
+                              </div>
+                              <div className="w-44 text-center hidden md:block">
+                                {status.sent ? (
+                                  <Badge variant="outline" className="text-green-600 border-green-600/50 dark:text-green-400 dark:border-green-400/50">
+                                    Enviado em {status.date}
+                                  </Badge>
                                 ) : (
-                                  <span className="text-muted-foreground">Não enviado</span>
+                                  <Badge variant="outline" className="text-muted-foreground">
+                                    Não enviado
+                                  </Badge>
                                 )}
-                              </p>
-                              <p className={`text-xs sm:hidden mt-1 ${daysColor}`}>
-                                {days > 0 ? `${days} dias` : "—"}
-                              </p>
+                              </div>
                             </div>
-                            <div className="w-24 text-center hidden sm:block">
-                              <span className={`text-sm font-medium ${daysColor}`}>
-                                {days > 0 ? `${days} dias` : "—"}
-                              </span>
-                            </div>
-                            <div className="w-48 text-center hidden sm:block">
-                              <p className="text-xs text-muted-foreground truncate">
-                                {recipient.email}
-                              </p>
-                            </div>
-                            <div className="w-44 text-center hidden md:block">
-                              {status.sent ? (
-                                <Badge variant="outline" className="text-green-600 border-green-600/50 dark:text-green-400 dark:border-green-400/50">
-                                  Enviado em {status.date}
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-muted-foreground">
-                                  Não enviado
-                                </Badge>
-                              )}
-                            </div>
+
+                            {/* Expanded Detail Row */}
+                            {isExpanded && (
+                              <div className="ml-6 mr-3 mb-2 p-4 bg-muted/50 rounded-lg border">
+                                {status.sent ? (
+                                  <div className="space-y-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                      <div>
+                                        <span className="text-xs font-medium text-muted-foreground uppercase">
+                                          Assunto
+                                        </span>
+                                        <p className="text-sm font-medium mt-1">{status.subject}</p>
+                                      </div>
+                                      <div>
+                                        <span className="text-xs font-medium text-muted-foreground uppercase">
+                                          Enviado em
+                                        </span>
+                                        <p className="text-sm mt-1">{status.date}</p>
+                                      </div>
+                                      <div>
+                                        <span className="text-xs font-medium text-muted-foreground uppercase">
+                                          Total de envios
+                                        </span>
+                                        <p className="text-sm mt-1">{status.history.length} email(s)</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Show history if multiple emails sent */}
+                                    {status.history.length > 1 && (
+                                      <div className="border-t pt-3">
+                                        <span className="text-xs font-medium text-muted-foreground uppercase">
+                                          Histórico de envios
+                                        </span>
+                                        <div className="mt-2 space-y-2">
+                                          {status.history.map((log, i) => (
+                                            <div
+                                              key={i}
+                                              className="text-xs flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 p-2 bg-background rounded"
+                                            >
+                                              <span className="text-muted-foreground whitespace-nowrap">
+                                                {formatDateBrazilian(log.sentAt)}
+                                              </span>
+                                              <span className="hidden sm:inline text-muted-foreground">—</span>
+                                              <span className="font-medium truncate">{log.subject}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">
+                                    Nenhum email enviado para este destinatário.
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
