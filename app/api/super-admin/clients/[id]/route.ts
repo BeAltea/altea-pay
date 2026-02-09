@@ -7,6 +7,157 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Helper to verify super admin
+async function verifySuperAdmin() {
+  const authSupabase = await createAuthClient()
+  const { data: { user } } = await authSupabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Nao autenticado", status: 401 }
+  }
+
+  const { data: profile } = await authSupabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (profile?.role !== "super_admin") {
+    return { error: "Sem permissao", status: 403 }
+  }
+
+  return { user, profile }
+}
+
+// GET - Fetch full client data
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const tableName = request.nextUrl.searchParams.get("tableName") || "VMAX"
+    const companyId = request.nextUrl.searchParams.get("companyId")
+
+    const authResult = await verifySuperAdmin()
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    // Fetch full client data from company table
+    const { data: clientData, error: clientError } = await supabase
+      .from(tableName)
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (clientError) {
+      return NextResponse.json({ error: clientError.message }, { status: 500 })
+    }
+
+    // Also get data from customers table if exists (for email/phone)
+    const cpf = (clientData["CPF/CNPJ"] || clientData.cpf_cnpj || "").replace(/\D/g, "")
+    if (cpf && companyId) {
+      const { data: customerData } = await supabase
+        .from("customers")
+        .select("id, email, phone, name")
+        .eq("document", cpf)
+        .eq("company_id", companyId)
+        .maybeSingle()
+
+      if (customerData) {
+        clientData._customer_id = customerData.id
+        clientData._customer_email = customerData.email
+        clientData._customer_phone = customerData.phone
+        clientData._customer_name = customerData.name
+      }
+    }
+
+    return NextResponse.json(clientData)
+  } catch (error: any) {
+    console.error("[Get Client] Exception:", error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+// PUT - Update client data
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+    const { tableName, companyId, ...updateData } = body
+
+    if (!tableName) {
+      return NextResponse.json({ error: "tableName is required" }, { status: 400 })
+    }
+
+    const authResult = await verifySuperAdmin()
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    console.log("[Update Client] ID:", id, "Table:", tableName, "Data:", Object.keys(updateData))
+
+    // Remove internal fields before updating
+    const cleanData = { ...updateData }
+    delete cleanData._customer_id
+    delete cleanData._customer_email
+    delete cleanData._customer_phone
+    delete cleanData._customer_name
+
+    // Update company-specific table (VMAX)
+    const { error: updateError } = await supabase
+      .from(tableName)
+      .update(cleanData)
+      .eq("id", id)
+
+    if (updateError) {
+      console.error("[Update Client] Error:", updateError.message)
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    // Also update customers table if email/phone changed
+    const cpf = (cleanData["CPF/CNPJ"] || cleanData.cpf_cnpj || "").replace(/\D/g, "")
+    if (cpf && companyId) {
+      const customerUpdate: any = {}
+
+      // Map VMAX fields to customers fields
+      if (cleanData.Cliente || cleanData.cliente) {
+        customerUpdate.name = cleanData.Cliente || cleanData.cliente
+      }
+      if (cleanData.Email || cleanData.email) {
+        customerUpdate.email = cleanData.Email || cleanData.email
+      }
+      if (cleanData["Telefone 1"] || cleanData.telefone_1) {
+        customerUpdate.phone = cleanData["Telefone 1"] || cleanData.telefone_1
+      }
+
+      if (Object.keys(customerUpdate).length > 0) {
+        const { error: customerError } = await supabase
+          .from("customers")
+          .update(customerUpdate)
+          .eq("document", cpf)
+          .eq("company_id", companyId)
+
+        if (customerError) {
+          console.log("[Update Client] Customers table update note:", customerError.message)
+        } else {
+          console.log("[Update Client] Customers table updated for CPF:", cpf)
+        }
+      }
+    }
+
+    console.log("[Update Client] Client updated successfully")
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error("[Update Client] Exception:", error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,24 +173,9 @@ export async function DELETE(
       )
     }
 
-    // Verify the user is a super admin
-    const authSupabase = await createAuthClient()
-    const {
-      data: { user },
-    } = await authSupabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
-    }
-
-    const { data: profile } = await authSupabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (profile?.role !== "super_admin") {
-      return NextResponse.json({ error: "Sem permissao" }, { status: 403 })
+    const authResult = await verifySuperAdmin()
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     console.log("[Delete Client] ID:", id, "Table:", tableName, "Company:", companyId)

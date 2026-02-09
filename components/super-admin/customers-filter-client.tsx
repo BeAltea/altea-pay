@@ -8,7 +8,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, DollarSign, AlertTriangle, MapPin, CheckCircle, Clock, Trash2, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Users, DollarSign, AlertTriangle, MapPin, CheckCircle, Clock, Trash2, Loader2, Pencil, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 
 type Customer = {
@@ -33,6 +35,16 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "paid">("all")
   const [displayLimit, setDisplayLimit] = useState<number>(50)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Edit modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [editData, setEditData] = useState<any>(null)
+  const [loadingEdit, setLoadingEdit] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // Reactivate state
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null)
 
   const handleDeleteClient = async (customer: Customer) => {
     const confirmed = window.confirm(
@@ -64,6 +76,98 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const handleEditClient = async (customer: Customer) => {
+    setEditingCustomer(customer)
+    setLoadingEdit(true)
+    setShowEditModal(true)
+
+    try {
+      const response = await fetch(
+        `/api/super-admin/clients/${customer.id}?tableName=VMAX&companyId=${companyId}`
+      )
+      if (response.ok) {
+        const data = await response.json()
+        setEditData(data)
+      } else {
+        toast.error("Erro ao carregar dados do cliente")
+        setShowEditModal(false)
+      }
+    } catch (error) {
+      toast.error("Erro ao carregar dados do cliente")
+      setShowEditModal(false)
+    } finally {
+      setLoadingEdit(false)
+    }
+  }
+
+  const handleSaveClient = async () => {
+    if (!editData || !editingCustomer) return
+
+    setSavingEdit(true)
+    try {
+      const response = await fetch(`/api/super-admin/clients/${editingCustomer.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editData,
+          tableName: "VMAX",
+          companyId: companyId,
+        }),
+      })
+
+      if (response.ok) {
+        toast.success("Cliente atualizado com sucesso")
+        setShowEditModal(false)
+        setEditingCustomer(null)
+        setEditData(null)
+        router.refresh()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Erro ao salvar cliente")
+      }
+    } catch (error) {
+      toast.error("Erro ao salvar cliente")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleReactivateClient = async (customer: Customer) => {
+    const confirmed = window.confirm(
+      `Reativar a dívida de ${customer.name}?\n\nO status será alterado de "Quitado" para "Em aberto" e o cliente voltará a aparecer como devedor.`
+    )
+
+    if (!confirmed) return
+
+    setReactivatingId(customer.id)
+    try {
+      const response = await fetch(`/api/super-admin/clients/${customer.id}/reactivate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: companyId,
+          tableName: "VMAX",
+        }),
+      })
+
+      if (response.ok) {
+        toast.success("Dívida reativada com sucesso")
+        router.refresh()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Erro ao reativar dívida")
+      }
+    } catch (error) {
+      toast.error("Erro ao reativar dívida")
+    } finally {
+      setReactivatingId(null)
+    }
+  }
+
+  const updateEditField = (field: string, value: any) => {
+    setEditData((prev: any) => ({ ...prev, [field]: value }))
   }
 
   // Stats calculations
@@ -358,8 +462,8 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="text-right">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="text-right mr-2">
                       <div className={`text-lg font-bold whitespace-nowrap ${
                         customer.status === "paid"
                           ? "text-green-600 dark:text-green-400"
@@ -371,6 +475,40 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
                         <p className="text-xs text-green-600 dark:text-green-400 mt-1">Dívida quitada</p>
                       )}
                     </div>
+
+                    {/* Reactivate button - only for paid clients */}
+                    {customer.status === "paid" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReactivateClient(customer)}
+                        disabled={reactivatingId === customer.id}
+                        className="h-8 px-2 text-orange-500 border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950"
+                        title="Reativar dívida"
+                      >
+                        {reactivatingId === customer.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">Reativar</span>
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    {/* Edit button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditClient(customer)}
+                      className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                      title="Editar cliente"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+
+                    {/* Delete button */}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -392,6 +530,173 @@ export function CustomersFilterClient({ customers, companyId }: { customers: Cus
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Client Modal */}
+      <Dialog open={showEditModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowEditModal(false)
+          setEditingCustomer(null)
+          setEditData(null)
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Cliente</DialogTitle>
+          </DialogHeader>
+
+          {loadingEdit ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            </div>
+          ) : editData ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              {/* Name */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Nome</Label>
+                <Input
+                  id="edit-name"
+                  value={editData.Cliente || editData.cliente || ""}
+                  onChange={(e) => updateEditField("Cliente", e.target.value)}
+                />
+              </div>
+
+              {/* CPF/CNPJ */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-document">CPF/CNPJ</Label>
+                <Input
+                  id="edit-document"
+                  value={editData["CPF/CNPJ"] || editData.cpf_cnpj || ""}
+                  onChange={(e) => updateEditField("CPF/CNPJ", e.target.value)}
+                />
+              </div>
+
+              {/* Email */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editData.Email || editData.email || editData._customer_email || ""}
+                  onChange={(e) => updateEditField("Email", e.target.value)}
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+
+              {/* Phone 1 */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone1">Telefone 1</Label>
+                <Input
+                  id="edit-phone1"
+                  value={editData["Telefone 1"] || editData.telefone_1 || editData._customer_phone || ""}
+                  onChange={(e) => updateEditField("Telefone 1", e.target.value)}
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+
+              {/* Phone 2 */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone2">Telefone 2</Label>
+                <Input
+                  id="edit-phone2"
+                  value={editData["Telefone 2"] || editData.telefone_2 || ""}
+                  onChange={(e) => updateEditField("Telefone 2", e.target.value)}
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+
+              {/* City */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-city">Cidade</Label>
+                <Input
+                  id="edit-city"
+                  value={editData.Cidade || editData.cidade || ""}
+                  onChange={(e) => updateEditField("Cidade", e.target.value)}
+                />
+              </div>
+
+              {/* Address */}
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="edit-address">Endereço</Label>
+                <Input
+                  id="edit-address"
+                  value={editData.Endereco || editData.endereco || editData.Rua || editData.rua || ""}
+                  onChange={(e) => updateEditField("Endereco", e.target.value)}
+                />
+              </div>
+
+              {/* Bairro */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-bairro">Bairro</Label>
+                <Input
+                  id="edit-bairro"
+                  value={editData.Bairro || editData.bairro || ""}
+                  onChange={(e) => updateEditField("Bairro", e.target.value)}
+                />
+              </div>
+
+              {/* CEP */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-cep">CEP</Label>
+                <Input
+                  id="edit-cep"
+                  value={editData.CEP || editData.cep || ""}
+                  onChange={(e) => updateEditField("CEP", e.target.value)}
+                  placeholder="00000-000"
+                />
+              </div>
+
+              {/* UF */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-uf">UF</Label>
+                <Input
+                  id="edit-uf"
+                  value={editData.UF || editData.uf || ""}
+                  onChange={(e) => updateEditField("UF", e.target.value)}
+                  maxLength={2}
+                  placeholder="SP"
+                />
+              </div>
+
+              {/* Debt Value */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-debt">Valor da Dívida</Label>
+                <Input
+                  id="edit-debt"
+                  value={editData.Vencido || editData.vencido || editData.valor || ""}
+                  onChange={(e) => updateEditField("Vencido", e.target.value)}
+                  placeholder="R$ 0,00"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEditModal(false)
+                setEditingCustomer(null)
+                setEditData(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveClient}
+              disabled={savingEdit || loadingEdit}
+            >
+              {savingEdit ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
