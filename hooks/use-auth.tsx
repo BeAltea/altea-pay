@@ -4,6 +4,7 @@ import type React from "react"
 import { createContext, useContext, useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
+import { secureSignOut, recordSessionStart } from "@/lib/auth-utils"
 
 interface Profile {
   id: string
@@ -105,6 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session.user)
         lastFetchRef.current = 0
         fetchUser()
+        // Record session start for timeout tracking
+        recordSessionStart()
       } else {
         setUser(null)
         setProfile(null)
@@ -118,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    await secureSignOut({ reason: "user_initiated" })
     setUser(null)
     setProfile(null)
   }

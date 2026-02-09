@@ -14,6 +14,7 @@ import { useMobileUserSidebar } from "./user-sidebar"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Home, CreditCard, History, MessageSquare, BarChart3 } from "lucide-react"
+import { secureSignOut } from "@/lib/auth-utils"
 
 interface UserHeaderProps {
   user?: {
@@ -103,36 +104,11 @@ export function UserHeader({ user }: UserHeaderProps) {
 
   const handleSignOut = async () => {
     console.log("[v0] UserHeader - Sign out initiated")
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error("[v0] UserHeader - Sign out error:", error)
-        toast({
-          title: "Erro",
-          description: "Erro ao fazer logout. Tente novamente.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("[v0] UserHeader - Sign out successful, redirecting...")
-      toast({
-        title: "Logout realizado",
-        description: "Você foi desconectado com sucesso.",
-      })
-
-      // Force redirect to login page
-      window.location.href = "/auth/login"
-    } catch (error) {
-      console.error("[v0] UserHeader - Sign out exception:", error)
-      toast({
-        title: "Erro",
-        description: "Erro inesperado ao fazer logout.",
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Logout realizado",
+      description: "Voce foi desconectado com sucesso.",
+    })
+    await secureSignOut({ reason: "user_initiated" })
   }
 
   const handleThemeToggle = () => {

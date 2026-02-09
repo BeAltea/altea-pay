@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/hooks/use-auth"
+import { SessionMonitor } from "@/components/session-monitor"
 import { Suspense } from "react"
 import "./globals.css"
 
@@ -56,7 +57,10 @@ export default function RootLayout({
       <body className={`font-sans ${inter.variable} ${jetbrainsMono.variable}`}>
         <Suspense fallback={null}>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <SessionMonitor />
+              {children}
+            </AuthProvider>
             <Toaster />
             <SonnerToaster position="top-right" />
           </ThemeProvider>
