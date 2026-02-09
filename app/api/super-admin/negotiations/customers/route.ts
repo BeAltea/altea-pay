@@ -74,18 +74,18 @@ export async function GET(request: NextRequest) {
       .eq("company_id", companyId)
 
     // Build maps for document -> customer id and document -> contact info
-    const customerIdToDoc = new Map<string, string>()
+    // IMPORTANT: All documents must be normalized (digits only) for consistent lookups
+    const customerIdToNormalizedDoc = new Map<string, string>()
     const docToContactInfo = new Map<string, { email: string | null; phone: string | null }>()
     for (const c of dbCustomers || []) {
-      customerIdToDoc.set(c.id, c.document)
-      // Store contact info by document (normalized - digits only)
       const normalizedDoc = (c.document || "").replace(/\D/g, "")
       if (normalizedDoc) {
+        customerIdToNormalizedDoc.set(c.id, normalizedDoc)
         docToContactInfo.set(normalizedDoc, { email: c.email, phone: c.phone })
       }
     }
 
-    // Build maps for agreement status by customer document
+    // Build maps for agreement status by customer document (normalized)
     const docsWithActiveAgreements = new Set<string>()
     const docsWithPaidAgreements = new Set<string>()
     const docsWithCancelledAgreements = new Set<string>() // Cancelled negotiations
@@ -98,21 +98,21 @@ export async function GET(request: NextRequest) {
       agreementStatus: string | null;
     }>()
     for (const a of agreements || []) {
-      const doc = customerIdToDoc.get(a.customer_id)
-      if (doc) {
+      const normalizedDoc = customerIdToNormalizedDoc.get(a.customer_id)
+      if (normalizedDoc) {
         if (a.status === "cancelled") {
-          docsWithCancelledAgreements.add(doc)
+          docsWithCancelledAgreements.add(normalizedDoc)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
-          docsWithAnyNegotiation.add(doc) // Track active/pending/completed negotiations
+          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed negotiations
           if (a.status === "completed") {
-            docsWithPaidAgreements.add(doc)
+            docsWithPaidAgreements.add(normalizedDoc)
           } else {
-            docsWithActiveAgreements.add(doc)
+            docsWithActiveAgreements.add(normalizedDoc)
           }
         }
         // Store the payment status for this customer (latest agreement takes precedence)
-        docToPaymentStatus.set(doc, {
+        docToPaymentStatus.set(normalizedDoc, {
           paymentStatus: a.payment_status || null,
           asaasStatus: a.asaas_status || null,
           agreementId: a.id || null,

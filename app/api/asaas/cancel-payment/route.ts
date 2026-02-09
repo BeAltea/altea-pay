@@ -19,7 +19,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { agreementId, asaasPaymentId, vmaxId, companyId } = body
 
-    console.log("[ASAAS Cancel] Request:", { agreementId, asaasPaymentId, vmaxId })
+    console.log("=".repeat(60))
+    console.log("[ASAAS Cancel] Starting cancellation...")
+    console.log("[ASAAS Cancel] Input:", { agreementId, asaasPaymentId, vmaxId, companyId })
 
     // Validate required fields
     if (!asaasPaymentId) {
@@ -84,6 +86,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Update agreement status if agreementId provided
+    if (!agreementId) {
+      console.log("[ASAAS Cancel] WARNING: No agreementId provided - agreement table NOT updated")
+    }
     if (agreementId) {
       const { error: agreementError } = await supabase
         .from("agreements")
@@ -124,6 +129,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Update VMAX negotiation_status back to empty if vmaxId provided
+    if (!vmaxId) {
+      console.log("[ASAAS Cancel] WARNING: No vmaxId provided - VMAX table NOT updated")
+    }
     if (vmaxId) {
       const { error: vmaxError } = await supabase
         .from("VMAX")
@@ -140,9 +148,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log("[ASAAS Cancel] COMPLETE - All updates applied")
+    console.log("=".repeat(60))
+
     return NextResponse.json({
       success: true,
       message: "Negotiation cancelled successfully",
+      updated: {
+        asaasPayment: asaasPaymentId,
+        agreement: agreementId || null,
+        vmax: vmaxId || null,
+      }
     })
 
   } catch (error: any) {
