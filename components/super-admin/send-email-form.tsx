@@ -533,6 +533,33 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                       </div>
                     </RadioGroup>
                   </div>
+
+                  {/* Sort by Tempo Dívida */}
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">
+                      Ordenar por Tempo Dívida
+                    </Label>
+                    <Select
+                      value={sortField === "dias" ? sortDirection : "none"}
+                      onValueChange={(value) => {
+                        if (value === "none") {
+                          setSortField(null)
+                        } else {
+                          setSortField("dias")
+                          setSortDirection(value as SortDirection)
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full md:w-[250px]">
+                        <SelectValue placeholder="Sem ordenação" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem ordenação</SelectItem>
+                        <SelectItem value="desc">Maior tempo primeiro</SelectItem>
+                        <SelectItem value="asc">Menor tempo primeiro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Quick Actions */}
