@@ -15,13 +15,8 @@ import {
   Send,
   Mail,
   Percent,
-  ArrowUpRight,
-  ArrowDownRight,
 } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,26 +30,6 @@ import {
 interface Company {
   id: string
   name: string
-}
-
-interface VmaxRecord {
-  id: string
-  id_company: string
-  Vencido: string
-  "CPF/CNPJ": string
-  "Dias Inad.": string | number
-  negotiation_status?: string
-  Cliente?: string
-}
-
-interface Agreement {
-  id: string
-  customer_id: string
-  company_id: string
-  status: string
-  asaas_status?: string
-  agreed_amount?: number
-  created_at: string
 }
 
 interface MonthlyData {
@@ -73,6 +48,17 @@ interface CompanyStats {
   recoveryRate: number
   negSent: number
   negPaid: number
+}
+
+interface GlobalMetrics {
+  empresasAtivas: number
+  totalClientes: number
+  dividaTotal: number
+  totalRecebido: number
+  recuperacao: number
+  negEnviadas: number
+  negAbertas: number
+  negPagasRate: number
 }
 
 // Format currency in BRL
@@ -95,128 +81,37 @@ function formatCompactBRL(value: number): string {
   return formatBRL(value)
 }
 
-// Parse VMAX currency value
-function parseVencido(v: VmaxRecord): number {
-  const vencidoStr = String(v.Vencido || "0")
-  const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-  return Number(cleanValue) || 0
-}
-
-// Check if VMAX record is paid
-function isPaid(v: VmaxRecord, paidDocs: Set<string>): boolean {
-  const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
-  return paidDocs.has(doc) || v.negotiation_status === "PAGO"
-}
-
 export default function ReportsPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("all")
   const [timeRange, setTimeRange] = useState<"12" | "24">("12")
   const [loading, setLoading] = useState(true)
 
-  // Data state
+  // Data state from API
   const [companies, setCompanies] = useState<Company[]>([])
-  const [vmaxData, setVmaxData] = useState<VmaxRecord[]>([])
-  const [agreements, setAgreements] = useState<Agreement[]>([])
-  const [paidDocsByCompany, setPaidDocsByCompany] = useState<Map<string, Set<string>>>(new Map())
+  const [companyStats, setCompanyStats] = useState<CompanyStats[]>([])
+  const [globalMetrics, setGlobalMetrics] = useState<GlobalMetrics | null>(null)
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
 
-  // Fetch all data
+  // Fetch all data from API
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const supabase = createBrowserClient()
-        console.log("[Reports] Loading data...")
+        console.log("[Reports] Loading data from API...")
+        const response = await fetch("/api/super-admin/reports/stats", {
+          cache: "no-store",
+        })
 
-        // Fetch companies
-        const { data: companiesData } = await supabase
-          .from("companies")
-          .select("id, name")
-          .order("name")
-
-        setCompanies(companiesData || [])
-
-        // Fetch VMAX data with pagination
-        let allVmax: VmaxRecord[] = []
-        let page = 0
-        const pageSize = 1000
-        let hasMore = true
-
-        while (hasMore) {
-          const { data: vmaxPage } = await supabase
-            .from("VMAX")
-            .select('id, id_company, Vencido, "CPF/CNPJ", "Dias Inad.", negotiation_status, Cliente')
-            .range(page * pageSize, (page + 1) * pageSize - 1)
-
-          if (vmaxPage && vmaxPage.length > 0) {
-            allVmax = [...allVmax, ...vmaxPage]
-            page++
-            hasMore = vmaxPage.length === pageSize
-          } else {
-            hasMore = false
-          }
-        }
-        setVmaxData(allVmax)
-        console.log("[Reports] VMAX loaded:", allVmax.length)
-
-        // Fetch agreements with pagination
-        let allAgreements: Agreement[] = []
-        page = 0
-        hasMore = true
-
-        while (hasMore) {
-          const { data: agreementsPage } = await supabase
-            .from("agreements")
-            .select("id, customer_id, company_id, status, asaas_status, agreed_amount, created_at")
-            .range(page * pageSize, (page + 1) * pageSize - 1)
-
-          if (agreementsPage && agreementsPage.length > 0) {
-            allAgreements = [...allAgreements, ...agreementsPage]
-            page++
-            hasMore = agreementsPage.length === pageSize
-          } else {
-            hasMore = false
-          }
-        }
-        setAgreements(allAgreements)
-        console.log("[Reports] Agreements loaded:", allAgreements.length)
-
-        // Fetch customers for document mapping
-        const { data: customers } = await supabase
-          .from("customers")
-          .select("id, document, company_id")
-
-        // Build paid documents map
-        const customerIdToDoc = new Map<string, string>()
-        for (const c of customers || []) {
-          if (c.document) {
-            customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
-          }
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
         }
 
-        // Source of truth: Negotiations page checks status === "completed" OR asaas_status in ["RECEIVED", "CONFIRMED"]
-        const paidDocsMap = new Map<string, Set<string>>()
-        for (const a of allAgreements) {
-          const isPaidAgreement =
-            a.status === "completed" ||
-            a.status === "paid" ||
-            a.asaas_status === "RECEIVED" ||
-            a.asaas_status === "CONFIRMED"
-          if (isPaidAgreement) {
-            const doc = customerIdToDoc.get(a.customer_id)
-            if (doc && a.company_id) {
-              if (!paidDocsMap.has(a.company_id)) {
-                paidDocsMap.set(a.company_id, new Set())
-              }
-              paidDocsMap.get(a.company_id)!.add(doc)
-            }
-          }
-        }
-        setPaidDocsByCompany(paidDocsMap)
+        const data = await response.json()
+        console.log("[Reports] Data loaded:", data)
 
-        // Generate monthly data for chart
-        const months = generateMonthlyChartData(allAgreements, allVmax, 24)
-        setMonthlyData(months)
-
+        setCompanies(data.companies || [])
+        setCompanyStats(data.companyStats || [])
+        setGlobalMetrics(data.globalMetrics || null)
+        setMonthlyData(data.monthlyData || [])
       } catch (error) {
         console.error("[Reports] Error loading data:", error)
       } finally {
@@ -227,184 +122,52 @@ export default function ReportsPage() {
     fetchData()
   }, [])
 
-  // Generate monthly chart data
-  function generateMonthlyChartData(
-    allAgreements: Agreement[],
-    allVmax: VmaxRecord[],
-    monthsCount: number
-  ): MonthlyData[] {
-    const data: MonthlyData[] = []
-    const now = new Date()
-
-    for (let i = monthsCount - 1; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-      const label = date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "")
-
-      // Calculate received amount for this month (from paid agreements)
-      // Aligned with Negotiations page: paid = status completed/paid OR asaas_status RECEIVED/CONFIRMED
-      const monthReceived = allAgreements
-        .filter((a) => {
-          const isPaidAgreement =
-            a.status === "completed" ||
-            a.status === "paid" ||
-            a.asaas_status === "RECEIVED" ||
-            a.asaas_status === "CONFIRMED"
-          if (!isPaidAgreement) return false
-          const aDate = new Date(a.created_at)
-          return (
-            aDate.getFullYear() === date.getFullYear() &&
-            aDate.getMonth() === date.getMonth()
-          )
-        })
-        .reduce((sum, a) => sum + (a.agreed_amount || 0), 0)
-
-      // Estimate debt for this month (simplified - total divided by months)
-      const totalDebt = allVmax.reduce((sum, v) => sum + parseVencido(v), 0)
-      const monthDebt = totalDebt / monthsCount
-
-      data.push({
-        month: monthKey,
-        label,
-        received: monthReceived,
-        debt: monthDebt,
-      })
-    }
-
-    return data
-  }
-
   // Calculate metrics based on selected company
   const metrics = useMemo(() => {
-    const companyFilter = selectedCompanyId === "all"
-      ? null
-      : selectedCompanyId
-
-    // Filter VMAX data
-    const filteredVmax = companyFilter
-      ? vmaxData.filter((v) => v.id_company === companyFilter)
-      : vmaxData
-
-    // Filter agreements
-    const filteredAgreements = companyFilter
-      ? agreements.filter((a) => a.company_id === companyFilter)
-      : agreements
-
-    // Get paid docs for filtered companies
-    const getPaidDocs = (companyId: string): Set<string> => {
-      return paidDocsByCompany.get(companyId) || new Set()
+    if (!globalMetrics) {
+      return {
+        empresasAtivas: 0,
+        totalClientes: 0,
+        dividaTotal: 0,
+        totalRecebido: 0,
+        recuperacao: 0,
+        negEnviadas: 0,
+        negAbertas: 0,
+        negPagasRate: 0,
+      }
     }
 
-    // Calculate metrics
-    const uniqueCompanies = new Set(filteredVmax.map((v) => v.id_company))
-    const uniqueClients = new Set(filteredVmax.map((v) => v["CPF/CNPJ"]?.replace(/\D/g, "")))
+    if (selectedCompanyId === "all") {
+      return globalMetrics
+    }
 
-    let totalDebt = 0
-    let totalReceived = 0
+    // Find the selected company stats
+    const companyStat = companyStats.find((c) => c.id === selectedCompanyId)
+    if (!companyStat) {
+      return globalMetrics
+    }
 
-    filteredVmax.forEach((v) => {
-      const amount = parseVencido(v)
-      const companyPaidDocs = getPaidDocs(v.id_company)
-      if (isPaid(v, companyPaidDocs)) {
-        totalReceived += amount
-      } else {
-        totalDebt += amount
-      }
-    })
-
-    const totalOriginal = totalDebt + totalReceived
-    const recoveryRate = totalOriginal > 0 ? (totalReceived / totalOriginal) * 100 : 0
-
-    // Negotiations metrics - aligned with Negotiations page (source of truth)
-    // A negotiation is "paid" if status is completed/paid OR asaas_status is RECEIVED/CONFIRMED
-    const isPaidAgreement = (a: Agreement) =>
-      a.status === "completed" ||
-      a.status === "paid" ||
-      a.asaas_status === "RECEIVED" ||
-      a.asaas_status === "CONFIRMED"
-
-    // Sent: non-cancelled agreements (excludes draft and cancelled - they were never actually sent)
-    const negSent = filteredAgreements.filter(
-      (a) => a.status !== "cancelled" && a.status !== "draft"
-    ).length
-
-    // Open: active agreements that are NOT paid and NOT cancelled
-    const negOpened = filteredAgreements.filter(
-      (a) =>
-        (a.status === "active" || a.status === "pending") &&
-        !isPaidAgreement(a)
-    ).length
-
-    // Paid: agreements confirmed as paid
-    const negPaid = filteredAgreements.filter(isPaidAgreement).length
-
-    const negPaidRate = negSent > 0 ? (negPaid / negSent) * 100 : 0
+    const negPaidRate = companyStat.negSent > 0
+      ? (companyStat.negPaid / companyStat.negSent) * 100
+      : 0
 
     return {
-      empresasAtivas: companyFilter ? 1 : uniqueCompanies.size,
-      totalClientes: uniqueClients.size,
-      dividaTotal: totalDebt,
-      totalRecebido: totalReceived,
-      recuperacao: recoveryRate,
-      negEnviadas: negSent,
-      negAbertas: negOpened,
+      empresasAtivas: 1,
+      totalClientes: companyStat.clients,
+      dividaTotal: companyStat.totalDebt,
+      totalRecebido: companyStat.received,
+      recuperacao: companyStat.recoveryRate,
+      negEnviadas: companyStat.negSent,
+      negAbertas: 0, // Not tracked per-company in current API
       negPagasRate: negPaidRate,
     }
-  }, [selectedCompanyId, vmaxData, agreements, paidDocsByCompany])
-
-  // Calculate per-company stats
-  const companyStats = useMemo((): CompanyStats[] => {
-    return companies.map((company) => {
-      const companyVmax = vmaxData.filter((v) => v.id_company === company.id)
-      const companyAgreements = agreements.filter((a) => a.company_id === company.id)
-      const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
-
-      const uniqueClients = new Set(companyVmax.map((v) => v["CPF/CNPJ"]?.replace(/\D/g, "")))
-
-      let debt = 0
-      let received = 0
-      companyVmax.forEach((v) => {
-        const amount = parseVencido(v)
-        if (isPaid(v, companyPaidDocs)) {
-          received += amount
-        } else {
-          debt += amount
-        }
-      })
-
-      const total = debt + received
-      const rate = total > 0 ? (received / total) * 100 : 0
-
-      // Aligned with Negotiations page (source of truth)
-      const isPaidAgreement = (a: Agreement) =>
-        a.status === "completed" ||
-        a.status === "paid" ||
-        a.asaas_status === "RECEIVED" ||
-        a.asaas_status === "CONFIRMED"
-
-      const negSent = companyAgreements.filter(
-        (a) => a.status !== "cancelled" && a.status !== "draft"
-      ).length
-
-      const negPaid = companyAgreements.filter(isPaidAgreement).length
-
-      return {
-        id: company.id,
-        name: company.name,
-        clients: uniqueClients.size,
-        totalDebt: debt,
-        received,
-        recoveryRate: rate,
-        negSent,
-        negPaid,
-      }
-    }).sort((a, b) => b.recoveryRate - a.recoveryRate)
-  }, [companies, vmaxData, agreements, paidDocsByCompany])
+  }, [selectedCompanyId, globalMetrics, companyStats])
 
   // Filter chart data by time range
+  // Take the FIRST 12 or 24 months (starting from 1 month before current)
   const chartData = useMemo(() => {
     const count = timeRange === "12" ? 12 : 24
-    return monthlyData.slice(-count)
+    return monthlyData.slice(0, count)
   }, [monthlyData, timeRange])
 
   // Handle company row click

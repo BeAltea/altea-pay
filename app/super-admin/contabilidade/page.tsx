@@ -889,7 +889,7 @@ export default function ContabilidadePage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold">Contabilidade</h1>
           <p className="text-muted-foreground mt-1">
-            Gere relatorios de contabilidade com calculo de lucro por faixa de dias vencidos.
+            Gere relatórios de contabilidade com cálculo de lucro por faixa de dias de vencimento da dívida.
           </p>
         </div>
         {currentStep !== "company" && (
@@ -1014,7 +1014,7 @@ export default function ContabilidadePage() {
           <CardHeader>
             <CardTitle>{editingSetup ? "Editar Setup" : "Novo Setup"}</CardTitle>
             <CardDescription>
-              Configure as regras de porcentagem de lucro por faixa de dias vencidos.
+              Configure as regras de porcentagem de lucro por faixa de dias de vencimento da dívida.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -1045,7 +1045,10 @@ export default function ContabilidadePage() {
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label>Regras de Lucro</Label>
+                <div>
+                  <Label>Regras de Lucro</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Defina a porcentagem de lucro por faixa de dias de vencimento da dívida</p>
+                </div>
                 <Button variant="outline" size="sm" onClick={handleAddRule}>
                   <Plus className="h-4 w-4 mr-1" />
                   Adicionar Regra
@@ -1074,7 +1077,7 @@ export default function ContabilidadePage() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">
-                        {rule.operator === "entre" ? "Dias de" : "Dias"}
+                        {rule.operator === "entre" ? "Dias de Vencimento (de)" : "Dias de Vencimento"}
                       </Label>
                       <Input
                         type="number"
@@ -1085,7 +1088,7 @@ export default function ContabilidadePage() {
                     </div>
                     {rule.operator === "entre" && (
                       <div className="space-y-1">
-                        <Label className="text-xs">ate (vazio = sem limite)</Label>
+                        <Label className="text-xs">Dias de Vencimento (até)</Label>
                         <Input
                           type="number"
                           min="0"
