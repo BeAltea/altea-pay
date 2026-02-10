@@ -20,6 +20,7 @@ import {
   Mail,
   Handshake,
   Calculator,
+  FileUp,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -123,6 +124,11 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           name: "Negociações",
           href: "/super-admin/negotiations",
           icon: Handshake,
+        },
+        {
+          name: "Importar Dados",
+          href: "/super-admin/importar-dados",
+          icon: FileUp,
         },
       ],
     },
