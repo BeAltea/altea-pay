@@ -206,13 +206,13 @@ export default async function SendEmailPage() {
     <div className="min-h-screen w-full overflow-x-hidden bg-background space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Enviar Email</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Central de Emails</h1>
         <p className="text-muted-foreground">
-          Envie emails em massa para clientes de uma empresa especifica.
+          Envie emails em massa e acompanhe as estatisticas de entrega.
         </p>
       </div>
 
-      {/* Tabs: Send Email and Activity */}
+      {/* Tabs */}
       <SendEmailPageClient
         companies={companies}
         recipientsMap={recipientsMap}
