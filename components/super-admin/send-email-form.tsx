@@ -1152,9 +1152,9 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
       </Dialog>
 
       {/* Send Result Modal */}
-      <Dialog open={sendModal.isOpen} onOpenChange={(open) => !open && handleCloseSendModal()}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+      <Dialog open={sendModal.isOpen} onOpenChange={(open) => { if (!open) handleCloseSendModal() }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               {sendModal.totalFailed === 0 ? (
                 <>
@@ -1173,26 +1173,54 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                 </>
               )}
             </DialogTitle>
-            <DialogDescription className="space-y-1">
-              <div className="flex items-center gap-4 text-sm">
-                <span>
-                  <strong>Total enviados:</strong> {sendModal.totalSent} de {sendModal.totalAttempted}
-                </span>
-                <span>
-                  <strong>Data/Hora:</strong> {sendModal.sentAt ? formatDateBrazilian(sendModal.sentAt) : "—"}
-                </span>
+            <DialogDescription asChild>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <span>
+                    <strong>Total enviados:</strong> {sendModal.totalSent} de {sendModal.totalAttempted}
+                  </span>
+                  <span>
+                    <strong>Data/Hora:</strong> {sendModal.sentAt ? formatDateBrazilian(sendModal.sentAt) : "—"}
+                  </span>
+                </div>
+
+                {/* Error Summary */}
+                {sendModal.totalFailed > 0 && (() => {
+                  const errorCounts = sendModal.recipients
+                    .filter(r => !r.success && r.error)
+                    .reduce((acc, r) => {
+                      const error = r.error || "Erro desconhecido"
+                      acc[error] = (acc[error] || 0) + 1
+                      return acc
+                    }, {} as Record<string, number>)
+
+                  const sortedErrors = Object.entries(errorCounts).sort((a, b) => b[1] - a[1])
+
+                  return (
+                    <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">
+                        Resumo de falhas:
+                      </p>
+                      <ul className="text-xs text-red-600 dark:text-red-400 space-y-1">
+                        {sortedErrors.map(([error, count]) => (
+                          <li key={error}>• {error}: <strong>{count}</strong> email(s)</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })()}
               </div>
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 max-h-[50vh] rounded-md border">
-            <div className="p-4">
+          <div className="flex-1 min-h-0 overflow-hidden rounded-md border my-4">
+            <div className="h-full overflow-y-auto">
               {/* Table Header */}
-              <div className="flex items-center gap-3 p-3 border-b bg-muted/50 rounded-t-lg font-medium text-sm sticky top-0">
+              <div className="flex items-center gap-3 p-3 border-b bg-muted/50 font-medium text-sm sticky top-0 z-10">
                 <div className="w-8 text-center">#</div>
                 <div className="flex-1 min-w-0">Nome</div>
                 <div className="w-48 hidden sm:block">Email</div>
-                <div className="w-28 text-center">Status</div>
+                <div className="w-24 text-center">Status</div>
               </div>
 
               {/* Recipient Rows */}
@@ -1200,9 +1228,9 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                 {sendModal.recipients.map((recipient, index) => (
                   <div
                     key={recipient.id}
-                    className="flex items-center gap-3 p-3 hover:bg-muted/30"
+                    className={`flex items-start gap-3 p-3 ${!recipient.success ? 'bg-red-50/50 dark:bg-red-950/20' : 'hover:bg-muted/30'}`}
                   >
-                    <div className="w-8 text-center text-sm text-muted-foreground">
+                    <div className="w-8 text-center text-sm text-muted-foreground pt-0.5">
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1211,13 +1239,15 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                         {recipient.email}
                       </p>
                       {recipient.error && (
-                        <p className="text-xs text-red-500 mt-1">{recipient.error}</p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1 break-words">
+                          {recipient.error}
+                        </p>
                       )}
                     </div>
                     <div className="w-48 hidden sm:block">
                       <p className="text-xs text-muted-foreground truncate">{recipient.email}</p>
                     </div>
-                    <div className="w-28 text-center">
+                    <div className="w-24 text-center flex-shrink-0">
                       {recipient.success ? (
                         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -1234,10 +1264,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                 ))}
               </div>
             </div>
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="mt-4">
-            <Button onClick={handleCloseSendModal}>
+          <DialogFooter className="flex-shrink-0 border-t pt-4">
+            <Button onClick={handleCloseSendModal} className="w-full sm:w-auto">
               Fechar
             </Button>
           </DialogFooter>
