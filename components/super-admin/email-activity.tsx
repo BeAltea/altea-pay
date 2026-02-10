@@ -179,13 +179,13 @@ function StatCard({
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-lg" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-6 w-16" />
+      <Card className="h-full">
+        <CardContent className="p-4 h-full">
+          <div className="flex items-center gap-3 h-full">
+            <Skeleton className="h-10 w-10 rounded-lg flex-shrink-0" />
+            <div className="space-y-2 flex-1 min-w-0">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-6 w-12" />
             </div>
           </div>
         </CardContent>
@@ -194,20 +194,20 @@ function StatCard({
   }
 
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-lg ${colorClasses[color]}`}>
+    <Card className="h-full">
+      <CardContent className="p-4 h-full">
+        <div className="flex items-center gap-3 h-full">
+          <div className={`p-2.5 rounded-lg flex-shrink-0 ${colorClasses[color]}`}>
             <Icon className="h-5 w-5" />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1">
-              <p className="text-sm text-muted-foreground">{title}</p>
+              <p className="text-sm text-muted-foreground truncate">{title}</p>
               {tooltip && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger>
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
                       <p className="text-xs">{tooltip}</p>
@@ -216,7 +216,7 @@ function StatCard({
                 </TooltipProvider>
               )}
             </div>
-            <p className="text-2xl font-bold">
+            <p className="text-2xl font-bold truncate">
               {value.toLocaleString("pt-BR")}
               {percentage !== undefined && (
                 <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -441,7 +441,7 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         <StatCard
           title="Enviados"
           value={summary.totalSent}
@@ -585,9 +585,11 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                         <div className="text-center">
                           <Badge variant="secondary">{batch.totalSent}</Badge>
                           {hasDuplicates && (
-                            <Badge className="ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Destinatarios duplicados">
-                              {batch.duplicates.length}
-                            </Badge>
+                            <div className="mt-0.5">
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400" title="Destinatarios duplicados">
+                                ({batch.duplicates.length} dup)
+                              </span>
+                            </div>
                           )}
                         </div>
                         <div className="text-center">
