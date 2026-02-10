@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import { SendEmailForm } from "@/components/super-admin/send-email-form"
+import { SendEmailPageClient } from "@/components/super-admin/send-email-page-client"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -208,12 +208,12 @@ export default async function SendEmailPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Enviar Email</h1>
         <p className="text-muted-foreground">
-          Envie emails em massa para clientes de uma empresa específica.
+          Envie emails em massa para clientes de uma empresa especifica.
         </p>
       </div>
 
-      {/* Form */}
-      <SendEmailForm
+      {/* Tabs: Send Email and Activity */}
+      <SendEmailPageClient
         companies={companies}
         recipientsMap={recipientsMap}
         emailTrackingMap={emailTrackingMap}
