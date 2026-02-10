@@ -340,51 +340,80 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setIsErrorDetailsOpen(false)
 
     try {
-      const response = await fetch("/api/super-admin/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId: isTestMode ? null : selectedCompanyId,
-          recipients: isTestMode
-            ? testEmails.map((email) => ({ id: `test-${email}`, email }))
-            : selectedRecipientsData,
-          subject,
-          htmlBody,
-          isTestMode,
-        }),
-      })
+      const recipientsList = isTestMode
+        ? testEmails.map((email) => ({ id: `test-${email}`, email }))
+        : selectedRecipientsData
 
-      const data = await response.json()
+      // Send in batches of 10 to avoid timeouts
+      const BATCH_SIZE = 10
+      const batches = []
+      for (let i = 0; i < recipientsList.length; i += BATCH_SIZE) {
+        batches.push(recipientsList.slice(i, i + BATCH_SIZE))
+      }
 
-      if (!response.ok) {
-        setResult({
-          success: false,
-          message: data.error || "Erro ao enviar email",
-        })
-      } else {
-        setResult({
-          success: data.totalFailed === 0,
-          message: data.message,
-          totalSent: data.totalSent,
-          totalFailed: data.totalFailed,
-          failedDetails: data.failedDetails,
+      let totalSent = 0
+      let totalFailed = 0
+      const allFailedDetails: { email: string; error: string }[] = []
+
+      for (const batch of batches) {
+        const response = await fetch("/api/super-admin/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: isTestMode ? null : selectedCompanyId,
+            recipients: batch,
+            subject,
+            htmlBody,
+            isTestMode,
+          }),
         })
 
-        // Only reset form on complete success
-        if (data.totalFailed === 0) {
-          if (isTestMode) {
-            setTestEmailsInput("")
-          } else {
-            setSelectedRecipientIds(new Set())
-          }
-          setSubject("")
-          setHtmlBody("")
+        // Check content-type before parsing as JSON
+        const contentType = response.headers.get("content-type")
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await response.text()
+          throw new Error(`Servidor retornou resposta inválida: ${text.substring(0, 100)}...`)
         }
 
-        // Refresh the page data to update email tracking status
-        // This refreshes server components without a full page reload
-        router.refresh()
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "Erro ao enviar email")
+        }
+
+        totalSent += data.totalSent || 0
+        totalFailed += data.totalFailed || 0
+        if (data.failedDetails) {
+          allFailedDetails.push(...data.failedDetails)
+        }
       }
+
+      const modeLabel = isTestMode ? " (modo de teste)" : ""
+      setResult({
+        success: totalFailed === 0,
+        message: totalFailed === 0
+          ? `Email enviado com sucesso para ${totalSent} usuário(s)${modeLabel}`
+          : `Email enviado para ${totalSent} usuário(s). Falha ao enviar para ${totalFailed} usuário(s).${modeLabel}`,
+        totalSent,
+        totalFailed,
+        failedDetails: allFailedDetails.length > 0 ? allFailedDetails : undefined,
+      })
+
+      // Only reset form on complete success
+      if (totalFailed === 0) {
+        if (isTestMode) {
+          setTestEmailsInput("")
+        } else {
+          setSelectedRecipientIds(new Set())
+          setSelectionMode("none")
+        }
+        setSubject("")
+        setHtmlBody("")
+      }
+
+      // Refresh the page data to update email tracking status
+      // This refreshes server components without a full page reload
+      router.refresh()
     } catch (error) {
       setResult({
         success: false,
