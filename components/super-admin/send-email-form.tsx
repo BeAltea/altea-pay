@@ -35,6 +35,7 @@ import {
   Send,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Search,
   CheckSquare,
@@ -47,6 +48,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  XCircle,
 } from "lucide-react"
 
 interface Company {
@@ -90,6 +92,23 @@ interface SendResult {
   totalSent?: number
   totalFailed?: number
   failedDetails?: FailedDetail[]
+}
+
+interface RecipientSendResult {
+  id: string
+  name: string
+  email: string
+  success: boolean
+  error?: string
+}
+
+interface SendModalData {
+  isOpen: boolean
+  sentAt: string
+  totalAttempted: number
+  totalSent: number
+  totalFailed: number
+  recipients: RecipientSendResult[]
 }
 
 function formatDateBrazilian(isoDate: string): string {
@@ -146,6 +165,16 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
   // Expanded row state
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Send result modal state
+  const [sendModal, setSendModal] = useState<SendModalData>({
+    isOpen: false,
+    sentAt: "",
+    totalAttempted: 0,
+    totalSent: 0,
+    totalFailed: 0,
+    recipients: [],
+  })
 
   // Parse test emails
   const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
@@ -340,9 +369,18 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setIsErrorDetailsOpen(false)
 
     try {
-      const recipientsList = isTestMode
-        ? testEmails.map((email) => ({ id: `test-${email}`, email }))
-        : selectedRecipientsData
+      // Build recipient list with names for the modal
+      const recipientsWithNames: { id: string; name: string; email: string }[] = isTestMode
+        ? testEmails.map((email) => ({ id: `test-${email}`, name: email.split("@")[0], email }))
+        : companyRecipients
+            .filter((r) => selectedRecipientIds.has(r.id))
+            .map((r) => ({ id: r.id, name: r.name, email: r.email }))
+
+      const recipientsList = recipientsWithNames.map((r) => ({ id: r.id, email: r.email }))
+
+      // Build email -> name map for result matching
+      const emailToRecipient = new Map<string, { id: string; name: string; email: string }>()
+      recipientsWithNames.forEach((r) => emailToRecipient.set(r.email, r))
 
       // Send in batches of 10 to avoid timeouts
       const BATCH_SIZE = 10
@@ -353,7 +391,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
       let totalSent = 0
       let totalFailed = 0
-      const allFailedDetails: { email: string; error: string }[] = []
+      const allRecipientResults: RecipientSendResult[] = []
 
       for (const batch of batches) {
         const response = await fetch("/api/super-admin/send-email", {
@@ -383,20 +421,32 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
         totalSent += data.totalSent || 0
         totalFailed += data.totalFailed || 0
-        if (data.failedDetails) {
-          allFailedDetails.push(...data.failedDetails)
+
+        // Process results from API
+        if (data.results) {
+          for (const result of data.results) {
+            const recipient = emailToRecipient.get(result.email)
+            if (recipient) {
+              allRecipientResults.push({
+                id: recipient.id,
+                name: recipient.name,
+                email: result.email,
+                success: result.success,
+                error: result.error,
+              })
+            }
+          }
         }
       }
 
-      const modeLabel = isTestMode ? " (modo de teste)" : ""
-      setResult({
-        success: totalFailed === 0,
-        message: totalFailed === 0
-          ? `Email enviado com sucesso para ${totalSent} usuário(s)${modeLabel}`
-          : `Email enviado para ${totalSent} usuário(s). Falha ao enviar para ${totalFailed} usuário(s).${modeLabel}`,
+      // Show success modal
+      setSendModal({
+        isOpen: true,
+        sentAt: new Date().toISOString(),
+        totalAttempted: recipientsWithNames.length,
         totalSent,
         totalFailed,
-        failedDetails: allFailedDetails.length > 0 ? allFailedDetails : undefined,
+        recipients: allRecipientResults,
       })
 
       // Only reset form on complete success
@@ -410,10 +460,6 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
         setSubject("")
         setHtmlBody("")
       }
-
-      // Refresh the page data to update email tracking status
-      // This refreshes server components without a full page reload
-      router.refresh()
     } catch (error) {
       setResult({
         success: false,
@@ -441,6 +487,13 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
       }
     }
     return { sent: false, date: null, subject: null, history: [] }
+  }
+
+  // Handle closing the send result modal
+  const handleCloseSendModal = () => {
+    setSendModal((prev) => ({ ...prev, isOpen: false }))
+    // Refresh the page data to update email tracking status
+    router.refresh()
   }
 
   // Toggle expanded row
@@ -1092,6 +1145,99 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Result Modal */}
+      <Dialog open={sendModal.isOpen} onOpenChange={(open) => !open && handleCloseSendModal()}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {sendModal.totalFailed === 0 ? (
+                <>
+                  <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  <span className="text-green-600">Emails Enviados com Sucesso!</span>
+                </>
+              ) : sendModal.totalSent > 0 ? (
+                <>
+                  <AlertTriangle className="h-6 w-6 text-yellow-600" />
+                  <span className="text-yellow-600">Emails Parcialmente Enviados</span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-6 w-6 text-red-600" />
+                  <span className="text-red-600">Erro ao Enviar Emails</span>
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription className="space-y-1">
+              <div className="flex items-center gap-4 text-sm">
+                <span>
+                  <strong>Total enviados:</strong> {sendModal.totalSent} de {sendModal.totalAttempted}
+                </span>
+                <span>
+                  <strong>Data/Hora:</strong> {sendModal.sentAt ? formatDateBrazilian(sendModal.sentAt) : "—"}
+                </span>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="flex-1 max-h-[50vh] rounded-md border">
+            <div className="p-4">
+              {/* Table Header */}
+              <div className="flex items-center gap-3 p-3 border-b bg-muted/50 rounded-t-lg font-medium text-sm sticky top-0">
+                <div className="w-8 text-center">#</div>
+                <div className="flex-1 min-w-0">Nome</div>
+                <div className="w-48 hidden sm:block">Email</div>
+                <div className="w-28 text-center">Status</div>
+              </div>
+
+              {/* Recipient Rows */}
+              <div className="divide-y">
+                {sendModal.recipients.map((recipient, index) => (
+                  <div
+                    key={recipient.id}
+                    className="flex items-center gap-3 p-3 hover:bg-muted/30"
+                  >
+                    <div className="w-8 text-center text-sm text-muted-foreground">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{recipient.name}</p>
+                      <p className="text-xs text-muted-foreground truncate sm:hidden">
+                        {recipient.email}
+                      </p>
+                      {recipient.error && (
+                        <p className="text-xs text-red-500 mt-1">{recipient.error}</p>
+                      )}
+                    </div>
+                    <div className="w-48 hidden sm:block">
+                      <p className="text-xs text-muted-foreground truncate">{recipient.email}</p>
+                    </div>
+                    <div className="w-28 text-center">
+                      {recipient.success ? (
+                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Enviado
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Falhou
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="mt-4">
+            <Button onClick={handleCloseSendModal}>
               Fechar
             </Button>
           </DialogFooter>
