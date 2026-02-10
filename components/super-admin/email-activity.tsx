@@ -29,6 +29,8 @@ import {
   ChevronUp,
   Building2,
   FileText,
+  Users,
+  Copy,
 } from "lucide-react"
 
 interface Company {
@@ -44,6 +46,16 @@ interface EnrichedFailure {
   clientName?: string
 }
 
+interface DuplicateInfo {
+  email: string
+  clientName: string
+  timesSent: number
+  previousSends: Array<{
+    date: string
+    subject: string
+  }>
+}
+
 interface BatchSummary {
   id: string
   subject: string
@@ -52,16 +64,21 @@ interface BatchSummary {
   sentAt: string
   date: string
   totalSent: number
+  uniqueInBatch: number
+  duplicatesInBatch: number
   delivered: number
   deliveryRate: string
   bounces: EnrichedFailure[]
   blocks: EnrichedFailure[]
   invalid: EnrichedFailure[]
   spam: EnrichedFailure[]
+  duplicates: DuplicateInfo[]
 }
 
 interface AnalyticsSummary {
   totalSent: number
+  uniqueEmails: number
+  duplicates: number
   delivered: number
   bounces: number
   blocks: number
@@ -100,14 +117,16 @@ function StatCard({
   color,
   isLoading,
   tooltip,
+  highlight,
 }: {
   title: string
   value: number
   percentage?: number
   icon: React.ElementType
-  color: "blue" | "green" | "red" | "yellow" | "orange" | "purple"
+  color: "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "amber" | "teal"
   isLoading?: boolean
   tooltip?: string
+  highlight?: boolean
 }) {
   const colorClasses = {
     blue: "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30",
@@ -116,6 +135,8 @@ function StatCard({
     yellow: "text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30",
     orange: "text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30",
     purple: "text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30",
+    amber: "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30",
+    teal: "text-teal-600 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/30",
   }
 
   if (isLoading) {
@@ -135,7 +156,7 @@ function StatCard({
   }
 
   return (
-    <Card>
+    <Card className={highlight && value > 0 ? "border-amber-300 dark:border-amber-700" : ""}>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-lg ${colorClasses[color]}`}>
@@ -222,6 +243,8 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
 
   const summary = data?.summary || {
     totalSent: 0,
+    uniqueEmails: 0,
+    duplicates: 0,
     delivered: 0,
     bounces: 0,
     blocks: 0,
@@ -380,13 +403,31 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         <StatCard
           title="Enviados"
           value={summary.totalSent}
           icon={Mail}
           color="blue"
           isLoading={isLoading}
+          tooltip="Total de emails enviados (incluindo duplicados)"
+        />
+        <StatCard
+          title="Unicos"
+          value={summary.uniqueEmails}
+          icon={Users}
+          color="teal"
+          isLoading={isLoading}
+          tooltip="Destinatarios unicos que receberam pelo menos 1 email"
+        />
+        <StatCard
+          title="Duplicados"
+          value={summary.duplicates}
+          icon={Copy}
+          color="amber"
+          isLoading={isLoading}
+          tooltip="Emails enviados mais de uma vez para o mesmo destinatario em lotes diferentes"
+          highlight={true}
         />
         <StatCard
           title="Entregues"
@@ -395,14 +436,6 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
           icon={CheckCircle2}
           color="green"
           isLoading={isLoading}
-        />
-        <StatCard
-          title="Abertos"
-          value={0}
-          icon={Eye}
-          color="purple"
-          isLoading={isLoading}
-          tooltip="Dados de abertura requerem SendGrid Pro. Nao disponivel no plano atual."
         />
         <StatCard
           title="Bounces"
@@ -481,19 +514,21 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                 {/* Table Rows */}
                 {data.batches.map((batch) => {
                   const totalFailures = batch.bounces.length + batch.blocks.length + batch.invalid.length
+                  const hasDuplicates = batch.duplicates && batch.duplicates.length > 0
                   const hasFailures = totalFailures > 0 || batch.spam.length > 0
+                  const hasDetails = hasFailures || hasDuplicates
                   const isExpanded = expandedBatch === batch.id
 
                   return (
                     <div key={batch.id} className="border rounded-lg overflow-hidden">
                       <div
-                        onClick={() => handleBatchClick(batch.id, hasFailures)}
+                        onClick={() => hasDetails && (expandedBatch === batch.id ? setExpandedBatch(null) : setExpandedBatch(batch.id))}
                         className={`grid grid-cols-7 gap-4 p-3 transition-colors items-center ${
-                          hasFailures ? "cursor-pointer hover:bg-muted/30" : ""
+                          hasDetails ? "cursor-pointer hover:bg-muted/30" : ""
                         } ${isExpanded ? "bg-muted/30" : ""}`}
                       >
                         <div className="col-span-2 flex items-center gap-2 min-w-0">
-                          {hasFailures && (
+                          {hasDetails && (
                             isExpanded ? (
                               <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                             ) : (
@@ -512,6 +547,11 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                         </div>
                         <div className="text-center">
                           <Badge variant="secondary">{batch.totalSent}</Badge>
+                          {hasDuplicates && (
+                            <Badge className="ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Destinatarios duplicados">
+                              {batch.duplicates.length}
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-center">
                           {totalFailures > 0 ? (
@@ -537,9 +577,40 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                         </div>
                       </div>
 
-                      {/* Expanded Failure Details */}
+                      {/* Expanded Details */}
                       {isExpanded && (
                         <div className="border-t bg-muted/10 p-4 space-y-4">
+                          {/* Duplicates */}
+                          {batch.duplicates && batch.duplicates.length > 0 && (
+                            <div>
+                              <h4 className="font-medium text-sm text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-2">
+                                <Copy className="h-4 w-4" />
+                                Duplicados ({batch.duplicates.length})
+                              </h4>
+                              <p className="text-xs text-muted-foreground mb-2">
+                                Estes destinatarios ja receberam email anteriormente.
+                              </p>
+                              <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                                {batch.duplicates.map((dup, i) => (
+                                  <div
+                                    key={`dup-${i}`}
+                                    className="grid grid-cols-3 gap-4 p-2 bg-amber-50 dark:bg-amber-950/20 rounded text-sm"
+                                  >
+                                    <span className="font-mono text-xs truncate" title={dup.email}>
+                                      {dup.email}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground truncate">
+                                      {dup.clientName}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground truncate" title={dup.previousSends.map(s => `${formatDateBrazilian(s.date)}: ${s.subject}`).join(", ")}>
+                                      Enviado {dup.timesSent}x ({dup.previousSends.map(s => formatDateBrazilian(s.date)).join(", ")})
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Bounces */}
                           {batch.bounces.length > 0 && (
                             <div>
@@ -652,9 +723,9 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                             </div>
                           )}
 
-                          {totalFailures === 0 && batch.spam.length === 0 && (
+                          {totalFailures === 0 && batch.spam.length === 0 && (!batch.duplicates || batch.duplicates.length === 0) && (
                             <p className="text-sm text-muted-foreground text-center py-2">
-                              Nenhum detalhe de falha disponivel.
+                              Nenhum detalhe disponivel.
                             </p>
                           )}
                         </div>

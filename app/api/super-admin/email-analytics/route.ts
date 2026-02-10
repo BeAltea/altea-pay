@@ -25,6 +25,16 @@ interface EnrichedFailure {
   clientName?: string
 }
 
+interface DuplicateInfo {
+  email: string
+  clientName: string
+  timesSent: number
+  previousSends: Array<{
+    date: string
+    subject: string
+  }>
+}
+
 interface BatchSummary {
   id: string
   subject: string
@@ -33,12 +43,15 @@ interface BatchSummary {
   sentAt: string
   date: string
   totalSent: number
+  uniqueInBatch: number
+  duplicatesInBatch: number
   delivered: number
   deliveryRate: string
   bounces: EnrichedFailure[]
   blocks: EnrichedFailure[]
   invalid: EnrichedFailure[]
   spam: EnrichedFailure[]
+  duplicates: DuplicateInfo[]
 }
 
 async function fetchSendGridSuppression(
@@ -154,9 +167,16 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Email Analytics] Found ${trackingData?.length || 0} tracking records`)
 
-    // 2. Collect all recipient emails from tracking data
+    // 2. Collect all recipient emails from tracking data and track duplicates
     const emailToRecipient = new Map<string, { clientName: string; userId: string }>()
     const allEmails = new Set<string>()
+
+    // Track all sends per email to identify duplicates
+    const emailSendHistory = new Map<string, Array<{
+      date: string
+      subject: string
+      sentAt: string
+    }>>()
 
     for (const record of trackingData || []) {
       const recipient = record.company_email_recipients as { client_email: string; client_name: string } | null
@@ -167,10 +187,25 @@ export async function GET(request: NextRequest) {
           clientName: recipient.client_name || email,
           userId: record.user_id,
         })
+
+        // Track send history for this email
+        if (!emailSendHistory.has(email)) {
+          emailSendHistory.set(email, [])
+        }
+        emailSendHistory.get(email)!.push({
+          date: record.sent_at.split("T")[0],
+          subject: record.email_subject,
+          sentAt: record.sent_at,
+        })
       }
     }
 
-    console.log(`[Email Analytics] Unique emails: ${allEmails.size}`)
+    // Calculate global duplicates
+    const totalSends = trackingData?.length || 0
+    const uniqueEmailsCount = allEmails.size
+    const globalDuplicates = totalSends - uniqueEmailsCount
+
+    console.log(`[Email Analytics] Total sends: ${totalSends}, Unique emails: ${uniqueEmailsCount}, Duplicates: ${globalDuplicates}`)
 
     // 3. Fetch SendGrid suppression data
     const apiKey = process.env.SENDGRID_API_KEY
@@ -317,6 +352,41 @@ export async function GET(request: NextRequest) {
       const totalFailed = batchBounces.length + batchBlocks.length + batchInvalid.length
       const delivered = totalSent - totalFailed
 
+      // Find duplicates in this batch (emails that were sent to more than once globally)
+      const batchDuplicates: DuplicateInfo[] = []
+      const batchEmailSet = new Set<string>()
+      let uniqueInBatch = 0
+
+      for (const record of group.records) {
+        const email = record.email
+        const history = emailSendHistory.get(email) || []
+
+        // Count unique emails in this batch
+        if (!batchEmailSet.has(email)) {
+          batchEmailSet.add(email)
+          uniqueInBatch++
+
+          // Check if this email was sent to more than once (globally)
+          if (history.length > 1) {
+            // Get previous sends (excluding current batch)
+            const previousSends = history
+              .filter(h => !(h.date === group.date && h.subject === group.subject))
+              .map(h => ({ date: h.date, subject: h.subject }))
+
+            if (previousSends.length > 0) {
+              batchDuplicates.push({
+                email,
+                clientName: record.clientName,
+                timesSent: history.length,
+                previousSends,
+              })
+            }
+          }
+        }
+      }
+
+      const duplicatesInBatch = totalSent - uniqueInBatch
+
       batches.push({
         id: key,
         subject: group.subject,
@@ -325,12 +395,15 @@ export async function GET(request: NextRequest) {
         sentAt: group.sentAt,
         date: group.date,
         totalSent,
+        uniqueInBatch,
+        duplicatesInBatch,
         delivered,
         deliveryRate: totalSent > 0 ? ((delivered / totalSent) * 100).toFixed(1) : "0.0",
         bounces: batchBounces,
         blocks: batchBlocks,
         invalid: batchInvalid,
         spam: batchSpam,
+        duplicates: batchDuplicates,
       })
     }
 
@@ -338,16 +411,22 @@ export async function GET(request: NextRequest) {
     batches.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
 
     // 7. Calculate summary totals
-    const summary = {
-      totalSent: batches.reduce((sum, b) => sum + b.totalSent, 0),
-      delivered: batches.reduce((sum, b) => sum + b.delivered, 0),
-      bounces: batches.reduce((sum, b) => sum + b.bounces.length, 0),
-      blocks: batches.reduce((sum, b) => sum + b.blocks.length, 0),
-      invalid: batches.reduce((sum, b) => sum + b.invalid.length, 0),
-      spam: batches.reduce((sum, b) => sum + b.spam.length, 0),
-    }
+    const totalSentSum = batches.reduce((sum, b) => sum + b.totalSent, 0)
+    const bouncesSum = batches.reduce((sum, b) => sum + b.bounces.length, 0)
+    const blocksSum = batches.reduce((sum, b) => sum + b.blocks.length, 0)
+    const invalidSum = batches.reduce((sum, b) => sum + b.invalid.length, 0)
+    const spamSum = batches.reduce((sum, b) => sum + b.spam.length, 0)
 
-    summary.delivered = summary.totalSent - summary.bounces - summary.blocks - summary.invalid
+    const summary = {
+      totalSent: totalSentSum,
+      uniqueEmails: uniqueEmailsCount,
+      duplicates: globalDuplicates,
+      delivered: totalSentSum - bouncesSum - blocksSum - invalidSum,
+      bounces: bouncesSum,
+      blocks: blocksSum,
+      invalid: invalidSum,
+      spam: spamSum,
+    }
 
     // 8. Fetch available companies (that have sent emails)
     const { data: availableCompanies } = await adminClient
