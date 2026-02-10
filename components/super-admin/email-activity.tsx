@@ -1,25 +1,38 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Mail,
-  Send,
   CheckCircle2,
   XCircle,
-  Search,
   RefreshCw,
   Calendar,
-  Building2,
   AlertCircle,
   Inbox,
+  Eye,
+  MousePointer,
+  ShieldX,
+  Ban,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 
 interface Company {
@@ -27,31 +40,53 @@ interface Company {
   name: string
 }
 
-interface EmailBatch {
-  subject: string
-  companyId: string
-  companyName: string
-  sentAt: string
-  totalSent: number
-  totalFailed: number
+interface SendGridSummary {
+  requests: number
+  delivered: number
+  deliveredRate: number
+  opens: number
+  opensRate: number
+  uniqueOpens: number
+  clicks: number
+  clicksRate: number
+  bounces: number
+  bouncesRate: number
+  blocks: number
+  blocksRate: number
+  spamReports: number
+  spamRate: number
+  invalidEmails: number
+  deferred: number
 }
 
-interface Summary {
-  total: number
-  sent: number
-  failed: number
-  sentRate: number
-  failedRate: number
+interface DailyStats {
+  date: string
+  requests: number
+  delivered: number
+  opens: number
+  bounces: number
+  blocks: number
 }
 
-interface EmailStatsData {
-  companies: Company[]
-  summary: Summary
-  batches: EmailBatch[]
-  period: {
-    start: string
-    end: string
-    days: number
+interface FailureRecord {
+  email: string
+  reason: string
+  status?: string
+  type: string
+  createdAt: string
+}
+
+interface FailuresData {
+  bounces: FailureRecord[]
+  blocks: FailureRecord[]
+  invalidEmails: FailureRecord[]
+  spamReports: FailureRecord[]
+  totals: {
+    bounces: number
+    blocks: number
+    invalidEmails: number
+    spamReports: number
+    total: number
   }
 }
 
@@ -62,11 +97,8 @@ function formatDateBrazilian(isoDate: string): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
   }
-  return new Intl.DateTimeFormat("pt-BR", options).format(date).replace(",", "")
+  return new Intl.DateTimeFormat("pt-BR", options).format(date)
 }
 
 function StatCard({
@@ -76,19 +108,23 @@ function StatCard({
   icon: Icon,
   color,
   isLoading,
+  tooltip,
 }: {
   title: string
   value: number
   percentage?: number
   icon: React.ElementType
-  color: "blue" | "green" | "red" | "yellow"
+  color: "blue" | "green" | "red" | "yellow" | "orange" | "purple"
   isLoading?: boolean
+  tooltip?: string
 }) {
   const colorClasses = {
     blue: "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30",
     green: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
     red: "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30",
     yellow: "text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30",
+    orange: "text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30",
+    purple: "text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30",
   }
 
   if (isLoading) {
@@ -107,15 +143,29 @@ function StatCard({
     )
   }
 
-  return (
+  const content = (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-lg ${colorClasses[color]}`}>
             <Icon className="h-5 w-5" />
           </div>
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-1">
+              <p className="text-sm text-muted-foreground">{title}</p>
+              {tooltip && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">{tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             <p className="text-2xl font-bold">
               {value.toLocaleString("pt-BR")}
               {percentage !== undefined && (
@@ -129,39 +179,35 @@ function StatCard({
       </CardContent>
     </Card>
   )
+
+  return content
 }
 
 export function EmailActivity({ companies }: { companies: Company[] }) {
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("all")
-  const [subjectSearch, setSubjectSearch] = useState("")
-  const [period, setPeriod] = useState("7")
+  const [period, setPeriod] = useState("30")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [data, setData] = useState<EmailStatsData | null>(null)
+  const [summary, setSummary] = useState<SendGridSummary | null>(null)
+  const [dailyStats, setDailyStats] = useState<DailyStats[]>([])
+  const [failures, setFailures] = useState<FailuresData | null>(null)
+  const [isFailuresOpen, setIsFailuresOpen] = useState(false)
+  const [isLoadingFailures, setIsLoadingFailures] = useState(false)
 
   const fetchStats = async () => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const params = new URLSearchParams()
-      if (selectedCompanyId !== "all") {
-        params.set("companyId", selectedCompanyId)
-      }
-      if (subjectSearch) {
-        params.set("subject", subjectSearch)
-      }
-      params.set("period", period)
-
-      const response = await fetch(`/api/super-admin/email-stats?${params.toString()}`)
+      const response = await fetch(`/api/super-admin/sendgrid-stats?period=${period}`)
 
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || "Erro ao carregar estatísticas")
       }
 
-      const statsData = await response.json()
-      setData(statsData)
+      const data = await response.json()
+      setSummary(data.summary)
+      setDailyStats(data.dailyStats || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
     } finally {
@@ -169,74 +215,58 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
     }
   }
 
-  // Fetch on mount and when filters change
+  const fetchFailures = async () => {
+    if (failures) return // Already loaded
+
+    setIsLoadingFailures(true)
+    try {
+      const response = await fetch(`/api/super-admin/sendgrid-stats/failures?period=${period}`)
+      if (response.ok) {
+        const data = await response.json()
+        setFailures(data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch failures:", err)
+    } finally {
+      setIsLoadingFailures(false)
+    }
+  }
+
+  // Fetch stats on mount and when period changes
   useEffect(() => {
     fetchStats()
-  }, [selectedCompanyId, period])
+    setFailures(null) // Reset failures when period changes
+  }, [period])
 
-  // Debounced search
+  // Fetch failures when expanded
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (data) { // Only search if we already have data
-        fetchStats()
-      }
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [subjectSearch])
+    if (isFailuresOpen && !failures) {
+      fetchFailures()
+    }
+  }, [isFailuresOpen])
 
-  const summary = data?.summary || { total: 0, sent: 0, failed: 0, sentRate: 0, failedRate: 0 }
-  const batches = data?.batches || []
+  const totalFailures = summary
+    ? summary.bounces + summary.blocks + summary.invalidEmails
+    : 0
 
   return (
     <div className="space-y-6">
       {/* Filters */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Company filter */}
-            <div className="space-y-2">
-              <Label htmlFor="company-filter">Empresa</Label>
-              <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
-                <SelectTrigger id="company-filter">
-                  <SelectValue placeholder="Todas as empresas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as empresas</SelectItem>
-                  {companies.map((company) => (
-                    <SelectItem key={company.id} value={company.id}>
-                      {company.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Estatísticas do SendGrid
+              </CardTitle>
+              <CardDescription>
+                Dados reais de entrega de emails do SendGrid
+              </CardDescription>
             </div>
-
-            {/* Subject search */}
-            <div className="space-y-2">
-              <Label htmlFor="subject-search">Assunto</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="subject-search"
-                  placeholder="Pesquisar assunto..."
-                  value={subjectSearch}
-                  onChange={(e) => setSubjectSearch(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {/* Period filter */}
-            <div className="space-y-2">
-              <Label htmlFor="period-filter">Período</Label>
+            <div className="flex items-center gap-3">
               <Select value={period} onValueChange={setPeriod}>
-                <SelectTrigger id="period-filter">
+                <SelectTrigger className="w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -245,22 +275,17 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
                   <SelectItem value="90">Últimos 90 dias</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={fetchStats}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
             </div>
           </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchStats}
-              disabled={isLoading}
-              className="gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-              Atualizar
-            </Button>
-          </div>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       {/* Error State */}
@@ -268,8 +293,8 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
         <Card className="border-red-200 dark:border-red-800">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
-              <div>
+              <AlertCircle className="h-5 w-5 flex-shrink-0" />
+              <div className="flex-1">
                 <p className="font-medium">Não foi possível carregar as estatísticas</p>
                 <p className="text-sm text-muted-foreground">{error}</p>
               </div>
@@ -277,7 +302,6 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
                 variant="outline"
                 size="sm"
                 onClick={fetchStats}
-                className="ml-auto"
               >
                 Tentar novamente
               </Button>
@@ -287,48 +311,70 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
-          title="Total Enviados"
-          value={summary.total}
+          title="Enviados"
+          value={summary?.requests || 0}
           icon={Mail}
           color="blue"
           isLoading={isLoading}
         />
         <StatCard
           title="Entregues"
-          value={summary.sent}
-          percentage={summary.sentRate}
+          value={summary?.delivered || 0}
+          percentage={summary?.deliveredRate}
           icon={CheckCircle2}
           color="green"
           isLoading={isLoading}
         />
         <StatCard
-          title="Falhas"
-          value={summary.failed}
-          percentage={summary.failedRate}
+          title="Abertos"
+          value={summary?.opens || 0}
+          percentage={summary?.opensRate}
+          icon={Eye}
+          color="purple"
+          isLoading={isLoading}
+          tooltip={
+            summary?.opens === 0
+              ? "O rastreamento de abertura pode estar desativado no SendGrid ou os destinatários ainda não abriram os emails."
+              : undefined
+          }
+        />
+        <StatCard
+          title="Bounces"
+          value={summary?.bounces || 0}
+          percentage={summary?.bouncesRate}
           icon={XCircle}
           color="red"
           isLoading={isLoading}
         />
         <StatCard
-          title="Lotes Enviados"
-          value={batches.length}
-          icon={Send}
+          title="Bloqueados"
+          value={summary?.blocks || 0}
+          percentage={summary?.blocksRate}
+          icon={Ban}
+          color="orange"
+          isLoading={isLoading}
+        />
+        <StatCard
+          title="Spam"
+          value={summary?.spamReports || 0}
+          percentage={summary?.spamRate}
+          icon={ShieldX}
           color="yellow"
           isLoading={isLoading}
         />
       </div>
 
-      {/* Batches Table */}
+      {/* Daily Stats Table */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Histórico de Envios
+            Histórico Diário
           </CardTitle>
           <CardDescription>
-            Emails enviados agrupados por assunto e data
+            Estatísticas de entrega por dia
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -336,103 +382,238 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
-                  <Skeleton className="h-10 w-10 rounded-lg" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                  <Skeleton className="h-6 w-20" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-16" />
                 </div>
               ))}
             </div>
-          ) : batches.length === 0 ? (
+          ) : dailyStats.length === 0 ? (
             <div className="text-center py-12">
               <Inbox className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
               <p className="text-lg font-medium text-muted-foreground">
                 Nenhum email enviado
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {selectedCompanyId !== "all"
-                  ? "Nenhum email encontrado para esta empresa no período selecionado."
-                  : "Nenhum email encontrado no período selecionado."}
+                Nenhum email encontrado no período selecionado.
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-2">
+            <ScrollArea className="h-[300px]">
+              <div className="space-y-1">
                 {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 p-3 bg-muted/50 rounded-lg text-sm font-medium sticky top-0">
-                  <div className="col-span-5">Assunto</div>
-                  <div className="col-span-2">Empresa</div>
-                  <div className="col-span-2">Data de Envio</div>
-                  <div className="col-span-1 text-center">Enviados</div>
-                  <div className="col-span-1 text-center">Falhas</div>
-                  <div className="col-span-1 text-center">Taxa</div>
+                <div className="grid grid-cols-6 gap-4 p-3 bg-muted/50 rounded-lg text-sm font-medium sticky top-0">
+                  <div>Data</div>
+                  <div className="text-center">Enviados</div>
+                  <div className="text-center">Entregues</div>
+                  <div className="text-center">Abertos</div>
+                  <div className="text-center">Bounces</div>
+                  <div className="text-center">Taxa</div>
                 </div>
 
                 {/* Table Rows */}
-                {batches.map((batch, index) => {
-                  const total = batch.totalSent + batch.totalFailed
-                  const successRate = total > 0 ? (batch.totalSent / total) * 100 : 0
+                {dailyStats
+                  .filter((day) => day.requests > 0)
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((day) => {
+                    const deliveryRate = day.requests > 0
+                      ? (day.delivered / day.requests) * 100
+                      : 0
 
-                  return (
-                    <div
-                      key={`${batch.companyId}-${batch.subject}-${batch.sentAt}-${index}`}
-                      className="grid grid-cols-12 gap-4 p-3 border rounded-lg hover:bg-muted/30 transition-colors items-center"
-                    >
-                      <div className="col-span-5">
-                        <p className="font-medium text-sm truncate" title={batch.subject}>
-                          {batch.subject}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <div className="flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground truncate">
-                            {batch.companyName}
+                    return (
+                      <div
+                        key={day.date}
+                        className="grid grid-cols-6 gap-4 p-3 border rounded-lg hover:bg-muted/30 transition-colors items-center"
+                      >
+                        <div className="font-medium text-sm">
+                          {formatDateBrazilian(day.date)}
+                        </div>
+                        <div className="text-center">
+                          <Badge variant="secondary">{day.requests}</Badge>
+                        </div>
+                        <div className="text-center">
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            {day.delivered}
+                          </Badge>
+                        </div>
+                        <div className="text-center">
+                          <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                            {day.opens}
+                          </Badge>
+                        </div>
+                        <div className="text-center">
+                          {day.bounces > 0 ? (
+                            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                              {day.bounces}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        <div className="text-center">
+                          <span
+                            className={`text-sm font-medium ${
+                              deliveryRate >= 90
+                                ? "text-green-600 dark:text-green-400"
+                                : deliveryRate >= 70
+                                  ? "text-yellow-600 dark:text-yellow-400"
+                                  : "text-red-600 dark:text-red-400"
+                            }`}
+                          >
+                            {deliveryRate.toFixed(1)}%
                           </span>
                         </div>
                       </div>
-                      <div className="col-span-2">
-                        <span className="text-sm text-muted-foreground">
-                          {formatDateBrazilian(batch.sentAt)}
-                        </span>
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
-                          {batch.totalSent}
-                        </Badge>
-                      </div>
-                      <div className="col-span-1 text-center">
-                        {batch.totalFailed > 0 ? (
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
-                            {batch.totalFailed}
-                          </Badge>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <span
-                          className={`text-sm font-medium ${
-                            successRate >= 90
-                              ? "text-green-600 dark:text-green-400"
-                              : successRate >= 70
-                                ? "text-yellow-600 dark:text-yellow-400"
-                                : "text-red-600 dark:text-red-400"
-                          }`}
-                        >
-                          {successRate.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
               </div>
             </ScrollArea>
           )}
         </CardContent>
       </Card>
+
+      {/* Failure Details */}
+      {totalFailures > 0 && (
+        <Collapsible open={isFailuresOpen} onOpenChange={setIsFailuresOpen}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                      <XCircle className="h-5 w-5" />
+                      Detalhes de Falhas ({totalFailures} emails)
+                    </CardTitle>
+                    <CardDescription>
+                      Clique para ver os emails que falharam e os motivos
+                    </CardDescription>
+                  </div>
+                  {isFailuresOpen ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                {isLoadingFailures ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-4 w-64" />
+                      </div>
+                    ))}
+                  </div>
+                ) : failures ? (
+                  <div className="space-y-6">
+                    {/* Bounces */}
+                    {failures.bounces.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-sm text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
+                          <XCircle className="h-4 w-4" />
+                          Bounces ({failures.bounces.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {failures.bounces.map((record, i) => (
+                            <div
+                              key={`bounce-${i}`}
+                              className="grid grid-cols-2 gap-4 p-2 bg-red-50 dark:bg-red-950/20 rounded text-sm"
+                            >
+                              <span className="font-mono text-xs truncate">{record.email}</span>
+                              <span className="text-muted-foreground text-xs truncate" title={record.reason}>
+                                {record.reason}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Blocks */}
+                    {failures.blocks.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-sm text-orange-600 dark:text-orange-400 mb-2 flex items-center gap-2">
+                          <Ban className="h-4 w-4" />
+                          Bloqueados ({failures.blocks.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {failures.blocks.map((record, i) => (
+                            <div
+                              key={`block-${i}`}
+                              className="grid grid-cols-2 gap-4 p-2 bg-orange-50 dark:bg-orange-950/20 rounded text-sm"
+                            >
+                              <span className="font-mono text-xs truncate">{record.email}</span>
+                              <span className="text-muted-foreground text-xs truncate" title={record.reason}>
+                                {record.reason}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Invalid Emails */}
+                    {failures.invalidEmails.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-sm text-yellow-600 dark:text-yellow-400 mb-2 flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4" />
+                          Emails Inválidos ({failures.invalidEmails.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {failures.invalidEmails.map((record, i) => (
+                            <div
+                              key={`invalid-${i}`}
+                              className="grid grid-cols-2 gap-4 p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded text-sm"
+                            >
+                              <span className="font-mono text-xs truncate">{record.email}</span>
+                              <span className="text-muted-foreground text-xs truncate" title={record.reason}>
+                                {record.reason}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Spam Reports */}
+                    {failures.spamReports.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-sm text-purple-600 dark:text-purple-400 mb-2 flex items-center gap-2">
+                          <ShieldX className="h-4 w-4" />
+                          Denúncias de Spam ({failures.spamReports.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {failures.spamReports.map((record, i) => (
+                            <div
+                              key={`spam-${i}`}
+                              className="grid grid-cols-2 gap-4 p-2 bg-purple-50 dark:bg-purple-950/20 rounded text-sm"
+                            >
+                              <span className="font-mono text-xs truncate">{record.email}</span>
+                              <span className="text-muted-foreground text-xs truncate">
+                                {formatDateBrazilian(record.createdAt)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {failures.totals.total === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhum detalhe de falha disponível no SendGrid para este período.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
     </div>
   )
 }
