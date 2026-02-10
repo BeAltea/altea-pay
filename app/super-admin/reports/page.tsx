@@ -193,9 +193,15 @@ export default function ReportsPage() {
           }
         }
 
+        // Source of truth: Negotiations page checks status === "completed" OR asaas_status in ["RECEIVED", "CONFIRMED"]
         const paidDocsMap = new Map<string, Set<string>>()
         for (const a of allAgreements) {
-          if (a.status === "completed" || a.status === "paid") {
+          const isPaidAgreement =
+            a.status === "completed" ||
+            a.status === "paid" ||
+            a.asaas_status === "RECEIVED" ||
+            a.asaas_status === "CONFIRMED"
+          if (isPaidAgreement) {
             const doc = customerIdToDoc.get(a.customer_id)
             if (doc && a.company_id) {
               if (!paidDocsMap.has(a.company_id)) {
@@ -235,10 +241,16 @@ export default function ReportsPage() {
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
       const label = date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "")
 
-      // Calculate received amount for this month (from completed agreements)
+      // Calculate received amount for this month (from paid agreements)
+      // Aligned with Negotiations page: paid = status completed/paid OR asaas_status RECEIVED/CONFIRMED
       const monthReceived = allAgreements
         .filter((a) => {
-          if (a.status !== "completed" && a.status !== "paid") return false
+          const isPaidAgreement =
+            a.status === "completed" ||
+            a.status === "paid" ||
+            a.asaas_status === "RECEIVED" ||
+            a.asaas_status === "CONFIRMED"
+          if (!isPaidAgreement) return false
           const aDate = new Date(a.created_at)
           return (
             aDate.getFullYear() === date.getFullYear() &&
@@ -303,18 +315,28 @@ export default function ReportsPage() {
     const totalOriginal = totalDebt + totalReceived
     const recoveryRate = totalOriginal > 0 ? (totalReceived / totalOriginal) * 100 : 0
 
-    // Negotiations metrics
+    // Negotiations metrics - aligned with Negotiations page (source of truth)
+    // A negotiation is "paid" if status is completed/paid OR asaas_status is RECEIVED/CONFIRMED
+    const isPaidAgreement = (a: Agreement) =>
+      a.status === "completed" ||
+      a.status === "paid" ||
+      a.asaas_status === "RECEIVED" ||
+      a.asaas_status === "CONFIRMED"
+
+    // Sent: non-cancelled agreements (excludes draft and cancelled - they were never actually sent)
     const negSent = filteredAgreements.filter(
-      (a) => ["active", "pending", "draft"].includes(a.status)
+      (a) => a.status !== "cancelled" && a.status !== "draft"
     ).length
 
+    // Open: active agreements that are NOT paid and NOT cancelled
     const negOpened = filteredAgreements.filter(
-      (a) => a.asaas_status && ["PENDING", "RECEIVED", "CONFIRMED"].includes(a.asaas_status)
+      (a) =>
+        (a.status === "active" || a.status === "pending") &&
+        !isPaidAgreement(a)
     ).length
 
-    const negPaid = filteredAgreements.filter(
-      (a) => a.status === "completed" || a.status === "paid"
-    ).length
+    // Paid: agreements confirmed as paid
+    const negPaid = filteredAgreements.filter(isPaidAgreement).length
 
     const negPaidRate = negSent > 0 ? (negPaid / negSent) * 100 : 0
 
@@ -353,13 +375,18 @@ export default function ReportsPage() {
       const total = debt + received
       const rate = total > 0 ? (received / total) * 100 : 0
 
+      // Aligned with Negotiations page (source of truth)
+      const isPaidAgreement = (a: Agreement) =>
+        a.status === "completed" ||
+        a.status === "paid" ||
+        a.asaas_status === "RECEIVED" ||
+        a.asaas_status === "CONFIRMED"
+
       const negSent = companyAgreements.filter(
-        (a) => ["active", "pending", "draft"].includes(a.status)
+        (a) => a.status !== "cancelled" && a.status !== "draft"
       ).length
 
-      const negPaid = companyAgreements.filter(
-        (a) => a.status === "completed" || a.status === "paid"
-      ).length
+      const negPaid = companyAgreements.filter(isPaidAgreement).length
 
       return {
         id: company.id,

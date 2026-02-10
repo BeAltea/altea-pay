@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -48,12 +49,15 @@ interface Company {
   name: string
 }
 
+type RuleOperator = "=" | "<=" | ">=" | "entre"
+
 interface SetupRule {
   id?: string
   min_days: number
   max_days: number | null
   profit_percentage: number
   sort_order: number
+  operator: RuleOperator
 }
 
 interface Setup {
@@ -133,13 +137,20 @@ function parseVencido(value: string): number {
 }
 
 function getRuleLabel(rule: SetupRule): string {
-  if (rule.max_days === null) {
-    return `>= ${rule.min_days} dias`
+  switch (rule.operator) {
+    case "=":
+      return `= ${rule.min_days} dias`
+    case "<=":
+      return `<= ${rule.min_days} dias`
+    case ">=":
+      return `>= ${rule.min_days} dias`
+    case "entre":
+    default:
+      if (rule.max_days === null) {
+        return `>= ${rule.min_days} dias`
+      }
+      return `${rule.min_days}-${rule.max_days} dias`
   }
-  if (rule.min_days === 0) {
-    return `<= ${rule.max_days} dias`
-  }
-  return `${rule.min_days}-${rule.max_days} dias`
 }
 
 function getDateRange(periodType: PeriodType, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -214,7 +225,7 @@ export default function ContabilidadePage() {
   // Setup form state
   const [setupName, setSetupName] = useState("")
   const [setupRules, setSetupRules] = useState<SetupRule[]>([
-    { min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0 },
+    { min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0, operator: "entre" },
   ])
   const [formErrors, setFormErrors] = useState<string[]>([])
 
@@ -277,7 +288,7 @@ export default function ContabilidadePage() {
       for (const setup of setupsData || []) {
         const { data: rulesData } = await supabase
           .from("accounting_setup_rules")
-          .select("id, min_days, max_days, profit_percentage, sort_order")
+          .select("id, min_days, max_days, profit_percentage, sort_order, operator")
           .eq("setup_id", setup.id)
           .order("sort_order")
 
@@ -323,7 +334,7 @@ export default function ContabilidadePage() {
 
   const resetSetupForm = () => {
     setSetupName("")
-    setSetupRules([{ min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0 }])
+    setSetupRules([{ min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0, operator: "entre" }])
     setFormErrors([])
   }
 
@@ -337,7 +348,12 @@ export default function ContabilidadePage() {
   const handleEditSetup = (setup: Setup) => {
     setEditingSetup(setup)
     setSetupName(setup.name)
-    setSetupRules(setup.rules.length > 0 ? setup.rules : [{ min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0 }])
+    // Add default operator for existing rules that don't have it
+    const rulesWithOperator = setup.rules.map(r => ({
+      ...r,
+      operator: r.operator || "entre" as RuleOperator
+    }))
+    setSetupRules(rulesWithOperator.length > 0 ? rulesWithOperator : [{ min_days: 0, max_days: 120, profit_percentage: 10, sort_order: 0, operator: "entre" }])
     setCurrentStep("setup-form")
   }
 
@@ -366,6 +382,7 @@ export default function ContabilidadePage() {
         max_days: null,
         profit_percentage: 20,
         sort_order: setupRules.length,
+        operator: "entre",
       },
     ])
   }
@@ -375,7 +392,7 @@ export default function ContabilidadePage() {
     setSetupRules(setupRules.filter((_, i) => i !== index))
   }
 
-  const handleRuleChange = (index: number, field: keyof SetupRule, value: number | null) => {
+  const handleRuleChange = (index: number, field: keyof SetupRule, value: number | null | string) => {
     const newRules = [...setupRules]
     newRules[index] = { ...newRules[index], [field]: value }
     setSetupRules(newRules)
@@ -397,7 +414,8 @@ export default function ContabilidadePage() {
       if (rule.min_days < 0) {
         errors.push(`Regra ${i + 1}: Dias minimos deve ser >= 0`)
       }
-      if (rule.max_days !== null && rule.max_days <= rule.min_days) {
+      // Only validate max_days for "entre" operator
+      if (rule.operator === "entre" && rule.max_days !== null && rule.max_days <= rule.min_days) {
         errors.push(`Regra ${i + 1}: Dias maximos deve ser maior que dias minimos`)
       }
       if (rule.profit_percentage < 0.01 || rule.profit_percentage > 100) {
@@ -452,6 +470,7 @@ export default function ContabilidadePage() {
             max_days: rule.max_days,
             profit_percentage: rule.profit_percentage,
             sort_order: i,
+            operator: rule.operator,
           })
         }
       } else {
@@ -475,6 +494,7 @@ export default function ContabilidadePage() {
               max_days: rule.max_days,
               profit_percentage: rule.profit_percentage,
               sort_order: i,
+              operator: rule.operator,
             })
           }
         }
@@ -491,7 +511,7 @@ export default function ContabilidadePage() {
       for (const setup of setupsData || []) {
         const { data: rulesData } = await supabase
           .from("accounting_setup_rules")
-          .select("id, min_days, max_days, profit_percentage, sort_order")
+          .select("id, min_days, max_days, profit_percentage, sort_order, operator")
           .eq("setup_id", setup.id)
           .order("sort_order")
 
@@ -574,12 +594,22 @@ export default function ContabilidadePage() {
         const diasInadStr = String(vmaxRecord["Dias Inad."] || "0")
         const daysExpired = Number(diasInadStr.replace(/\./g, "")) || 0
 
-        // Find matching rule
+        // Find matching rule based on operator
         let matchingRule = selectedSetup.rules.find((rule) => {
-          if (rule.max_days === null) {
-            return daysExpired >= rule.min_days
+          switch (rule.operator) {
+            case "=":
+              return daysExpired === rule.min_days
+            case "<=":
+              return daysExpired <= rule.min_days
+            case ">=":
+              return daysExpired >= rule.min_days
+            case "entre":
+            default:
+              if (rule.max_days === null) {
+                return daysExpired >= rule.min_days
+              }
+              return daysExpired >= rule.min_days && daysExpired <= rule.max_days
           }
-          return daysExpired >= rule.min_days && daysExpired <= rule.max_days
         })
 
         // Default to first rule if no match
@@ -1024,9 +1054,28 @@ export default function ContabilidadePage() {
 
               {setupRules.map((rule, index) => (
                 <div key={index} className="flex items-center gap-4 p-4 border rounded-lg">
-                  <div className="flex-1 grid grid-cols-3 gap-4">
+                  <div className="flex-1 grid grid-cols-4 gap-4">
                     <div className="space-y-1">
-                      <Label className="text-xs">Dias vencidos de</Label>
+                      <Label className="text-xs">Operador</Label>
+                      <Select
+                        value={rule.operator}
+                        onValueChange={(value) => handleRuleChange(index, "operator", value as RuleOperator)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Operador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="entre">Entre</SelectItem>
+                          <SelectItem value="=">=</SelectItem>
+                          <SelectItem value="<=">{"<="}</SelectItem>
+                          <SelectItem value=">=">{">="}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        {rule.operator === "entre" ? "Dias de" : "Dias"}
+                      </Label>
                       <Input
                         type="number"
                         min="0"
@@ -1034,22 +1083,24 @@ export default function ContabilidadePage() {
                         onChange={(e) => handleRuleChange(index, "min_days", parseInt(e.target.value) || 0)}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">ate (vazio = sem limite)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="∞"
-                        value={rule.max_days ?? ""}
-                        onChange={(e) =>
-                          handleRuleChange(
-                            index,
-                            "max_days",
-                            e.target.value ? parseInt(e.target.value) : null
-                          )
-                        }
-                      />
-                    </div>
+                    {rule.operator === "entre" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">ate (vazio = sem limite)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="∞"
+                          value={rule.max_days ?? ""}
+                          onChange={(e) =>
+                            handleRuleChange(
+                              index,
+                              "max_days",
+                              e.target.value ? parseInt(e.target.value) : null
+                            )
+                          }
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <Label className="text-xs">= AlteaPay %</Label>
                       <Input
