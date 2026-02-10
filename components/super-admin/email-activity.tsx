@@ -91,9 +91,12 @@ interface FailuresData {
 }
 
 function formatDateBrazilian(isoDate: string): string {
-  const date = new Date(isoDate)
+  // SendGrid returns dates as "YYYY-MM-DD" which when parsed with new Date()
+  // is interpreted as midnight UTC. This causes timezone shifts.
+  // To fix: parse as local date by adding T12:00:00 (noon) to avoid day shifts
+  const dateStr = isoDate.includes("T") ? isoDate : `${isoDate}T12:00:00`
+  const date = new Date(dateStr)
   const options: Intl.DateTimeFormatOptions = {
-    timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -192,6 +195,9 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
   const [failures, setFailures] = useState<FailuresData | null>(null)
   const [isFailuresOpen, setIsFailuresOpen] = useState(false)
   const [isLoadingFailures, setIsLoadingFailures] = useState(false)
+  const [expandedDate, setExpandedDate] = useState<string | null>(null)
+  const [companyFilter, setCompanyFilter] = useState<string>("all")
+  const [subjectFilter, setSubjectFilter] = useState<string>("all")
 
   const fetchStats = async () => {
     setIsLoading(true)
@@ -215,8 +221,8 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
     }
   }
 
-  const fetchFailures = async () => {
-    if (failures) return // Already loaded
+  const fetchFailures = async (forceRefresh = false) => {
+    if (failures && !forceRefresh) return // Already loaded
 
     setIsLoadingFailures(true)
     try {
@@ -232,18 +238,52 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
     }
   }
 
+  // Helper to get failures for a specific date
+  const getFailuresForDate = (dateStr: string): FailureRecord[] => {
+    if (!failures) return []
+
+    const allFailures = [
+      ...failures.bounces,
+      ...failures.blocks,
+      ...failures.invalidEmails,
+      ...failures.spamReports,
+    ]
+
+    // Filter by date (compare YYYY-MM-DD part)
+    return allFailures.filter((f) => {
+      const failureDate = f.createdAt.split("T")[0]
+      return failureDate === dateStr
+    })
+  }
+
   // Fetch stats on mount and when period changes
   useEffect(() => {
     fetchStats()
     setFailures(null) // Reset failures when period changes
+    setExpandedDate(null) // Reset expanded rows
   }, [period])
 
-  // Fetch failures when expanded
+  // Fetch failures when expanded or when a date row is expanded
   useEffect(() => {
-    if (isFailuresOpen && !failures) {
+    if ((isFailuresOpen || expandedDate) && !failures) {
       fetchFailures()
     }
-  }, [isFailuresOpen])
+  }, [isFailuresOpen, expandedDate])
+
+  // Handler for toggling row expansion
+  const handleRowClick = (date: string, hasFailures: boolean) => {
+    if (!hasFailures) return // Don't expand if no failures
+
+    if (expandedDate === date) {
+      setExpandedDate(null)
+    } else {
+      setExpandedDate(date)
+      // Load failures if not yet loaded
+      if (!failures) {
+        fetchFailures()
+      }
+    }
+  }
 
   const totalFailures = summary
     ? summary.bounces + summary.blocks + summary.invalidEmails
@@ -286,6 +326,56 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
             </div>
           </div>
         </CardHeader>
+      </Card>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                Empresa
+              </label>
+              <Select value={companyFilter} onValueChange={setCompanyFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as empresas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as empresas</SelectItem>
+                  {companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <label className="text-sm font-medium text-muted-foreground mb-1.5 block">
+                Assunto
+              </label>
+              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os assuntos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os assuntos</SelectItem>
+                  <SelectItem value="cobranca">Cobranca</SelectItem>
+                  <SelectItem value="lembrete">Lembrete</SelectItem>
+                  <SelectItem value="notificacao">Notificacao</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {(companyFilter !== "all" || subjectFilter !== "all") && (
+            <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-xs text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                Filtros por empresa/assunto ainda nao estao disponiveis. Para habilitar, e necessario configurar categorias no SendGrid ao enviar emails.
+              </p>
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* Error State */}
@@ -420,50 +510,132 @@ export function EmailActivity({ companies }: { companies: Company[] }) {
                     const deliveryRate = day.requests > 0
                       ? (day.delivered / day.requests) * 100
                       : 0
+                    const hasFailures = day.bounces > 0 || day.blocks > 0
+                    const isExpanded = expandedDate === day.date
+                    const dayFailures = isExpanded ? getFailuresForDate(day.date) : []
 
                     return (
-                      <div
-                        key={day.date}
-                        className="grid grid-cols-6 gap-4 p-3 border rounded-lg hover:bg-muted/30 transition-colors items-center"
-                      >
-                        <div className="font-medium text-sm">
-                          {formatDateBrazilian(day.date)}
-                        </div>
-                        <div className="text-center">
-                          <Badge variant="secondary">{day.requests}</Badge>
-                        </div>
-                        <div className="text-center">
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                            {day.delivered}
-                          </Badge>
-                        </div>
-                        <div className="text-center">
-                          <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                            {day.opens}
-                          </Badge>
-                        </div>
-                        <div className="text-center">
-                          {day.bounces > 0 ? (
-                            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                              {day.bounces}
+                      <div key={day.date} className="border rounded-lg overflow-hidden">
+                        <div
+                          onClick={() => handleRowClick(day.date, hasFailures)}
+                          className={`grid grid-cols-6 gap-4 p-3 transition-colors items-center ${
+                            hasFailures
+                              ? "cursor-pointer hover:bg-muted/30"
+                              : ""
+                          } ${isExpanded ? "bg-muted/30" : ""}`}
+                        >
+                          <div className="font-medium text-sm flex items-center gap-2">
+                            {hasFailures && (
+                              isExpanded ? (
+                                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              )
+                            )}
+                            {formatDateBrazilian(day.date)}
+                          </div>
+                          <div className="text-center">
+                            <Badge variant="secondary">{day.requests}</Badge>
+                          </div>
+                          <div className="text-center">
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              {day.delivered}
                             </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          )}
+                          </div>
+                          <div className="text-center">
+                            <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              {day.opens}
+                            </Badge>
+                          </div>
+                          <div className="text-center">
+                            {day.bounces > 0 ? (
+                              <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                {day.bounces}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            )}
+                          </div>
+                          <div className="text-center">
+                            <span
+                              className={`text-sm font-medium ${
+                                deliveryRate >= 90
+                                  ? "text-green-600 dark:text-green-400"
+                                  : deliveryRate >= 70
+                                    ? "text-yellow-600 dark:text-yellow-400"
+                                    : "text-red-600 dark:text-red-400"
+                              }`}
+                            >
+                              {deliveryRate.toFixed(1)}%
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <span
-                            className={`text-sm font-medium ${
-                              deliveryRate >= 90
-                                ? "text-green-600 dark:text-green-400"
-                                : deliveryRate >= 70
-                                  ? "text-yellow-600 dark:text-yellow-400"
-                                  : "text-red-600 dark:text-red-400"
-                            }`}
-                          >
-                            {deliveryRate.toFixed(1)}%
-                          </span>
-                        </div>
+
+                        {/* Expanded Failure Details */}
+                        {isExpanded && (
+                          <div className="border-t bg-muted/10 p-4">
+                            {isLoadingFailures ? (
+                              <div className="flex items-center justify-center py-4">
+                                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                                <span className="text-sm text-muted-foreground">Carregando detalhes...</span>
+                              </div>
+                            ) : dayFailures.length > 0 ? (
+                              <div className="space-y-2">
+                                <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                                  Falhas em {formatDateBrazilian(day.date)} ({dayFailures.length} emails)
+                                </h4>
+                                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                                  {dayFailures.map((record, i) => (
+                                    <div
+                                      key={`failure-${day.date}-${i}`}
+                                      className={`grid grid-cols-3 gap-4 p-2 rounded text-sm ${
+                                        record.type === "bounce"
+                                          ? "bg-red-50 dark:bg-red-950/20"
+                                          : record.type === "block"
+                                            ? "bg-orange-50 dark:bg-orange-950/20"
+                                            : record.type === "invalid"
+                                              ? "bg-yellow-50 dark:bg-yellow-950/20"
+                                              : "bg-purple-50 dark:bg-purple-950/20"
+                                      }`}
+                                    >
+                                      <span className="font-mono text-xs truncate">{record.email}</span>
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-xs w-fit ${
+                                          record.type === "bounce"
+                                            ? "border-red-200 text-red-700 dark:text-red-400"
+                                            : record.type === "block"
+                                              ? "border-orange-200 text-orange-700 dark:text-orange-400"
+                                              : record.type === "invalid"
+                                                ? "border-yellow-200 text-yellow-700 dark:text-yellow-400"
+                                                : "border-purple-200 text-purple-700 dark:text-purple-400"
+                                        }`}
+                                      >
+                                        {record.type === "bounce"
+                                          ? "Bounce"
+                                          : record.type === "block"
+                                            ? "Bloqueado"
+                                            : record.type === "invalid"
+                                              ? "Invalido"
+                                              : "Spam"}
+                                      </Badge>
+                                      <span
+                                        className="text-muted-foreground text-xs truncate"
+                                        title={record.reason}
+                                      >
+                                        {record.reason}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-2">
+                                Detalhes de falha nao disponiveis no SendGrid para esta data.
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
