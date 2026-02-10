@@ -141,6 +141,9 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 50
 
+  // Selection mode: "page" means only current page selected, "all" means all filtered selected
+  const [selectionMode, setSelectionMode] = useState<"none" | "page" | "all">("none")
+
   // Expanded row state
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -207,6 +210,19 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     return sortedRecipients.slice(start, end)
   }, [sortedRecipients, currentPage, ITEMS_PER_PAGE])
 
+  // Check if current page is fully selected
+  const currentPageIds = useMemo(() => new Set(paginatedRecipients.map((r) => r.id)), [paginatedRecipients])
+  const isCurrentPageFullySelected = useMemo(() => {
+    if (paginatedRecipients.length === 0) return false
+    return paginatedRecipients.every((r) => selectedRecipientIds.has(r.id))
+  }, [paginatedRecipients, selectedRecipientIds])
+
+  // Check if all filtered recipients are selected
+  const isAllFilteredSelected = useMemo(() => {
+    if (sortedRecipients.length === 0) return false
+    return sortedRecipients.every((r) => selectedRecipientIds.has(r.id))
+  }, [sortedRecipients, selectedRecipientIds])
+
   // Handle column sort click
   const handleSortClick = (field: SortField) => {
     if (sortField === field) {
@@ -232,6 +248,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setSearchTerm("")
     setEmailStatusFilter("all")
     setCurrentPage(1)
+    setSelectionMode("none")
   }
 
   // Handle test mode toggle
@@ -241,6 +258,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
       // Clear company selection when entering test mode
       setSelectedCompanyId("")
       setSelectedRecipientIds(new Set())
+      setSelectionMode("none")
     } else {
       // Clear test emails when exiting test mode
       setTestEmailsInput("")
@@ -248,15 +266,41 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setResult(null)
   }
 
-  // Handle select all - selects ALL filtered recipients (not just current page)
+  // Handle select current page only
+  const handleSelectCurrentPage = () => {
+    const newSelected = new Set(selectedRecipientIds)
+    paginatedRecipients.forEach((r) => newSelected.add(r.id))
+    setSelectedRecipientIds(newSelected)
+    setSelectionMode("page")
+  }
+
+  // Handle select all - selects ALL filtered recipients (across all pages)
   const handleSelectAll = () => {
     const allFilteredIds = new Set(sortedRecipients.map((r) => r.id))
     setSelectedRecipientIds(allFilteredIds)
+    setSelectionMode("all")
   }
 
   // Handle deselect all
   const handleDeselectAll = () => {
     setSelectedRecipientIds(new Set())
+    setSelectionMode("none")
+  }
+
+  // Handle header checkbox toggle (selects/deselects current page)
+  const handleHeaderCheckboxToggle = () => {
+    if (isCurrentPageFullySelected) {
+      // Deselect current page
+      const newSelected = new Set(selectedRecipientIds)
+      paginatedRecipients.forEach((r) => newSelected.delete(r.id))
+      setSelectedRecipientIds(newSelected)
+      if (newSelected.size === 0) {
+        setSelectionMode("none")
+      }
+    } else {
+      // Select current page
+      handleSelectCurrentPage()
+    }
   }
 
   // Handle individual recipient toggle
@@ -264,10 +308,19 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     const newSelected = new Set(selectedRecipientIds)
     if (newSelected.has(recipientId)) {
       newSelected.delete(recipientId)
+      // If we were in "all" mode and deselected one, we're no longer in "all" mode
+      if (selectionMode === "all") {
+        setSelectionMode("page")
+      }
     } else {
       newSelected.add(recipientId)
     }
     setSelectedRecipientIds(newSelected)
+
+    // Update selection mode based on new state
+    if (newSelected.size === 0) {
+      setSelectionMode("none")
+    }
   }
 
   // Validate form - different validation for test mode
@@ -287,51 +340,80 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     setIsErrorDetailsOpen(false)
 
     try {
-      const response = await fetch("/api/super-admin/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId: isTestMode ? null : selectedCompanyId,
-          recipients: isTestMode
-            ? testEmails.map((email) => ({ id: `test-${email}`, email }))
-            : selectedRecipientsData,
-          subject,
-          htmlBody,
-          isTestMode,
-        }),
-      })
+      const recipientsList = isTestMode
+        ? testEmails.map((email) => ({ id: `test-${email}`, email }))
+        : selectedRecipientsData
 
-      const data = await response.json()
+      // Send in batches of 10 to avoid timeouts
+      const BATCH_SIZE = 10
+      const batches = []
+      for (let i = 0; i < recipientsList.length; i += BATCH_SIZE) {
+        batches.push(recipientsList.slice(i, i + BATCH_SIZE))
+      }
 
-      if (!response.ok) {
-        setResult({
-          success: false,
-          message: data.error || "Erro ao enviar email",
-        })
-      } else {
-        setResult({
-          success: data.totalFailed === 0,
-          message: data.message,
-          totalSent: data.totalSent,
-          totalFailed: data.totalFailed,
-          failedDetails: data.failedDetails,
+      let totalSent = 0
+      let totalFailed = 0
+      const allFailedDetails: { email: string; error: string }[] = []
+
+      for (const batch of batches) {
+        const response = await fetch("/api/super-admin/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: isTestMode ? null : selectedCompanyId,
+            recipients: batch,
+            subject,
+            htmlBody,
+            isTestMode,
+          }),
         })
 
-        // Only reset form on complete success
-        if (data.totalFailed === 0) {
-          if (isTestMode) {
-            setTestEmailsInput("")
-          } else {
-            setSelectedRecipientIds(new Set())
-          }
-          setSubject("")
-          setHtmlBody("")
+        // Check content-type before parsing as JSON
+        const contentType = response.headers.get("content-type")
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await response.text()
+          throw new Error(`Servidor retornou resposta inválida: ${text.substring(0, 100)}...`)
         }
 
-        // Refresh the page data to update email tracking status
-        // This refreshes server components without a full page reload
-        router.refresh()
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "Erro ao enviar email")
+        }
+
+        totalSent += data.totalSent || 0
+        totalFailed += data.totalFailed || 0
+        if (data.failedDetails) {
+          allFailedDetails.push(...data.failedDetails)
+        }
       }
+
+      const modeLabel = isTestMode ? " (modo de teste)" : ""
+      setResult({
+        success: totalFailed === 0,
+        message: totalFailed === 0
+          ? `Email enviado com sucesso para ${totalSent} usuário(s)${modeLabel}`
+          : `Email enviado para ${totalSent} usuário(s). Falha ao enviar para ${totalFailed} usuário(s).${modeLabel}`,
+        totalSent,
+        totalFailed,
+        failedDetails: allFailedDetails.length > 0 ? allFailedDetails : undefined,
+      })
+
+      // Only reset form on complete success
+      if (totalFailed === 0) {
+        if (isTestMode) {
+          setTestEmailsInput("")
+        } else {
+          setSelectedRecipientIds(new Set())
+          setSelectionMode("none")
+        }
+        setSubject("")
+        setHtmlBody("")
+      }
+
+      // Refresh the page data to update email tracking status
+      // This refreshes server components without a full page reload
+      router.refresh()
     } catch (error) {
       setResult({
         success: false,
@@ -517,7 +599,12 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-sm">
-                  {selectedRecipientIds.size} selecionado(s) de {totalFiltered} filtrado(s)
+                  {selectedRecipientIds.size} selecionado(s)
+                  {isAllFilteredSelected && totalFiltered > 0
+                    ? " (todos)"
+                    : selectedRecipientIds.size > 0 && selectedRecipientIds.size < totalFiltered
+                      ? ` de ${totalFiltered}`
+                      : ""}
                 </Badge>
               </div>
             </div>
@@ -626,11 +713,12 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleSelectAll}
+                    onClick={handleSelectCurrentPage}
+                    disabled={isCurrentPageFullySelected}
                     className="gap-2"
                   >
                     <CheckSquare className="h-4 w-4" />
-                    Selecionar Todos ({totalFiltered})
+                    Selecionar Página ({paginatedRecipients.length})
                   </Button>
                   <Button
                     variant="outline"
@@ -644,12 +732,57 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                   </Button>
                 </div>
 
+                {/* Selection Banner - Shows when current page is selected but not all */}
+                {selectedRecipientIds.size > 0 && !isAllFilteredSelected && totalFiltered > paginatedRecipients.length && (
+                  <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+                    <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <span className="text-sm">
+                        <strong>{selectedRecipientIds.size}</strong> cliente(s) selecionado(s) nesta página.
+                      </span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={handleSelectAll}
+                        className="h-auto p-0 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                      >
+                        Selecionar todos os {totalFiltered} clientes
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* All Selected Banner */}
+                {isAllFilteredSelected && totalFiltered > 0 && (
+                  <Alert className="bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <span className="text-sm">
+                        <strong>Todos os {totalFiltered}</strong> cliente(s) filtrado(s) estão selecionados.
+                      </span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={handleDeselectAll}
+                        className="h-auto p-0 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
+                      >
+                        Limpar seleção
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Recipient List */}
                 <ScrollArea className="h-[400px] rounded-md border">
                   <div className="p-4">
                     {/* Table Header */}
                     <div className="flex items-center gap-3 p-3 border-b bg-muted/50 rounded-t-lg font-medium text-sm">
-                      <div className="w-6"></div>
+                      <div className="w-6" data-checkbox>
+                        <Checkbox
+                          checked={isCurrentPageFullySelected && paginatedRecipients.length > 0}
+                          onCheckedChange={handleHeaderCheckboxToggle}
+                          aria-label="Selecionar página atual"
+                        />
+                      </div>
                       <div
                         className="flex-1 min-w-0 cursor-pointer hover:text-primary transition-colors flex items-center gap-1"
                         onClick={() => handleSortClick("name")}
