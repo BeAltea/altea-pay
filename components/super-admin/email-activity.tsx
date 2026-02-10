@@ -98,15 +98,55 @@ interface AnalyticsData {
   }
 }
 
-function formatDateBrazilian(dateStr: string): string {
+function formatDateBrazilian(dateStr: string, includeTime = false): string {
   // Parse date-only strings without timezone conversion
   // "2026-02-10" should display as "10/02/2026"
   if (dateStr.includes("T")) {
-    // Full ISO string - extract date part
-    dateStr = dateStr.split("T")[0]
+    const [datePart, timePart] = dateStr.split("T")
+    const [year, month, day] = datePart.split("-")
+    if (includeTime && timePart) {
+      const [hours, minutes] = timePart.split(":")
+      return `${day}/${month} ${hours}:${minutes}`
+    }
+    return `${day}/${month}/${year}`
   }
   const [year, month, day] = dateStr.split("-")
   return `${day}/${month}/${year}`
+}
+
+function formatDuplicateDates(sends: Array<{ date: string; subject: string }>): string {
+  // Group by date (DD/MM) and show time if multiple sends on same day
+  const dateGroups = new Map<string, string[]>()
+
+  for (const send of sends) {
+    const [datePart, timePart] = send.date.includes("T")
+      ? send.date.split("T")
+      : [send.date, ""]
+    const [year, month, day] = datePart.split("-")
+    const dateKey = `${day}/${month}`
+
+    if (!dateGroups.has(dateKey)) {
+      dateGroups.set(dateKey, [])
+    }
+    if (timePart) {
+      const [hours, minutes] = timePart.split(":")
+      dateGroups.get(dateKey)!.push(`${hours}:${minutes}`)
+    }
+  }
+
+  const formatted: string[] = []
+  for (const [date, times] of dateGroups) {
+    if (times.length > 1) {
+      // Multiple sends on same day - show each time
+      formatted.push(...times.map(t => `${date} ${t}`))
+    } else if (times.length === 1) {
+      formatted.push(`${date} ${times[0]}`)
+    } else {
+      formatted.push(date)
+    }
+  }
+
+  return formatted.join(", ")
 }
 
 function StatCard({
@@ -117,7 +157,6 @@ function StatCard({
   color,
   isLoading,
   tooltip,
-  highlight,
 }: {
   title: string
   value: number
@@ -126,7 +165,6 @@ function StatCard({
   color: "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "amber" | "teal"
   isLoading?: boolean
   tooltip?: string
-  highlight?: boolean
 }) {
   const colorClasses = {
     blue: "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30",
@@ -156,7 +194,7 @@ function StatCard({
   }
 
   return (
-    <Card className={highlight && value > 0 ? "border-amber-300 dark:border-amber-700" : ""}>
+    <Card>
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-lg ${colorClasses[color]}`}>
@@ -427,7 +465,6 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
           color="amber"
           isLoading={isLoading}
           tooltip="Emails enviados mais de uma vez para o mesmo destinatario em lotes diferentes"
-          highlight={true}
         />
         <StatCard
           title="Entregues"
@@ -590,11 +627,11 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                               <p className="text-xs text-muted-foreground mb-2">
                                 Estes destinatarios ja receberam email anteriormente.
                               </p>
-                              <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                              <div className="space-y-1 max-h-[200px] overflow-y-auto">
                                 {batch.duplicates.map((dup, i) => (
                                   <div
                                     key={`dup-${i}`}
-                                    className="grid grid-cols-3 gap-4 p-2 bg-amber-50 dark:bg-amber-950/20 rounded text-sm"
+                                    className="grid grid-cols-4 gap-3 p-2 bg-amber-50 dark:bg-amber-950/20 rounded text-sm"
                                   >
                                     <span className="font-mono text-xs truncate" title={dup.email}>
                                       {dup.email}
@@ -602,8 +639,11 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                                     <span className="text-xs text-muted-foreground truncate">
                                       {dup.clientName}
                                     </span>
-                                    <span className="text-xs text-muted-foreground truncate" title={dup.previousSends.map(s => `${formatDateBrazilian(s.date)}: ${s.subject}`).join(", ")}>
-                                      Enviado {dup.timesSent}x ({dup.previousSends.map(s => formatDateBrazilian(s.date)).join(", ")})
+                                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                      {dup.timesSent}x
+                                    </span>
+                                    <span className="text-xs text-muted-foreground truncate" title={dup.previousSends.map(s => `${s.date}: ${s.subject}`).join("\n")}>
+                                      {formatDuplicateDates(dup.previousSends)}
                                     </span>
                                   </div>
                                 ))}

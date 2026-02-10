@@ -352,7 +352,7 @@ export async function GET(request: NextRequest) {
       const totalFailed = batchBounces.length + batchBlocks.length + batchInvalid.length
       const delivered = totalSent - totalFailed
 
-      // Find duplicates in this batch (emails that were sent to more than once globally)
+      // Find duplicates in this batch (emails that were sent more than once globally)
       const batchDuplicates: DuplicateInfo[] = []
       const batchEmailSet = new Set<string>()
       let uniqueInBatch = 0
@@ -366,21 +366,19 @@ export async function GET(request: NextRequest) {
           batchEmailSet.add(email)
           uniqueInBatch++
 
-          // Check if this email was sent to more than once (globally)
+          // Check if this email was sent more than once (globally across all batches)
           if (history.length > 1) {
-            // Get previous sends (excluding current batch)
-            const previousSends = history
-              .filter(h => !(h.date === group.date && h.subject === group.subject))
-              .map(h => ({ date: h.date, subject: h.subject }))
+            // Show ALL sends for this email (sorted by date)
+            const allSends = history
+              .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime())
+              .map(h => ({ date: h.sentAt, subject: h.subject }))
 
-            if (previousSends.length > 0) {
-              batchDuplicates.push({
-                email,
-                clientName: record.clientName,
-                timesSent: history.length,
-                previousSends,
-              })
-            }
+            batchDuplicates.push({
+              email,
+              clientName: record.clientName,
+              timesSent: history.length,
+              previousSends: allSends,
+            })
           }
         }
       }
