@@ -34,7 +34,6 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
-import { sendBulkNegotiations } from "@/app/actions/send-bulk-negotiations"
 
 type VmaxCustomer = {
   id: string
@@ -363,14 +362,21 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
     setSending(true)
     try {
-      const result = await sendBulkNegotiations({
-        companyId: selectedCompanyId,
-        customerIds: Array.from(selectedCustomers),
-        discountType,
-        discountValue: discountValue ? Number(discountValue) : 0,
-        paymentMethods: Array.from(paymentMethods),
-        notificationChannels: Array.from(notificationChannels),
+      // Use API route instead of server action (supports maxDuration = 120s for large batches)
+      const response = await fetch("/api/super-admin/send-bulk-negotiations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: selectedCompanyId,
+          customerIds: Array.from(selectedCustomers),
+          discountType,
+          discountValue: discountValue ? Number(discountValue) : 0,
+          paymentMethods: Array.from(paymentMethods),
+          notificationChannels: Array.from(notificationChannels),
+        }),
       })
+
+      const result = await response.json()
 
       if (result.success) {
         const totalSelected = selectedCustomers.size
