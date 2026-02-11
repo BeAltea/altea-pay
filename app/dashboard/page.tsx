@@ -155,15 +155,11 @@ export default async function DashboardPage() {
     agreementStatusMap.set(customerId, existing)
   })
 
-  // Calculate stats - matching super-admin Negociações page
+  // Calculate stats - MUST MATCH Acordos page counts
   const totalClientes = vmaxRecords.length
 
   let totalDebt = 0
-  let pendingDebt = 0
   let recoveredDebt = 0
-  let negotiationsEnviadas = 0
-  let negotiationsPendentes = 0
-  let negotiationsPagas = 0
 
   const agingBuckets: Record<string, { count: number; value: number }> = {
     "0-30": { count: 0, value: 0 },
@@ -173,6 +169,7 @@ export default async function DashboardPage() {
     "180+": { count: 0, value: 0 },
   }
 
+  // Calculate total debt and aging buckets from VMAX
   vmaxRecords.forEach((record: any) => {
     const vencidoStr = String(record.Vencido || "0")
     const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
@@ -183,40 +180,26 @@ export default async function DashboardPage() {
     const bucket = getAgingBucket(diasInad)
     agingBuckets[bucket].count++
     agingBuckets[bucket].value += amount
-
-    // Check negotiation status from ASAAS data or VMAX negotiation_status
-    const agreementStatus = agreementStatusMap.get(record.id)
-    const isPaid = agreementStatus?.isPaid || record.negotiation_status === "PAGO"
-    const hasCharge = agreementStatus?.hasCharge || false
-
-    if (isPaid) {
-      negotiationsPagas++
-      recoveredDebt += amount
-    } else {
-      pendingDebt += amount
-      if (hasCharge) {
-        negotiationsEnviadas++
-      } else {
-        negotiationsPendentes++
-      }
-    }
   })
 
-  // Also count clients with charges but not in VMAX (edge case) - exclude cancelled
-  if (negotiationsEnviadas === 0) {
-    negotiationsEnviadas = activeAgreements.filter((a: any) => a.asaas_payment_id).length
-  }
+  // Count negotiations from agreements table - SAME LOGIC AS ACORDOS PAGE
+  // activeAgreements = all agreements minus cancelled (defined earlier in the code)
+  const negotiationsEnviadas = activeAgreements.length
+  const negotiationsPendentes = totalClientes - negotiationsEnviadas
 
-  const openNegotiations = activeAgreements.filter(a =>
-    a.status === "active" || a.status === "draft"
+  // Count paid negotiations
+  const negotiationsPagas = activeAgreements.filter((a: any) =>
+    a.payment_status === "received" ||
+    a.payment_status === "confirmed" ||
+    a.status === "completed"
   ).length
 
+  // Calculate recovered debt from paid agreements
   const totalRecovered = activeAgreements
-    .filter(a => a.payment_status === "received" || a.status === "completed")
-    .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+    .filter((a: any) => a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed")
+    .reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
-  // Use the higher value between agreement-based and VMAX-based recovery
-  const finalRecoveredDebt = Math.max(recoveredDebt, totalRecovered)
+  const finalRecoveredDebt = totalRecovered
   const finalPendingDebt = totalDebt - finalRecoveredDebt
 
   const recoveryRate = totalDebt > 0 ? (finalRecoveredDebt / totalDebt * 100) : 0
@@ -290,10 +273,10 @@ export default async function DashboardPage() {
             Negociacoes Enviadas
           </div>
           <div className="text-2xl font-bold" style={{ color: "var(--admin-green)" }}>
-            {(negotiationsEnviadas + negotiationsPagas).toLocaleString("pt-BR")}
+            {negotiationsEnviadas.toLocaleString("pt-BR")}
           </div>
           <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            {totalClientes > 0 ? (((negotiationsEnviadas + negotiationsPagas) / totalClientes) * 100).toFixed(1) : 0}% do total
+            {totalClientes > 0 ? ((negotiationsEnviadas / totalClientes) * 100).toFixed(1) : 0}% do total
           </div>
         </div>
 
@@ -351,7 +334,7 @@ export default async function DashboardPage() {
             {negotiationsPagas.toLocaleString("pt-BR")}
           </div>
           <div className="text-xs mt-1.5" style={{ color: "var(--admin-text-muted)" }}>
-            {(negotiationsEnviadas + negotiationsPagas) > 0 ? ((negotiationsPagas / (negotiationsEnviadas + negotiationsPagas)) * 100).toFixed(1) : 0}% das enviadas
+            {negotiationsEnviadas > 0 ? ((negotiationsPagas / negotiationsEnviadas) * 100).toFixed(1) : 0}% das enviadas
           </div>
         </div>
 
