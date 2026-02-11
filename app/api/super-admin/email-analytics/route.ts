@@ -42,7 +42,8 @@ interface BatchSummary {
   companyName: string
   sentAt: string
   date: string
-  totalSent: number
+  localAttempts: number // How many we tried to send (local DB)
+  totalSent: number // How many SendGrid received (from stats)
   uniqueInBatch: number
   duplicatesInBatch: number
   delivered: number
@@ -52,6 +53,50 @@ interface BatchSummary {
   invalid: EnrichedFailure[]
   spam: EnrichedFailure[]
   duplicates: DuplicateInfo[]
+}
+
+interface SendGridDayStats {
+  date: string
+  stats: Array<{
+    metrics: {
+      requests: number
+      delivered: number
+      bounces: number
+      blocks: number
+      spam_reports: number
+      invalid_emails: number
+      opens: number
+      clicks: number
+      unique_opens: number
+      unique_clicks: number
+    }
+  }>
+}
+
+async function fetchSendGridStats(
+  apiKey: string,
+  startDate: string,
+  endDate: string
+): Promise<SendGridDayStats[]> {
+  try {
+    const response = await fetch(
+      `https://api.sendgrid.com/v3/stats?start_date=${startDate}&end_date=${endDate}&aggregated_by=day`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    )
+    if (!response.ok) {
+      console.error(`[Email Analytics] Failed to fetch stats:`, response.status)
+      return []
+    }
+    return await response.json()
+  } catch (error) {
+    console.error(`[Email Analytics] Error fetching stats:`, error)
+    return []
+  }
 }
 
 async function fetchSendGridSuppression(
@@ -121,8 +166,63 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // 1. Fetch local tracking data with recipient emails
-    // We need to join email_sent_tracking with company_email_recipients to get emails
+    // Get SendGrid API key first
+    const apiKey = process.env.SENDGRID_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "SENDGRID_API_KEY nao configurada" },
+        { status: 500, headers: noCacheHeaders }
+      )
+    }
+
+    // Format dates for SendGrid API (YYYY-MM-DD)
+    const startDateStr = startDate.toISOString().split("T")[0]
+    const endDateStr = endDate.toISOString().split("T")[0]
+
+    // 1. Fetch SendGrid Stats API - THIS IS THE SOURCE OF TRUTH for delivery metrics
+    const sendgridStats = await fetchSendGridStats(apiKey, startDateStr, endDateStr)
+    console.log(`[Email Analytics] SendGrid stats received for ${sendgridStats.length} days`)
+
+    // Aggregate SendGrid stats for summary
+    const sendgridTotals = sendgridStats.reduce(
+      (acc, day) => {
+        const metrics = day.stats[0]?.metrics || {
+          requests: 0,
+          delivered: 0,
+          bounces: 0,
+          blocks: 0,
+          spam_reports: 0,
+          invalid_emails: 0,
+        }
+        acc.requests += metrics.requests
+        acc.delivered += metrics.delivered
+        acc.bounces += metrics.bounces
+        acc.blocks += metrics.blocks
+        acc.spam += metrics.spam_reports
+        acc.invalid += metrics.invalid_emails
+        return acc
+      },
+      { requests: 0, delivered: 0, bounces: 0, blocks: 0, spam: 0, invalid: 0 }
+    )
+
+    console.log(`[Email Analytics] SendGrid totals:`, sendgridTotals)
+
+    // Create a map of date -> SendGrid stats for per-batch enrichment
+    const sendgridStatsByDate = new Map<string, { requests: number; delivered: number; bounces: number; blocks: number }>()
+    for (const day of sendgridStats) {
+      const metrics = day.stats[0]?.metrics
+      if (metrics) {
+        sendgridStatsByDate.set(day.date, {
+          requests: metrics.requests,
+          delivered: metrics.delivered,
+          bounces: metrics.bounces,
+          blocks: metrics.blocks,
+        })
+      }
+    }
+
+    // 2. Fetch local tracking data for enrichment (company names, subjects, duplicates)
+    // Note: Local data is NOT used for delivery counts - only for metadata
     let trackingQuery = adminClient
       .from("email_sent_tracking")
       .select(`
@@ -145,6 +245,7 @@ export async function GET(request: NextRequest) {
       `)
       .gte("sent_at", startDate.toISOString())
       .lte("sent_at", endDate.toISOString())
+      .eq("status", "sent") // Only count confirmed sends for duplicates
       .order("sent_at", { ascending: false })
 
     // Apply filters
@@ -165,13 +266,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log(`[Email Analytics] Found ${trackingData?.length || 0} tracking records`)
+    console.log(`[Email Analytics] Found ${trackingData?.length || 0} local tracking records (confirmed sends only)`)
 
-    // 2. Collect all recipient emails from tracking data and track duplicates
+    // 3. Collect recipient emails for duplicate detection (only from confirmed sends)
     const emailToRecipient = new Map<string, { clientName: string; userId: string }>()
     const allEmails = new Set<string>()
 
-    // Track all sends per email to identify duplicates
+    // Track send history per email for duplicate detection
     const emailSendHistory = new Map<string, Array<{
       date: string
       subject: string
@@ -200,22 +301,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Calculate global duplicates
-    const totalSends = trackingData?.length || 0
+    // Calculate duplicates from LOCAL confirmed sends only
+    const localConfirmedSends = trackingData?.length || 0
     const uniqueEmailsCount = allEmails.size
-    const globalDuplicates = totalSends - uniqueEmailsCount
+    const globalDuplicates = localConfirmedSends - uniqueEmailsCount
 
-    console.log(`[Email Analytics] Total sends: ${totalSends}, Unique emails: ${uniqueEmailsCount}, Duplicates: ${globalDuplicates}`)
+    console.log(`[Email Analytics] Local confirmed: ${localConfirmedSends}, Unique emails: ${uniqueEmailsCount}, Duplicates: ${globalDuplicates}`)
 
-    // 3. Fetch SendGrid suppression data
-    const apiKey = process.env.SENDGRID_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "SENDGRID_API_KEY nao configurada" },
-        { status: 500, headers: noCacheHeaders }
-      )
-    }
-
+    // 4. Fetch SendGrid suppression data for failure details
     const [bounces, blocks, invalidEmails, spamReports] = await Promise.all([
       fetchSendGridSuppression(apiKey, "bounces", startTime, endTime),
       fetchSendGridSuppression(apiKey, "blocks", startTime, endTime),
@@ -223,7 +316,7 @@ export async function GET(request: NextRequest) {
       fetchSendGridSuppression(apiKey, "spam_reports", startTime, endTime),
     ])
 
-    console.log(`[Email Analytics] SendGrid failures - bounces: ${bounces.length}, blocks: ${blocks.length}, invalid: ${invalidEmails.length}, spam: ${spamReports.length}`)
+    console.log(`[Email Analytics] SendGrid suppression - bounces: ${bounces.length}, blocks: ${blocks.length}, invalid: ${invalidEmails.length}, spam: ${spamReports.length}`)
 
     // 4. Filter SendGrid failures to ONLY include emails that are in our tracked sends
     const matchedBounces = bounces.filter(b => allEmails.has(b.email.toLowerCase().trim()))
@@ -348,9 +441,18 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const totalSent = group.records.length
+      // Local attempts from our tracking data
+      const localAttempts = group.records.length
+
+      // Get SendGrid stats for this specific date
+      const dayStats = sendgridStatsByDate.get(group.date)
+
+      // Use SendGrid numbers if available, otherwise estimate from local
+      // Note: When filtering by company/subject, we can't get per-filter SendGrid stats
+      // so we use local data as proxy but show SendGrid totals in summary
+      const totalSent = dayStats?.requests || localAttempts
       const totalFailed = batchBounces.length + batchBlocks.length + batchInvalid.length
-      const delivered = totalSent - totalFailed
+      const delivered = dayStats?.delivered || (localAttempts - totalFailed)
 
       // Find duplicates in this batch (emails that were sent more than once globally)
       const batchDuplicates: DuplicateInfo[] = []
@@ -383,7 +485,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const duplicatesInBatch = totalSent - uniqueInBatch
+      const duplicatesInBatch = localAttempts - uniqueInBatch
 
       batches.push({
         id: key,
@@ -392,6 +494,7 @@ export async function GET(request: NextRequest) {
         companyName: group.companyName,
         sentAt: group.sentAt,
         date: group.date,
+        localAttempts,
         totalSent,
         uniqueInBatch,
         duplicatesInBatch,
@@ -408,22 +511,21 @@ export async function GET(request: NextRequest) {
     // Sort batches by date descending
     batches.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
 
-    // 7. Calculate summary totals
-    const totalSentSum = batches.reduce((sum, b) => sum + b.totalSent, 0)
-    const bouncesSum = batches.reduce((sum, b) => sum + b.bounces.length, 0)
-    const blocksSum = batches.reduce((sum, b) => sum + b.blocks.length, 0)
-    const invalidSum = batches.reduce((sum, b) => sum + b.invalid.length, 0)
-    const spamSum = batches.reduce((sum, b) => sum + b.spam.length, 0)
-
+    // 7. Calculate summary totals - USE SENDGRID AS SOURCE OF TRUTH
+    // Local data is only used for unique/duplicate counts
     const summary = {
-      totalSent: totalSentSum,
+      // FROM SENDGRID STATS API (source of truth)
+      totalSent: sendgridTotals.requests,
+      delivered: sendgridTotals.delivered,
+      bounces: sendgridTotals.bounces,
+      blocks: sendgridTotals.blocks,
+      invalid: sendgridTotals.invalid,
+      spam: sendgridTotals.spam,
+      // FROM LOCAL DB (for duplicate detection only)
       uniqueEmails: uniqueEmailsCount,
       duplicates: globalDuplicates,
-      delivered: totalSentSum - bouncesSum - blocksSum - invalidSum,
-      bounces: bouncesSum,
-      blocks: blocksSum,
-      invalid: invalidSum,
-      spam: spamSum,
+      // Additional context
+      localAttempts: localConfirmedSends, // How many we tried to send (local)
     }
 
     // 8. Fetch available companies (that have sent emails)
