@@ -81,15 +81,77 @@ async function fetchAsaasPaymentStatus(paymentId: string): Promise<AsaasPaymentR
   return { status: "found", data }
 }
 
-// Fetch all payments from ASAAS for a specific company (by external reference pattern)
-async function fetchAsaasPaymentsByCompany(companyId: string): Promise<any[]> {
+// Normalize CPF/CNPJ - strip all non-digits for comparison
+function normalizeCpfCnpj(value: string | null | undefined): string {
+  if (!value) return ""
+  return value.replace(/\D/g, "")
+}
+
+// Fetch ASAAS customer by CPF/CNPJ
+async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null> {
+  const baseUrl = await getBaseUrl()
+  const normalizedCpf = normalizeCpfCnpj(cpfCnpj)
+
+  if (!normalizedCpf) return null
+
+  try {
+    const response = await fetch(`${baseUrl}/api/asaas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: `/customers?cpfCnpj=${normalizedCpf}`,
+        method: "GET",
+      }),
+    })
+
+    if (!response.ok) return null
+
+    const data = await response.json()
+
+    // Return first matching customer
+    if (data.data && data.data.length > 0) {
+      return data.data[0]
+    }
+
+    return null
+  } catch (error) {
+    console.error(`[ASAAS Sync] Error fetching customer by CPF/CNPJ ${normalizedCpf}:`, error)
+    return null
+  }
+}
+
+// Fetch payments for a specific ASAAS customer
+async function fetchAsaasPaymentsForCustomer(customerId: string): Promise<any[]> {
+  const baseUrl = await getBaseUrl()
+
+  try {
+    const response = await fetch(`${baseUrl}/api/asaas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: `/payments?customer=${customerId}`,
+        method: "GET",
+      }),
+    })
+
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.data || []
+  } catch (error) {
+    console.error(`[ASAAS Sync] Error fetching payments for customer ${customerId}:`, error)
+    return []
+  }
+}
+
+// Fetch all payments from ASAAS (paginated)
+async function fetchAllAsaasPayments(): Promise<any[]> {
   const baseUrl = await getBaseUrl()
   const allPayments: any[] = []
   let offset = 0
   const limit = 100
 
   try {
-    // Fetch recent payments (last 30 days) from ASAAS
     while (true) {
       const response = await fetch(`${baseUrl}/api/asaas`, {
         method: "POST",
@@ -111,7 +173,7 @@ async function fetchAsaasPaymentsByCompany(companyId: string): Promise<any[]> {
       offset += limit
 
       // Safety limit
-      if (offset > 500) break
+      if (offset > 1000) break
     }
   } catch (error) {
     console.error("[ASAAS Sync] Error fetching payments:", error)
@@ -121,13 +183,14 @@ async function fetchAsaasPaymentsByCompany(companyId: string): Promise<any[]> {
 }
 
 // Sync stuck clients: exist in ASAAS but AlteaPay shows "Sem negociação"
+// This now queries ASAAS DIRECTLY for each client to find orphaned records
 async function syncStuckClients(companyId: string, results: any) {
   console.log(`[ASAAS Sync] Checking for stuck clients in company ${companyId}...`)
 
   // Get VMAX records that show "sem negociação" (negotiation_status is null)
   const { data: vmaxRecords, error: vmaxError } = await supabase
     .from("VMAX")
-    .select("id, Cliente, \"CPF/CNPJ\", negotiation_status")
+    .select("id, Cliente, \"CPF/CNPJ\", Vencido, negotiation_status")
     .eq("company_id", companyId)
     .is("negotiation_status", null)
     .limit(100)
@@ -137,91 +200,192 @@ async function syncStuckClients(companyId: string, results: any) {
     return
   }
 
-  console.log(`[ASAAS Sync] Found ${vmaxRecords.length} VMAX records without negotiation`)
+  console.log(`[ASAAS Sync] Found ${vmaxRecords.length} VMAX records without negotiation - checking ASAAS directly`)
 
-  // For each VMAX record, check if there's an active agreement with ASAAS payment
+  // For each VMAX record, query ASAAS DIRECTLY by CPF/CNPJ
   for (const vmax of vmaxRecords) {
-    const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const cpfCnpj = normalizeCpfCnpj(vmax["CPF/CNPJ"])
     if (!cpfCnpj) continue
 
-    // Check if there's a customer with this CPF/CNPJ that has an agreement with ASAAS payment
-    const { data: customers } = await supabase
+    // STEP 1: Query ASAAS directly for this CPF/CNPJ
+    console.log(`[ASAAS Sync] Checking ASAAS for ${vmax.Cliente} (${cpfCnpj})...`)
+    const asaasCustomer = await fetchAsaasCustomerByCpfCnpj(cpfCnpj)
+
+    if (!asaasCustomer) {
+      // Customer doesn't exist in ASAAS - nothing to sync
+      continue
+    }
+
+    console.log(`[ASAAS Sync] Found ASAAS customer: ${asaasCustomer.id} for ${vmax.Cliente}`)
+
+    // STEP 2: Get payments for this ASAAS customer
+    const asaasPayments = await fetchAsaasPaymentsForCustomer(asaasCustomer.id)
+
+    // STEP 3: Check if AlteaPay has this customer in customers table
+    const { data: alteaCustomers } = await supabase
       .from("customers")
       .select("id")
       .eq("document", cpfCnpj)
       .eq("company_id", companyId)
       .limit(1)
 
-    if (!customers || customers.length === 0) continue
+    let customerId: string | null = alteaCustomers?.[0]?.id || null
 
-    const customerId = customers[0].id
+    // STEP 4: Create customer in AlteaPay if not exists
+    if (!customerId) {
+      console.log(`[ASAAS Sync] Creating customer in AlteaPay for ${vmax.Cliente}`)
+      const { data: newCustomer, error: customerError } = await supabase
+        .from("customers")
+        .insert({
+          name: vmax.Cliente,
+          document: cpfCnpj,
+          document_type: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
+          phone: asaasCustomer.mobilePhone || asaasCustomer.phone || null,
+          email: asaasCustomer.email || null,
+          company_id: companyId,
+          source_system: "VMAX",
+          external_id: vmax.id,
+        })
+        .select("id")
+        .single()
 
-    // Check for agreements with ASAAS payment
-    const { data: agreements } = await supabase
+      if (customerError || !newCustomer) {
+        console.error(`[ASAAS Sync] Failed to create customer for ${vmax.Cliente}:`, customerError)
+        results.errors.push(`${vmax.Cliente}: Falha ao criar cliente - ${customerError?.message}`)
+        continue
+      }
+      customerId = newCustomer.id
+    }
+
+    // STEP 5: Check for existing agreements
+    const { data: existingAgreements } = await supabase
       .from("agreements")
-      .select("id, asaas_payment_id, asaas_customer_id, status, payment_status")
+      .select("id, asaas_payment_id, asaas_customer_id, status")
       .eq("customer_id", customerId)
       .eq("company_id", companyId)
-      .not("asaas_payment_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
 
-    if (agreements && agreements.length > 0) {
-      const agreement = agreements[0]
+    const existingAgreement = existingAgreements?.[0] || null
 
-      // This client has an ASAAS payment but VMAX shows no negotiation - STUCK!
-      console.log(`[ASAAS Sync] Found stuck client: ${vmax.Cliente} (${cpfCnpj}), ASAAS payment: ${agreement.asaas_payment_id}`)
+    // STEP 6: Handle based on ASAAS state
+    if (asaasPayments.length > 0) {
+      // SCENARIO A: Customer + Payment exists in ASAAS
+      const latestPayment = asaasPayments[0] // Most recent payment
 
-      // Verify the payment exists in ASAAS
-      const asaasResult = await fetchAsaasPaymentStatus(agreement.asaas_payment_id)
-
-      if (asaasResult.status === "found") {
-        // Payment exists in ASAAS - update VMAX to "sent"
+      if (existingAgreement && existingAgreement.asaas_payment_id) {
+        // Agreement already has ASAAS payment - just update VMAX
         const { error: updateError } = await supabase
           .from("VMAX")
           .update({ negotiation_status: "sent" })
           .eq("id", vmax.id)
 
         if (!updateError) {
-          console.log(`[ASAAS Sync] Fixed stuck client: ${vmax.Cliente} - VMAX updated to "sent"`)
           results.stuckFixed = (results.stuckFixed || 0) + 1
           if (!results.stuckDetails) results.stuckDetails = []
           results.stuckDetails.push({
             name: vmax.Cliente,
             cpfCnpj,
-            action: "VMAX atualizado para Enviada",
-            asaasPaymentId: agreement.asaas_payment_id,
+            action: "VMAX atualizado para Enviada (acordo existente)",
+            asaasPaymentId: existingAgreement.asaas_payment_id,
           })
-        } else {
-          console.error(`[ASAAS Sync] Failed to fix stuck client ${vmax.Cliente}:`, updateError)
-          results.errors.push(`${vmax.Cliente}: Falha ao atualizar VMAX`)
         }
-      } else if (asaasResult.status === "deleted") {
-        // Payment was deleted from ASAAS - mark agreement as cancelled
-        console.log(`[ASAAS Sync] Stuck client ${vmax.Cliente} has deleted ASAAS payment - marking as cancelled`)
-
-        await supabase
+      } else if (existingAgreement && !existingAgreement.asaas_payment_id) {
+        // Agreement exists but no ASAAS payment ID - update it
+        const { error: updateError } = await supabase
           .from("agreements")
           .update({
-            status: "cancelled",
-            payment_status: "cancelled",
-            asaas_status: "DELETED",
+            asaas_customer_id: asaasCustomer.id,
+            asaas_payment_id: latestPayment.id,
+            asaas_payment_url: latestPayment.invoiceUrl || null,
+            status: "active",
+            payment_status: latestPayment.status?.toLowerCase() || "pending",
           })
-          .eq("id", agreement.id)
+          .eq("id", existingAgreement.id)
 
-        results.stuckFixed = (results.stuckFixed || 0) + 1
-        if (!results.stuckDetails) results.stuckDetails = []
-        results.stuckDetails.push({
-          name: vmax.Cliente,
-          cpfCnpj,
-          action: "Acordo marcado como cancelado (ASAAS deletado)",
-        })
+        if (!updateError) {
+          await supabase.from("VMAX").update({ negotiation_status: "sent" }).eq("id", vmax.id)
+          results.stuckFixed = (results.stuckFixed || 0) + 1
+          if (!results.stuckDetails) results.stuckDetails = []
+          results.stuckDetails.push({
+            name: vmax.Cliente,
+            cpfCnpj,
+            action: "Acordo atualizado com dados do ASAAS",
+            asaasPaymentId: latestPayment.id,
+          })
+        }
+      } else {
+        // No agreement exists - create one
+        const vencidoStr = String(vmax.Vencido || "0")
+        const originalAmount = Number(vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || latestPayment.value || 0
+
+        // Create debt first
+        const { data: newDebt } = await supabase
+          .from("debts")
+          .insert({
+            customer_id: customerId,
+            company_id: companyId,
+            amount: originalAmount,
+            due_date: latestPayment.dueDate || new Date().toISOString().split("T")[0],
+            description: `Dívida de ${vmax.Cliente}`,
+            status: "in_negotiation",
+            source_system: "VMAX",
+            external_id: vmax.id,
+          })
+          .select("id")
+          .single()
+
+        if (newDebt) {
+          // Create agreement
+          const { error: agreementError } = await supabase.from("agreements").insert({
+            debt_id: newDebt.id,
+            customer_id: customerId,
+            company_id: companyId,
+            original_amount: originalAmount,
+            agreed_amount: latestPayment.value || originalAmount,
+            discount_amount: 0,
+            discount_percentage: 0,
+            installments: 1,
+            installment_amount: latestPayment.value || originalAmount,
+            due_date: latestPayment.dueDate || new Date().toISOString().split("T")[0],
+            status: "active",
+            payment_status: latestPayment.status?.toLowerCase() || "pending",
+            asaas_customer_id: asaasCustomer.id,
+            asaas_payment_id: latestPayment.id,
+            asaas_payment_url: latestPayment.invoiceUrl || null,
+          })
+
+          if (!agreementError) {
+            await supabase.from("VMAX").update({ negotiation_status: "sent" }).eq("id", vmax.id)
+            results.stuckFixed = (results.stuckFixed || 0) + 1
+            if (!results.stuckDetails) results.stuckDetails = []
+            results.stuckDetails.push({
+              name: vmax.Cliente,
+              cpfCnpj,
+              action: "Acordo criado a partir do ASAAS",
+              asaasPaymentId: latestPayment.id,
+            })
+          } else {
+            results.errors.push(`${vmax.Cliente}: Falha ao criar acordo - ${agreementError.message}`)
+          }
+        }
       }
+    } else {
+      // SCENARIO B: Customer exists in ASAAS but NO payment
+      // Report this as an incomplete record that needs attention
+      if (!results.incompleteAgreements) results.incompleteAgreements = []
+      results.incompleteAgreements.push({
+        agreementId: existingAgreement?.id || "",
+        customerName: vmax.Cliente,
+        cpfCnpj,
+        asaasCustomerId: asaasCustomer.id,
+        issue: "Cliente existe no ASAAS mas não tem cobrança. Envie uma nova negociação.",
+      })
+      console.log(`[ASAAS Sync] ${vmax.Cliente} exists in ASAAS (${asaasCustomer.id}) but has no payments`)
     }
   }
 
-  // Also check for agreements without ASAAS payment ID but with ASAAS customer ID
-  // These are cases where customer was created but payment creation failed
+  // Also check AlteaPay agreements that have asaas_customer_id but no asaas_payment_id
   const { data: incompleteAgreements } = await supabase
     .from("agreements")
     .select("id, customer_id, asaas_customer_id, status, customers(name, document)")
@@ -232,18 +396,48 @@ async function syncStuckClients(companyId: string, results: any) {
     .limit(50)
 
   if (incompleteAgreements && incompleteAgreements.length > 0) {
-    console.log(`[ASAAS Sync] Found ${incompleteAgreements.length} incomplete agreements (customer created, no payment)`)
+    console.log(`[ASAAS Sync] Found ${incompleteAgreements.length} AlteaPay agreements with ASAAS customer but no payment`)
 
-    if (!results.incompleteAgreements) results.incompleteAgreements = []
     for (const agreement of incompleteAgreements) {
       const customer = agreement.customers as any
-      results.incompleteAgreements.push({
-        agreementId: agreement.id,
-        customerName: customer?.name || "Desconhecido",
-        cpfCnpj: customer?.document || "",
-        asaasCustomerId: agreement.asaas_customer_id,
-        issue: "Cliente criado no ASAAS mas cobrança não foi criada",
-      })
+      // Check if there are now payments in ASAAS for this customer
+      const payments = await fetchAsaasPaymentsForCustomer(agreement.asaas_customer_id)
+
+      if (payments.length > 0) {
+        // Payment now exists - update the agreement
+        const latestPayment = payments[0]
+        await supabase
+          .from("agreements")
+          .update({
+            asaas_payment_id: latestPayment.id,
+            asaas_payment_url: latestPayment.invoiceUrl || null,
+            status: "active",
+            payment_status: latestPayment.status?.toLowerCase() || "pending",
+          })
+          .eq("id", agreement.id)
+
+        results.stuckFixed = (results.stuckFixed || 0) + 1
+        if (!results.stuckDetails) results.stuckDetails = []
+        results.stuckDetails.push({
+          name: customer?.name || "Desconhecido",
+          cpfCnpj: customer?.document || "",
+          action: "Acordo atualizado - cobrança encontrada no ASAAS",
+          asaasPaymentId: latestPayment.id,
+        })
+      } else {
+        // Still no payment
+        if (!results.incompleteAgreements) results.incompleteAgreements = []
+        const alreadyReported = results.incompleteAgreements.some((r: any) => r.agreementId === agreement.id)
+        if (!alreadyReported) {
+          results.incompleteAgreements.push({
+            agreementId: agreement.id,
+            customerName: customer?.name || "Desconhecido",
+            cpfCnpj: customer?.document || "",
+            asaasCustomerId: agreement.asaas_customer_id,
+            issue: "Cliente criado no ASAAS mas cobrança não foi criada",
+          })
+        }
+      }
     }
   }
 }

@@ -122,6 +122,19 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     stepLabels?: Record<string, string>
   } | null>(null)
 
+  // Sync results modal state
+  const [showSyncResultsModal, setShowSyncResultsModal] = useState(false)
+  const [syncResults, setSyncResults] = useState<{
+    total: number
+    synced: number
+    updated: number
+    skipped: number
+    errors: string[]
+    stuckFixed?: number
+    stuckDetails?: Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>
+    incompleteAgreements?: Array<{ agreementId: string; customerName: string; cpfCnpj: string; asaasCustomerId: string; issue: string }>
+  } | null>(null)
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -514,7 +527,21 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       const data = await res.json()
 
       if (res.ok && data.success) {
-        toast.success(data.message || `Sincronizado! ${data.results?.updated || 0} cobrancas atualizadas`)
+        const results = data.results || {}
+        const hasDetails = (results.stuckFixed && results.stuckFixed > 0) ||
+          (results.stuckDetails && results.stuckDetails.length > 0) ||
+          (results.incompleteAgreements && results.incompleteAgreements.length > 0) ||
+          results.updated > 0
+
+        if (hasDetails) {
+          // Show detailed results in modal
+          setSyncResults(results)
+          setShowSyncResultsModal(true)
+          toast.success(data.message)
+        } else {
+          toast.success(data.message || "Sincronização concluída - nenhuma alteração necessária")
+        }
+
         // Reload customers to reflect any status changes
         if (selectedCompanyId) {
           loadCustomers(selectedCompanyId)
@@ -1431,6 +1458,155 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 Sincronizar ASAAS
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync Results Modal */}
+      <Dialog open={showSyncResultsModal} onOpenChange={setShowSyncResultsModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-500" />
+              Sincronização com ASAAS Concluída
+            </DialogTitle>
+            <DialogDescription>
+              {syncResults && (
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {syncResults.updated > 0 && (
+                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                      {syncResults.updated} cobrança(s) atualizada(s)
+                    </Badge>
+                  )}
+                  {syncResults.stuckFixed && syncResults.stuckFixed > 0 && (
+                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                      <CheckCircle className="mr-1 h-3 w-3" />
+                      {syncResults.stuckFixed} cliente(s) corrigido(s)
+                    </Badge>
+                  )}
+                  {syncResults.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
+                    <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      {syncResults.incompleteAgreements.length} pendente(s)
+                    </Badge>
+                  )}
+                  {syncResults.errors && syncResults.errors.length > 0 && (
+                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      {syncResults.errors.length} erro(s)
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto mt-4 space-y-4 pr-2">
+            {/* Fixed/Synced Clients */}
+            {syncResults?.stuckDetails && syncResults.stuckDetails.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-green-700 dark:text-green-300 mb-2 flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" />
+                  Clientes Sincronizados
+                </h4>
+                <div className="space-y-2">
+                  {syncResults.stuckDetails.map((detail, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg border bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{detail.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {detail.cpfCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                          </p>
+                        </div>
+                        {detail.asaasPaymentId && (
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {detail.asaasPaymentId}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        {detail.action}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Incomplete Agreements (need manual action) */}
+            {syncResults?.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-yellow-700 dark:text-yellow-300 mb-2 flex items-center gap-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  Clientes com Pendências
+                </h4>
+                <div className="space-y-2">
+                  {syncResults.incompleteAgreements.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg border bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{item.customerName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.cpfCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ASAAS: {item.asaasCustomerId}
+                        </span>
+                      </div>
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                        {item.issue}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Errors */}
+            {syncResults?.errors && syncResults.errors.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-red-700 dark:text-red-300 mb-2 flex items-center gap-1">
+                  <XCircle className="h-4 w-4" />
+                  Erros
+                </h4>
+                <div className="space-y-1">
+                  {syncResults.errors.map((error, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 rounded text-xs bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                    >
+                      {error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No changes */}
+            {syncResults &&
+              !syncResults.stuckDetails?.length &&
+              !syncResults.incompleteAgreements?.length &&
+              !syncResults.errors?.length &&
+              syncResults.updated === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500/50" />
+                  <p>Todos os clientes já estão sincronizados!</p>
+                </div>
+              )}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowSyncResultsModal(false)}>
+              Fechar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
