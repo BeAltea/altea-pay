@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,7 @@ import {
   CalendarClock,
   RefreshCw,
   XCircle,
+  Eye,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -56,6 +57,9 @@ type VmaxCustomer = {
   agreementStatus?: string | null // Agreement status (active, cancelled, completed, etc.)
   asaasPaymentId?: string | null // ASAAS payment ID for cancellation
   agreementId?: string | null // Agreement ID for cancellation
+  notificationViewed?: boolean // Whether the notification/payment link was viewed
+  notificationViewedAt?: string | null // When it was viewed
+  notificationViewedChannel?: string | null // Which channel (whatsapp, email, payment_link)
 }
 
 type Company = {
@@ -158,6 +162,35 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   // Per-client sync state
   const [syncingClientId, setSyncingClientId] = useState<string | null>(null)
 
+  // Notification check state
+  const [checkingNotifications, setCheckingNotifications] = useState(false)
+
+  // Check notification viewed status from ASAAS API
+  const checkNotificationStatus = useCallback(async (companyId: string) => {
+    setCheckingNotifications(true)
+    try {
+      const res = await fetch("/api/asaas/check-notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data.updated > 0) {
+          console.log(`[Notifications] Updated ${data.updated} notification status(es)`)
+          // Reload customers to get updated notification status
+          return true // Signal that we should reload
+        }
+      }
+    } catch (error) {
+      console.error("Error checking notification status:", error)
+    } finally {
+      setCheckingNotifications(false)
+    }
+    return false
+  }, [])
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -166,6 +199,18 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       if (!res.ok) throw new Error("Erro ao buscar clientes")
       const data = await res.json()
       setCustomers(data.customers || [])
+
+      // After loading customers, check notification status from ASAAS
+      // This runs in background and will reload if any updates are found
+      checkNotificationStatus(companyId).then((shouldReload) => {
+        if (shouldReload) {
+          // Reload customers to get updated notification viewed status
+          fetch(`/api/super-admin/negotiations/customers?companyId=${companyId}`)
+            .then((r) => r.json())
+            .then((d) => setCustomers(d.customers || []))
+            .catch(console.error)
+        }
+      })
     } catch (error) {
       console.error("Error loading customers:", error)
       toast.error("Erro ao carregar clientes da empresa")
@@ -173,7 +218,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [checkNotificationStatus])
 
   const handleCompanyChange = (companyId: string) => {
     setSelectedCompanyId(companyId)
@@ -716,6 +761,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     // Cancelled customers can send new negotiation, so they count as pending
     const withoutNegotiation = customers.filter((c) => !c.hasNegotiation || c.isCancelled).length
 
+    // Customers with viewed notifications (only counts active, non-cancelled negotiations)
+    const viewedCount = customers.filter((c) => c.hasNegotiation && !c.isCancelled && c.notificationViewed).length
+
     // Total debt (all customers)
     const totalDebt = customers.reduce((sum, c) => sum + c.totalDebt, 0)
 
@@ -736,7 +784,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       pendingDebt,
       paidCount,
       cancelledCustomersCount,
-      totalCancelledNegotiations
+      totalCancelledNegotiations,
+      viewedCount
     }
   }, [customers])
 
@@ -768,7 +817,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       {/* KPI Cards */}
       {!loading && selectedCompanyId && customers.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -829,6 +878,29 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </div>
                 <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
                   <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-purple-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Cobranças Visualizadas</p>
+                  <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {checkingNotifications ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : (
+                      kpiStats.viewedCount
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {kpiStats.withNegotiation > 0 ? ((kpiStats.viewedCount / kpiStats.withNegotiation) * 100).toFixed(1) : 0}% das enviadas
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                  <Eye className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
             </CardContent>
@@ -1012,7 +1084,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 disabled={selectableCustomers.length === 0}
                 className="border-foreground/70 flex-shrink-0"
               />
-              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-9 gap-2 items-center">
+              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-2 items-center">
                 <button
                   onClick={() => toggleSort("name")}
                   className="lg:col-span-2 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
@@ -1038,6 +1110,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Negociação</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Dívida</span>
+                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center" title="Cobrança Visualizada">Visualizada</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Canceladas</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Ações</span>
               </div>
@@ -1063,7 +1136,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                       disabled={isPaid}
                       className="border-foreground/70 flex-shrink-0"
                     />
-                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-9 gap-2 items-center">
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-2 items-center">
                       {/* Name + Document */}
                       <div className="min-w-0 lg:col-span-2">
                         <p className="text-sm font-medium truncate">{customer.name}</p>
@@ -1139,6 +1212,30 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                             <AlertTriangle className="mr-1 h-3 w-3" />
                             Em aberto
                           </Badge>
+                        )}
+                      </div>
+                      {/* Cobrança Visualizada - Green dot if viewed, grey if not */}
+                      <div className="hidden lg:flex justify-center">
+                        {customer.hasNegotiation && !customer.isCancelled ? (
+                          customer.notificationViewed ? (
+                            <div
+                              className="flex items-center gap-1"
+                              title={customer.notificationViewedAt
+                                ? `Visualizada em ${new Date(customer.notificationViewedAt).toLocaleString("pt-BR")}${customer.notificationViewedChannel ? ` via ${customer.notificationViewedChannel}` : ""}`
+                                : "Cobrança visualizada"
+                              }
+                            >
+                              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                              <Eye className="h-3 w-3 text-green-600 dark:text-green-400" />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1" title="Ainda não visualizada">
+                              <span className="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600" />
+                              <Eye className="h-3 w-3 text-gray-400 dark:text-gray-500" />
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
                       </div>
                       {/* Canceladas column - count of cancelled negotiations */}

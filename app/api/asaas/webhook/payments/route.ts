@@ -37,6 +37,8 @@ const PAYMENT_STATUS_MAP: Record<string, string> = {
   PAYMENT_DELETED: "deleted",
   PAYMENT_RESTORED: "pending",
   PAYMENT_UPDATED: null, // Will not change status, just update details
+  PAYMENT_CHECKOUT_VIEWED: null, // Notification viewed event
+  PAYMENT_VIEWED: null, // Alternative viewed event name
 }
 
 // Agreement status based on payment events
@@ -280,6 +282,14 @@ export async function POST(request: NextRequest) {
     // Set payment_received_at for received events
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_DUNNING_RECEIVED") {
       agreementUpdate.payment_received_at = new Date().toISOString()
+    }
+
+    // Handle notification/payment viewed events
+    if (event === "PAYMENT_CHECKOUT_VIEWED" || event === "PAYMENT_VIEWED") {
+      agreementUpdate.notification_viewed = true
+      agreementUpdate.notification_viewed_at = new Date().toISOString()
+      agreementUpdate.notification_viewed_channel = "payment_link"
+      console.log("[ASAAS Webhook] Payment viewed for agreement:", agreement.id)
     }
 
     // 9. Update the agreement

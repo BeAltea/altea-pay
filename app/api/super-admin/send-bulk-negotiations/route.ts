@@ -716,7 +716,10 @@ async function processSingleNegotiation(
 }
 
 // Send notifications without blocking the main flow
-// Uses the determined notification channel based on phone validation
+// NOTIFICATION LOGIC:
+// - Valid phone: ASAAS sends WhatsApp/SMS automatically when charge is created
+// - Invalid phone: ASAAS sends email (if email exists) when charge is created
+// - AlteaPay (Resend): ALWAYS sends its own email notification (regardless of phone validity)
 async function sendNotificationsInBackground(
   params: SendBulkNegotiationsParams,
   customerName: string,
@@ -728,12 +731,6 @@ async function sendNotificationsInBackground(
   supabase: any,
   notificationChannel: "whatsapp" | "email" | "none"
 ) {
-  // Skip if no notification channel determined
-  if (notificationChannel === "none") {
-    console.log(`[Notifications] ${customerName}: No notification channel available (no valid phone or email)`)
-    return
-  }
-
   try {
     // Get agreement data
     const { data: agreementData } = await supabase
@@ -755,20 +752,20 @@ async function sendNotificationsInBackground(
       .single()
     const companyName = companyData?.name || "Empresa"
 
-    // Send notification based on determined channel
-    if (notificationChannel === "whatsapp" && asaasCustomerId) {
-      // WhatsApp via ASAAS - phone was validated as valid
+    // ASAAS handles WhatsApp/SMS automatically when charge is created
+    // We just need to trigger resend if WhatsApp channel was selected
+    if (notificationChannel === "whatsapp" && asaasCustomerId && agreementData?.asaas_payment_id) {
       try {
-        // Resend notification to trigger WhatsApp
-        if (agreementData?.asaas_payment_id) {
-          await resendAsaasPaymentNotification(agreementData.asaas_payment_id)
-          console.log(`[Notifications] ${customerName}: WhatsApp notification sent via ASAAS`)
-        }
+        await resendAsaasPaymentNotification(agreementData.asaas_payment_id)
+        console.log(`[Notifications] ${customerName}: WhatsApp/SMS notification triggered via ASAAS`)
       } catch (whatsappErr: any) {
-        console.error(`[Notifications] WhatsApp failed for ${customerName}:`, whatsappErr.message)
+        console.error(`[Notifications] ASAAS WhatsApp failed for ${customerName}:`, whatsappErr.message)
       }
-    } else if (notificationChannel === "email" && customerEmail) {
-      // Email fallback - phone was invalid but has email
+    }
+
+    // AlteaPay ALWAYS sends its own email via Resend (if customer has email)
+    // This is separate from ASAAS notifications
+    if (customerEmail) {
       try {
         const { sendEmail, generateDebtCollectionEmail } = await import("@/lib/notifications/email")
         const emailHtml = await generateDebtCollectionEmail({
@@ -783,10 +780,12 @@ async function sendNotificationsInBackground(
           subject: `Proposta de Negociação - ${companyName}`,
           html: emailHtml,
         })
-        console.log(`[Notifications] ${customerName}: Email sent (fallback for invalid phone)`)
+        console.log(`[Notifications] ${customerName}: AlteaPay email sent via Resend`)
       } catch (emailErr: any) {
-        console.error(`[Notifications] Email failed for ${customerName}:`, emailErr.message)
+        console.error(`[Notifications] Resend email failed for ${customerName}:`, emailErr.message)
       }
+    } else {
+      console.log(`[Notifications] ${customerName}: No email address, skipping AlteaPay email`)
     }
   } catch (err: any) {
     console.error(`[Notifications] Background notifications failed:`, err.message)
