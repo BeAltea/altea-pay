@@ -8,6 +8,10 @@ import { headers } from "next/headers"
  * This endpoint checks ASAAS for status updates on all pending/active charges.
  * Use as a fallback when webhooks fail or are delayed.
  *
+ * NEW: Also detects and fixes "stuck" clients - those that exist in ASAAS
+ * but AlteaPay doesn't know about (e.g., ASAAS customer created but charge
+ * creation failed, leaving the client in a half-synced state).
+ *
  * Can be triggered by:
  * 1. Manual "Sincronizar com ASAAS" button in admin
  * 2. Cron job (e.g., every 15 minutes via Vercel Cron)
@@ -77,14 +81,190 @@ async function fetchAsaasPaymentStatus(paymentId: string): Promise<AsaasPaymentR
   return { status: "found", data }
 }
 
+// Fetch all payments from ASAAS for a specific company (by external reference pattern)
+async function fetchAsaasPaymentsByCompany(companyId: string): Promise<any[]> {
+  const baseUrl = await getBaseUrl()
+  const allPayments: any[] = []
+  let offset = 0
+  const limit = 100
+
+  try {
+    // Fetch recent payments (last 30 days) from ASAAS
+    while (true) {
+      const response = await fetch(`${baseUrl}/api/asaas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: `/payments?offset=${offset}&limit=${limit}`,
+          method: "GET",
+        }),
+      })
+
+      if (!response.ok) break
+
+      const data = await response.json()
+      if (!data.data || data.data.length === 0) break
+
+      allPayments.push(...data.data)
+
+      if (!data.hasMore) break
+      offset += limit
+
+      // Safety limit
+      if (offset > 500) break
+    }
+  } catch (error) {
+    console.error("[ASAAS Sync] Error fetching payments:", error)
+  }
+
+  return allPayments
+}
+
+// Sync stuck clients: exist in ASAAS but AlteaPay shows "Sem negociação"
+async function syncStuckClients(companyId: string, results: any) {
+  console.log(`[ASAAS Sync] Checking for stuck clients in company ${companyId}...`)
+
+  // Get VMAX records that show "sem negociação" (negotiation_status is null)
+  const { data: vmaxRecords, error: vmaxError } = await supabase
+    .from("VMAX")
+    .select("id, Cliente, \"CPF/CNPJ\", negotiation_status")
+    .eq("company_id", companyId)
+    .is("negotiation_status", null)
+    .limit(100)
+
+  if (vmaxError || !vmaxRecords || vmaxRecords.length === 0) {
+    console.log("[ASAAS Sync] No VMAX records without negotiation found")
+    return
+  }
+
+  console.log(`[ASAAS Sync] Found ${vmaxRecords.length} VMAX records without negotiation`)
+
+  // For each VMAX record, check if there's an active agreement with ASAAS payment
+  for (const vmax of vmaxRecords) {
+    const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+    if (!cpfCnpj) continue
+
+    // Check if there's a customer with this CPF/CNPJ that has an agreement with ASAAS payment
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("document", cpfCnpj)
+      .eq("company_id", companyId)
+      .limit(1)
+
+    if (!customers || customers.length === 0) continue
+
+    const customerId = customers[0].id
+
+    // Check for agreements with ASAAS payment
+    const { data: agreements } = await supabase
+      .from("agreements")
+      .select("id, asaas_payment_id, asaas_customer_id, status, payment_status")
+      .eq("customer_id", customerId)
+      .eq("company_id", companyId)
+      .not("asaas_payment_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+
+    if (agreements && agreements.length > 0) {
+      const agreement = agreements[0]
+
+      // This client has an ASAAS payment but VMAX shows no negotiation - STUCK!
+      console.log(`[ASAAS Sync] Found stuck client: ${vmax.Cliente} (${cpfCnpj}), ASAAS payment: ${agreement.asaas_payment_id}`)
+
+      // Verify the payment exists in ASAAS
+      const asaasResult = await fetchAsaasPaymentStatus(agreement.asaas_payment_id)
+
+      if (asaasResult.status === "found") {
+        // Payment exists in ASAAS - update VMAX to "sent"
+        const { error: updateError } = await supabase
+          .from("VMAX")
+          .update({ negotiation_status: "sent" })
+          .eq("id", vmax.id)
+
+        if (!updateError) {
+          console.log(`[ASAAS Sync] Fixed stuck client: ${vmax.Cliente} - VMAX updated to "sent"`)
+          results.stuckFixed = (results.stuckFixed || 0) + 1
+          if (!results.stuckDetails) results.stuckDetails = []
+          results.stuckDetails.push({
+            name: vmax.Cliente,
+            cpfCnpj,
+            action: "VMAX atualizado para Enviada",
+            asaasPaymentId: agreement.asaas_payment_id,
+          })
+        } else {
+          console.error(`[ASAAS Sync] Failed to fix stuck client ${vmax.Cliente}:`, updateError)
+          results.errors.push(`${vmax.Cliente}: Falha ao atualizar VMAX`)
+        }
+      } else if (asaasResult.status === "deleted") {
+        // Payment was deleted from ASAAS - mark agreement as cancelled
+        console.log(`[ASAAS Sync] Stuck client ${vmax.Cliente} has deleted ASAAS payment - marking as cancelled`)
+
+        await supabase
+          .from("agreements")
+          .update({
+            status: "cancelled",
+            payment_status: "cancelled",
+            asaas_status: "DELETED",
+          })
+          .eq("id", agreement.id)
+
+        results.stuckFixed = (results.stuckFixed || 0) + 1
+        if (!results.stuckDetails) results.stuckDetails = []
+        results.stuckDetails.push({
+          name: vmax.Cliente,
+          cpfCnpj,
+          action: "Acordo marcado como cancelado (ASAAS deletado)",
+        })
+      }
+    }
+  }
+
+  // Also check for agreements without ASAAS payment ID but with ASAAS customer ID
+  // These are cases where customer was created but payment creation failed
+  const { data: incompleteAgreements } = await supabase
+    .from("agreements")
+    .select("id, customer_id, asaas_customer_id, status, customers(name, document)")
+    .eq("company_id", companyId)
+    .eq("status", "draft")
+    .not("asaas_customer_id", "is", null)
+    .is("asaas_payment_id", null)
+    .limit(50)
+
+  if (incompleteAgreements && incompleteAgreements.length > 0) {
+    console.log(`[ASAAS Sync] Found ${incompleteAgreements.length} incomplete agreements (customer created, no payment)`)
+
+    if (!results.incompleteAgreements) results.incompleteAgreements = []
+    for (const agreement of incompleteAgreements) {
+      const customer = agreement.customers as any
+      results.incompleteAgreements.push({
+        agreementId: agreement.id,
+        customerName: customer?.name || "Desconhecido",
+        cpfCnpj: customer?.document || "",
+        asaasCustomerId: agreement.asaas_customer_id,
+        issue: "Cliente criado no ASAAS mas cobrança não foi criada",
+      })
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
-  const results = {
+  const results: {
+    total: number
+    synced: number
+    updated: number
+    skipped: number
+    errors: string[]
+    stuckFixed?: number
+    stuckDetails?: Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>
+    incompleteAgreements?: Array<{ agreementId: string; customerName: string; cpfCnpj: string; asaasCustomerId: string; issue: string }>
+  } = {
     total: 0,
     synced: 0,
     updated: 0,
     skipped: 0,
-    errors: [] as string[],
+    errors: [],
   }
 
   try {
@@ -367,12 +547,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Also sync stuck clients if a company filter is provided
+    if (filters.companyId) {
+      await syncStuckClients(filters.companyId, results)
+    }
+
     const duration = Date.now() - startTime
     console.log(`[ASAAS Sync] Completed in ${duration}ms:`, results)
 
+    // Build message
+    let message = `Sincronizado! ${results.updated} cobranca(s) atualizada(s)`
+    if (results.stuckFixed && results.stuckFixed > 0) {
+      message += `, ${results.stuckFixed} cliente(s) corrigido(s)`
+    }
+    if (results.incompleteAgreements && results.incompleteAgreements.length > 0) {
+      message += `, ${results.incompleteAgreements.length} acordo(s) incompleto(s) detectado(s)`
+    }
+
     return NextResponse.json({
       success: true,
-      message: `Sincronizado! ${results.updated} cobrancas atualizadas`,
+      message,
       results,
       duration,
     })

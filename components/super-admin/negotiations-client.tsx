@@ -93,6 +93,35 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [cancellingCustomer, setCancellingCustomer] = useState<VmaxCustomer | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
+  // Results modal state (for showing detailed send results)
+  const [showResultsModal, setShowResultsModal] = useState(false)
+  const [sendResults, setSendResults] = useState<{
+    sent: number
+    failed: number
+    total: number
+    results: Array<{
+      vmaxId: string
+      customerName: string
+      cpfCnpj: string
+      status: "success" | "failed" | "recovered"
+      failedAtStep?: string
+      error?: {
+        message: string
+        step: string
+        httpStatus?: number
+        asaasErrors?: any[]
+        recoverable?: boolean
+      }
+      asaasCustomerCreated?: boolean
+      asaasPaymentCreated?: boolean
+      asaasCustomerId?: string
+      asaasPaymentId?: string
+      paymentUrl?: string
+      recoveryNote?: string
+    }>
+    stepLabels?: Record<string, string>
+  } | null>(null)
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -378,21 +407,41 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       const result = await response.json()
 
+      setShowModal(false) // Close send modal
+
       if (result.success) {
         const totalSelected = selectedCustomers.size
-        if (result.sent === totalSelected) {
-          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
+
+        // Always show results modal if there are any failures or partial success
+        if (result.failed > 0 || result.sent < totalSelected) {
+          setSendResults({
+            sent: result.sent,
+            failed: result.failed,
+            total: result.total,
+            results: result.results,
+            stepLabels: result.stepLabels,
+          })
+          setShowResultsModal(true)
+          toast.warning(`Concluído com ${result.failed} erro(s). Veja detalhes abaixo.`)
         } else {
-          toast.success(`Negociacao enviada para ${result.sent} de ${totalSelected} cliente(s).`)
-          if (result.errors && result.errors.length > 0) {
-            toast.warning(`${result.errors.length} erro(s): ${result.errors.slice(0, 3).join("; ")}`)
-          }
+          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
         }
-        setShowModal(false)
+
         setSelectedCustomers(new Set())
         // Reload customers to update status
         loadCustomers(selectedCompanyId)
       } else {
+        // Total failure - still show results if available
+        if (result.results && result.results.length > 0) {
+          setSendResults({
+            sent: result.sent || 0,
+            failed: result.failed || result.results.length,
+            total: result.total || result.results.length,
+            results: result.results,
+            stepLabels: result.stepLabels,
+          })
+          setShowResultsModal(true)
+        }
         toast.error(result.error || "Erro ao enviar negociacoes")
       }
     } catch (error) {
@@ -1215,6 +1264,173 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Results Modal - Shows detailed errors per negotiation */}
+      <Dialog open={showResultsModal} onOpenChange={setShowResultsModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {sendResults?.failed === 0 ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  Envio Concluído com Sucesso
+                </>
+              ) : sendResults?.sent === 0 ? (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500" />
+                  Falha no Envio
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  Envio Concluído com Erros
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {sendResults && (
+                <div className="flex gap-4 mt-2">
+                  <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    {sendResults.sent} enviado(s)
+                  </Badge>
+                  {sendResults.failed > 0 && (
+                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      {sendResults.failed} erro(s)
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">
+                    Total: {sendResults.total}
+                  </span>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Results list with scroll */}
+          <div className="flex-1 overflow-y-auto mt-4 space-y-2 pr-2">
+            {sendResults?.results.map((result, idx) => (
+              <div
+                key={result.vmaxId || idx}
+                className={`p-3 rounded-lg border ${
+                  result.status === "success"
+                    ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    : result.status === "recovered"
+                    ? "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
+                    : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {result.status === "success" ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      ) : result.status === "recovered" ? (
+                        <RefreshCw className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                      )}
+                      <span className="font-medium truncate" title={result.customerName}>
+                        {result.customerName}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {result.cpfCnpj ? result.cpfCnpj.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") : "Sem CPF/CNPJ"}
+                    </p>
+                  </div>
+
+                  {result.status === "success" && result.paymentUrl && (
+                    <a
+                      href={result.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex-shrink-0"
+                    >
+                      Ver cobrança
+                    </a>
+                  )}
+                </div>
+
+                {/* Error details for failed */}
+                {result.status === "failed" && result.error && (
+                  <div className="mt-2 text-sm">
+                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                      <span className="font-medium">Falhou em:</span>
+                      <span>
+                        {sendResults?.stepLabels?.[result.error.step] || result.error.step}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-red-600 dark:text-red-400">
+                      {result.error.httpStatus && (
+                        <span className="font-mono mr-1">[{result.error.httpStatus}]</span>
+                      )}
+                      {result.error.message}
+                    </div>
+
+                    {/* Show ASAAS specific errors */}
+                    {result.error.asaasErrors && result.error.asaasErrors.length > 0 && (
+                      <div className="mt-1 text-xs text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900/50 p-2 rounded">
+                        {result.error.asaasErrors.map((e: any, i: number) => (
+                          <div key={i}>
+                            {e.code && <span className="font-mono mr-1">[{e.code}]</span>}
+                            {e.description || e.message || JSON.stringify(e)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Warning if ASAAS customer was created but payment failed */}
+                    {result.asaasCustomerCreated && !result.asaasPaymentCreated && (
+                      <div className="mt-2 flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                        Cliente criado no ASAAS mas cobrança não foi criada
+                        {result.asaasCustomerId && (
+                          <span className="font-mono ml-1">({result.asaasCustomerId})</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Warning if ASAAS succeeded but DB update failed */}
+                    {result.asaasPaymentCreated && result.error.recoverable && (
+                      <div className="mt-2 flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                        Cobrança criada no ASAAS mas status não atualizado no AlteaPay. Use "Sincronizar ASAAS" para corrigir.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Recovery note */}
+                {result.status === "recovered" && result.recoveryNote && (
+                  <div className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                    <RefreshCw className="inline h-3 w-3 mr-1" />
+                    {result.recoveryNote}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowResultsModal(false)}>
+              Fechar
+            </Button>
+            {sendResults && sendResults.failed > 0 && (
+              <Button
+                onClick={() => {
+                  setShowResultsModal(false)
+                  handleSyncWithAsaas()
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sincronizar ASAAS
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

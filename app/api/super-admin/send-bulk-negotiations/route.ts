@@ -23,15 +23,83 @@ interface SendBulkNegotiationsParams {
   notificationChannels: string[]
 }
 
+type NegotiationStep =
+  | "validate_data"
+  | "create_customer_db"
+  | "create_debt_db"
+  | "create_asaas_customer"
+  | "create_asaas_payment"
+  | "create_agreement_db"
+  | "update_agreement_db"
+  | "update_vmax_status"
+  | "completed"
+
+interface ErrorDetails {
+  message: string
+  step: NegotiationStep
+  httpStatus?: number
+  asaasErrors?: any[]
+  recoverable?: boolean
+}
+
 interface NegotiationResult {
   vmaxId: string
   customerName: string
   cpfCnpj: string
-  status: "success" | "failed"
-  error?: string
+  status: "success" | "failed" | "recovered"
+  failedAtStep?: NegotiationStep
+  error?: ErrorDetails
+  asaasCustomerCreated?: boolean
+  asaasPaymentCreated?: boolean
   asaasCustomerId?: string
   asaasPaymentId?: string
   paymentUrl?: string
+  recoveryNote?: string
+}
+
+// Step labels in Portuguese for display
+const STEP_LABELS: Record<NegotiationStep, string> = {
+  validate_data: "Validar dados do cliente",
+  create_customer_db: "Criar cliente no banco",
+  create_debt_db: "Criar dívida no banco",
+  create_asaas_customer: "Criar cliente no ASAAS",
+  create_asaas_payment: "Criar cobrança no ASAAS",
+  create_agreement_db: "Criar acordo no banco",
+  update_agreement_db: "Atualizar acordo no banco",
+  update_vmax_status: "Atualizar status VMAX",
+  completed: "Concluído",
+}
+
+// Extract error details from ASAAS or general errors
+function extractErrorDetails(error: any, step: NegotiationStep): ErrorDetails {
+  const details: ErrorDetails = {
+    message: error.message || "Erro desconhecido",
+    step,
+    recoverable: step === "update_agreement_db" || step === "update_vmax_status",
+  }
+
+  // Try to extract HTTP status and ASAAS errors
+  if (error.response) {
+    details.httpStatus = error.response.status
+    if (error.response.data?.errors) {
+      details.asaasErrors = error.response.data.errors
+      // Use ASAAS error message if available
+      const firstError = error.response.data.errors[0]
+      if (firstError?.description) {
+        details.message = firstError.description
+      }
+    }
+  }
+
+  // Check for ASAAS error format in message
+  if (error.message?.includes("ASAAS")) {
+    const match = error.message.match(/(\d{3})/)
+    if (match) {
+      details.httpStatus = parseInt(match[1])
+    }
+  }
+
+  return details
 }
 
 // Process a single negotiation - extracted for parallel execution
@@ -42,6 +110,16 @@ async function processSingleNegotiation(
   attendantName: string,
   supabase: any
 ): Promise<NegotiationResult> {
+  let currentStep: NegotiationStep = "validate_data"
+  let asaasCustomerCreated = false
+  let asaasPaymentCreated = false
+  let asaasCustomerId: string | null = null
+  let asaasPaymentId: string | null = null
+  let paymentUrl: string | null = null
+  let customerId: string | null = null
+  let debtId: string | null = null
+  let agreementId: string | null = null
+
   // Get VMAX record
   const { data: vmax, error: vmaxError } = await supabase
     .from("VMAX")
@@ -55,20 +133,44 @@ async function processSingleNegotiation(
       customerName: "Desconhecido",
       cpfCnpj: "",
       status: "failed",
-      error: "Registro VMAX não encontrado",
+      failedAtStep: "validate_data",
+      error: {
+        message: "Registro VMAX não encontrado",
+        step: "validate_data",
+      },
     }
   }
 
   const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
   const customerName = vmax.Cliente || "Cliente"
 
+  // Validate CPF/CNPJ
   if (!cpfCnpj) {
     return {
       vmaxId,
       customerName,
       cpfCnpj: "",
       status: "failed",
-      error: "CPF/CNPJ não cadastrado",
+      failedAtStep: "validate_data",
+      error: {
+        message: "CPF/CNPJ não cadastrado",
+        step: "validate_data",
+      },
+    }
+  }
+
+  // Validate CPF (11 digits) or CNPJ (14 digits)
+  if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
+    return {
+      vmaxId,
+      customerName,
+      cpfCnpj,
+      status: "failed",
+      failedAtStep: "validate_data",
+      error: {
+        message: `CPF/CNPJ inválido (${cpfCnpj.length} dígitos, esperado 11 ou 14)`,
+        step: "validate_data",
+      },
     }
   }
 
@@ -105,7 +207,11 @@ async function processSingleNegotiation(
       customerName,
       cpfCnpj,
       status: "failed",
-      error: "Dívida com valor zero",
+      failedAtStep: "validate_data",
+      error: {
+        message: "Dívida com valor zero ou inválido",
+        step: "validate_data",
+      },
     }
   }
 
@@ -121,8 +227,8 @@ async function processSingleNegotiation(
   const discountPercentage = originalAmount > 0 ? (discountAmount / originalAmount) * 100 : 0
 
   try {
-    // Create or get customer in DB
-    let customerId: string
+    // === STEP: Create or get customer in DB ===
+    currentStep = "create_customer_db"
 
     const { data: existingCustomers } = await supabase
       .from("customers")
@@ -156,19 +262,13 @@ async function processSingleNegotiation(
         .single()
 
       if (customerError || !newCustomer) {
-        return {
-          vmaxId,
-          customerName,
-          cpfCnpj,
-          status: "failed",
-          error: `Erro ao criar cliente: ${customerError?.message}`,
-        }
+        throw { message: customerError?.message || "Erro ao criar cliente", step: currentStep }
       }
       customerId = newCustomer.id
     }
 
-    // Create or get debt
-    let debtId: string
+    // === STEP: Create or get debt ===
+    currentStep = "create_debt_db"
 
     const { data: existingDebts } = await supabase
       .from("debts")
@@ -206,24 +306,20 @@ async function processSingleNegotiation(
         .single()
 
       if (debtError || !newDebt) {
-        return {
-          vmaxId,
-          customerName,
-          cpfCnpj,
-          status: "failed",
-          error: `Erro ao criar dívida: ${debtError?.message}`,
-        }
+        throw { message: debtError?.message || "Erro ao criar dívida", step: currentStep }
       }
       debtId = newDebt.id
     }
 
-    // === ASAAS INTEGRATION ===
-    let asaasCustomerId: string | null = null
+    // === STEP: ASAAS Customer Integration ===
+    currentStep = "create_asaas_customer"
+
     try {
       // Try to get existing ASAAS customer first
       const existingAsaas = await getAsaasCustomerByCpfCnpj(cpfCnpj)
       if (existingAsaas) {
         asaasCustomerId = existingAsaas.id
+        asaasCustomerCreated = true // Already exists
         await updateAsaasCustomer(asaasCustomerId, {
           mobilePhone: customerPhone || undefined,
           notificationDisabled: false,
@@ -237,9 +333,10 @@ async function processSingleNegotiation(
           notificationDisabled: false,
         })
         asaasCustomerId = newAsaas.id
+        asaasCustomerCreated = true
       }
 
-      // Configure notifications
+      // Configure notifications (non-critical, don't fail on error)
       try {
         const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
         const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
@@ -261,11 +358,14 @@ async function processSingleNegotiation(
         customerName,
         cpfCnpj,
         status: "failed",
-        error: `Erro ASAAS cliente: ${asaasErr.message}`,
+        failedAtStep: "create_asaas_customer",
+        error: extractErrorDetails(asaasErr, "create_asaas_customer"),
+        asaasCustomerCreated: false,
       }
     }
 
-    // Create agreement in DB
+    // === STEP: Create agreement in DB ===
+    currentStep = "create_agreement_db"
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 30)
     const dueDateStr = dueDate.toISOString().split("T")[0]
@@ -304,14 +404,17 @@ async function processSingleNegotiation(
         customerName,
         cpfCnpj,
         status: "failed",
-        error: `Erro ao criar acordo: ${agreementError?.message}`,
+        failedAtStep: "create_agreement_db",
+        error: extractErrorDetails({ message: agreementError?.message || "Erro ao criar acordo" }, "create_agreement_db"),
+        asaasCustomerCreated,
         asaasCustomerId: asaasCustomerId || undefined,
       }
     }
+    agreementId = agreement.id
 
-    // Create ASAAS payment
-    let asaasPaymentId: string | null = null
-    let paymentUrl: string | null = null
+    // === STEP: Create ASAAS payment ===
+    currentStep = "create_asaas_payment"
+
     try {
       let billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED" = "UNDEFINED"
       const methodMapping: Record<string, "BOLETO" | "CREDIT_CARD" | "PIX"> = {
@@ -334,10 +437,12 @@ async function processSingleNegotiation(
       })
 
       asaasPaymentId = asaasPayment.id
+      asaasPaymentCreated = true
       paymentUrl = asaasPayment.invoiceUrl || null
 
-      // Update agreement with ASAAS payment info
-      await supabase
+      // === STEP: Update agreement with ASAAS payment info ===
+      currentStep = "update_agreement_db"
+      const { error: updateError } = await supabase
         .from("agreements")
         .update({
           asaas_payment_id: asaasPayment.id,
@@ -347,6 +452,43 @@ async function processSingleNegotiation(
           status: "active",
         })
         .eq("id", agreement.id)
+
+      if (updateError) {
+        // ASAAS succeeded but DB update failed - this is recoverable
+        console.error(`[sendBulkNegotiations] DB update failed for agreement ${agreement.id}, will attempt recovery`)
+
+        // Attempt auto-recovery
+        const { error: retryError } = await supabase
+          .from("agreements")
+          .update({
+            asaas_payment_id: asaasPayment.id,
+            asaas_payment_url: asaasPayment.invoiceUrl || null,
+            asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
+            asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+            status: "active",
+          })
+          .eq("id", agreement.id)
+
+        if (retryError) {
+          return {
+            vmaxId,
+            customerName,
+            cpfCnpj,
+            status: "failed",
+            failedAtStep: "update_agreement_db",
+            error: {
+              ...extractErrorDetails({ message: updateError.message }, "update_agreement_db"),
+              recoverable: true,
+            },
+            asaasCustomerCreated: true,
+            asaasPaymentCreated: true,
+            asaasCustomerId: asaasCustomerId || undefined,
+            asaasPaymentId: asaasPaymentId || undefined,
+            paymentUrl: paymentUrl || undefined,
+          }
+        }
+        // Recovery succeeded, continue
+      }
     } catch (asaasPaymentErr: any) {
       // Delete the draft agreement since payment failed
       await supabase.from("agreements").delete().eq("id", agreement.id)
@@ -355,37 +497,50 @@ async function processSingleNegotiation(
         customerName,
         cpfCnpj,
         status: "failed",
-        error: `Erro ASAAS cobrança: ${asaasPaymentErr.message}`,
+        failedAtStep: "create_asaas_payment",
+        error: extractErrorDetails(asaasPaymentErr, "create_asaas_payment"),
+        asaasCustomerCreated: true,
+        asaasPaymentCreated: false,
         asaasCustomerId: asaasCustomerId || undefined,
       }
     }
 
-    // Update VMAX negotiation status - ONLY AFTER ASAAS CONFIRMS
-    await supabase
+    // === STEP: Update VMAX negotiation status ===
+    currentStep = "update_vmax_status"
+    const { error: vmaxUpdateError } = await supabase
       .from("VMAX")
       .update({ negotiation_status: "sent" })
       .eq("id", vmaxId)
 
-    // Record collection action
+    if (vmaxUpdateError) {
+      console.warn(`[sendBulkNegotiations] VMAX update failed for ${vmaxId}, but ASAAS succeeded`)
+      // Don't fail the whole operation - ASAAS is the source of truth
+    }
+
+    // Record collection action (non-critical)
     for (const channel of params.notificationChannels) {
-      await supabase.from("collection_actions").insert({
-        company_id: params.companyId,
-        customer_id: customerId,
-        debt_id: debtId,
-        action_type: channel,
-        status: "sent",
-        sent_by: userId,
-        sent_at: new Date().toISOString(),
-        message: `Negociação enviada via ${channel}. Valor: R$ ${agreedAmount.toFixed(2)}`,
-        metadata: {
-          payment_methods: params.paymentMethods,
-          notification_channels: params.notificationChannels,
-          discount_type: params.discountType,
-          discount_value: params.discountValue,
-          original_amount: originalAmount,
-          agreed_amount: agreedAmount,
-        },
-      })
+      try {
+        await supabase.from("collection_actions").insert({
+          company_id: params.companyId,
+          customer_id: customerId,
+          debt_id: debtId,
+          action_type: channel,
+          status: "sent",
+          sent_by: userId,
+          sent_at: new Date().toISOString(),
+          message: `Negociação enviada via ${channel}. Valor: R$ ${agreedAmount.toFixed(2)}`,
+          metadata: {
+            payment_methods: params.paymentMethods,
+            notification_channels: params.notificationChannels,
+            discount_type: params.discountType,
+            discount_value: params.discountValue,
+            original_amount: originalAmount,
+            agreed_amount: agreedAmount,
+          },
+        })
+      } catch (actionErr) {
+        console.warn(`[sendBulkNegotiations] Failed to record collection action for ${vmaxId}`)
+      }
     }
 
     // Send notifications in background (don't block the result)
@@ -405,6 +560,8 @@ async function processSingleNegotiation(
       customerName,
       cpfCnpj,
       status: "success",
+      asaasCustomerCreated: true,
+      asaasPaymentCreated: true,
       asaasCustomerId: asaasCustomerId || undefined,
       asaasPaymentId: asaasPaymentId || undefined,
       paymentUrl: paymentUrl || undefined,
@@ -415,7 +572,12 @@ async function processSingleNegotiation(
       customerName,
       cpfCnpj,
       status: "failed",
-      error: error.message || "Erro desconhecido",
+      failedAtStep: currentStep,
+      error: extractErrorDetails(error, currentStep),
+      asaasCustomerCreated,
+      asaasPaymentCreated,
+      asaasCustomerId: asaasCustomerId || undefined,
+      asaasPaymentId: asaasPaymentId || undefined,
     }
   }
 }
@@ -620,6 +782,7 @@ export async function POST(request: NextRequest) {
       results: allResults,
       errors: errors.length > 0 ? errors : undefined,
       errorSummary: Object.keys(errorSummary).length > 0 ? errorSummary : undefined,
+      stepLabels: STEP_LABELS, // Include labels for client display
     })
   } catch (error: any) {
     console.error("Error in sendBulkNegotiations API:", error)
