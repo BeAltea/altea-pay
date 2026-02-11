@@ -1,50 +1,15 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import { Toaster as SonnerToaster } from "sonner"
-import { AuthProvider } from "@/hooks/use-auth"
-import { SessionMonitor } from "@/components/session-monitor"
-import { Suspense } from "react"
-import "./globals.css"
+import type { Metadata } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-})
+import './globals.css'
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
+const _geist = Geist({ subsets: ['latin'] })
+const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "Altea Pay - Soluções de Cobrança Inteligente",
-  description:
-    "Com IA e dados comportamentais, orquestramos Pix, cartão, débito, recorrência, crédito via fatura e cashback de forma personalizada para elevar a taxa de recuperação com compliance total.",
-  generator: "v0.app",
-  keywords: ["cobrança", "pagamentos", "pix", "cartão", "recorrência", "inadimplência", "IA", "altea pay"],
-  authors: [{ name: "Altea Pay" }],
-  creator: "Altea Pay",
-  publisher: "Altea Pay",
-  openGraph: {
-    title: "Altea Pay - Soluções de Cobrança Inteligente",
-    description:
-      "Análise que prevê, experiências que pagam, do seu jeito. Soluções de crédito para recuperação de inadimplência e premiação de adimplência.",
-    type: "website",
-    locale: "pt_BR",
-    siteName: "Altea Pay",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Altea Pay - Soluções de Cobrança Inteligente",
-    description: "Análise que prevê, experiências que pagam, do seu jeito.",
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  title: 'v0 App',
+  description: 'Created with v0',
+  generator: 'v0.app',
 }
 
 export default function RootLayout({
@@ -53,19 +18,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`font-sans ${inter.variable} ${jetbrainsMono.variable}`}>
-        <Suspense fallback={null}>
-          <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-            <AuthProvider>
-              <SessionMonitor />
-              {children}
-            </AuthProvider>
-            <Toaster />
-            <SonnerToaster position="top-right" />
-          </ThemeProvider>
-        </Suspense>
-      </body>
+    <html lang="en">
+      <body className="font-sans antialiased">{children}</body>
     </html>
   )
 }

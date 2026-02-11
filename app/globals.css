@@ -1,850 +1,94 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@custom-variant dark (&:is(.dark *));
-
-:root {
-  /* Altea Pay brand colors - Light mode with perfect contrast */
-  --background: oklch(0.99 0 0); /* Near white background */
-  --foreground: oklch(0.12 0.05 240); /* Altea Navy for text */
-
-  --card: oklch(1 0 0); /* Pure white cards */
-  --card-foreground: oklch(0.12 0.05 240);
-
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.12 0.05 240);
-
-  /* Altea Gold as primary */
-  --primary: oklch(0.78 0.15 85); /* Altea Gold */
-  --primary-foreground: oklch(0.12 0.05 240); /* Navy text on gold */
-
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.12 0.05 240);
-
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-
-  --accent: oklch(0.96 0.02 85); /* Gold tint */
-  --accent-foreground: oklch(0.12 0.05 240);
-
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.96 0 0);
-  --ring: oklch(0.78 0.15 85); /* Gold focus ring */
-
-  --chart-1: oklch(0.78 0.15 85); /* Altea Gold */
-  --chart-2: oklch(0.6 0.2 145); /* Green */
-  --chart-3: oklch(0.55 0.24 264); /* Purple */
-  --chart-4: oklch(0.65 0.22 27); /* Orange */
-  --chart-5: oklch(0.5 0.25 230); /* Blue */
-
-  --radius: 0.75rem;
-
-  --sidebar: oklch(0.12 0.05 240); /* Altea Navy */
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.78 0.15 85);
-  --sidebar-primary-foreground: oklch(0.12 0.05 240);
-  --sidebar-accent: oklch(0.18 0.05 240);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.22 0.05 240);
-  --sidebar-ring: oklch(0.78 0.15 85);
-
-  /* Admin dashboard theme - Light mode */
-  --admin-bg-primary: #F8F9FC;
-  --admin-bg-secondary: #FFFFFF;
-  --admin-bg-tertiary: #F1F3F9;
-  --admin-bg-elevated: #FFFFFF;
-  --admin-border: #E2E8F0;
-  --admin-text-primary: #1A1D27;
-  --admin-text-secondary: #4A5568;
-  --admin-text-muted: #718096;
-  --admin-gold-400: #E8950F;
-  --admin-gold-500: #D4820A;
-  --admin-gold-600: #B36D00;
-  --admin-green: #059669;
-  --admin-green-bg: rgba(5, 150, 105, 0.1);
-  --admin-red: #DC2626;
-  --admin-red-bg: rgba(220, 38, 38, 0.1);
-  --admin-blue: #2563EB;
-  --admin-blue-bg: rgba(37, 99, 235, 0.1);
-  --admin-orange: #D97706;
-  --admin-orange-bg: rgba(217, 119, 6, 0.1);
-  --admin-purple: #7C3AED;
-  --admin-purple-bg: rgba(124, 58, 237, 0.1);
+body {
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-.dark {
-  /* Altea Pay dark mode with perfect contrast ratios (WCAG AAA) */
-  --background: oklch(0.1 0.02 240); /* Deep navy background */
-  --foreground: oklch(0.98 0 0); /* Near white text */
-
-  --card: oklch(0.16 0.02 240); /* Elevated navy cards */
-  --card-foreground: oklch(0.98 0 0);
-
-  --popover: oklch(0.16 0.02 240);
-  --popover-foreground: oklch(0.98 0 0);
-
-  /* Altea Gold shines in dark mode */
-  --primary: oklch(0.82 0.18 85); /* Brighter gold for dark mode */
-  --primary-foreground: oklch(0.1 0.02 240); /* Navy text on gold */
-
-  --secondary: oklch(0.2 0.02 240);
-  --secondary-foreground: oklch(0.98 0 0);
-
-  --muted: oklch(0.2 0.02 240);
-  --muted-foreground: oklch(0.7 0 0);
-
-  --accent: oklch(0.24 0.03 85); /* Gold-tinted accent */
-  --accent-foreground: oklch(0.98 0 0);
-
-  --destructive: oklch(0.65 0.25 27);
-  --destructive-foreground: oklch(0.98 0 0);
-
-  --border: oklch(0.26 0.02 240);
-  --input: oklch(0.2 0.02 240);
-  --ring: oklch(0.82 0.18 85); /* Bright gold focus ring */
-
-  --chart-1: oklch(0.82 0.18 85); /* Bright Altea Gold */
-  --chart-2: oklch(0.68 0.22 145); /* Bright Green */
-  --chart-3: oklch(0.65 0.26 264); /* Bright Purple */
-  --chart-4: oklch(0.72 0.24 27); /* Bright Orange */
-  --chart-5: oklch(0.62 0.26 230); /* Bright Blue */
-
-  /* Improved sidebar contrast for dark mode */
-  --sidebar: oklch(0.12 0.02 240);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.82 0.18 85);
-  --sidebar-primary-foreground: oklch(0.1 0.02 240);
-  --sidebar-accent: oklch(0.2 0.02 240);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.26 0.02 240);
-  --sidebar-ring: oklch(0.82 0.18 85);
-
-  /* Admin dashboard theme - Dark mode */
-  --admin-bg-primary: #0F1117;
-  --admin-bg-secondary: #1A1D27;
-  --admin-bg-tertiary: #252836;
-  --admin-bg-elevated: #323647;
-  --admin-border: #323647;
-  --admin-text-primary: #F0F1F5;
-  --admin-text-secondary: #9DA3B7;
-  --admin-text-muted: #6B7188;
-  --admin-gold-400: #F5A623;
-  --admin-gold-500: #E8950F;
-  --admin-gold-600: #C77A00;
-  --admin-green: #2DD4A8;
-  --admin-green-bg: rgba(45, 212, 168, 0.1);
-  --admin-red: #F06868;
-  --admin-red-bg: rgba(240, 104, 104, 0.1);
-  --admin-blue: #5B8DEF;
-  --admin-blue-bg: rgba(91, 141, 239, 0.1);
-  --admin-orange: #F5A623;
-  --admin-orange-bg: rgba(245, 166, 35, 0.1);
-  --admin-purple: #A78BFA;
-  --admin-purple-bg: rgba(167, 139, 250, 0.1);
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }
 
-@theme {
-  /* Consolidated all theme variables in one block to avoid empty utility errors */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  /* Fixed radius definitions - using direct values instead of calc */
-  --radius-sm: 0.5rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
-  /* Altea Pay brand colors with perfect contrast ratios */
-  --color-altea-navy: oklch(0.12 0.05 240);
-  --color-altea-navy-light: oklch(0.28 0.06 240);
-  --color-altea-navy-lighter: oklch(0.38 0.07 240);
-  --color-altea-gold: oklch(0.78 0.15 85);
-  --color-altea-gold-bright: oklch(0.85 0.2 85);
-  --color-altea-gold-dark: oklch(0.65 0.12 85);
-  --color-altea-light-gray: oklch(0.97 0 0);
-
-  /* Dashboard-specific colors for perfect contrast */
-  --color-dashboard-bg-light: oklch(0.98 0 0);
-  --color-dashboard-bg-dark: oklch(0.12 0.02 240);
-  --color-dashboard-card-light: oklch(1 0 0);
-  --color-dashboard-card-dark: oklch(0.18 0.02 240);
-  --color-dashboard-text-primary-light: oklch(0.12 0.05 240);
-  --color-dashboard-text-primary-dark: oklch(0.98 0 0);
-  --color-dashboard-text-secondary-light: oklch(0.45 0 0);
-  --color-dashboard-text-secondary-dark: oklch(0.72 0 0);
-
-  /* Status colors with perfect contrast for both modes */
-  --color-success: oklch(0.55 0.2 145);
-  --color-success-light: oklch(0.95 0.05 145);
-  --color-success-dark: oklch(0.25 0.1 145);
-  --color-warning: oklch(0.7 0.18 75);
-  --color-warning-light: oklch(0.95 0.05 75);
-  --color-warning-dark: oklch(0.25 0.08 75);
-  --color-danger: oklch(0.6 0.25 27);
-  --color-danger-light: oklch(0.95 0.05 27);
-  --color-danger-dark: oklch(0.25 0.12 27);
-  --color-info: oklch(0.55 0.2 230);
-  --color-info-light: oklch(0.95 0.05 230);
-  --color-info-dark: oklch(0.25 0.1 230);
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
-  }
-}
-
-/* Added dark mode specific utility classes for better control */
-.dark .bg-card {
-  background-color: var(--card);
-}
-
-.dark .text-card-foreground {
-  color: var(--card-foreground);
-}
-
-.dark .border-border {
-  border-color: var(--border);
-}
-
-/* Radix UI portal z-index */
-[data-radix-popper-content-wrapper] {
-  z-index: 9999 !important;
-}
-
-[data-radix-portal] {
-  z-index: 9999 !important;
-}
-
-[data-slot="dropdown-menu-content"],
-[data-slot="select-content"],
-[data-slot="popover-content"],
-[data-slot="dialog-content"] {
-  z-index: 9999 !important;
-}
-
-[data-slot="dialog-overlay"] {
-  z-index: 9998 !important;
-}
-
-@media (hover: none) and (pointer: coarse) {
-  [data-slot="dropdown-menu-trigger"],
-  [data-slot="select-trigger"],
-  [data-slot="popover-trigger"],
-  [data-slot="dialog-trigger"] {
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
-}
-
-/* Altea Pay utility classes */
-.bg-altea-navy {
-  background-color: var(--color-altea-navy);
-}
-
-.bg-altea-navy-light {
-  background-color: var(--color-altea-navy-light);
-}
-
-.bg-altea-navy-lighter {
-  background-color: var(--color-altea-navy-lighter);
-}
-
-.bg-altea-gold {
-  background-color: var(--color-altea-gold);
-}
-
-.bg-altea-gold-bright {
-  background-color: var(--color-altea-gold-bright);
-}
-
-.text-altea-navy {
-  color: var(--color-altea-navy);
-}
-
-.text-altea-navy-light {
-  color: var(--color-altea-navy-light);
-}
-
-.text-altea-gold {
-  color: var(--color-altea-gold);
-}
-
-.text-altea-gold-bright {
-  color: var(--color-altea-gold-bright);
-}
-
-.border-altea-gold {
-  border-color: var(--color-altea-gold);
-}
-
-.border-altea-gold-bright {
-  border-color: var(--color-altea-gold-bright);
-}
-
-.hover\:bg-altea-gold:hover {
-  background-color: var(--color-altea-gold);
-}
-
-.hover\:bg-altea-gold-bright:hover {
-  background-color: var(--color-altea-gold-bright);
-}
-
-.hover\:bg-altea-navy-light:hover {
-  background-color: var(--color-altea-navy-light);
-}
-
-.hover\:bg-altea-navy-lighter:hover {
-  background-color: var(--color-altea-navy-lighter);
-}
-
-.hover\:text-altea-navy:hover {
-  color: var(--color-altea-navy);
-}
-
-.hover\:text-altea-gold-bright:hover {
-  color: var(--color-altea-gold-bright);
-}
-
-/* Semantic text utility classes */
-.text-primary {
-  color: var(--color-text-primary);
-}
-
-.text-secondary {
-  color: var(--color-text-secondary);
-}
-
-.text-tertiary {
-  color: var(--color-text-tertiary);
-}
-
-.text-inverse {
-  color: var(--color-text-inverse);
-}
-
-/* Added status color utilities */
-.bg-success {
-  background-color: var(--color-success);
-}
-
-.text-success {
-  color: var(--color-success);
-}
-
-.bg-warning {
-  background-color: var(--color-warning);
-}
-
-.text-warning {
-  color: var(--color-warning);
-}
-
-.bg-info {
-  background-color: var(--color-info);
-}
-
-.text-info {
-  color: var(--color-info);
-}
-
-/* Focus and active states */
-.focus\:ring-altea-gold:focus {
-  --tw-ring-color: var(--color-altea-gold-bright);
-}
-
-.active\:bg-altea-navy-lighter:active {
-  background-color: var(--color-altea-navy-lighter);
-}
-
-/* Dark mode specific hover states for better UX */
-.dark .hover\:bg-accent:hover {
-  background-color: var(--accent);
-}
-
-.dark .hover\:text-accent-foreground:hover {
-  color: var(--accent-foreground);
-}
-
-/* Dashboard-specific utility classes for perfect contrast */
-.dashboard-bg {
-  background-color: var(--color-dashboard-bg-light);
-}
-
-.dark .dashboard-bg {
-  background-color: var(--color-dashboard-bg-dark);
-}
-
-.dashboard-card {
-  background-color: var(--color-dashboard-card-light);
-  border: 1px solid oklch(0.92 0 0);
-}
-
-.dark .dashboard-card {
-  background-color: var(--color-dashboard-card-dark);
-  border-color: oklch(0.28 0.02 240);
-}
-
-.dashboard-text-primary {
-  color: var(--color-dashboard-text-primary-light);
-}
-
-.dark .dashboard-text-primary {
-  color: var(--color-dashboard-text-primary-dark);
-}
-
-.dashboard-text-secondary {
-  color: var(--color-dashboard-text-secondary-light);
-}
-
-.dark .dashboard-text-secondary {
-  color: var(--color-dashboard-text-secondary-dark);
-}
-
-/* Status badge colors with perfect contrast */
-.status-success {
-  background-color: var(--color-success-light);
-  color: var(--color-success);
-  border: 1px solid var(--color-success);
-}
-
-.dark .status-success {
-  background-color: var(--color-success-dark);
-  color: var(--color-success);
-  border-color: var(--color-success);
-}
-
-.status-warning {
-  background-color: var(--color-warning-light);
-  color: oklch(0.45 0.15 75);
-  border: 1px solid var(--color-warning);
-}
-
-.dark .status-warning {
-  background-color: var(--color-warning-dark);
-  color: var(--color-warning);
-  border-color: var(--color-warning);
-}
-
-.status-danger {
-  background-color: var(--color-danger-light);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger);
-}
-
-.dark .status-danger {
-  background-color: var(--color-danger-dark);
-  color: var(--color-danger);
-  border-color: var(--color-danger);
-}
-
-.status-info {
-  background-color: var(--color-info-light);
-  color: var(--color-info);
-  border: 1px solid var(--color-info);
-}
-
-.dark .status-info {
-  background-color: var(--color-info-dark);
-  color: var(--color-info);
-  border-color: var(--color-info);
-}
-
-/* Dashboard card hover effects */
-.dashboard-card-hover {
-  transition: all 0.2s ease-in-out;
-}
-
-.dashboard-card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(13, 27, 42, 0.1);
-}
-
-.dark .dashboard-card-hover:hover {
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
-}
-
-/* Dashboard stat cards with Altea branding */
-.stat-card-icon {
-  background: linear-gradient(135deg, var(--color-altea-gold) 0%, var(--color-altea-gold-bright) 100%);
-  color: var(--color-altea-navy);
-  padding: 0.75rem;
-  border-radius: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dark .stat-card-icon {
-  background: linear-gradient(135deg, var(--color-altea-gold-dark) 0%, var(--color-altea-gold) 100%);
-  color: var(--color-altea-navy);
-}
-
-/* Dashboard progress bars with Altea gold */
-.dashboard-progress {
-  background-color: oklch(0.92 0 0);
-}
-
-.dark .dashboard-progress {
-  background-color: oklch(0.22 0.02 240);
-}
-
-.dashboard-progress-fill {
-  background: linear-gradient(90deg, var(--color-altea-gold-dark) 0%, var(--color-altea-gold) 100%);
-}
-
-/* Dashboard table styles */
-.dashboard-table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.dashboard-table thead {
-  background-color: oklch(0.97 0 0);
-}
-
-.dark .dashboard-table thead {
-  background-color: oklch(0.15 0.02 240);
-}
-
-.dashboard-table th {
-  color: var(--color-dashboard-text-primary-light);
-  font-weight: 600;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  border-bottom: 2px solid var(--color-altea-gold);
-}
-
-.dark .dashboard-table th {
-  color: var(--color-dashboard-text-primary-dark);
-}
-
-.dashboard-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid oklch(0.92 0 0);
-}
-
-.dark .dashboard-table td {
-  border-bottom-color: oklch(0.22 0.02 240);
-}
-
-.dashboard-table tbody tr:hover {
-  background-color: oklch(0.98 0 0);
-}
-
-.dark .dashboard-table tbody tr:hover {
-  background-color: oklch(0.16 0.02 240);
-}
-
-/* Dashboard button styles with Altea branding */
-.dashboard-btn-primary {
-  background: linear-gradient(135deg, var(--color-altea-gold-dark) 0%, var(--color-altea-gold) 100%);
-  color: var(--color-altea-navy);
-  font-weight: 600;
-  transition: all 0.2s ease-in-out;
-}
-
-.dashboard-btn-primary:hover {
-  background: linear-gradient(135deg, var(--color-altea-gold) 0%, var(--color-altea-gold-bright) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-}
-
-.dashboard-btn-secondary {
-  background-color: transparent;
-  border: 2px solid var(--color-altea-navy);
-  color: var(--color-altea-navy);
-  font-weight: 600;
-  transition: all 0.2s ease-in-out;
-}
-
-.dark .dashboard-btn-secondary {
-  border-color: var(--color-altea-gold);
-  color: var(--color-altea-gold);
-}
-
-.dashboard-btn-secondary:hover {
-  background-color: var(--color-altea-navy);
-  color: white;
-}
-
-.dark .dashboard-btn-secondary:hover {
-  background-color: var(--color-altea-gold);
-  color: var(--color-altea-navy);
-}
-
-/* Dashboard sidebar with perfect contrast in dark mode */
-.dashboard-sidebar {
-  background-color: var(--color-altea-navy);
-  color: white;
-}
-
-.dashboard-sidebar-item {
-  /* Improved contrast for non-active items */
-  color: oklch(0.92 0 0); /* Much brighter text for better readability */
-  transition: all 0.2s ease-in-out;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  margin: 0.25rem 0;
-}
-
-.dashboard-sidebar-item:hover {
-  background-color: oklch(0.2 0.02 240);
-  color: oklch(0.98 0 0); /* Near white on hover */
-}
-
-.dashboard-sidebar-item.active {
-  background: linear-gradient(135deg, var(--color-altea-gold-dark) 0%, var(--color-altea-gold) 100%);
-  color: var(--color-altea-navy);
-  font-weight: 600;
-}
-
-/* Dashboard header with Altea branding */
-.dashboard-header {
-  background-color: white;
-  border-bottom: 1px solid oklch(0.92 0 0);
-}
-
-.dark .dashboard-header {
-  background-color: oklch(0.15 0.02 240);
-  border-bottom-color: oklch(0.28 0.02 240);
-}
-
-/* Dashboard metric cards with perfect contrast */
-.metric-card {
-  background: white;
-  border: 1px solid oklch(0.92 0 0);
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  transition: all 0.2s ease-in-out;
-}
-
-.dark .metric-card {
-  background: oklch(0.18 0.02 240);
-  border-color: oklch(0.28 0.02 240);
-}
-
-.metric-card:hover {
-  border-color: var(--color-altea-gold);
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
-}
-
-.metric-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--color-altea-navy);
-  line-height: 1;
-}
-
-.dark .metric-value {
-  color: var(--color-altea-gold);
-}
-
-.metric-label {
-  font-size: 0.875rem;
-  color: oklch(0.45 0 0);
-  margin-top: 0.5rem;
-}
-
-.dark .metric-label {
-  color: oklch(0.72 0 0);
-}
-
-.metric-change {
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 0.5rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.metric-change.positive {
-  color: var(--color-success);
-}
-
-.metric-change.negative {
-  color: var(--color-danger);
-}
-
-/* Dashboard charts with Altea colors */
-.chart-container {
-  background: white;
-  border: 1px solid oklch(0.92 0 0);
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-}
-
-.dark .chart-container {
-  background: oklch(0.18 0.02 240);
-  border-color: oklch(0.28 0.02 240);
-}
-
-/* Dashboard empty states */
-.empty-state {
-  text-align: center;
-  padding: 3rem 1.5rem;
-  color: oklch(0.45 0 0);
-}
-
-.dark .empty-state {
-  color: oklch(0.72 0 0);
-}
-
-.empty-state-icon {
-  width: 4rem;
-  height: 4rem;
-  margin: 0 auto 1rem;
-  color: oklch(0.72 0 0);
-}
-
-.dark .empty-state-icon {
-  color: oklch(0.45 0 0);
-}
-
-/* Dashboard loading states */
-.dashboard-skeleton {
-  background: linear-gradient(90deg, oklch(0.95 0 0) 0%, oklch(0.97 0 0) 50%, oklch(0.95 0 0) 100%);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-}
-
-.dark .dashboard-skeleton {
-  background: linear-gradient(90deg, oklch(0.16 0.02 240) 0%, oklch(0.2 0.02 240) 50%, oklch(0.16 0.02 240) 100%);
-  background-size: 200% 100%;
-}
-
-@keyframes skeleton-loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* Dashboard responsive utilities - prevent horizontal scroll */
-@media (max-width: 768px) {
-  .metric-card {
-    padding: 1rem;
-  }
-
-  .metric-value {
-    font-size: 1.5rem;
-  }
-
-  .dashboard-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease-in-out;
-  }
-
-  .dashboard-sidebar.open {
-    transform: translateX(0);
-  }
-
-  /* Prevent horizontal scroll on mobile */
-  .dashboard-content {
-    max-width: 100vw;
-    overflow-x: hidden;
-  }
-
-  .dashboard-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .dashboard-card {
-    margin: 0.5rem;
-  }
-}
-
-/* Dashboard layout utilities - compact and organized */
-.dashboard-grid {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-@media (min-width: 768px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (min-width: 1280px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* Dashboard table responsive - no horizontal scroll */
-.dashboard-table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.dashboard-table {
-  width: 100%;
-  min-width: 600px; /* Minimum width before scrolling */
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-@media (max-width: 768px) {
-  .dashboard-table {
-    min-width: 100%;
-    font-size: 0.875rem;
-  }
-
-  .dashboard-table th,
-  .dashboard-table td {
-    padding: 0.5rem;
   }
 }
