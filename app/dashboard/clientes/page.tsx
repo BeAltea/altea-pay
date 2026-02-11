@@ -64,6 +64,22 @@ export default async function ClientesPage() {
       .select("customer_id, status, payment_status, asaas_payment_id")
       .eq("company_id", profile.company_id)
 
+    // Fetch customers to map external_id (VMAX ID) -> customer_id
+    // This is needed because agreements.customer_id links to customers table, not VMAX directly
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, external_id")
+      .eq("company_id", profile.company_id)
+      .eq("source_system", "VMAX")
+
+    // Build VMAX ID -> Customer ID map
+    const vmaxToCustomerMap = new Map<string, string>()
+    ;(customers || []).forEach((c: any) => {
+      if (c.external_id) {
+        vmaxToCustomerMap.set(c.external_id, c.id)
+      }
+    })
+
     // Build a map of customer_id -> agreement status (based on ASAAS data)
     // MUST MATCH Acordos page logic: count all non-cancelled agreements
     const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean; hasActiveAgreement: boolean }>()
@@ -125,7 +141,9 @@ export default async function ClientesPage() {
       const behavioralData = cpfCnpj ? behavioralMap.get(cpfCnpj) : null
 
       // Get real agreement status from ASAAS data
-      const agreementStatus = agreementStatusMap.get(cliente.id)
+      // VMAX ID -> Customer ID -> Agreement Status
+      const customerId = vmaxToCustomerMap.get(cliente.id)
+      const agreementStatus = customerId ? agreementStatusMap.get(customerId) : null
 
       // Determine negotiation status based on ASAAS data, NOT the legacy approval_status
       // MUST MATCH Acordos page: any non-cancelled agreement = "Enviada"
