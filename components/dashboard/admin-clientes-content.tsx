@@ -28,6 +28,7 @@ interface Cliente {
   approval_status: string
   asaasNegotiationStatus?: string
   hasAsaasCharge?: boolean
+  hasActiveAgreement?: boolean
   "Dias Inad.": number
   Vencido: string
   Vecto?: string
@@ -189,9 +190,12 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       ? Math.round(overdueDays.reduce((sum, d) => sum + d, 0) / overdueDays.length)
       : 0
 
-    // Negotiations in progress (ASAAS charges pending)
+    // Negotiations count - MUST MATCH Acordos page (all non-cancelled agreements)
+    // Count any client with ATIVA_ASAAS, ATIVA, or PAGO status
     const negotiationsInProgress = clientesWithStatus.filter(c =>
-      c.asaasNegotiationStatus === "ATIVA_ASAAS"
+      c.asaasNegotiationStatus === "ATIVA_ASAAS" ||
+      c.asaasNegotiationStatus === "ATIVA" ||
+      c.asaasNegotiationStatus === "PAGO"
     ).length
 
     return {
@@ -251,17 +255,17 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
     }
 
     // Negotiation filter - matches display logic (Enviada / Sem negociação)
+    // MUST MATCH Acordos page: any non-cancelled agreement = Enviada
     if (negotiationFilter !== "all") {
       filtered = filtered.filter(c => {
         const status = c.asaasNegotiationStatus
-        const hasCharge = c.hasAsaasCharge
         if (negotiationFilter === "enviada") {
-          // Enviada = has ASAAS charge or is paid
-          return status === "PAGO" || status === "ATIVA_ASAAS" || hasCharge
+          // Enviada = has any active agreement status
+          return status === "PAGO" || status === "ATIVA_ASAAS" || status === "ATIVA"
         }
         if (negotiationFilter === "sem_negociacao") {
-          // Sem negociação = no ASAAS charge and not paid
-          return !status || (!hasCharge && status !== "ATIVA_ASAAS" && status !== "PAGO")
+          // Sem negociação = no active agreement
+          return !status || status === "NENHUMA"
         }
         return true
       })
@@ -326,12 +330,12 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
   // Status configurations - matching super-admin Negociações page
 
   // Status Negociação: "Enviada" (green) or "Sem negociação" (gray)
+  // MUST MATCH Acordos page: any non-cancelled agreement = "Enviada"
   const getNegotiationDisplay = (cliente: typeof clientesWithStatus[0]) => {
     const status = cliente.asaasNegotiationStatus
-    const hasCharge = cliente.hasAsaasCharge
 
-    // If has ASAAS charge or is paid, show "Enviada"
-    if (status === "PAGO" || status === "ATIVA_ASAAS" || hasCharge) {
+    // If has any active agreement status (PAGO, ATIVA_ASAAS, or ATIVA), show "Enviada"
+    if (status === "PAGO" || status === "ATIVA_ASAAS" || status === "ATIVA") {
       return { label: "Enviada", color: "var(--admin-green)", bg: "var(--admin-green-bg)" }
     }
 
