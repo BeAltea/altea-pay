@@ -67,9 +67,10 @@ export async function GET(request: NextRequest) {
 
     // Load existing agreements for this company to check negotiation status
     // Include "completed" for paid and "cancelled" for cancelled negotiations
+    // Also fetch notification viewed fields for visualization tracking
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel")
       .eq("company_id", companyId)
       .in("status", ["active", "draft", "pending", "completed", "cancelled"])
 
@@ -103,6 +104,9 @@ export async function GET(request: NextRequest) {
       agreementId: string | null;
       asaasPaymentId: string | null;
       agreementStatus: string | null;
+      notificationViewed: boolean;
+      notificationViewedAt: string | null;
+      notificationViewedChannel: string | null;
     }>()
     for (const a of agreements || []) {
       const normalizedDoc = customerIdToNormalizedDoc.get(a.customer_id)
@@ -130,6 +134,9 @@ export async function GET(request: NextRequest) {
             agreementId: a.id || null,
             asaasPaymentId: a.asaas_payment_id || null,
             agreementStatus: a.status || null,
+            notificationViewed: !!a.notification_viewed,
+            notificationViewedAt: a.notification_viewed_at || null,
+            notificationViewedChannel: a.notification_viewed_channel || null,
           })
         }
       }
@@ -209,6 +216,9 @@ export async function GET(request: NextRequest) {
         agreementStatus: paymentInfo?.agreementStatus || null,
         agreementId: paymentInfo?.agreementId || null,
         asaasPaymentId: paymentInfo?.asaasPaymentId || null,
+        notificationViewed: paymentInfo?.notificationViewed || false,
+        notificationViewedAt: paymentInfo?.notificationViewedAt || null,
+        notificationViewedChannel: paymentInfo?.notificationViewedChannel || null,
       }
     })
 
