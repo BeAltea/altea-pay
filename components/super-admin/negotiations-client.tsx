@@ -118,6 +118,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       asaasPaymentId?: string
       paymentUrl?: string
       recoveryNote?: string
+      notificationChannel?: "whatsapp" | "email" | "none"
+      phoneValidation?: {
+        original: string
+        isValid: boolean
+        reason?: string
+      }
     }>
     stepLabels?: Record<string, string>
   } | null>(null)
@@ -1524,6 +1530,31 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   )}
                 </div>
 
+                {/* Notification channel indicator for success */}
+                {result.status === "success" && result.notificationChannel && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Notificação:</span>
+                    {result.notificationChannel === "whatsapp" ? (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 text-xs">
+                        WhatsApp
+                      </Badge>
+                    ) : result.notificationChannel === "email" ? (
+                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 text-xs">
+                        Email (fallback)
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-gray-100 text-gray-700 dark:bg-gray-900/50 dark:text-gray-300 text-xs">
+                        Nenhuma
+                      </Badge>
+                    )}
+                    {result.phoneValidation && !result.phoneValidation.isValid && result.phoneValidation.reason && (
+                      <span className="text-xs text-muted-foreground" title={result.phoneValidation.reason}>
+                        ({result.phoneValidation.reason})
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Error details for failed */}
                 {result.status === "failed" && result.error && (
                   <div className="mt-2 text-sm">
@@ -1568,6 +1599,22 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                       <div className="mt-2 flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
                         <AlertTriangle className="h-3 w-3 flex-shrink-0" />
                         Cobrança criada no ASAAS mas status não atualizado no AlteaPay. Use "Sincronizar ASAAS" para corrigir.
+                      </div>
+                    )}
+
+                    {/* Phone validation and notification channel info */}
+                    {result.notificationChannel && (
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Canal:</span>
+                        <Badge variant="outline" className="text-xs">
+                          {result.notificationChannel === "whatsapp" ? "WhatsApp" :
+                           result.notificationChannel === "email" ? "Email" : "Nenhum"}
+                        </Badge>
+                        {result.phoneValidation && !result.phoneValidation.isValid && (
+                          <span className="text-muted-foreground">
+                            (Tel: {result.phoneValidation.reason})
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
