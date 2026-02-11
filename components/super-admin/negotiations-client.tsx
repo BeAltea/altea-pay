@@ -93,6 +93,48 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [cancellingCustomer, setCancellingCustomer] = useState<VmaxCustomer | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
+  // Results modal state (for showing detailed send results)
+  const [showResultsModal, setShowResultsModal] = useState(false)
+  const [sendResults, setSendResults] = useState<{
+    sent: number
+    failed: number
+    total: number
+    results: Array<{
+      vmaxId: string
+      customerName: string
+      cpfCnpj: string
+      status: "success" | "failed" | "recovered"
+      failedAtStep?: string
+      error?: {
+        message: string
+        step: string
+        httpStatus?: number
+        asaasErrors?: any[]
+        recoverable?: boolean
+      }
+      asaasCustomerCreated?: boolean
+      asaasPaymentCreated?: boolean
+      asaasCustomerId?: string
+      asaasPaymentId?: string
+      paymentUrl?: string
+      recoveryNote?: string
+    }>
+    stepLabels?: Record<string, string>
+  } | null>(null)
+
+  // Sync results modal state
+  const [showSyncResultsModal, setShowSyncResultsModal] = useState(false)
+  const [syncResults, setSyncResults] = useState<{
+    total: number
+    synced: number
+    updated: number
+    skipped: number
+    errors: string[]
+    stuckFixed?: number
+    stuckDetails?: Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>
+    incompleteAgreements?: Array<{ agreementId: string; customerName: string; cpfCnpj: string; asaasCustomerId: string; issue: string }>
+  } | null>(null)
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -378,21 +420,41 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       const result = await response.json()
 
+      setShowModal(false) // Close send modal
+
       if (result.success) {
         const totalSelected = selectedCustomers.size
-        if (result.sent === totalSelected) {
-          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
+
+        // Always show results modal if there are any failures or partial success
+        if (result.failed > 0 || result.sent < totalSelected) {
+          setSendResults({
+            sent: result.sent,
+            failed: result.failed,
+            total: result.total,
+            results: result.results,
+            stepLabels: result.stepLabels,
+          })
+          setShowResultsModal(true)
+          toast.warning(`Concluído com ${result.failed} erro(s). Veja detalhes abaixo.`)
         } else {
-          toast.success(`Negociacao enviada para ${result.sent} de ${totalSelected} cliente(s).`)
-          if (result.errors && result.errors.length > 0) {
-            toast.warning(`${result.errors.length} erro(s): ${result.errors.slice(0, 3).join("; ")}`)
-          }
+          toast.success(`Negociacao enviada com sucesso para todos os ${result.sent} cliente(s)!`)
         }
-        setShowModal(false)
+
         setSelectedCustomers(new Set())
         // Reload customers to update status
         loadCustomers(selectedCompanyId)
       } else {
+        // Total failure - still show results if available
+        if (result.results && result.results.length > 0) {
+          setSendResults({
+            sent: result.sent || 0,
+            failed: result.failed || result.results.length,
+            total: result.total || result.results.length,
+            results: result.results,
+            stepLabels: result.stepLabels,
+          })
+          setShowResultsModal(true)
+        }
         toast.error(result.error || "Erro ao enviar negociacoes")
       }
     } catch (error) {
@@ -465,7 +527,21 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       const data = await res.json()
 
       if (res.ok && data.success) {
-        toast.success(data.message || `Sincronizado! ${data.results?.updated || 0} cobrancas atualizadas`)
+        const results = data.results || {}
+        const hasDetails = (results.stuckFixed && results.stuckFixed > 0) ||
+          (results.stuckDetails && results.stuckDetails.length > 0) ||
+          (results.incompleteAgreements && results.incompleteAgreements.length > 0) ||
+          results.updated > 0
+
+        if (hasDetails) {
+          // Show detailed results in modal
+          setSyncResults(results)
+          setShowSyncResultsModal(true)
+          toast.success(data.message)
+        } else {
+          toast.success(data.message || "Sincronização concluída - nenhuma alteração necessária")
+        }
+
         // Reload customers to reflect any status changes
         if (selectedCompanyId) {
           loadCustomers(selectedCompanyId)
@@ -1214,6 +1290,322 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   Sim, cancelar negociação
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Results Modal - Shows detailed errors per negotiation */}
+      <Dialog open={showResultsModal} onOpenChange={setShowResultsModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {sendResults?.failed === 0 ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  Envio Concluído com Sucesso
+                </>
+              ) : sendResults?.sent === 0 ? (
+                <>
+                  <XCircle className="h-5 w-5 text-red-500" />
+                  Falha no Envio
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  Envio Concluído com Erros
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {sendResults && (
+                <div className="flex gap-4 mt-2">
+                  <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    {sendResults.sent} enviado(s)
+                  </Badge>
+                  {sendResults.failed > 0 && (
+                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      {sendResults.failed} erro(s)
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">
+                    Total: {sendResults.total}
+                  </span>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Results list with scroll */}
+          <div className="flex-1 overflow-y-auto mt-4 space-y-2 pr-2">
+            {sendResults?.results.map((result, idx) => (
+              <div
+                key={result.vmaxId || idx}
+                className={`p-3 rounded-lg border ${
+                  result.status === "success"
+                    ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    : result.status === "recovered"
+                    ? "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
+                    : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {result.status === "success" ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      ) : result.status === "recovered" ? (
+                        <RefreshCw className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                      )}
+                      <span className="font-medium truncate" title={result.customerName}>
+                        {result.customerName}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {result.cpfCnpj ? result.cpfCnpj.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") : "Sem CPF/CNPJ"}
+                    </p>
+                  </div>
+
+                  {result.status === "success" && result.paymentUrl && (
+                    <a
+                      href={result.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex-shrink-0"
+                    >
+                      Ver cobrança
+                    </a>
+                  )}
+                </div>
+
+                {/* Error details for failed */}
+                {result.status === "failed" && result.error && (
+                  <div className="mt-2 text-sm">
+                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                      <span className="font-medium">Falhou em:</span>
+                      <span>
+                        {sendResults?.stepLabels?.[result.error.step] || result.error.step}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-red-600 dark:text-red-400">
+                      {result.error.httpStatus && (
+                        <span className="font-mono mr-1">[{result.error.httpStatus}]</span>
+                      )}
+                      {result.error.message}
+                    </div>
+
+                    {/* Show ASAAS specific errors */}
+                    {result.error.asaasErrors && result.error.asaasErrors.length > 0 && (
+                      <div className="mt-1 text-xs text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900/50 p-2 rounded">
+                        {result.error.asaasErrors.map((e: any, i: number) => (
+                          <div key={i}>
+                            {e.code && <span className="font-mono mr-1">[{e.code}]</span>}
+                            {e.description || e.message || JSON.stringify(e)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Warning if ASAAS customer was created but payment failed */}
+                    {result.asaasCustomerCreated && !result.asaasPaymentCreated && (
+                      <div className="mt-2 flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                        Cliente criado no ASAAS mas cobrança não foi criada
+                        {result.asaasCustomerId && (
+                          <span className="font-mono ml-1">({result.asaasCustomerId})</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Warning if ASAAS succeeded but DB update failed */}
+                    {result.asaasPaymentCreated && result.error.recoverable && (
+                      <div className="mt-2 flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                        Cobrança criada no ASAAS mas status não atualizado no AlteaPay. Use "Sincronizar ASAAS" para corrigir.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Recovery note */}
+                {result.status === "recovered" && result.recoveryNote && (
+                  <div className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                    <RefreshCw className="inline h-3 w-3 mr-1" />
+                    {result.recoveryNote}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowResultsModal(false)}>
+              Fechar
+            </Button>
+            {sendResults && sendResults.failed > 0 && (
+              <Button
+                onClick={() => {
+                  setShowResultsModal(false)
+                  handleSyncWithAsaas()
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sincronizar ASAAS
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync Results Modal */}
+      <Dialog open={showSyncResultsModal} onOpenChange={setShowSyncResultsModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-500" />
+              Sincronização com ASAAS Concluída
+            </DialogTitle>
+            <DialogDescription>
+              {syncResults && (
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {syncResults.updated > 0 && (
+                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                      {syncResults.updated} cobrança(s) atualizada(s)
+                    </Badge>
+                  )}
+                  {syncResults.stuckFixed && syncResults.stuckFixed > 0 && (
+                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                      <CheckCircle className="mr-1 h-3 w-3" />
+                      {syncResults.stuckFixed} cliente(s) corrigido(s)
+                    </Badge>
+                  )}
+                  {syncResults.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
+                    <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      {syncResults.incompleteAgreements.length} pendente(s)
+                    </Badge>
+                  )}
+                  {syncResults.errors && syncResults.errors.length > 0 && (
+                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      {syncResults.errors.length} erro(s)
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto mt-4 space-y-4 pr-2">
+            {/* Fixed/Synced Clients */}
+            {syncResults?.stuckDetails && syncResults.stuckDetails.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-green-700 dark:text-green-300 mb-2 flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" />
+                  Clientes Sincronizados
+                </h4>
+                <div className="space-y-2">
+                  {syncResults.stuckDetails.map((detail, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg border bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{detail.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {detail.cpfCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                          </p>
+                        </div>
+                        {detail.asaasPaymentId && (
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {detail.asaasPaymentId}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        {detail.action}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Incomplete Agreements (need manual action) */}
+            {syncResults?.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-yellow-700 dark:text-yellow-300 mb-2 flex items-center gap-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  Clientes com Pendências
+                </h4>
+                <div className="space-y-2">
+                  {syncResults.incompleteAgreements.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg border bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{item.customerName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.cpfCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          ASAAS: {item.asaasCustomerId}
+                        </span>
+                      </div>
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                        {item.issue}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Errors */}
+            {syncResults?.errors && syncResults.errors.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-red-700 dark:text-red-300 mb-2 flex items-center gap-1">
+                  <XCircle className="h-4 w-4" />
+                  Erros
+                </h4>
+                <div className="space-y-1">
+                  {syncResults.errors.map((error, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 rounded text-xs bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                    >
+                      {error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No changes */}
+            {syncResults &&
+              !syncResults.stuckDetails?.length &&
+              !syncResults.incompleteAgreements?.length &&
+              !syncResults.errors?.length &&
+              syncResults.updated === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500/50" />
+                  <p>Todos os clientes já estão sincronizados!</p>
+                </div>
+              )}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowSyncResultsModal(false)}>
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>
