@@ -67,11 +67,25 @@ async function fetchAsaasPaymentStatus(paymentId: string): Promise<AsaasPaymentR
   }
 
   if (!response.ok) {
-    const error = await response.text()
-    return { status: "error", error: `Failed to fetch payment ${paymentId}: ${error}` }
+    // Try to get error details - might be HTML error page
+    let errorText: string
+    try {
+      const contentType = response.headers.get("content-type") || ""
+      if (contentType.includes("application/json")) {
+        const errorData = await response.json()
+        errorText = JSON.stringify(errorData)
+      } else {
+        const text = await response.text()
+        errorText = text.substring(0, 200)
+      }
+    } catch {
+      errorText = `HTTP ${response.status}`
+    }
+    return { status: "error", error: `Failed to fetch payment ${paymentId}: ${errorText}` }
   }
 
-  const data = await response.json()
+  // Safe JSON parsing - validates content-type first
+  const data = await safeJsonParse(response, `fetch_payment_${paymentId}`)
 
   // Also check if ASAAS returns an error in the response body indicating not found
   if (data?.errors?.some((e: any) => e.code === "invalid_action" || e.description?.includes("not found"))) {
@@ -85,6 +99,28 @@ async function fetchAsaasPaymentStatus(paymentId: string): Promise<AsaasPaymentR
 function normalizeCpfCnpj(value: string | null | undefined): string {
   if (!value) return ""
   return value.replace(/\D/g, "")
+}
+
+// Safe JSON parser that validates content-type before parsing
+// Prevents "Unexpected token '<'" errors when server returns HTML error pages
+async function safeJsonParse(response: Response, context: string): Promise<any> {
+  const contentType = response.headers.get("content-type") || ""
+
+  if (!contentType.includes("application/json")) {
+    const text = await response.text().catch(() => "Unable to read response body")
+    const preview = text.substring(0, 200)
+    console.error(`[ASAAS Sync] ${context} - Expected JSON but got ${contentType}: ${preview}`)
+
+    throw new AsaasSyncError(
+      `Resposta inesperada do servidor: esperava JSON mas recebeu ${contentType || "unknown"}. ` +
+      `Isso geralmente indica timeout do servidor ou erro de configuração.`,
+      context,
+      response.status,
+      { contentType, preview }
+    )
+  }
+
+  return response.json()
 }
 
 // Custom error class with ASAAS details
@@ -120,13 +156,27 @@ async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null>
     })
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error")
+      // Try to get error details - might be HTML error page
+      let errorText: string
+      try {
+        const contentType = response.headers.get("content-type") || ""
+        if (contentType.includes("application/json")) {
+          const errorData = await response.json()
+          errorText = JSON.stringify(errorData)
+        } else {
+          const text = await response.text()
+          errorText = text.substring(0, 200)
+        }
+      } catch {
+        errorText = `HTTP ${response.status}`
+      }
       console.error(`[ASAAS Sync] API error fetching customer ${normalizedCpf}: ${response.status} - ${errorText}`)
       // Don't throw, just return null - this customer doesn't exist in ASAAS
       return null
     }
 
-    const data = await response.json()
+    // Safe JSON parsing - validates content-type first
+    const data = await safeJsonParse(response, `fetch_customer_${normalizedCpf}`)
 
     // Check for ASAAS API errors in response
     if (data.errors && data.errors.length > 0) {
@@ -142,6 +192,10 @@ async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null>
     return null
   } catch (error: any) {
     console.error(`[ASAAS Sync] Error fetching customer by CPF/CNPJ ${normalizedCpf}:`, error)
+    // Re-throw if it's our custom error (includes HTML response errors)
+    if (error instanceof AsaasSyncError) {
+      throw error
+    }
     // Re-throw with context if it's a network/timeout error
     if (error.name === "AbortError" || error.message?.includes("timeout")) {
       throw new AsaasSyncError(
@@ -169,12 +223,20 @@ async function fetchAsaasPaymentsForCustomer(customerId: string): Promise<any[]>
       }),
     })
 
-    if (!response.ok) return []
+    if (!response.ok) {
+      console.error(`[ASAAS Sync] API error fetching payments for ${customerId}: ${response.status}`)
+      return []
+    }
 
-    const data = await response.json()
+    // Safe JSON parsing - validates content-type first
+    const data = await safeJsonParse(response, `fetch_payments_${customerId}`)
     return data.data || []
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[ASAAS Sync] Error fetching payments for customer ${customerId}:`, error)
+    // Re-throw if it's our custom error (includes HTML response errors)
+    if (error instanceof AsaasSyncError) {
+      throw error
+    }
     return []
   }
 }
@@ -197,9 +259,13 @@ async function fetchAllAsaasPayments(): Promise<any[]> {
         }),
       })
 
-      if (!response.ok) break
+      if (!response.ok) {
+        console.error(`[ASAAS Sync] API error fetching payments at offset ${offset}: ${response.status}`)
+        break
+      }
 
-      const data = await response.json()
+      // Safe JSON parsing - validates content-type first
+      const data = await safeJsonParse(response, `fetch_all_payments_offset_${offset}`)
       if (!data.data || data.data.length === 0) break
 
       allPayments.push(...data.data)
@@ -210,8 +276,12 @@ async function fetchAllAsaasPayments(): Promise<any[]> {
       // Safety limit
       if (offset > 1000) break
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("[ASAAS Sync] Error fetching payments:", error)
+    // Re-throw if it's our custom error (includes HTML response errors)
+    if (error instanceof AsaasSyncError) {
+      throw error
+    }
   }
 
   return allPayments

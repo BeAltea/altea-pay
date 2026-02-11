@@ -538,7 +538,29 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
         body: JSON.stringify(body),
       })
 
-      const data = await res.json()
+      // Safe JSON parsing - check content-type first to avoid "Unexpected token '<'" errors
+      const contentType = res.headers.get("content-type") || ""
+      let data: any
+
+      if (contentType.includes("application/json")) {
+        data = await res.json()
+      } else {
+        // Server returned HTML (error page, timeout) instead of JSON
+        const text = await res.text()
+        const preview = text.substring(0, 200)
+        console.error("Sync API returned non-JSON:", res.status, preview)
+        data = {
+          success: false,
+          error: `Servidor retornou resposta inesperada (${res.status})`,
+          details: {
+            message: "O servidor retornou HTML em vez de JSON. Isso geralmente indica timeout ou erro interno.",
+            step: "api_response",
+            stepLabel: "Resposta da API",
+            httpStatus: res.status,
+            asaasResponse: preview.includes("<") ? "HTML error page" : preview,
+          },
+        }
+      }
 
       if (res.ok && data.success) {
         const results = data.results || {}
