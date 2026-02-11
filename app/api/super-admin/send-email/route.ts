@@ -5,6 +5,7 @@ import { validateSendGridConfig } from "@/lib/notifications/sendgrid"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
+export const maxDuration = 60 // Allow up to 60 seconds for large batches
 
 const noCacheHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -20,6 +21,8 @@ interface SendResult {
   email: string
   success: boolean
   error?: string
+  messageId?: string
+  recipientId?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -114,30 +117,30 @@ export async function POST(request: NextRequest) {
     let totalFailed = 0
     const failedDetails: { email: string; error: string }[] = []
 
-    console.log(`[v0] Sending emails individually ${isTestMode ? "(TEST MODE - no tracking)" : "with tracking"}...`)
+    // Parallel sending with concurrency limit to avoid timeout
+    const CHUNK_SIZE = 10 // Send 10 emails at a time in parallel
+    console.log(`[v0] Sending ${recipients.length} emails in parallel chunks of ${CHUNK_SIZE} ${isTestMode ? "(TEST MODE - no tracking)" : "with tracking"}...`)
 
-    // Send emails individually and track each one (skip tracking in test mode)
-    for (const recipient of recipients) {
+    // Helper function to send a single email
+    async function sendSingleEmail(recipient: RecipientData): Promise<SendResult> {
+      const requestBody: Record<string, unknown> = {
+        personalizations: [{ to: [{ email: recipient.email }] }],
+        from: {
+          email: fromEmail,
+          name: fromName,
+        },
+        subject,
+        content: [
+          { type: "text/plain", value: textContent },
+          { type: "text/html", value: htmlBody },
+        ],
+      }
+
+      if (replyTo) {
+        requestBody.reply_to = { email: replyTo }
+      }
+
       try {
-        // Build the request body for individual email
-        const requestBody: Record<string, unknown> = {
-          personalizations: [{ to: [{ email: recipient.email }] }],
-          from: {
-            email: fromEmail,
-            name: fromName,
-          },
-          subject,
-          content: [
-            { type: "text/plain", value: textContent },
-            { type: "text/html", value: htmlBody },
-          ],
-        }
-
-        // Add reply_to if configured
-        if (replyTo) {
-          requestBody.reply_to = { email: replyTo }
-        }
-
         const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
           method: "POST",
           headers: {
@@ -150,55 +153,49 @@ export async function POST(request: NextRequest) {
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
           const errorMessage = errorData.errors?.[0]?.message || `Erro HTTP ${response.status}`
-          console.error(`[v0] Failed to send to ${recipient.email}:`, errorMessage)
-
-          // Log failed send to tracking table (skip in test mode)
-          if (!isTestMode && companyId) {
-            try {
-              await adminClient.from("email_sent_tracking").insert({
-                user_id: recipient.id,
-                company_id: companyId,
-                email_subject: subject,
-                sent_at: new Date().toISOString(),
-                sent_by: user.id,
-                status: "failed",
-                error_message: errorMessage,
-              })
-            } catch (logError) {
-              console.warn("[v0] Could not log failed email send:", logError)
-            }
-          }
-
-          results.push({ email: recipient.email, success: false, error: errorMessage })
-          failedDetails.push({ email: recipient.email, error: errorMessage })
-          totalFailed++
-        } else {
-          console.log(`[v0] Successfully sent to ${recipient.email}`)
-
-          // Log successful send to tracking table (skip in test mode)
-          if (!isTestMode && companyId) {
-            try {
-              await adminClient.from("email_sent_tracking").insert({
-                user_id: recipient.id,
-                company_id: companyId,
-                email_subject: subject,
-                sent_at: new Date().toISOString(),
-                sent_by: user.id,
-                status: "sent",
-              })
-            } catch (logError) {
-              console.warn("[v0] Could not log successful email send:", logError)
-            }
-          }
-
-          results.push({ email: recipient.email, success: true })
-          totalSent++
+          return { email: recipient.email, success: false, error: errorMessage, recipientId: recipient.id }
         }
+
+        // Get message ID from response headers if available
+        const messageId = response.headers.get("x-message-id") || undefined
+        return { email: recipient.email, success: true, messageId, recipientId: recipient.id }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
-        console.error(`[v0] Exception sending to ${recipient.email}:`, errorMessage)
+        return { email: recipient.email, success: false, error: errorMessage, recipientId: recipient.id }
+      }
+    }
 
-        // Log failed send to tracking table (skip in test mode)
+    // Process emails in parallel chunks
+    for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
+      const chunk = recipients.slice(i, i + CHUNK_SIZE)
+      const chunkNumber = Math.floor(i / CHUNK_SIZE) + 1
+      const totalChunks = Math.ceil(recipients.length / CHUNK_SIZE)
+
+      console.log(`[v0] Processing chunk ${chunkNumber}/${totalChunks} (${chunk.length} emails)...`)
+
+      // Send all emails in this chunk in parallel
+      const chunkResults = await Promise.allSettled(chunk.map(sendSingleEmail))
+
+      // Process results and save to database
+      for (let j = 0; j < chunkResults.length; j++) {
+        const result = chunkResults[j]
+        const recipient = chunk[j]
+
+        let sendResult: SendResult
+
+        if (result.status === "fulfilled") {
+          sendResult = result.value
+        } else {
+          // Promise rejected (shouldn't happen with our try/catch, but handle it)
+          sendResult = {
+            email: recipient.email,
+            success: false,
+            error: result.reason?.message || "Erro inesperado",
+            recipientId: recipient.id,
+          }
+        }
+
+        // Log to tracking table AFTER SendGrid confirms (skip in test mode)
         if (!isTestMode && companyId) {
           try {
             await adminClient.from("email_sent_tracking").insert({
@@ -207,21 +204,29 @@ export async function POST(request: NextRequest) {
               email_subject: subject,
               sent_at: new Date().toISOString(),
               sent_by: user.id,
-              status: "failed",
-              error_message: errorMessage,
+              status: sendResult.success ? "sent" : "failed",
+              error_message: sendResult.error || null,
             })
           } catch (logError) {
-            console.warn("[v0] Could not log exception email send:", logError)
+            console.warn(`[v0] Could not log email send for ${recipient.email}:`, logError)
           }
         }
 
-        results.push({ email: recipient.email, success: false, error: errorMessage })
-        failedDetails.push({ email: recipient.email, error: errorMessage })
-        totalFailed++
+        results.push(sendResult)
+
+        if (sendResult.success) {
+          totalSent++
+        } else {
+          totalFailed++
+          failedDetails.push({ email: sendResult.email, error: sendResult.error || "Erro desconhecido" })
+          console.error(`[v0] Failed to send to ${sendResult.email}:`, sendResult.error)
+        }
       }
+
+      console.log(`[v0] Chunk ${chunkNumber} completed. Running total: ${totalSent} sent, ${totalFailed} failed`)
     }
 
-    console.log(`[v0] Completed: ${totalSent} sent, ${totalFailed} failed`)
+    console.log(`[v0] All chunks completed: ${totalSent} sent, ${totalFailed} failed`)
     console.log("[v0] ========== END SEND EMAIL API ==========")
 
     const modeLabel = isTestMode ? " (modo de teste)" : ""
