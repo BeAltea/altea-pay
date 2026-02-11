@@ -63,7 +63,8 @@ interface BatchSummary {
   companyName: string
   sentAt: string
   date: string
-  totalSent: number
+  localAttempts?: number // How many we tried to send (local DB)
+  totalSent: number // How many SendGrid actually received
   uniqueInBatch: number
   duplicatesInBatch: number
   delivered: number
@@ -76,14 +77,15 @@ interface BatchSummary {
 }
 
 interface AnalyticsSummary {
-  totalSent: number
-  uniqueEmails: number
-  duplicates: number
-  delivered: number
-  bounces: number
-  blocks: number
-  invalid: number
-  spam: number
+  totalSent: number // From SendGrid Stats API (source of truth)
+  uniqueEmails: number // From local DB
+  duplicates: number // From local DB
+  delivered: number // From SendGrid Stats API
+  bounces: number // From SendGrid Stats API
+  blocks: number // From SendGrid Stats API
+  invalid: number // From SendGrid Stats API
+  spam: number // From SendGrid Stats API
+  localAttempts?: number // From local DB (how many we tried to send)
 }
 
 interface AnalyticsData {
@@ -448,7 +450,7 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
           icon={Mail}
           color="blue"
           isLoading={isLoading}
-          tooltip="Total de emails enviados (incluindo duplicados)"
+          tooltip="Total de emails que o SendGrid recebeu e processou (fonte: SendGrid Stats API)"
         />
         <StatCard
           title="Unicos"
@@ -539,11 +541,12 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
             <ScrollArea className="h-[400px]">
               <div className="space-y-1">
                 {/* Table Header */}
-                <div className="grid grid-cols-7 gap-4 p-3 bg-muted/50 rounded-lg text-sm font-medium sticky top-0">
+                <div className="grid grid-cols-8 gap-3 p-3 bg-muted/50 rounded-lg text-sm font-medium sticky top-0">
                   <div className="col-span-2">Assunto</div>
                   <div>Empresa</div>
                   <div>Data</div>
-                  <div className="text-center">Enviados</div>
+                  <div className="text-center" title="Tentativas de envio (local)">Tent.</div>
+                  <div className="text-center" title="Enviados pelo SendGrid">Env.</div>
                   <div className="text-center">Falhas</div>
                   <div className="text-center">Taxa</div>
                 </div>
@@ -560,7 +563,7 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                     <div key={batch.id} className="border rounded-lg overflow-hidden">
                       <div
                         onClick={() => hasDetails && (expandedBatch === batch.id ? setExpandedBatch(null) : setExpandedBatch(batch.id))}
-                        className={`grid grid-cols-7 gap-4 p-3 transition-colors items-center ${
+                        className={`grid grid-cols-8 gap-3 p-3 transition-colors items-center ${
                           hasDetails ? "cursor-pointer hover:bg-muted/30" : ""
                         } ${isExpanded ? "bg-muted/30" : ""}`}
                       >
@@ -583,7 +586,12 @@ export function EmailActivity({ companies: initialCompanies }: { companies: Comp
                           {formatDateBrazilian(batch.date)}
                         </div>
                         <div className="text-center">
-                          <Badge variant="secondary">{batch.totalSent}</Badge>
+                          <span className="text-sm text-muted-foreground" title="Tentativas locais">
+                            {batch.localAttempts || batch.totalSent}
+                          </span>
+                        </div>
+                        <div className="text-center">
+                          <Badge variant="secondary" title="Enviados pelo SendGrid">{batch.totalSent}</Badge>
                           {hasDuplicates && (
                             <div className="mt-0.5">
                               <span className="text-[10px] text-amber-600 dark:text-amber-400" title="Destinatarios duplicados">
