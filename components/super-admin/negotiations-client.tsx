@@ -149,6 +149,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     }
   } | null>(null)
 
+  // Per-client sync state
+  const [syncingClientId, setSyncingClientId] = useState<string | null>(null)
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -604,6 +607,58 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       setShowSyncErrorModal(true)
     } finally {
       setSyncing(false)
+    }
+  }
+
+  // Per-client sync handler
+  const handleSyncSingleClient = async (customer: VmaxCustomer) => {
+    setSyncingClientId(customer.id)
+
+    try {
+      const response = await fetch("/api/asaas/sync-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vmaxId: customer.id,
+          cpfCnpj: customer.document,
+          companyId: selectedCompanyId,
+          customerName: customer.name,
+        }),
+      })
+
+      // Safe JSON parsing
+      const contentType = response.headers.get("content-type") || ""
+      let data: any
+
+      if (contentType.includes("application/json")) {
+        data = await response.json()
+      } else {
+        const text = await response.text()
+        toast.error("Erro: resposta inesperada do servidor")
+        console.error("Non-JSON response:", text.substring(0, 200))
+        return
+      }
+
+      if (data.success) {
+        if (data.status === "synced") {
+          toast.success(`${customer.name} sincronizado com ASAAS`)
+          // Reload customers to update status
+          loadCustomers(selectedCompanyId)
+        } else if (data.status === "already_synced") {
+          toast.info(`${customer.name} já estava sincronizado`)
+        } else if (data.status === "customer_only") {
+          toast.warning(`${customer.name} existe no ASAAS mas sem cobrança`)
+        } else if (data.status === "not_found") {
+          toast.info(`${customer.name} não encontrado no ASAAS`)
+        }
+      } else {
+        toast.error(`Erro: ${data.error || "Falha ao sincronizar"}`)
+      }
+    } catch (error: any) {
+      console.error("Error syncing single client:", error)
+      toast.error(`Falha na conexão: ${error.message}`)
+    } finally {
+      setSyncingClientId(null)
     }
   }
 
@@ -1069,8 +1124,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
                       </div>
-                      {/* Actions column - Cancel button */}
-                      <div className="hidden lg:flex justify-center">
+                      {/* Actions column - Cancel or Sync button */}
+                      <div className="hidden lg:flex justify-center gap-1">
                         {/* Show Cancel if has ASAAS payment and status is PENDING or OVERDUE */}
                         {customer.asaasPaymentId &&
                          customer.asaasStatus !== "RECEIVED" &&
@@ -1087,6 +1142,22 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           </Button>
                         ) : customer.asaasStatus === "DELETED" ? (
                           <span className="text-xs text-muted-foreground">Cancelada</span>
+                        ) : !customer.hasNegotiation || customer.isCancelled ? (
+                          // Show sync button for clients without negotiation
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            onClick={() => handleSyncSingleClient(customer)}
+                            disabled={syncingClientId === customer.id}
+                            title="Verificar se este cliente existe no ASAAS"
+                          >
+                            {syncingClientId === customer.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
