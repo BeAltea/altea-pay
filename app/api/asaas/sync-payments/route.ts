@@ -87,6 +87,21 @@ function normalizeCpfCnpj(value: string | null | undefined): string {
   return value.replace(/\D/g, "")
 }
 
+// Custom error class with ASAAS details
+class AsaasSyncError extends Error {
+  step: string
+  httpStatus?: number
+  asaasResponse?: any
+
+  constructor(message: string, step: string, httpStatus?: number, asaasResponse?: any) {
+    super(message)
+    this.name = "AsaasSyncError"
+    this.step = step
+    this.httpStatus = httpStatus
+    this.asaasResponse = asaasResponse
+  }
+}
+
 // Fetch ASAAS customer by CPF/CNPJ
 async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null> {
   const baseUrl = await getBaseUrl()
@@ -104,9 +119,20 @@ async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null>
       }),
     })
 
-    if (!response.ok) return null
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error")
+      console.error(`[ASAAS Sync] API error fetching customer ${normalizedCpf}: ${response.status} - ${errorText}`)
+      // Don't throw, just return null - this customer doesn't exist in ASAAS
+      return null
+    }
 
     const data = await response.json()
+
+    // Check for ASAAS API errors in response
+    if (data.errors && data.errors.length > 0) {
+      console.error(`[ASAAS Sync] ASAAS error for ${normalizedCpf}:`, data.errors)
+      return null
+    }
 
     // Return first matching customer
     if (data.data && data.data.length > 0) {
@@ -114,8 +140,17 @@ async function fetchAsaasCustomerByCpfCnpj(cpfCnpj: string): Promise<any | null>
     }
 
     return null
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[ASAAS Sync] Error fetching customer by CPF/CNPJ ${normalizedCpf}:`, error)
+    // Re-throw with context if it's a network/timeout error
+    if (error.name === "AbortError" || error.message?.includes("timeout")) {
+      throw new AsaasSyncError(
+        `Timeout ao buscar cliente ${normalizedCpf} no ASAAS`,
+        "fetch_asaas_customer",
+        undefined,
+        undefined
+      )
+    }
     return null
   }
 }
@@ -444,6 +479,8 @@ async function syncStuckClients(companyId: string, results: any) {
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  let currentStep = "initialization"
+
   const results: {
     total: number
     synced: number
@@ -462,12 +499,29 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Check ASAAS configuration
+    currentStep = "config_check"
+    if (!process.env.ASAAS_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Chave da API do ASAAS não configurada",
+          details: {
+            message: "A variável de ambiente ASAAS_API_KEY não está definida",
+            step: "config_check",
+          },
+        },
+        { status: 500 }
+      )
+    }
+
     // Optional: Check for cron secret or admin auth
     const cronSecret = process.env.CRON_SECRET
     const authHeader = request.headers.get("authorization")
     const isCron = authHeader === `Bearer ${cronSecret}`
 
     // Parse optional filters from request body
+    currentStep = "parse_request"
     let filters: { companyId?: string; agreementId?: string } = {}
     try {
       const body = await request.json()
@@ -477,6 +531,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[ASAAS Sync] Starting payment sync...", filters)
+    currentStep = "fetch_agreements"
 
     // Build query for pending/active agreements
     let query = supabase
@@ -766,8 +821,54 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[ASAAS Sync] Fatal error:", error)
+
+    // Extract detailed error information
+    const errorDetails: {
+      message: string
+      step: string
+      httpStatus?: number
+      asaasResponse?: any
+      stack?: string[]
+    } = {
+      message: error.message || "Erro interno do servidor",
+      step: error.step || currentStep,
+    }
+
+    // Try to extract HTTP status and ASAAS response
+    if (error.response) {
+      errorDetails.httpStatus = error.response.status
+      errorDetails.asaasResponse = error.response.data
+    } else if (error.httpStatus) {
+      errorDetails.httpStatus = error.httpStatus
+      errorDetails.asaasResponse = error.asaasResponse
+    }
+
+    // Include stack trace (first 5 lines) for debugging
+    if (error.stack) {
+      errorDetails.stack = error.stack.split("\n").slice(0, 5)
+    }
+
+    // Map step to Portuguese for display
+    const stepLabels: Record<string, string> = {
+      initialization: "Inicialização",
+      config_check: "Verificar configuração",
+      parse_request: "Processar requisição",
+      fetch_agreements: "Buscar acordos",
+      fetch_asaas_customer: "Buscar cliente no ASAAS",
+      fetch_asaas_payments: "Buscar cobranças no ASAAS",
+      sync_stuck_clients: "Sincronizar clientes pendentes",
+      update_agreement: "Atualizar acordo",
+    }
+
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      {
+        success: false,
+        error: errorDetails.message,
+        details: {
+          ...errorDetails,
+          stepLabel: stepLabels[errorDetails.step] || errorDetails.step,
+        },
+      },
       { status: 500 }
     )
   }

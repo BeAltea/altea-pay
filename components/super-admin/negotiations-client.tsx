@@ -135,6 +135,20 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     incompleteAgreements?: Array<{ agreementId: string; customerName: string; cpfCnpj: string; asaasCustomerId: string; issue: string }>
   } | null>(null)
 
+  // Sync error modal state
+  const [showSyncErrorModal, setShowSyncErrorModal] = useState(false)
+  const [syncError, setSyncError] = useState<{
+    error: string
+    details?: {
+      message: string
+      step?: string
+      stepLabel?: string
+      httpStatus?: number
+      asaasResponse?: any
+      stack?: string[]
+    }
+  } | null>(null)
+
   const loadCustomers = useCallback(async (companyId: string) => {
     setLoading(true)
     setSelectedCustomers(new Set())
@@ -547,11 +561,25 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           loadCustomers(selectedCompanyId)
         }
       } else {
-        toast.error(data.error || "Erro ao sincronizar com ASAAS")
+        // Show detailed error in modal instead of just a toast
+        setSyncError({
+          error: data.error || "Erro desconhecido",
+          details: data.details,
+        })
+        setShowSyncErrorModal(true)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error syncing with ASAAS:", error)
-      toast.error("Erro ao sincronizar com ASAAS")
+      // Network/timeout error
+      setSyncError({
+        error: "Falha na conexão com o servidor",
+        details: {
+          message: error.message || "Verifique sua conexão com a internet",
+          step: "network",
+          stepLabel: "Conexão de rede",
+        },
+      })
+      setShowSyncErrorModal(true)
     } finally {
       setSyncing(false)
     }
@@ -1606,6 +1634,162 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowSyncResultsModal(false)}>
               Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync Error Modal - Shows detailed error when sync fails */}
+      <Dialog open={showSyncErrorModal} onOpenChange={setShowSyncErrorModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <XCircle className="h-5 w-5" />
+              Erro ao Sincronizar com ASAAS
+            </DialogTitle>
+            <DialogDescription>
+              A sincronização falhou. Veja os detalhes abaixo para diagnosticar o problema.
+            </DialogDescription>
+          </DialogHeader>
+
+          {syncError && (
+            <div className="py-4 space-y-4">
+              {/* Step that failed */}
+              {syncError.details?.stepLabel && (
+                <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800">
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                      <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Etapa que falhou</p>
+                    <p className="font-medium text-red-700 dark:text-red-300">
+                      {syncError.details.stepLabel}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* HTTP Status */}
+              {syncError.details?.httpStatus && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Status HTTP:</span>
+                  <Badge
+                    className={
+                      syncError.details.httpStatus >= 500
+                        ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                        : syncError.details.httpStatus >= 400
+                        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
+                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    }
+                  >
+                    {syncError.details.httpStatus}
+                    {syncError.details.httpStatus === 401 && " — Unauthorized"}
+                    {syncError.details.httpStatus === 403 && " — Forbidden"}
+                    {syncError.details.httpStatus === 404 && " — Not Found"}
+                    {syncError.details.httpStatus === 500 && " — Internal Server Error"}
+                    {syncError.details.httpStatus === 502 && " — Bad Gateway"}
+                    {syncError.details.httpStatus === 503 && " — Service Unavailable"}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Error message */}
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">Mensagem de erro</p>
+                <p className="text-sm font-medium">{syncError.details?.message || syncError.error}</p>
+              </div>
+
+              {/* ASAAS Response details */}
+              {syncError.details?.asaasResponse && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Resposta do ASAAS</p>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
+                    <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                      {typeof syncError.details.asaasResponse === "string"
+                        ? syncError.details.asaasResponse
+                        : JSON.stringify(syncError.details.asaasResponse, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Possible causes based on error type */}
+              <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2 flex items-center gap-1">
+                  <BarChart3 className="h-3 w-3" />
+                  Possíveis causas
+                </p>
+                <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1 list-disc list-inside">
+                  {syncError.details?.httpStatus === 401 && (
+                    <>
+                      <li>Chave da API do ASAAS inválida ou expirada</li>
+                      <li>Token de acesso não configurado corretamente</li>
+                    </>
+                  )}
+                  {syncError.details?.httpStatus === 403 && (
+                    <>
+                      <li>Permissões insuficientes na conta ASAAS</li>
+                      <li>Conta ASAAS bloqueada ou suspensa</li>
+                    </>
+                  )}
+                  {syncError.details?.httpStatus === 404 && (
+                    <>
+                      <li>Recurso não encontrado no ASAAS</li>
+                      <li>Cliente ou cobrança não existe mais</li>
+                    </>
+                  )}
+                  {syncError.details?.httpStatus && syncError.details.httpStatus >= 500 && (
+                    <>
+                      <li>Serviço do ASAAS temporariamente indisponível</li>
+                      <li>Tente novamente em alguns minutos</li>
+                    </>
+                  )}
+                  {syncError.details?.step === "config_check" && (
+                    <>
+                      <li>Variável de ambiente ASAAS_API_KEY não configurada</li>
+                      <li>Verifique as configurações do servidor</li>
+                    </>
+                  )}
+                  {syncError.details?.step === "network" && (
+                    <>
+                      <li>Falha na conexão com a internet</li>
+                      <li>Servidor pode estar offline</li>
+                      <li>Timeout na requisição</li>
+                    </>
+                  )}
+                  {!syncError.details?.httpStatus && syncError.details?.step !== "config_check" && syncError.details?.step !== "network" && (
+                    <>
+                      <li>Erro interno no processamento</li>
+                      <li>Verifique os logs do servidor para mais detalhes</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowSyncErrorModal(false)
+                setSyncError(null)
+              }}
+            >
+              Fechar
+            </Button>
+            <Button
+              onClick={() => {
+                setShowSyncErrorModal(false)
+                setSyncError(null)
+                handleSyncWithAsaas()
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Tentar Novamente
             </Button>
           </DialogFooter>
         </DialogContent>
