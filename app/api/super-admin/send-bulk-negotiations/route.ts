@@ -55,6 +55,12 @@ interface NegotiationResult {
   asaasPaymentId?: string
   paymentUrl?: string
   recoveryNote?: string
+  notificationChannel?: "whatsapp" | "email" | "none" // Which channel was used for notification
+  phoneValidation?: {
+    original: string
+    isValid: boolean
+    reason?: string
+  }
 }
 
 // Step labels in Portuguese for display
@@ -100,6 +106,82 @@ function extractErrorDetails(error: any, step: NegotiationStep): ErrorDetails {
   }
 
   return details
+}
+
+/**
+ * Validate Brazilian phone number for SMS/WhatsApp
+ * Valid formats:
+ * - Mobile: 11 digits (DDD 2 digits + 9 digits starting with 9) e.g., 11987654321
+ * - With country code: 13 digits (55 + DDD + number) e.g., 5511987654321
+ *
+ * Returns: { isValid: boolean, cleaned: string, reason?: string }
+ */
+function validateBrazilianPhone(phone: string | null | undefined): {
+  isValid: boolean
+  cleaned: string
+  reason?: string
+} {
+  if (!phone) {
+    return { isValid: false, cleaned: "", reason: "Telefone não informado" }
+  }
+
+  // Remove all non-digits
+  let cleaned = phone.replace(/\D/g, "")
+
+  // Remove country code if present
+  if (cleaned.startsWith("55") && cleaned.length >= 12) {
+    cleaned = cleaned.substring(2)
+  }
+
+  // Check length - must be 10 (landline) or 11 (mobile) digits
+  if (cleaned.length < 10 || cleaned.length > 11) {
+    return {
+      isValid: false,
+      cleaned,
+      reason: `Telefone com ${cleaned.length} dígitos (esperado 10-11)`
+    }
+  }
+
+  // Extract DDD (first 2 digits)
+  const ddd = parseInt(cleaned.substring(0, 2))
+
+  // Valid DDDs in Brazil: 11-99 (not all are used, but this is a reasonable range)
+  if (ddd < 11 || ddd > 99) {
+    return { isValid: false, cleaned, reason: `DDD inválido: ${ddd}` }
+  }
+
+  // For mobile (11 digits), the 3rd digit must be 9
+  if (cleaned.length === 11) {
+    const thirdDigit = cleaned.charAt(2)
+    if (thirdDigit !== "9") {
+      return {
+        isValid: false,
+        cleaned,
+        reason: `Celular deve começar com 9 após DDD (encontrado: ${thirdDigit})`
+      }
+    }
+  }
+
+  // For landline (10 digits), check if it's a valid landline prefix (2-5)
+  if (cleaned.length === 10) {
+    const thirdDigit = parseInt(cleaned.charAt(2))
+    // Landlines start with 2, 3, 4, or 5
+    if (thirdDigit < 2 || thirdDigit > 5) {
+      return {
+        isValid: false,
+        cleaned,
+        reason: `Fixo deve começar com 2-5 após DDD (encontrado: ${thirdDigit})`
+      }
+    }
+    // Landlines can't receive WhatsApp - flag as invalid for our purposes
+    return {
+      isValid: false,
+      cleaned,
+      reason: "Telefone fixo não recebe WhatsApp/SMS"
+    }
+  }
+
+  return { isValid: true, cleaned }
 }
 
 // Process a single negotiation - extracted for parallel execution
@@ -189,6 +271,25 @@ async function processSingleNegotiation(
     if (existingCustomerData.phone) customerPhone = existingCustomerData.phone.replace(/\D/g, "")
     if (existingCustomerData.email) customerEmail = existingCustomerData.email
   }
+
+  // Validate phone for WhatsApp/SMS
+  const phoneValidation = validateBrazilianPhone(customerPhone)
+
+  // Determine notification channel:
+  // - Valid phone: use WhatsApp (ASAAS sends via WhatsApp)
+  // - Invalid phone but has email: use email
+  // - Neither: no notification
+  let notificationChannel: "whatsapp" | "email" | "none" = "none"
+  if (phoneValidation.isValid && params.notificationChannels.includes("whatsapp")) {
+    notificationChannel = "whatsapp"
+  } else if (customerEmail && params.notificationChannels.includes("whatsapp")) {
+    // Fallback to email when phone is invalid
+    notificationChannel = "email"
+    console.log(`[ASAAS] ${customerName}: Phone invalid (${phoneValidation.reason}), using email fallback`)
+  }
+
+  // Phone to send to ASAAS (only if valid)
+  const asaasPhone = phoneValidation.isValid ? phoneValidation.cleaned : undefined
 
   // Parse debt value
   const vencidoStr = String(vmax.Vencido || "0")
@@ -320,34 +421,43 @@ async function processSingleNegotiation(
       if (existingAsaas) {
         asaasCustomerId = existingAsaas.id
         asaasCustomerCreated = true // Already exists
+        // Only send phone to ASAAS if it's valid
         await updateAsaasCustomer(asaasCustomerId, {
-          mobilePhone: customerPhone || undefined,
+          mobilePhone: asaasPhone,
+          email: customerEmail || undefined,
           notificationDisabled: false,
         })
       } else {
-        // Create new ASAAS customer
+        // Create new ASAAS customer - only send phone if valid
         const newAsaas = await createAsaasCustomer({
           name: customerName,
           cpfCnpj,
-          mobilePhone: customerPhone || undefined,
+          mobilePhone: asaasPhone,
+          email: customerEmail || undefined,
           notificationDisabled: false,
         })
         asaasCustomerId = newAsaas.id
         asaasCustomerCreated = true
       }
 
-      // Configure notifications (non-critical, don't fail on error)
+      // Configure notifications based on phone validity:
+      // - Valid phone: enable WhatsApp
+      // - Invalid phone: enable email (fallback)
       try {
         const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
         const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
         if (paymentCreatedNotif) {
-          const enableWhatsApp = params.notificationChannels.includes("whatsapp")
+          const useWhatsApp = notificationChannel === "whatsapp"
+          const useEmail = notificationChannel === "email"
+
           await updateAsaasNotification(paymentCreatedNotif.id, {
-            enabled: enableWhatsApp,
-            emailEnabledForCustomer: false,
+            enabled: useWhatsApp || useEmail,
+            emailEnabledForCustomer: useEmail,
             smsEnabledForCustomer: false,
-            whatsappEnabledForCustomer: enableWhatsApp,
+            whatsappEnabledForCustomer: useWhatsApp,
           })
+
+          console.log(`[ASAAS] ${customerName}: Notification configured - channel: ${notificationChannel}`)
         }
       } catch (notifErr: any) {
         console.warn(`[ASAAS] Notification config failed for ${customerName}:`, notifErr.message)
@@ -361,6 +471,12 @@ async function processSingleNegotiation(
         failedAtStep: "create_asaas_customer",
         error: extractErrorDetails(asaasErr, "create_asaas_customer"),
         asaasCustomerCreated: false,
+        notificationChannel,
+        phoneValidation: {
+          original: customerPhone,
+          isValid: phoneValidation.isValid,
+          reason: phoneValidation.reason,
+        },
       }
     }
 
@@ -517,21 +633,24 @@ async function processSingleNegotiation(
       // Don't fail the whole operation - ASAAS is the source of truth
     }
 
-    // Record collection action (non-critical)
-    for (const channel of params.notificationChannels) {
+    // Record collection action with actual channel used (non-critical)
+    if (notificationChannel !== "none") {
       try {
         await supabase.from("collection_actions").insert({
           company_id: params.companyId,
           customer_id: customerId,
           debt_id: debtId,
-          action_type: channel,
+          action_type: notificationChannel,
           status: "sent",
           sent_by: userId,
           sent_at: new Date().toISOString(),
-          message: `Negociação enviada via ${channel}. Valor: R$ ${agreedAmount.toFixed(2)}`,
+          message: `Negociação enviada via ${notificationChannel}. Valor: R$ ${agreedAmount.toFixed(2)}`,
           metadata: {
             payment_methods: params.paymentMethods,
             notification_channels: params.notificationChannels,
+            actual_channel: notificationChannel,
+            phone_valid: phoneValidation.isValid,
+            phone_validation_reason: phoneValidation.reason,
             discount_type: params.discountType,
             discount_value: params.discountValue,
             original_amount: originalAmount,
@@ -544,6 +663,7 @@ async function processSingleNegotiation(
     }
 
     // Send notifications in background (don't block the result)
+    // Pass the actual notification channel determined by phone validation
     sendNotificationsInBackground(
       params,
       customerName,
@@ -552,7 +672,8 @@ async function processSingleNegotiation(
       agreedAmount,
       agreement.id,
       asaasCustomerId,
-      supabase
+      supabase,
+      notificationChannel
     )
 
     return {
@@ -565,6 +686,12 @@ async function processSingleNegotiation(
       asaasCustomerId: asaasCustomerId || undefined,
       asaasPaymentId: asaasPaymentId || undefined,
       paymentUrl: paymentUrl || undefined,
+      notificationChannel,
+      phoneValidation: {
+        original: customerPhone,
+        isValid: phoneValidation.isValid,
+        reason: phoneValidation.reason,
+      },
     }
   } catch (error: any) {
     return {
@@ -578,11 +705,18 @@ async function processSingleNegotiation(
       asaasPaymentCreated,
       asaasCustomerId: asaasCustomerId || undefined,
       asaasPaymentId: asaasPaymentId || undefined,
+      notificationChannel,
+      phoneValidation: {
+        original: customerPhone,
+        isValid: phoneValidation.isValid,
+        reason: phoneValidation.reason,
+      },
     }
   }
 }
 
 // Send notifications without blocking the main flow
+// Uses the determined notification channel based on phone validation
 async function sendNotificationsInBackground(
   params: SendBulkNegotiationsParams,
   customerName: string,
@@ -591,8 +725,15 @@ async function sendNotificationsInBackground(
   agreedAmount: number,
   agreementId: string,
   asaasCustomerId: string | null,
-  supabase: any
+  supabase: any,
+  notificationChannel: "whatsapp" | "email" | "none"
 ) {
+  // Skip if no notification channel determined
+  if (notificationChannel === "none") {
+    console.log(`[Notifications] ${customerName}: No notification channel available (no valid phone or email)`)
+    return
+  }
+
   try {
     // Get agreement data
     const { data: agreementData } = await supabase
@@ -614,50 +755,20 @@ async function sendNotificationsInBackground(
       .single()
     const companyName = companyData?.name || "Empresa"
 
-    // Send SMS if selected
-    if (params.notificationChannels.includes("sms") && customerPhone) {
+    // Send notification based on determined channel
+    if (notificationChannel === "whatsapp" && asaasCustomerId) {
+      // WhatsApp via ASAAS - phone was validated as valid
       try {
-        const { sendSMS, generateDebtCollectionSMS } = await import("@/lib/notifications/sms")
-        let formattedPhone = customerPhone.replace(/\D/g, "")
-        if (formattedPhone.length >= 10 && !formattedPhone.startsWith("55")) {
-          formattedPhone = "55" + formattedPhone
-        }
-        formattedPhone = "+" + formattedPhone
-        const smsBody = await generateDebtCollectionSMS({
-          customerName,
-          debtAmount: agreedAmount,
-          companyName,
-          paymentLink: paymentUrl,
-        })
-        await sendSMS({ to: formattedPhone, body: smsBody })
-      } catch (smsErr: any) {
-        console.error(`[Notifications] SMS failed for ${customerName}:`, smsErr.message)
-      }
-    }
-
-    // Send WhatsApp if selected
-    if (params.notificationChannels.includes("whatsapp") && customerPhone && asaasCustomerId) {
-      try {
-        const allNotifs = await getAsaasCustomerNotifications(asaasCustomerId)
-        const paymentCreatedNotif = allNotifs.find((n: any) => n.event === "PAYMENT_CREATED")
-        if (paymentCreatedNotif) {
-          await updateAsaasNotification(paymentCreatedNotif.id, {
-            enabled: true,
-            emailEnabledForCustomer: false,
-            smsEnabledForCustomer: false,
-            whatsappEnabledForCustomer: true,
-          })
-        }
+        // Resend notification to trigger WhatsApp
         if (agreementData?.asaas_payment_id) {
           await resendAsaasPaymentNotification(agreementData.asaas_payment_id)
+          console.log(`[Notifications] ${customerName}: WhatsApp notification sent via ASAAS`)
         }
       } catch (whatsappErr: any) {
         console.error(`[Notifications] WhatsApp failed for ${customerName}:`, whatsappErr.message)
       }
-    }
-
-    // Send email if customer has email
-    if (customerEmail) {
+    } else if (notificationChannel === "email" && customerEmail) {
+      // Email fallback - phone was invalid but has email
       try {
         const { sendEmail, generateDebtCollectionEmail } = await import("@/lib/notifications/email")
         const emailHtml = await generateDebtCollectionEmail({
@@ -672,6 +783,7 @@ async function sendNotificationsInBackground(
           subject: `Proposta de Negociação - ${companyName}`,
           html: emailHtml,
         })
+        console.log(`[Notifications] ${customerName}: Email sent (fallback for invalid phone)`)
       } catch (emailErr: any) {
         console.error(`[Notifications] Email failed for ${customerName}:`, emailErr.message)
       }

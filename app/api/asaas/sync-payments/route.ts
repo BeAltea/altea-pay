@@ -101,6 +101,93 @@ function normalizeCpfCnpj(value: string | null | undefined): string {
   return value.replace(/\D/g, "")
 }
 
+// Format date for ASAAS (YYYY-MM-DD)
+function formatDateForAsaas(date?: string | Date | null): string {
+  if (!date) {
+    // Default to 7 days from now
+    const futureDate = new Date()
+    futureDate.setDate(futureDate.getDate() + 7)
+    return futureDate.toISOString().split("T")[0]
+  }
+
+  // If already YYYY-MM-DD format
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    return date.split("T")[0]
+  }
+
+  // If DD/MM/YYYY format
+  if (typeof date === "string" && /^\d{2}\/\d{2}\/\d{4}/.test(date)) {
+    const [day, month, year] = date.split("/")
+    return `${year}-${month}-${day}`
+  }
+
+  // Fallback
+  return new Date(date).toISOString().split("T")[0]
+}
+
+// Parse Brazilian currency string to number
+function parseDebtAmount(value: string | number | null | undefined): number {
+  if (!value) return 0
+  if (typeof value === "number") return value
+
+  // Remove R$, spaces, dots (thousands separator), convert comma to dot
+  const cleaned = String(value)
+    .replace(/R\$/g, "")
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+
+  return Number(cleaned) || 0
+}
+
+// Create a charge in ASAAS for an existing customer
+async function createAsaasCharge(
+  asaasCustomerId: string,
+  customerName: string,
+  debtAmount: number
+): Promise<{ success: boolean; chargeId?: string; invoiceUrl?: string; error?: string }> {
+  const baseUrl = await getBaseUrl()
+  const dueDate = formatDateForAsaas()
+
+  try {
+    const response = await fetch(`${baseUrl}/api/asaas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: "/payments",
+        method: "POST",
+        data: {
+          customer: asaasCustomerId,
+          billingType: "UNDEFINED",
+          value: debtAmount,
+          dueDate,
+          description: `Cobrança de dívida - ${customerName}`,
+          postalService: false,
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error")
+      return { success: false, error: `HTTP ${response.status}: ${errorText.substring(0, 200)}` }
+    }
+
+    const data = await safeJsonParse(response, `create_charge_${asaasCustomerId}`)
+
+    if (data.errors) {
+      return { success: false, error: JSON.stringify(data.errors) }
+    }
+
+    return {
+      success: true,
+      chargeId: data.id,
+      invoiceUrl: data.invoiceUrl,
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
 // Safe JSON parser that validates content-type before parsing
 // Prevents "Unexpected token '<'" errors when server returns HTML error pages
 async function safeJsonParse(response: Response, context: string): Promise<any> {
@@ -290,9 +377,10 @@ async function fetchAllAsaasPayments(): Promise<any[]> {
 // Process a single client sync (used by both individual and bulk sync)
 async function syncSingleClient(
   vmax: { id: string; Cliente: string; "CPF/CNPJ": string; Vencido?: string | number },
-  companyId: string
+  companyId: string,
+  createCharges = false // If true, creates charges for customers without them
 ): Promise<{
-  status: "synced" | "customer_only" | "not_found" | "already_synced" | "error"
+  status: "synced" | "customer_only" | "not_found" | "already_synced" | "error" | "charge_created"
   name: string
   cpfCnpj: string
   asaasCustomerId?: string
@@ -466,6 +554,136 @@ async function syncSingleClient(
     }
 
     // Customer exists in ASAAS but no payment
+    // If createCharges is enabled, create the charge now
+    if (createCharges) {
+      const debtAmount = parseDebtAmount(vmax.Vencido)
+
+      if (debtAmount <= 0) {
+        return {
+          status: "customer_only",
+          name: vmax.Cliente,
+          cpfCnpj,
+          asaasCustomerId: asaasCustomer.id,
+          action: "Cliente no ASAAS sem cobrança (valor da dívida zero)",
+        }
+      }
+
+      console.log(`[ASAAS Sync] Creating charge for ${vmax.Cliente} (${debtAmount})...`)
+
+      const chargeResult = await createAsaasCharge(asaasCustomer.id, vmax.Cliente, debtAmount)
+
+      if (!chargeResult.success) {
+        return {
+          status: "error",
+          name: vmax.Cliente,
+          cpfCnpj,
+          asaasCustomerId: asaasCustomer.id,
+          error: `Falha ao criar cobrança: ${chargeResult.error}`,
+        }
+      }
+
+      // Charge created - now create/update AlteaPay records
+      const dueDate = formatDateForAsaas()
+
+      // Ensure customer exists
+      if (!customerId) {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from("customers")
+          .insert({
+            name: vmax.Cliente,
+            document: cpfCnpj,
+            document_type: cpfCnpj.length === 11 ? "CPF" : "CNPJ",
+            phone: asaasCustomer.mobilePhone || asaasCustomer.phone || null,
+            email: asaasCustomer.email || null,
+            company_id: companyId,
+            source_system: "VMAX",
+            external_id: vmax.id,
+          })
+          .select("id")
+          .single()
+
+        if (customerError || !newCustomer) {
+          return {
+            status: "error",
+            name: vmax.Cliente,
+            cpfCnpj,
+            asaasCustomerId: asaasCustomer.id,
+            asaasPaymentId: chargeResult.chargeId,
+            error: `Cobrança criada mas falha ao criar cliente: ${customerError?.message}`,
+          }
+        }
+        customerId = newCustomer.id
+      }
+
+      // Create debt and agreement
+      const { data: newDebt, error: debtError } = await supabase
+        .from("debts")
+        .insert({
+          customer_id: customerId,
+          company_id: companyId,
+          amount: debtAmount,
+          due_date: dueDate,
+          description: `Dívida de ${vmax.Cliente}`,
+          status: "in_negotiation",
+          source_system: "VMAX",
+          external_id: vmax.id,
+        })
+        .select("id")
+        .single()
+
+      if (debtError || !newDebt) {
+        return {
+          status: "error",
+          name: vmax.Cliente,
+          cpfCnpj,
+          asaasCustomerId: asaasCustomer.id,
+          asaasPaymentId: chargeResult.chargeId,
+          error: `Cobrança criada mas falha ao criar dívida: ${debtError?.message}`,
+        }
+      }
+
+      const { error: agreementError } = await supabase.from("agreements").insert({
+        debt_id: newDebt.id,
+        customer_id: customerId,
+        company_id: companyId,
+        original_amount: debtAmount,
+        agreed_amount: debtAmount,
+        discount_amount: 0,
+        discount_percentage: 0,
+        installments: 1,
+        installment_amount: debtAmount,
+        due_date: dueDate,
+        status: "active",
+        payment_status: "pending",
+        asaas_customer_id: asaasCustomer.id,
+        asaas_payment_id: chargeResult.chargeId,
+        asaas_payment_url: chargeResult.invoiceUrl || null,
+      })
+
+      if (agreementError) {
+        return {
+          status: "error",
+          name: vmax.Cliente,
+          cpfCnpj,
+          asaasCustomerId: asaasCustomer.id,
+          asaasPaymentId: chargeResult.chargeId,
+          error: `Cobrança criada mas falha ao criar acordo: ${agreementError.message}`,
+        }
+      }
+
+      // Update VMAX
+      await supabase.from("VMAX").update({ negotiation_status: "sent" }).eq("id", vmax.id)
+
+      return {
+        status: "charge_created",
+        name: vmax.Cliente,
+        cpfCnpj,
+        asaasCustomerId: asaasCustomer.id,
+        asaasPaymentId: chargeResult.chargeId,
+        action: `Cobrança criada (${chargeResult.chargeId})`,
+      }
+    }
+
     return {
       status: "customer_only",
       name: vmax.Cliente,
@@ -485,7 +703,7 @@ async function syncSingleClient(
 
 // Sync stuck clients: exist in ASAAS but AlteaPay shows "Sem negociação"
 // OPTIMIZED: Process in parallel chunks to avoid timeout
-async function syncStuckClients(companyId: string, results: any, startTime: number) {
+async function syncStuckClients(companyId: string, results: any, startTime: number, createCharges = false) {
   console.log(`[ASAAS Sync] Checking for stuck clients in company ${companyId}...`)
 
   // TIMEOUT PROTECTION: Max 8 seconds for stuck client sync (leave buffer for main sync)
@@ -541,7 +759,7 @@ async function syncStuckClients(companyId: string, results: any, startTime: numb
 
     // Process chunk in parallel
     const chunkResults = await Promise.allSettled(
-      chunk.map((vmax) => syncSingleClient(vmax, companyId))
+      chunk.map((vmax) => syncSingleClient(vmax, companyId, createCharges))
     )
 
     // Collect results
@@ -549,8 +767,11 @@ async function syncStuckClients(companyId: string, results: any, startTime: numb
       if (result.status === "fulfilled") {
         const syncResult = result.value
 
-        if (syncResult.status === "synced" || syncResult.status === "already_synced") {
+        if (syncResult.status === "synced" || syncResult.status === "already_synced" || syncResult.status === "charge_created") {
           results.stuckFixed = (results.stuckFixed || 0) + 1
+          if (syncResult.status === "charge_created") {
+            results.chargesCreated = (results.chargesCreated || 0) + 1
+          }
           if (!results.stuckDetails) results.stuckDetails = []
           results.stuckDetails.push({
             name: syncResult.name,
@@ -681,7 +902,7 @@ export async function POST(request: NextRequest) {
 
     // Parse optional filters from request body
     currentStep = "parse_request"
-    let filters: { companyId?: string; agreementId?: string } = {}
+    let filters: { companyId?: string; agreementId?: string; createChargesForCustomerOnly?: boolean } = {}
     try {
       const body = await request.json()
       filters = body
@@ -957,7 +1178,7 @@ export async function POST(request: NextRequest) {
 
     // Also sync stuck clients if a company filter is provided
     if (filters.companyId) {
-      await syncStuckClients(filters.companyId, results, startTime)
+      await syncStuckClients(filters.companyId, results, startTime, filters.createChargesForCustomerOnly || false)
     }
 
     const duration = Date.now() - startTime
