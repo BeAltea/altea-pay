@@ -6,6 +6,9 @@ import { createClient } from "@supabase/supabase-js"
  *
  * Syncs a single client by searching ASAAS for their CPF/CNPJ.
  * This is fast and never times out (single API call per client).
+ *
+ * NEW: If customer exists in ASAAS but has no charge, can CREATE the charge
+ * using debt data from VMAX.
  */
 
 const supabase = createClient(
@@ -21,10 +24,49 @@ function normalizeCpfCnpj(value: string | null | undefined): string {
   return value.replace(/\D/g, "")
 }
 
+// Format date for ASAAS (YYYY-MM-DD)
+function formatDateForAsaas(date?: string | Date | null): string {
+  if (!date) {
+    // Default to 7 days from now
+    const futureDate = new Date()
+    futureDate.setDate(futureDate.getDate() + 7)
+    return futureDate.toISOString().split("T")[0]
+  }
+
+  // If already YYYY-MM-DD format
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    return date.split("T")[0]
+  }
+
+  // If DD/MM/YYYY format
+  if (typeof date === "string" && /^\d{2}\/\d{2}\/\d{4}/.test(date)) {
+    const [day, month, year] = date.split("/")
+    return `${year}-${month}-${day}`
+  }
+
+  // Fallback
+  return new Date(date).toISOString().split("T")[0]
+}
+
+// Parse Brazilian currency string to number
+function parseDebtAmount(value: string | number | null | undefined): number {
+  if (!value) return 0
+  if (typeof value === "number") return value
+
+  // Remove R$, spaces, dots (thousands separator), convert comma to dot
+  const cleaned = String(value)
+    .replace(/R\$/g, "")
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+
+  return Number(cleaned) || 0
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { vmaxId, cpfCnpj, companyId, customerName } = body
+    const { vmaxId, cpfCnpj, companyId, customerName, createCharge, debtAmount: providedDebtAmount } = body
 
     if (!cpfCnpj || !companyId) {
       return NextResponse.json(
@@ -266,11 +308,222 @@ export async function POST(request: NextRequest) {
     } else {
       // Has customer but NO charge
       console.log(`[ASAAS Sync Client] ${customerName || normalizedCpf} exists in ASAAS but has no charges`)
+
+      // If createCharge flag is set, create the charge now
+      if (createCharge) {
+        console.log(`[ASAAS Sync Client] Creating charge for existing customer ${asaasCustomer.id}...`)
+
+        // Get debt amount from VMAX or use provided amount
+        let debtAmount = providedDebtAmount ? parseDebtAmount(providedDebtAmount) : 0
+
+        if (!debtAmount && vmaxId) {
+          // Fetch from VMAX table
+          const { data: vmaxRecord } = await supabase
+            .from("VMAX")
+            .select("Vencido")
+            .eq("id", vmaxId)
+            .single()
+
+          if (vmaxRecord) {
+            debtAmount = parseDebtAmount(vmaxRecord.Vencido)
+          }
+        }
+
+        if (!debtAmount || debtAmount <= 0) {
+          return NextResponse.json({
+            success: false,
+            status: "customer_only",
+            error: "Valor da dívida ausente ou zero — não é possível criar cobrança",
+            asaasCustomerId: asaasCustomer.id,
+            canCreateCharge: false,
+          })
+        }
+
+        // Create the charge in ASAAS
+        const dueDate = formatDateForAsaas()
+        const chargePayload = {
+          customer: asaasCustomer.id,
+          billingType: "UNDEFINED" as const, // Allows any payment method
+          value: debtAmount,
+          dueDate,
+          description: `Cobrança de dívida - ${customerName || asaasCustomer.name}`,
+          postalService: false,
+        }
+
+        console.log(`[ASAAS Sync Client] Creating charge:`, chargePayload)
+
+        const chargeResponse = await fetch(`${ASAAS_BASE_URL}/payments`, {
+          method: "POST",
+          headers: {
+            "access_token": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(chargePayload),
+        })
+
+        const chargeContentType = chargeResponse.headers.get("content-type") || ""
+        if (!chargeContentType.includes("application/json")) {
+          const text = await chargeResponse.text()
+          console.error(`[ASAAS Sync Client] Non-JSON response creating charge:`, text.substring(0, 200))
+          return NextResponse.json({
+            success: false,
+            status: "customer_only",
+            error: `ASAAS retornou resposta inválida ao criar cobrança: ${text.substring(0, 200)}`,
+            asaasCustomerId: asaasCustomer.id,
+          }, { status: 502 })
+        }
+
+        const chargeData = await chargeResponse.json()
+
+        if (!chargeResponse.ok) {
+          console.error(`[ASAAS Sync Client] Error creating charge:`, chargeData)
+          return NextResponse.json({
+            success: false,
+            status: "customer_only",
+            error: `Erro ao criar cobrança: ${JSON.stringify(chargeData.errors || chargeData)}`,
+            asaasCustomerId: asaasCustomer.id,
+          }, { status: chargeResponse.status })
+        }
+
+        console.log(`[ASAAS Sync Client] Charge created: ${chargeData.id}`)
+
+        // Now sync to AlteaPay (same logic as when charge exists)
+        let customerId: string | null = null
+
+        const { data: existingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("document", normalizedCpf)
+          .eq("company_id", companyId)
+          .limit(1)
+
+        if (existingCustomers && existingCustomers.length > 0) {
+          customerId = existingCustomers[0].id
+        } else {
+          // Create customer in AlteaPay
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              name: customerName || asaasCustomer.name,
+              document: normalizedCpf,
+              document_type: normalizedCpf.length === 11 ? "CPF" : "CNPJ",
+              phone: asaasCustomer.mobilePhone || asaasCustomer.phone || null,
+              email: asaasCustomer.email || null,
+              company_id: companyId,
+              source_system: "VMAX",
+              external_id: vmaxId || null,
+            })
+            .select("id")
+            .single()
+
+          if (customerError || !newCustomer) {
+            return NextResponse.json({
+              success: false,
+              error: `Cobrança criada (${chargeData.id}) mas falha ao criar cliente no AlteaPay: ${customerError?.message}`,
+              asaasCustomerId: asaasCustomer.id,
+              asaasChargeId: chargeData.id,
+              partialSuccess: true,
+            }, { status: 500 })
+          }
+          customerId = newCustomer.id
+        }
+
+        // Create debt and agreement
+        const { data: newDebt, error: debtError } = await supabase
+          .from("debts")
+          .insert({
+            customer_id: customerId,
+            company_id: companyId,
+            amount: debtAmount,
+            due_date: dueDate,
+            description: `Dívida sincronizada - ${customerName || asaasCustomer.name}`,
+            status: "in_negotiation",
+            source_system: "VMAX",
+            external_id: vmaxId || null,
+          })
+          .select("id")
+          .single()
+
+        if (debtError || !newDebt) {
+          return NextResponse.json({
+            success: false,
+            error: `Cobrança criada (${chargeData.id}) mas falha ao criar dívida no AlteaPay: ${debtError?.message}`,
+            asaasCustomerId: asaasCustomer.id,
+            asaasChargeId: chargeData.id,
+            partialSuccess: true,
+          }, { status: 500 })
+        }
+
+        const { error: agreementError } = await supabase.from("agreements").insert({
+          debt_id: newDebt.id,
+          customer_id: customerId,
+          company_id: companyId,
+          original_amount: debtAmount,
+          agreed_amount: debtAmount,
+          discount_amount: 0,
+          discount_percentage: 0,
+          installments: 1,
+          installment_amount: debtAmount,
+          due_date: dueDate,
+          status: "active",
+          payment_status: "pending",
+          asaas_customer_id: asaasCustomer.id,
+          asaas_payment_id: chargeData.id,
+          asaas_payment_url: chargeData.invoiceUrl || null,
+        })
+
+        if (agreementError) {
+          return NextResponse.json({
+            success: false,
+            error: `Cobrança criada (${chargeData.id}) mas falha ao criar acordo: ${agreementError.message}`,
+            asaasCustomerId: asaasCustomer.id,
+            asaasChargeId: chargeData.id,
+            partialSuccess: true,
+          }, { status: 500 })
+        }
+
+        // Update VMAX negotiation_status
+        if (vmaxId) {
+          await supabase
+            .from("VMAX")
+            .update({ negotiation_status: "sent" })
+            .eq("id", vmaxId)
+        }
+
+        return NextResponse.json({
+          success: true,
+          status: "charge_created",
+          message: `Cobrança criada e sincronizada! ID: ${chargeData.id}`,
+          asaasCustomerId: asaasCustomer.id,
+          asaasChargeId: chargeData.id,
+          paymentUrl: chargeData.invoiceUrl || chargeData.bankSlipUrl || null,
+          chargeStatus: chargeData.status,
+          debtAmount,
+        })
+      }
+
+      // Not creating charge - just report customer_only status
+      // Also get debt info so frontend can offer to create charge
+      let debtAmount = 0
+      if (vmaxId) {
+        const { data: vmaxRecord } = await supabase
+          .from("VMAX")
+          .select("Vencido")
+          .eq("id", vmaxId)
+          .single()
+
+        if (vmaxRecord) {
+          debtAmount = parseDebtAmount(vmaxRecord.Vencido)
+        }
+      }
+
       return NextResponse.json({
         success: true,
         status: "customer_only",
-        message: "Cliente encontrado no ASAAS mas sem cobrança. Envie uma nova negociação.",
+        message: "Cliente encontrado no ASAAS mas sem cobrança.",
         asaasCustomerId: asaasCustomer.id,
+        canCreateCharge: debtAmount > 0,
+        debtAmount: debtAmount > 0 ? debtAmount : undefined,
       })
     }
   } catch (error: any) {

@@ -611,7 +611,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   }
 
   // Per-client sync handler
-  const handleSyncSingleClient = async (customer: VmaxCustomer) => {
+  const handleSyncSingleClient = async (customer: VmaxCustomer, createCharge = false) => {
     setSyncingClientId(customer.id)
 
     try {
@@ -623,6 +623,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           cpfCnpj: customer.document,
           companyId: selectedCompanyId,
           customerName: customer.name,
+          createCharge,
+          debtAmount: customer.totalDebt,
         }),
       })
 
@@ -640,19 +642,38 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       }
 
       if (data.success) {
-        if (data.status === "synced") {
+        if (data.status === "synced" || data.status === "charge_created") {
           toast.success(`${customer.name} sincronizado com ASAAS`)
           // Reload customers to update status
           loadCustomers(selectedCompanyId)
         } else if (data.status === "already_synced") {
           toast.info(`${customer.name} já estava sincronizado`)
         } else if (data.status === "customer_only") {
+          // Customer exists but no charge - offer to create
+          if (data.canCreateCharge) {
+            const debtFormatted = data.debtAmount?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) || ""
+            const confirmCreate = window.confirm(
+              `${customer.name} existe no ASAAS mas sem cobrança.\n\n` +
+              `Valor da dívida: ${debtFormatted}\n\n` +
+              `Deseja criar a cobrança agora?`
+            )
+            if (confirmCreate) {
+              // Call again with createCharge=true
+              await handleSyncSingleClient(customer, true)
+              return
+            }
+          }
           toast.warning(`${customer.name} existe no ASAAS mas sem cobrança`)
         } else if (data.status === "not_found") {
           toast.info(`${customer.name} não encontrado no ASAAS`)
         }
       } else {
-        toast.error(`Erro: ${data.error || "Falha ao sincronizar"}`)
+        if (data.partialSuccess) {
+          toast.warning(`Cobrança criada mas houve erro ao atualizar AlteaPay: ${data.error}`)
+          loadCustomers(selectedCompanyId)
+        } else {
+          toast.error(`Erro: ${data.error || "Falha ao sincronizar"}`)
+        }
       }
     } catch (error: any) {
       console.error("Error syncing single client:", error)
