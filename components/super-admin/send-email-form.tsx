@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -166,6 +166,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   // Expanded row state
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  // Selection dropdown state
+  const [selectionDropdownOpen, setSelectionDropdownOpen] = useState(false)
+  const selectionDropdownRef = useRef<HTMLDivElement>(null)
+
   // Send result modal state
   const [sendModal, setSendModal] = useState<SendModalData>({
     isOpen: false,
@@ -175,6 +179,17 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     totalFailed: 0,
     recipients: [],
   })
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (selectionDropdownRef.current && !selectionDropdownRef.current.contains(event.target as Node)) {
+        setSelectionDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   // Parse test emails
   const testEmails = useMemo(() => parseTestEmails(testEmailsInput), [testEmailsInput])
@@ -252,6 +267,13 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     return sortedRecipients.every((r) => selectedRecipientIds.has(r.id))
   }, [sortedRecipients, selectedRecipientIds])
 
+  // Calculate total debt for selected recipients
+  const totalDebtSelected = useMemo(() => {
+    return companyRecipients
+      .filter((r) => selectedRecipientIds.has(r.id))
+      .reduce((sum, r) => sum + (r.daysOverdue || 0), 0)
+  }, [companyRecipients, selectedRecipientIds])
+
   // Handle column sort click
   const handleSortClick = (field: SortField) => {
     if (sortField === field) {
@@ -301,6 +323,14 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     paginatedRecipients.forEach((r) => newSelected.add(r.id))
     setSelectedRecipientIds(newSelected)
     setSelectionMode("page")
+  }
+
+  // Handle select a specific count from current page
+  const handleSelectCount = (count: number) => {
+    const toSelect = paginatedRecipients.slice(0, count)
+    const newSelected = new Set(toSelect.map((r) => r.id))
+    setSelectedRecipientIds(newSelected)
+    setSelectionMode(count >= paginatedRecipients.length ? "page" : "page")
   }
 
   // Handle select all - selects ALL filtered recipients (across all pages)
@@ -761,44 +791,122 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                   </div>
                 </div>
 
-                {/* Quick Actions */}
+                {/* Quick Actions - Selection Dropdown */}
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Selection Dropdown */}
+                  <div ref={selectionDropdownRef} className="relative">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectionDropdownOpen(!selectionDropdownOpen)}
+                      className="gap-2"
+                    >
+                      <Checkbox
+                        checked={selectedRecipientIds.size > 0}
+                        className="pointer-events-none"
+                      />
+                      Selecionar
+                      <ChevronDown className={`h-4 w-4 transition-transform ${selectionDropdownOpen ? "rotate-180" : ""}`} />
+                    </Button>
+
+                    {selectionDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[220px]">
+                        {[10, 20, 30, 40, 50].map((count) => {
+                          const isDisabled = paginatedRecipients.length < count && count !== 50
+                          const actualCount = Math.min(count, paginatedRecipients.length)
+                          return (
+                            <button
+                              key={count}
+                              onClick={() => {
+                                handleSelectCount(actualCount)
+                                setSelectionDropdownOpen(false)
+                              }}
+                              disabled={paginatedRecipients.length === 0}
+                              className={`w-full text-left px-4 py-2.5 text-sm transition-colors first:rounded-t-lg ${
+                                paginatedRecipients.length === 0
+                                  ? "text-gray-400 cursor-not-allowed"
+                                  : "hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                              }`}
+                            >
+                              {count === 50 ? (
+                                <>Selecionar {paginatedRecipients.length} (página)</>
+                              ) : (
+                                <>
+                                  Selecionar {count} primeiros
+                                  {paginatedRecipients.length < count && paginatedRecipients.length > 0 && (
+                                    <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">
+                                      (apenas {paginatedRecipients.length})
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </button>
+                          )
+                        })}
+
+                        <div className="border-t border-gray-200 dark:border-gray-700" />
+
+                        <button
+                          onClick={() => {
+                            handleDeselectAll()
+                            setSelectionDropdownOpen(false)
+                          }}
+                          disabled={selectedRecipientIds.size === 0}
+                          className={`w-full text-left px-4 py-2.5 text-sm rounded-b-lg transition-colors ${
+                            selectedRecipientIds.size === 0
+                              ? "text-gray-400 cursor-not-allowed"
+                              : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                          }`}
+                        >
+                          Limpar seleção
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Select All Button */}
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
-                    onClick={handleSelectCurrentPage}
-                    disabled={isCurrentPageFullySelected}
-                    className="gap-2"
+                    onClick={handleSelectAll}
+                    disabled={isAllFilteredSelected || totalFiltered === 0}
+                    className="gap-2 bg-yellow-500 hover:bg-yellow-600 text-gray-900"
                   >
                     <CheckSquare className="h-4 w-4" />
-                    Selecionar Página ({paginatedRecipients.length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDeselectAll}
-                    disabled={selectedRecipientIds.size === 0}
-                    className="gap-2"
-                  >
-                    <Square className="h-4 w-4" />
-                    Desmarcar Todos
+                    Selecionar Todos ({totalFiltered.toLocaleString("pt-BR")})
                   </Button>
                 </div>
 
-                {/* Selection Banner - Shows when current page is selected but not all */}
-                {selectedRecipientIds.size > 0 && !isAllFilteredSelected && totalFiltered > paginatedRecipients.length && (
+                {/* Selection Banner - Gmail-style */}
+                {selectedRecipientIds.size > 0 && !isAllFilteredSelected && (
                   <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+                    <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <span className="text-sm">
-                        <strong>{selectedRecipientIds.size}</strong> cliente(s) selecionado(s) nesta página.
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span>
+                          <strong>{selectedRecipientIds.size}</strong> cliente(s) selecionado(s)
+                        </span>
+                        {totalFiltered > selectedRecipientIds.size && (
+                          <>
+                            <span className="text-blue-400 dark:text-blue-500">|</span>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={handleSelectAll}
+                              className="h-auto p-0 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                            >
+                              Selecionar todos os {totalFiltered.toLocaleString("pt-BR")}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                       <Button
                         variant="link"
                         size="sm"
-                        onClick={handleSelectAll}
+                        onClick={handleDeselectAll}
                         className="h-auto p-0 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
                       >
-                        Selecionar todos os {totalFiltered} clientes
+                        Limpar seleção
                       </Button>
                     </AlertDescription>
                   </Alert>
@@ -810,7 +918,7 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                     <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <span className="text-sm">
-                        <strong>Todos os {totalFiltered}</strong> cliente(s) filtrado(s) estão selecionados.
+                        <strong>Todos os {totalFiltered.toLocaleString("pt-BR")}</strong> cliente(s) filtrado(s) estão selecionados.
                       </span>
                       <Button
                         variant="link"
