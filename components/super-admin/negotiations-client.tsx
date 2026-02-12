@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,7 @@ import {
   RefreshCw,
   XCircle,
   Eye,
+  ChevronDown,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -164,6 +165,21 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
   // Notification check state
   const [checkingNotifications, setCheckingNotifications] = useState(false)
+
+  // Selection dropdown state
+  const [selectionDropdownOpen, setSelectionDropdownOpen] = useState(false)
+  const selectionDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close selection dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (selectionDropdownRef.current && !selectionDropdownRef.current.contains(event.target as Node)) {
+        setSelectionDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   // Check notification viewed status from ASAAS API
   const checkNotificationStatus = useCallback(async (companyId: string) => {
@@ -335,10 +351,27 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       c.paymentStatus === "received" || c.paymentStatus === "confirmed"
   }
 
-  // Only selectable customers (not paid)
+  // Only selectable customers (not paid) from displayed list
   const selectableCustomers = useMemo(() => {
     return displayedCustomers.filter((c) => !isCustomerPaid(c))
   }, [displayedCustomers])
+
+  // All selectable customers from filtered list (for "select all" count)
+  const allSelectableFiltered = useMemo(() => {
+    return filteredCustomers.filter((c) => !isCustomerPaid(c))
+  }, [filteredCustomers])
+
+  // Check if all displayed customers are selected
+  const isAllDisplayedSelected = useMemo(() => {
+    if (selectableCustomers.length === 0) return false
+    return selectableCustomers.every((c) => selectedCustomers.has(c.id))
+  }, [selectableCustomers, selectedCustomers])
+
+  // Check if all filtered customers are selected
+  const isAllFilteredSelected = useMemo(() => {
+    if (allSelectableFiltered.length === 0) return false
+    return allSelectableFiltered.every((c) => selectedCustomers.has(c.id))
+  }, [allSelectableFiltered, selectedCustomers])
 
   const toggleSelectAll = () => {
     // Only select customers that are NOT paid
@@ -347,6 +380,24 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     } else {
       setSelectedCustomers(new Set(selectableCustomers.map((c) => c.id)))
     }
+  }
+
+  // Handle select a specific count from displayed customers
+  const handleSelectCount = (count: number) => {
+    const toSelect = selectableCustomers.slice(0, count)
+    const newSelected = new Set(toSelect.map((c) => c.id))
+    setSelectedCustomers(newSelected)
+  }
+
+  // Handle select all filtered customers (across all pages/limits)
+  const handleSelectAllFiltered = () => {
+    const allSelectableFiltered = filteredCustomers.filter((c) => !isCustomerPaid(c))
+    setSelectedCustomers(new Set(allSelectableFiltered.map((c) => c.id)))
+  }
+
+  // Clear all selection
+  const handleClearSelection = () => {
+    setSelectedCustomers(new Set())
   }
 
   const togglePaymentMethod = (method: string) => {
@@ -1064,26 +1115,143 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               </div>
             </div>
 
-            {/* Selection info */}
+            {/* Selection banner - Gmail style */}
             {selectedCustomers.size > 0 && (
-              <div className="mb-4 flex flex-wrap items-center gap-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                  {selectedCustomers.size} cliente(s) selecionado(s)
-                </span>
-                <span className="text-sm text-blue-600 dark:text-blue-400">
-                  Divida total: {formatCurrency(totalDebtSelected)}
-                </span>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-4 p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                    {selectedCustomers.size} cliente(s) selecionado(s)
+                  </span>
+                  <span className="text-yellow-500 dark:text-yellow-600">|</span>
+                  <span className="text-sm text-yellow-700 dark:text-yellow-400">
+                    Dívida total: {formatCurrency(totalDebtSelected)}
+                  </span>
+                  {!isAllFilteredSelected && allSelectableFiltered.length > selectedCustomers.size && (
+                    <>
+                      <span className="text-yellow-500 dark:text-yellow-600">|</span>
+                      <button
+                        onClick={handleSelectAllFiltered}
+                        className="text-sm text-yellow-700 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-200 underline"
+                      >
+                        Selecionar todos os {allSelectableFiltered.length.toLocaleString("pt-BR")}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleClearSelection}
+                  className="text-sm text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200"
+                >
+                  Limpar
+                </button>
               </div>
             )}
 
-            {/* Select all and column headers */}
+            {/* All filtered selected banner */}
+            {isAllFilteredSelected && allSelectableFiltered.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-4 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-medium text-green-800 dark:text-green-300">
+                    Todos os {allSelectableFiltered.length.toLocaleString("pt-BR")} cliente(s) filtrado(s) estão selecionados
+                  </span>
+                </div>
+                <button
+                  onClick={handleClearSelection}
+                  className="text-sm text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+                >
+                  Limpar seleção
+                </button>
+              </div>
+            )}
+
+            {/* Selection dropdown and column headers */}
             <div className="flex items-center gap-2 mb-3 pb-3 border-b">
-              <Checkbox
-                checked={selectedCustomers.size === selectableCustomers.length && selectableCustomers.length > 0}
-                onCheckedChange={toggleSelectAll}
-                disabled={selectableCustomers.length === 0}
-                className="border-foreground/70 flex-shrink-0"
-              />
+              {/* Selection dropdown */}
+              <div ref={selectionDropdownRef} className="relative flex-shrink-0">
+                <button
+                  onClick={() => setSelectionDropdownOpen(!selectionDropdownOpen)}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-muted transition-colors"
+                  disabled={selectableCustomers.length === 0}
+                >
+                  <Checkbox
+                    checked={selectedCustomers.size > 0}
+                    className="pointer-events-none border-foreground/70"
+                  />
+                  <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${selectionDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {selectionDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[260px] py-1">
+                    {[10, 20, 30, 40, 50].map((count) => {
+                      const available = selectableCustomers.length
+                      const actualCount = Math.min(count, available)
+                      return (
+                        <button
+                          key={count}
+                          onClick={() => {
+                            handleSelectCount(actualCount)
+                            setSelectionDropdownOpen(false)
+                          }}
+                          disabled={available === 0}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                            available === 0
+                              ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                              : "hover:bg-yellow-50 dark:hover:bg-yellow-950/30 text-gray-700 dark:text-gray-300"
+                          }`}
+                        >
+                          {count === 50 ? (
+                            <>Selecionar {available} (página)</>
+                          ) : (
+                            <>
+                              Selecionar {count} primeiros
+                              {available < count && available > 0 && (
+                                <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">
+                                  (apenas {available})
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
+                      )
+                    })}
+
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+
+                    <button
+                      onClick={() => {
+                        handleSelectAllFiltered()
+                        setSelectionDropdownOpen(false)
+                      }}
+                      disabled={allSelectableFiltered.length === 0}
+                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                        allSelectableFiltered.length === 0
+                          ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                          : "hover:bg-yellow-50 dark:hover:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400"
+                      }`}
+                    >
+                      Selecionar todos ({allSelectableFiltered.length.toLocaleString("pt-BR")})
+                    </button>
+
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+
+                    <button
+                      onClick={() => {
+                        handleClearSelection()
+                        setSelectionDropdownOpen(false)
+                      }}
+                      disabled={selectedCustomers.size === 0}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                        selectedCustomers.size === 0
+                          ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                          : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      }`}
+                    >
+                      Limpar seleção
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-2 items-center">
                 <button
                   onClick={() => toggleSort("name")}
