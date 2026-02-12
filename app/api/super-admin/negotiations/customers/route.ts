@@ -66,13 +66,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Load existing agreements for this company to check negotiation status
-    // Include "completed" for paid and "cancelled" for cancelled negotiations
+    // Include "completed"/"paid" for paid agreements and "cancelled" for cancelled negotiations
     // Also fetch notification viewed fields for visualization tracking
     const { data: agreements } = await supabase
       .from("agreements")
       .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel")
       .eq("company_id", companyId)
-      .in("status", ["active", "draft", "pending", "completed", "cancelled"])
+      .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
     // Load customers mapping (document -> customer data) so we can match agreements and get contact info
     const { data: dbCustomers } = await supabase
@@ -117,8 +117,8 @@ export async function GET(request: NextRequest) {
           docToCancelledCount.set(normalizedDoc, (docToCancelledCount.get(normalizedDoc) || 0) + 1)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
-          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed negotiations
-          if (a.status === "completed") {
+          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
+          if (a.status === "completed" || a.status === "paid") {
             docsWithPaidAgreements.add(normalizedDoc)
           } else {
             docsWithActiveAgreements.add(normalizedDoc)
