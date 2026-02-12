@@ -144,6 +144,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     stuckFixed?: number
     stuckDetails?: Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>
     incompleteAgreements?: Array<{ agreementId: string; customerName: string; cpfCnpj: string; asaasCustomerId: string; issue: string }>
+    // FullSync-specific fields
+    fullSync?: boolean
+    asaasCustomerCount?: number
+    matched?: number
+    unmatched?: number
+    chargesCreated?: number
   } | null>(null)
 
   // Sync error modal state
@@ -636,7 +642,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const handleSyncWithAsaas = async () => {
     setSyncing(true)
     try {
-      const body = selectedCompanyId ? { companyId: selectedCompanyId } : {}
+      // Use fullSync mode for comprehensive ASAAS → local sync
+      const body = selectedCompanyId
+        ? { companyId: selectedCompanyId, fullSync: true, createChargesForCustomerOnly: false }
+        : {}
       const res = await fetch("/api/asaas/sync-payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -669,14 +678,42 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       if (res.ok && data.success) {
         const results = data.results || {}
-        const hasDetails = (results.stuckFixed && results.stuckFixed > 0) ||
-          (results.stuckDetails && results.stuckDetails.length > 0) ||
-          (results.incompleteAgreements && results.incompleteAgreements.length > 0) ||
-          results.updated > 0
+
+        // Check if fullSync mode
+        const isFullSync = data.fullSync === true
+
+        const hasDetails = isFullSync
+          ? (results.synced > 0 || results.unmatched > 0 || results.errors?.length > 0 || results.syncedDetails?.length > 0 || results.unmatchedCustomers?.length > 0)
+          : ((results.stuckFixed && results.stuckFixed > 0) ||
+            (results.stuckDetails && results.stuckDetails.length > 0) ||
+            (results.incompleteAgreements && results.incompleteAgreements.length > 0) ||
+            results.updated > 0)
 
         if (hasDetails) {
           // Show detailed results in modal
-          setSyncResults(results)
+          // For fullSync, convert results format to match existing modal
+          if (isFullSync) {
+            setSyncResults({
+              ...results,
+              stuckFixed: results.synced,
+              stuckDetails: results.syncedDetails,
+              incompleteAgreements: results.unmatchedCustomers?.map((c: any) => ({
+                agreementId: "",
+                customerName: c.name,
+                cpfCnpj: c.cpfCnpj,
+                asaasCustomerId: c.id,
+                issue: "Cliente no ASAAS sem correspondência no VMAX",
+              })),
+              // Add fullSync specific data
+              fullSync: true,
+              asaasCustomerCount: results.asaasCustomerCount,
+              matched: results.matched,
+              unmatched: results.unmatched,
+              chargesCreated: results.chargesCreated,
+            })
+          } else {
+            setSyncResults(results)
+          }
           setShowSyncResultsModal(true)
           toast.success(data.message)
         } else {
@@ -1926,30 +1963,45 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
             </DialogTitle>
             <DialogDescription>
               {syncResults && (
-                <div className="flex flex-wrap gap-3 mt-2">
-                  {syncResults.updated > 0 && (
-                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                      {syncResults.updated} cobrança(s) atualizada(s)
-                    </Badge>
+                <div className="space-y-2 mt-2">
+                  {/* Full Sync Stats */}
+                  {syncResults.fullSync && syncResults.asaasCustomerCount !== undefined && (
+                    <div className="p-2 rounded bg-blue-50 dark:bg-blue-950 text-sm">
+                      <span className="font-medium">Clientes ASAAS:</span> {syncResults.asaasCustomerCount} |{" "}
+                      <span className="font-medium">Já sincronizados:</span> {syncResults.matched} |{" "}
+                      <span className="font-medium">Novos:</span> {syncResults.stuckFixed || 0}
+                    </div>
                   )}
-                  {syncResults.stuckFixed && syncResults.stuckFixed > 0 && (
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                      <CheckCircle className="mr-1 h-3 w-3" />
-                      {syncResults.stuckFixed} cliente(s) corrigido(s)
-                    </Badge>
-                  )}
-                  {syncResults.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
-                    <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
-                      <AlertTriangle className="mr-1 h-3 w-3" />
-                      {syncResults.incompleteAgreements.length} pendente(s)
-                    </Badge>
-                  )}
-                  {syncResults.errors && syncResults.errors.length > 0 && (
-                    <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
-                      <XCircle className="mr-1 h-3 w-3" />
-                      {syncResults.errors.length} erro(s)
-                    </Badge>
-                  )}
+                  <div className="flex flex-wrap gap-3">
+                    {syncResults.updated > 0 && (
+                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                        {syncResults.updated} cobrança(s) atualizada(s)
+                      </Badge>
+                    )}
+                    {syncResults.stuckFixed && syncResults.stuckFixed > 0 && (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        {syncResults.stuckFixed} cliente(s) sincronizado(s)
+                      </Badge>
+                    )}
+                    {syncResults.chargesCreated && syncResults.chargesCreated > 0 && (
+                      <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                        {syncResults.chargesCreated} cobrança(s) criada(s)
+                      </Badge>
+                    )}
+                    {syncResults.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
+                      <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                        <AlertTriangle className="mr-1 h-3 w-3" />
+                        {syncResults.incompleteAgreements.length} sem correspondência
+                      </Badge>
+                    )}
+                    {syncResults.errors && syncResults.errors.length > 0 && (
+                      <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                        <XCircle className="mr-1 h-3 w-3" />
+                        {syncResults.errors.length} erro(s)
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               )}
             </DialogDescription>
@@ -1991,12 +2043,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               </div>
             )}
 
-            {/* Incomplete Agreements (need manual action) */}
+            {/* Incomplete Agreements / Unmatched Customers (need manual action) */}
             {syncResults?.incompleteAgreements && syncResults.incompleteAgreements.length > 0 && (
               <div>
                 <h4 className="text-sm font-semibold text-yellow-700 dark:text-yellow-300 mb-2 flex items-center gap-1">
                   <AlertTriangle className="h-4 w-4" />
-                  Clientes com Pendências
+                  {syncResults.fullSync ? "Clientes ASAAS sem correspondência no VMAX" : "Clientes com Pendências"}
                 </h4>
                 <div className="space-y-2">
                   {syncResults.incompleteAgreements.map((item, idx) => (
@@ -2052,7 +2104,11 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               syncResults.updated === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500/50" />
-                  <p>Todos os clientes já estão sincronizados!</p>
+                  <p>
+                    {syncResults.fullSync
+                      ? `Todos os ${syncResults.asaasCustomerCount || 0} clientes ASAAS já estão sincronizados!`
+                      : "Todos os clientes já estão sincronizados!"}
+                  </p>
                 </div>
               )}
           </div>
