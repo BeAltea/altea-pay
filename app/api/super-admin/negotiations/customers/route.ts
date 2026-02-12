@@ -108,8 +108,20 @@ export async function GET(request: NextRequest) {
       notificationViewedAt: string | null;
       notificationViewedChannel: string | null;
     }>()
+
+    // DEBUG: Count agreements and track unmapped ones
+    const agreementStatusCounts: Record<string, number> = {}
+    const unmappedAgreements: Array<{ id: string; customer_id: string; status: string }> = []
+
     for (const a of agreements || []) {
+      // Count all agreement statuses
+      agreementStatusCounts[a.status] = (agreementStatusCounts[a.status] || 0) + 1
+
       const normalizedDoc = customerIdToNormalizedDoc.get(a.customer_id)
+      if (!normalizedDoc) {
+        // Track unmapped agreements for debugging
+        unmappedAgreements.push({ id: a.id, customer_id: a.customer_id, status: a.status })
+      }
       if (normalizedDoc) {
         if (a.status === "cancelled") {
           docsWithCancelledAgreements.add(normalizedDoc)
@@ -222,7 +234,32 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ customers }, { headers: noCacheHeaders })
+    // DEBUG: Log agreement mapping stats
+    console.log("[DEBUG] Agreement Stats:", {
+      totalAgreements: agreements?.length || 0,
+      statusCounts: agreementStatusCounts,
+      customersInTable: dbCustomers?.length || 0,
+      customersWithDocs: customerIdToNormalizedDoc.size,
+      unmappedCount: unmappedAgreements.length,
+      unmappedAgreements: unmappedAgreements.slice(0, 10), // First 10 for debugging
+      docsWithAnyNegotiation: docsWithAnyNegotiation.size,
+      vmaxRecordsWithNegotiation: customers.filter(c => c.hasNegotiation).length,
+    })
+
+    return NextResponse.json({
+      customers,
+      // DEBUG: Include stats in response for frontend debugging
+      _debug: {
+        totalAgreements: agreements?.length || 0,
+        agreementStatusCounts,
+        customersInTable: dbCustomers?.length || 0,
+        customersWithDocs: customerIdToNormalizedDoc.size,
+        unmappedAgreementsCount: unmappedAgreements.length,
+        unmappedAgreements: unmappedAgreements.slice(0, 10),
+        docsWithAnyNegotiation: docsWithAnyNegotiation.size,
+        vmaxWithNegotiation: customers.filter(c => c.hasNegotiation).length,
+      }
+    }, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[v0] Error in negotiations customers API:", error)
     return NextResponse.json(
