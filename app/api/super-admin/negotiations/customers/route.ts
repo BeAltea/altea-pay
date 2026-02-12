@@ -68,9 +68,10 @@ export async function GET(request: NextRequest) {
     // Load existing agreements for this company to check negotiation status
     // Include "completed"/"paid" for paid agreements and "cancelled" for cancelled negotiations
     // Also fetch notification viewed fields for visualization tracking
+    // JOIN with customers to get document directly (more reliable than separate lookup)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
       .eq("company_id", companyId)
       .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
@@ -111,16 +112,26 @@ export async function GET(request: NextRequest) {
 
     // DEBUG: Count agreements and track unmapped ones
     const agreementStatusCounts: Record<string, number> = {}
-    const unmappedAgreements: Array<{ id: string; customer_id: string; status: string }> = []
+    const unmappedAgreements: Array<{ id: string; customer_id: string; status: string; reason: string }> = []
 
     for (const a of agreements || []) {
       // Count all agreement statuses
       agreementStatusCounts[a.status] = (agreementStatusCounts[a.status] || 0) + 1
 
-      const normalizedDoc = customerIdToNormalizedDoc.get(a.customer_id)
+      // Try to get document from joined customer first, then fallback to customerIdToNormalizedDoc
+      const customer = a.customers as { document?: string } | null
+      const docFromJoin = customer?.document ? (customer.document || "").replace(/\D/g, "") : ""
+      const docFromMap = customerIdToNormalizedDoc.get(a.customer_id) || ""
+      const normalizedDoc = docFromJoin || docFromMap
+
       if (!normalizedDoc) {
         // Track unmapped agreements for debugging
-        unmappedAgreements.push({ id: a.id, customer_id: a.customer_id, status: a.status })
+        unmappedAgreements.push({
+          id: a.id,
+          customer_id: a.customer_id,
+          status: a.status,
+          reason: !customer ? "no_customer_join" : !customer.document ? "no_document" : "empty_after_normalize"
+        })
       }
       if (normalizedDoc) {
         if (a.status === "cancelled") {
