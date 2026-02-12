@@ -68,9 +68,10 @@ export async function GET(request: NextRequest) {
     // Load existing agreements for this company to check negotiation status
     // Include "completed"/"paid" for paid agreements and "cancelled" for cancelled negotiations
     // Also fetch notification viewed fields for visualization tracking
+    // JOIN with customers to get document directly (more reliable than separate lookup)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
       .eq("company_id", companyId)
       .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
@@ -108,8 +109,30 @@ export async function GET(request: NextRequest) {
       notificationViewedAt: string | null;
       notificationViewedChannel: string | null;
     }>()
+
+    // DEBUG: Count agreements and track unmapped ones
+    const agreementStatusCounts: Record<string, number> = {}
+    const unmappedAgreements: Array<{ id: string; customer_id: string; status: string; reason: string }> = []
+
     for (const a of agreements || []) {
-      const normalizedDoc = customerIdToNormalizedDoc.get(a.customer_id)
+      // Count all agreement statuses
+      agreementStatusCounts[a.status] = (agreementStatusCounts[a.status] || 0) + 1
+
+      // Try to get document from joined customer first, then fallback to customerIdToNormalizedDoc
+      const customer = a.customers as { document?: string } | null
+      const docFromJoin = customer?.document ? (customer.document || "").replace(/\D/g, "") : ""
+      const docFromMap = customerIdToNormalizedDoc.get(a.customer_id) || ""
+      const normalizedDoc = docFromJoin || docFromMap
+
+      if (!normalizedDoc) {
+        // Track unmapped agreements for debugging
+        unmappedAgreements.push({
+          id: a.id,
+          customer_id: a.customer_id,
+          status: a.status,
+          reason: !customer ? "no_customer_join" : !customer.document ? "no_document" : "empty_after_normalize"
+        })
+      }
       if (normalizedDoc) {
         if (a.status === "cancelled") {
           docsWithCancelledAgreements.add(normalizedDoc)
@@ -222,7 +245,32 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ customers }, { headers: noCacheHeaders })
+    // DEBUG: Log agreement mapping stats
+    console.log("[DEBUG] Agreement Stats:", {
+      totalAgreements: agreements?.length || 0,
+      statusCounts: agreementStatusCounts,
+      customersInTable: dbCustomers?.length || 0,
+      customersWithDocs: customerIdToNormalizedDoc.size,
+      unmappedCount: unmappedAgreements.length,
+      unmappedAgreements: unmappedAgreements.slice(0, 10), // First 10 for debugging
+      docsWithAnyNegotiation: docsWithAnyNegotiation.size,
+      vmaxRecordsWithNegotiation: customers.filter(c => c.hasNegotiation).length,
+    })
+
+    return NextResponse.json({
+      customers,
+      // DEBUG: Include stats in response for frontend debugging
+      _debug: {
+        totalAgreements: agreements?.length || 0,
+        agreementStatusCounts,
+        customersInTable: dbCustomers?.length || 0,
+        customersWithDocs: customerIdToNormalizedDoc.size,
+        unmappedAgreementsCount: unmappedAgreements.length,
+        unmappedAgreements: unmappedAgreements.slice(0, 10),
+        docsWithAnyNegotiation: docsWithAnyNegotiation.size,
+        vmaxWithNegotiation: customers.filter(c => c.hasNegotiation).length,
+      }
+    }, { headers: noCacheHeaders })
   } catch (error: any) {
     console.error("[v0] Error in negotiations customers API:", error)
     return NextResponse.json(

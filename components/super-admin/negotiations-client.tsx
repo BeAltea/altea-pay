@@ -222,6 +222,13 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       const data = await res.json()
       setCustomers(data.customers || [])
 
+      // DEBUG: Log agreement mapping stats
+      if (data._debug) {
+        console.log("🔍 DEBUG - Agreement Mapping Stats:", data._debug)
+        console.log("📊 Agreement Status Counts:", data._debug.agreementStatusCounts)
+        console.log("⚠️ Unmapped Agreements:", data._debug.unmappedAgreementsCount, data._debug.unmappedAgreements)
+      }
+
       // After loading customers, check notification status from ASAAS
       // This runs in background and will reload if any updates are found
       checkNotificationStatus(companyId).then((shouldReload) => {
