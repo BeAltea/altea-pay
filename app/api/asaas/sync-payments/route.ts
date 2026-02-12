@@ -374,6 +374,401 @@ async function fetchAllAsaasPayments(): Promise<any[]> {
   return allPayments
 }
 
+// Fetch ALL customers from ASAAS (paginated) - used for comprehensive sync
+async function fetchAllAsaasCustomers(): Promise<any[]> {
+  const baseUrl = await getBaseUrl()
+  const allCustomers: any[] = []
+  let offset = 0
+  const limit = 100 // ASAAS max per page
+
+  console.log("[ASAAS Sync] Fetching ALL customers from ASAAS...")
+
+  try {
+    while (true) {
+      const response = await fetch(`${baseUrl}/api/asaas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: `/customers?offset=${offset}&limit=${limit}`,
+          method: "GET",
+        }),
+      })
+
+      if (!response.ok) {
+        console.error(`[ASAAS Sync] API error fetching customers at offset ${offset}: ${response.status}`)
+        break
+      }
+
+      // Safe JSON parsing - validates content-type first
+      const data = await safeJsonParse(response, `fetch_all_customers_offset_${offset}`)
+      if (!data.data || data.data.length === 0) break
+
+      allCustomers.push(...data.data)
+      console.log(`[ASAAS Sync] Fetched ${allCustomers.length} customers so far...`)
+
+      if (!data.hasMore) break
+      offset += limit
+
+      // Safety limit - max 2000 customers
+      if (offset > 2000) {
+        console.log("[ASAAS Sync] Reached safety limit of 2000 customers")
+        break
+      }
+    }
+  } catch (error: any) {
+    console.error("[ASAAS Sync] Error fetching customers:", error)
+    if (error instanceof AsaasSyncError) {
+      throw error
+    }
+  }
+
+  console.log(`[ASAAS Sync] Total customers fetched from ASAAS: ${allCustomers.length}`)
+  return allCustomers
+}
+
+// Comprehensive sync: ASAAS → Local records
+// This function fetches ALL customers from ASAAS and syncs them to local records
+async function syncFromAsaas(
+  companyId: string,
+  createCharges: boolean,
+  startTime: number
+): Promise<{
+  asaasCustomerCount: number
+  matched: number
+  unmatched: number
+  synced: number
+  chargesCreated: number
+  errors: string[]
+  unmatchedCustomers: Array<{ id: string; name: string; cpfCnpj: string; email?: string }>
+  syncedDetails: Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>
+}> {
+  const results = {
+    asaasCustomerCount: 0,
+    matched: 0,
+    unmatched: 0,
+    synced: 0,
+    chargesCreated: 0,
+    errors: [] as string[],
+    unmatchedCustomers: [] as Array<{ id: string; name: string; cpfCnpj: string; email?: string }>,
+    syncedDetails: [] as Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>,
+  }
+
+  const MAX_SYNC_TIME_MS = 25000 // 25 seconds max
+
+  try {
+    // STEP 1: Fetch ALL customers from ASAAS
+    const asaasCustomers = await fetchAllAsaasCustomers()
+    results.asaasCustomerCount = asaasCustomers.length
+
+    if (asaasCustomers.length === 0) {
+      console.log("[ASAAS Sync] No customers found in ASAAS")
+      return results
+    }
+
+    // STEP 2: Load all VMAX records for this company (for matching)
+    const { data: vmaxRecords } = await supabase
+      .from("VMAX")
+      .select("id, Cliente, \"CPF/CNPJ\", Vencido, negotiation_status")
+      .eq("id_company", companyId)
+
+    // Build map: normalized CPF/CNPJ -> VMAX record
+    const vmaxByCpf = new Map<string, any>()
+    for (const vmax of vmaxRecords || []) {
+      const cpf = normalizeCpfCnpj(vmax["CPF/CNPJ"])
+      if (cpf) vmaxByCpf.set(cpf, vmax)
+    }
+
+    // STEP 3: Load all existing agreements for this company
+    const { data: agreements } = await supabase
+      .from("agreements")
+      .select("id, customer_id, asaas_customer_id, asaas_payment_id, status, customers(document)")
+      .eq("company_id", companyId)
+      .in("status", ["active", "draft", "pending", "completed"])
+
+    // Build map: ASAAS customer ID -> agreement
+    const agreementByAsaasCustomerId = new Map<string, any>()
+    // Build map: normalized CPF/CNPJ -> agreement
+    const agreementByCpf = new Map<string, any>()
+    for (const ag of agreements || []) {
+      if (ag.asaas_customer_id) {
+        agreementByAsaasCustomerId.set(ag.asaas_customer_id, ag)
+      }
+      const customer = ag.customers as any
+      if (customer?.document) {
+        const cpf = normalizeCpfCnpj(customer.document)
+        if (cpf) agreementByCpf.set(cpf, ag)
+      }
+    }
+
+    // STEP 4: Load all local customers for this company
+    const { data: localCustomers } = await supabase
+      .from("customers")
+      .select("id, document, name")
+      .eq("company_id", companyId)
+
+    // Build map: normalized CPF/CNPJ -> local customer
+    const localCustomerByCpf = new Map<string, any>()
+    for (const c of localCustomers || []) {
+      const cpf = normalizeCpfCnpj(c.document)
+      if (cpf) localCustomerByCpf.set(cpf, c)
+    }
+
+    console.log(`[ASAAS Sync] Matching ${asaasCustomers.length} ASAAS customers against ${vmaxByCpf.size} VMAX, ${agreementByCpf.size} agreements, ${localCustomerByCpf.size} local customers`)
+
+    // STEP 5: Process each ASAAS customer
+    for (let i = 0; i < asaasCustomers.length; i++) {
+      // Check timeout
+      if (Date.now() - startTime > MAX_SYNC_TIME_MS) {
+        console.log(`[ASAAS Sync] Stopping at customer ${i + 1}/${asaasCustomers.length} due to timeout`)
+        results.errors.push(`Sync parado por timeout após ${i + 1} clientes`)
+        break
+      }
+
+      const asaasCustomer = asaasCustomers[i]
+      const asaasCpf = normalizeCpfCnpj(asaasCustomer.cpfCnpj)
+
+      if (!asaasCpf) {
+        results.errors.push(`Cliente ASAAS ${asaasCustomer.name} sem CPF/CNPJ`)
+        continue
+      }
+
+      // Check if already has agreement (by ASAAS customer ID or CPF/CNPJ)
+      const existingAgreementById = agreementByAsaasCustomerId.get(asaasCustomer.id)
+      const existingAgreementByCpf = agreementByCpf.get(asaasCpf)
+
+      if (existingAgreementById || existingAgreementByCpf) {
+        results.matched++
+        continue // Already synced
+      }
+
+      // Check if has VMAX record (potential customer, not yet sent)
+      const vmaxRecord = vmaxByCpf.get(asaasCpf)
+
+      if (!vmaxRecord) {
+        // ASAAS customer exists but no VMAX record - might be orphaned
+        results.unmatched++
+        results.unmatchedCustomers.push({
+          id: asaasCustomer.id,
+          name: asaasCustomer.name,
+          cpfCnpj: asaasCustomer.cpfCnpj,
+          email: asaasCustomer.email,
+        })
+        continue
+      }
+
+      // VMAX record exists but no agreement - need to sync
+      // Check if VMAX already marked as sent
+      if (vmaxRecord.negotiation_status && ["sent", "active", "PAGO"].includes(vmaxRecord.negotiation_status)) {
+        // Already marked as sent but no agreement found - might be data inconsistency
+        // Let's try to find payment in ASAAS and create agreement
+      }
+
+      // Fetch payments for this ASAAS customer
+      const payments = await fetchAsaasPaymentsForCustomer(asaasCustomer.id)
+
+      if (payments.length > 0) {
+        // Has payments - create/update agreement
+        const latestPayment = payments[0]
+
+        // Get or create local customer
+        let localCustomer = localCustomerByCpf.get(asaasCpf)
+        if (!localCustomer) {
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              name: asaasCustomer.name,
+              document: asaasCpf,
+              document_type: asaasCpf.length === 11 ? "CPF" : "CNPJ",
+              phone: asaasCustomer.mobilePhone || asaasCustomer.phone || null,
+              email: asaasCustomer.email || null,
+              company_id: companyId,
+              source_system: "ASAAS_SYNC",
+              asaas_customer_id: asaasCustomer.id,
+            })
+            .select("id")
+            .single()
+
+          if (customerError || !newCustomer) {
+            results.errors.push(`Erro ao criar cliente ${asaasCustomer.name}: ${customerError?.message}`)
+            continue
+          }
+          localCustomer = newCustomer
+        }
+
+        // Create debt
+        const debtAmount = latestPayment.value || parseDebtAmount(vmaxRecord.Vencido)
+        const { data: newDebt, error: debtError } = await supabase
+          .from("debts")
+          .insert({
+            customer_id: localCustomer.id,
+            company_id: companyId,
+            amount: debtAmount,
+            due_date: latestPayment.dueDate || new Date().toISOString().split("T")[0],
+            description: `Dívida de ${asaasCustomer.name}`,
+            status: "in_negotiation",
+            source_system: "ASAAS_SYNC",
+            external_id: vmaxRecord.id,
+          })
+          .select("id")
+          .single()
+
+        if (debtError || !newDebt) {
+          results.errors.push(`Erro ao criar dívida para ${asaasCustomer.name}: ${debtError?.message}`)
+          continue
+        }
+
+        // Create agreement
+        const { error: agreementError } = await supabase.from("agreements").insert({
+          debt_id: newDebt.id,
+          customer_id: localCustomer.id,
+          company_id: companyId,
+          original_amount: debtAmount,
+          agreed_amount: latestPayment.value || debtAmount,
+          discount_amount: 0,
+          discount_percentage: 0,
+          installments: 1,
+          installment_amount: latestPayment.value || debtAmount,
+          due_date: latestPayment.dueDate || new Date().toISOString().split("T")[0],
+          status: "active",
+          payment_status: latestPayment.status?.toLowerCase() || "pending",
+          asaas_customer_id: asaasCustomer.id,
+          asaas_payment_id: latestPayment.id,
+          asaas_payment_url: latestPayment.invoiceUrl || null,
+        })
+
+        if (agreementError) {
+          results.errors.push(`Erro ao criar acordo para ${asaasCustomer.name}: ${agreementError.message}`)
+          continue
+        }
+
+        // Update VMAX
+        await supabase.from("VMAX").update({ negotiation_status: "sent" }).eq("id", vmaxRecord.id)
+
+        results.synced++
+        results.syncedDetails.push({
+          name: asaasCustomer.name,
+          cpfCnpj: asaasCpf,
+          action: "Acordo criado a partir do ASAAS",
+          asaasPaymentId: latestPayment.id,
+        })
+      } else if (createCharges) {
+        // No payments but createCharges is enabled - create one
+        const debtAmount = parseDebtAmount(vmaxRecord.Vencido)
+
+        if (debtAmount <= 0) {
+          results.errors.push(`${asaasCustomer.name}: valor da dívida inválido`)
+          continue
+        }
+
+        const chargeResult = await createAsaasCharge(asaasCustomer.id, asaasCustomer.name, debtAmount)
+
+        if (!chargeResult.success) {
+          results.errors.push(`${asaasCustomer.name}: ${chargeResult.error}`)
+          continue
+        }
+
+        // Get or create local customer
+        let localCustomer = localCustomerByCpf.get(asaasCpf)
+        if (!localCustomer) {
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              name: asaasCustomer.name,
+              document: asaasCpf,
+              document_type: asaasCpf.length === 11 ? "CPF" : "CNPJ",
+              phone: asaasCustomer.mobilePhone || asaasCustomer.phone || null,
+              email: asaasCustomer.email || null,
+              company_id: companyId,
+              source_system: "ASAAS_SYNC",
+              asaas_customer_id: asaasCustomer.id,
+            })
+            .select("id")
+            .single()
+
+          if (customerError || !newCustomer) {
+            results.errors.push(`Erro ao criar cliente ${asaasCustomer.name}: ${customerError?.message}`)
+            continue
+          }
+          localCustomer = newCustomer
+        }
+
+        // Create debt and agreement
+        const dueDate = formatDateForAsaas()
+        const { data: newDebt, error: debtError } = await supabase
+          .from("debts")
+          .insert({
+            customer_id: localCustomer.id,
+            company_id: companyId,
+            amount: debtAmount,
+            due_date: dueDate,
+            description: `Dívida de ${asaasCustomer.name}`,
+            status: "in_negotiation",
+            source_system: "ASAAS_SYNC",
+            external_id: vmaxRecord.id,
+          })
+          .select("id")
+          .single()
+
+        if (debtError || !newDebt) {
+          results.errors.push(`Erro ao criar dívida para ${asaasCustomer.name}: ${debtError?.message}`)
+          continue
+        }
+
+        const { error: agreementError } = await supabase.from("agreements").insert({
+          debt_id: newDebt.id,
+          customer_id: localCustomer.id,
+          company_id: companyId,
+          original_amount: debtAmount,
+          agreed_amount: debtAmount,
+          discount_amount: 0,
+          discount_percentage: 0,
+          installments: 1,
+          installment_amount: debtAmount,
+          due_date: dueDate,
+          status: "active",
+          payment_status: "pending",
+          asaas_customer_id: asaasCustomer.id,
+          asaas_payment_id: chargeResult.chargeId,
+          asaas_payment_url: chargeResult.invoiceUrl || null,
+        })
+
+        if (agreementError) {
+          results.errors.push(`Erro ao criar acordo para ${asaasCustomer.name}: ${agreementError.message}`)
+          continue
+        }
+
+        // Update VMAX
+        await supabase.from("VMAX").update({ negotiation_status: "sent" }).eq("id", vmaxRecord.id)
+
+        results.synced++
+        results.chargesCreated++
+        results.syncedDetails.push({
+          name: asaasCustomer.name,
+          cpfCnpj: asaasCpf,
+          action: `Cobrança criada (${chargeResult.chargeId})`,
+          asaasPaymentId: chargeResult.chargeId,
+        })
+      } else {
+        // No payments and createCharges is disabled - just report
+        results.unmatched++
+        results.unmatchedCustomers.push({
+          id: asaasCustomer.id,
+          name: asaasCustomer.name,
+          cpfCnpj: asaasCustomer.cpfCnpj,
+          email: asaasCustomer.email,
+        })
+      }
+    }
+
+    console.log(`[ASAAS Sync] syncFromAsaas completed: ${results.synced} synced, ${results.unmatched} unmatched, ${results.errors.length} errors`)
+  } catch (error: any) {
+    console.error("[ASAAS Sync] Error in syncFromAsaas:", error)
+    results.errors.push(error.message || "Erro desconhecido")
+  }
+
+  return results
+}
+
 // Process a single client sync (used by both individual and bulk sync)
 async function syncSingleClient(
   vmax: { id: string; Cliente: string; "CPF/CNPJ": string; Vencido?: string | number },
@@ -723,9 +1118,9 @@ async function syncStuckClients(companyId: string, results: any, startTime: numb
 
   results.totalUnsynced = totalUnsynced || 0
 
-  // REDUCED LIMIT: Only check 20 clients per sync to avoid timeout
-  const BATCH_LIMIT = 20
-  const CHUNK_SIZE = 5 // Process 5 in parallel
+  // INCREASED LIMIT: Check more clients per sync (was 20, now 50)
+  const BATCH_LIMIT = 50
+  const CHUNK_SIZE = 10 // Process 10 in parallel
 
   const { data: vmaxRecords, error: vmaxError } = await supabase
     .from("VMAX")
@@ -902,7 +1297,12 @@ export async function POST(request: NextRequest) {
 
     // Parse optional filters from request body
     currentStep = "parse_request"
-    let filters: { companyId?: string; agreementId?: string; createChargesForCustomerOnly?: boolean } = {}
+    let filters: {
+      companyId?: string
+      agreementId?: string
+      createChargesForCustomerOnly?: boolean
+      fullSync?: boolean  // NEW: Comprehensive sync from ASAAS → local
+    } = {}
     try {
       const body = await request.json()
       filters = body
@@ -911,6 +1311,39 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[ASAAS Sync] Starting payment sync...", filters)
+
+    // NEW: Handle fullSync mode - comprehensive ASAAS → local sync
+    if (filters.fullSync && filters.companyId) {
+      console.log("[ASAAS Sync] FULL SYNC MODE - fetching all ASAAS customers...")
+      currentStep = "full_sync"
+
+      const fullSyncResults = await syncFromAsaas(
+        filters.companyId,
+        filters.createChargesForCustomerOnly || false,
+        startTime
+      )
+
+      const duration = Date.now() - startTime
+      console.log(`[ASAAS Sync] Full sync completed in ${duration}ms`)
+
+      return NextResponse.json({
+        success: true,
+        message: "Sincronização completa finalizada",
+        fullSync: true,
+        duration,
+        results: {
+          asaasCustomerCount: fullSyncResults.asaasCustomerCount,
+          matched: fullSyncResults.matched,
+          unmatched: fullSyncResults.unmatched,
+          synced: fullSyncResults.synced,
+          chargesCreated: fullSyncResults.chargesCreated,
+          errors: fullSyncResults.errors,
+          unmatchedCustomers: fullSyncResults.unmatchedCustomers,
+          syncedDetails: fullSyncResults.syncedDetails,
+        },
+      })
+    }
+
     currentStep = "fetch_agreements"
 
     // Build query for pending/active agreements
