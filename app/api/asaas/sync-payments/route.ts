@@ -483,7 +483,7 @@ async function syncFromAsaas(
       .from("agreements")
       .select("id, customer_id, asaas_customer_id, asaas_payment_id, status, customers(document)")
       .eq("company_id", companyId)
-      .in("status", ["active", "draft", "pending", "completed"])
+      .in("status", ["active", "draft", "pending", "completed", "paid"])
 
     // Build map: ASAAS customer ID -> agreement
     const agreementByAsaasCustomerId = new Map<string, any>()
