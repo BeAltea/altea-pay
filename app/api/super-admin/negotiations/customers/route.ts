@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
     // Build maps for document -> customer id and document -> contact info
     // IMPORTANT: All documents must be normalized (digits only) for consistent lookups
     const customerIdToNormalizedDoc = new Map<string, string>()
+    const customerIdHasAsaas = new Set<string>() // Customer IDs that have asaas_customer_id
     const docToContactInfo = new Map<string, { email: string | null; phone: string | null }>()
     const docsWithAsaasCustomer = new Set<string>() // Documents that have an ASAAS customer linked
     for (const c of dbCustomers || []) {
@@ -95,6 +96,7 @@ export async function GET(request: NextRequest) {
         // Track documents that have been synced to ASAAS
         if (c.asaas_customer_id) {
           docsWithAsaasCustomer.add(normalizedDoc)
+          customerIdHasAsaas.add(c.id)
         }
       }
     }
@@ -122,6 +124,8 @@ export async function GET(request: NextRequest) {
       const docFromJoin = customer?.document ? (customer.document || "").replace(/\D/g, "") : ""
       const docFromMap = customerIdToNormalizedDoc.get(a.customer_id) || ""
       const normalizedDoc = docFromJoin || docFromMap
+      // Check if this agreement's customer has been synced to ASAAS
+      const hasAsaasLink = customerIdHasAsaas.has(a.customer_id)
 
       if (normalizedDoc) {
         if (a.status === "cancelled") {
@@ -130,7 +134,11 @@ export async function GET(request: NextRequest) {
           docToCancelledCount.set(normalizedDoc, (docToCancelledCount.get(normalizedDoc) || 0) + 1)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
-          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
+          // Only count as "negotiation sent" if customer has ASAAS link
+          // This aligns with the ASAAS sync "Já sincronizados" count
+          if (hasAsaasLink) {
+            docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
+          }
           if (a.status === "completed" || a.status === "paid") {
             docsWithPaidAgreements.add(normalizedDoc)
           } else {
