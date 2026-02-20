@@ -237,3 +237,203 @@ export async function resendAsaasPaymentNotification(
 ): Promise<any> {
   return asaasRequest(`/payments/${paymentId}/resendNotification`, "POST", {})
 }
+
+// ====== Notification Batch Update ======
+
+export interface NotificationConfig {
+  id: string
+  enabled: boolean
+  emailEnabledForProvider: boolean
+  smsEnabledForProvider: boolean
+  emailEnabledForCustomer: boolean
+  smsEnabledForCustomer: boolean
+  phoneCallEnabledForCustomer: boolean
+  whatsappEnabledForCustomer: boolean
+}
+
+export async function updateAsaasNotificationsBatch(
+  customerId: string,
+  notifications: NotificationConfig[]
+): Promise<any> {
+  return asaasRequest("/notifications/batch", "PUT", {
+    customer: customerId,
+    notifications,
+  })
+}
+
+/**
+ * Optimized notification configuration to save costs.
+ * - Disables email for PAYMENT_CREATED (we send via Resend)
+ * - Disables PAYMENT_UPDATED, PAYMENT_DUEDATE_WARNING (10 days), SEND_LINHA_DIGITAVEL
+ * - Keeps SMS/WhatsApp for important events
+ */
+export const OPTIMIZED_NOTIFICATION_CONFIG: Record<string, {
+  enabled: boolean
+  emailEnabledForProvider: boolean
+  smsEnabledForProvider: boolean
+  emailEnabledForCustomer: boolean
+  smsEnabledForCustomer: boolean
+  phoneCallEnabledForCustomer: boolean
+  whatsappEnabledForCustomer: boolean
+}> = {
+  // PAYMENT_CREATED (scheduleOffset: 0) — We send our own email via Resend
+  "PAYMENT_CREATED:0": {
+    enabled: true,
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: false, // We handle this via Resend
+    smsEnabledForCustomer: true,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: true,
+  },
+  // PAYMENT_UPDATED (scheduleOffset: 0) — Only if value/date changes
+  "PAYMENT_UPDATED:0": {
+    enabled: false, // Turn off entirely
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: false,
+    smsEnabledForCustomer: false,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: false,
+  },
+  // PAYMENT_DUEDATE_WARNING (scheduleOffset: 10) — 10 days before due date
+  "PAYMENT_DUEDATE_WARNING:10": {
+    enabled: false, // Turn off (too early, spammy)
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: false,
+    smsEnabledForCustomer: false,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: false,
+  },
+  // PAYMENT_DUEDATE_WARNING (scheduleOffset: 0) — Due date day
+  "PAYMENT_DUEDATE_WARNING:0": {
+    enabled: true, // Keep (important reminder)
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: true,
+    smsEnabledForCustomer: true,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: true,
+  },
+  // SEND_LINHA_DIGITAVEL (scheduleOffset: 0) — Boleto digital line
+  "SEND_LINHA_DIGITAVEL:0": {
+    enabled: false, // Turn off (edge case, not worth the cost)
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: false,
+    smsEnabledForCustomer: false,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: false,
+  },
+  // PAYMENT_OVERDUE (scheduleOffset: 0) — First overdue alert
+  "PAYMENT_OVERDUE:0": {
+    enabled: true, // Keep
+    emailEnabledForProvider: true, // Provider needs to know
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: true,
+    smsEnabledForCustomer: true,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: true,
+  },
+  // PAYMENT_OVERDUE (scheduleOffset: 7) — Every 7 days overdue reminder
+  "PAYMENT_OVERDUE:7": {
+    enabled: true, // Keep (great for collections)
+    emailEnabledForProvider: false,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: true,
+    smsEnabledForCustomer: true,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: true,
+  },
+  // PAYMENT_RECEIVED (scheduleOffset: 0) — Payment confirmed
+  "PAYMENT_RECEIVED:0": {
+    enabled: true, // Keep
+    emailEnabledForProvider: true,
+    smsEnabledForProvider: false,
+    emailEnabledForCustomer: true,
+    smsEnabledForCustomer: true,
+    phoneCallEnabledForCustomer: false,
+    whatsappEnabledForCustomer: true,
+  },
+}
+
+/**
+ * Get customer details from ASAAS to check contact info availability.
+ */
+async function getAsaasCustomerDetails(
+  customerId: string
+): Promise<{ hasEmail: boolean; hasPhone: boolean }> {
+  try {
+    const data = await asaasRequest(`/customers/${customerId}`)
+    return {
+      hasEmail: !!data.email,
+      hasPhone: !!(data.phone || data.mobilePhone),
+    }
+  } catch {
+    // If we can't get details, assume they have both
+    return { hasEmail: true, hasPhone: true }
+  }
+}
+
+/**
+ * Configure optimized notifications for a customer.
+ * Fetches current notifications, maps by event+scheduleOffset, and applies optimized config.
+ * Automatically disables channels the customer doesn't have (email/phone).
+ */
+export async function configureOptimizedNotifications(
+  customerId: string
+): Promise<{ success: boolean; updated: number; error?: string }> {
+  try {
+    // Get current notifications for this customer
+    const notifications = await getAsaasCustomerNotifications(customerId)
+
+    if (!notifications || notifications.length === 0) {
+      return { success: true, updated: 0 }
+    }
+
+    // Check what contact info the customer has
+    const { hasEmail, hasPhone } = await getAsaasCustomerDetails(customerId)
+
+    // Build the batch update payload
+    const notificationsToUpdate: NotificationConfig[] = []
+
+    for (const notification of notifications) {
+      const key = `${notification.event}:${notification.scheduleOffset ?? 0}`
+      const config = OPTIMIZED_NOTIFICATION_CONFIG[key]
+
+      if (config) {
+        // Clone the config and disable channels the customer doesn't have
+        const adjustedConfig = { ...config }
+
+        if (!hasEmail) {
+          adjustedConfig.emailEnabledForCustomer = false
+          adjustedConfig.emailEnabledForProvider = false
+        }
+
+        if (!hasPhone) {
+          adjustedConfig.smsEnabledForCustomer = false
+          adjustedConfig.smsEnabledForProvider = false
+          adjustedConfig.phoneCallEnabledForCustomer = false
+          adjustedConfig.whatsappEnabledForCustomer = false
+        }
+
+        notificationsToUpdate.push({
+          id: notification.id,
+          ...adjustedConfig,
+        })
+      }
+    }
+
+    if (notificationsToUpdate.length === 0) {
+      return { success: true, updated: 0 }
+    }
+
+    // Update notifications in batch
+    await updateAsaasNotificationsBatch(customerId, notificationsToUpdate)
+
+    return { success: true, updated: notificationsToUpdate.length }
+  } catch (error: any) {
+    return { success: false, updated: 0, error: error.message }
+  }
+}

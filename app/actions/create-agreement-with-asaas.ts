@@ -5,6 +5,7 @@ import {
   getAsaasCustomerByCpfCnpj,
   createAsaasCustomer,
   updateAsaasCustomer,
+  configureOptimizedNotifications,
 } from "@/lib/asaas"
 
 export async function createAgreementWithAsaas(params: {
@@ -158,6 +159,15 @@ export async function createAgreementWithAsaas(params: {
         asaasCustomerId = newAsaasCustomer.id
       }
       console.log("[ASAAS] Customer created/updated:", asaasCustomerId, "with phone only (no email)")
+
+      // Configure optimized notifications for this customer (cost savings)
+      try {
+        const notifResult = await configureOptimizedNotifications(asaasCustomerId)
+        console.log("[ASAAS] Notifications configured:", notifResult)
+      } catch (notifError: any) {
+        // Don't fail the whole operation if notifications config fails
+        console.warn("[ASAAS] Failed to configure notifications:", notifError.message)
+      }
     } catch (asaasError: any) {
       console.warn("Asaas integration skipped (API key may not be configured):", asaasError.message)
       asaasCustomerId = null
