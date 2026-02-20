@@ -170,24 +170,13 @@ export async function GET(request: NextRequest) {
 
       // Check if ANY negotiation was sent (paid or active, NOT cancelled) - for "Status Negociação" column
       // Cancelled negotiations should NOT count as "Enviada"
-      const hasNegotiation =
-        !isCancelled && (
-          docsWithAnyNegotiation.has(cpfCnpj) ||
-          (vmax.negotiation_status &&
-            ["active", "sent", "pending", "in_negotiation", "PAGO"].includes(
-              vmax.negotiation_status
-            ))
-        )
+      // Only count customers with actual agreements in the database (not just VMAX.negotiation_status)
+      const hasNegotiation = !isCancelled && docsWithAnyNegotiation.has(cpfCnpj)
 
       // Check if has active negotiation (not paid, not cancelled) - for filtering
+      // Only count customers with actual agreements in the database
       const hasActiveNegotiation =
-        !isPaid && !isCancelled && (
-          docsWithActiveAgreements.has(cpfCnpj) ||
-          (vmax.negotiation_status &&
-            ["active", "sent", "pending", "in_negotiation"].includes(
-              vmax.negotiation_status
-            ))
-        )
+        !isPaid && !isCancelled && docsWithActiveAgreements.has(cpfCnpj)
 
       let status: "active" | "overdue" | "negotiating" | "paid" = "active"
       if (isPaid) status = "paid"
