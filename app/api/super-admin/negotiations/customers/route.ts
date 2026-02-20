@@ -76,26 +76,20 @@ export async function GET(request: NextRequest) {
       .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
     // Load customers mapping (document -> customer data) so we can match agreements and get contact info
-    // Also load asaas_customer_id to know which customers have been synced to ASAAS
     const { data: dbCustomers } = await supabase
       .from("customers")
-      .select("id, document, email, phone, asaas_customer_id")
+      .select("id, document, email, phone")
       .eq("company_id", companyId)
 
     // Build maps for document -> customer id and document -> contact info
     // IMPORTANT: All documents must be normalized (digits only) for consistent lookups
     const customerIdToNormalizedDoc = new Map<string, string>()
     const docToContactInfo = new Map<string, { email: string | null; phone: string | null }>()
-    const docsWithAsaasCustomer = new Set<string>() // Documents that have an ASAAS customer linked
     for (const c of dbCustomers || []) {
       const normalizedDoc = (c.document || "").replace(/\D/g, "")
       if (normalizedDoc) {
         customerIdToNormalizedDoc.set(c.id, normalizedDoc)
         docToContactInfo.set(normalizedDoc, { email: c.email, phone: c.phone })
-        // Track documents that have been synced to ASAAS
-        if (c.asaas_customer_id) {
-          docsWithAsaasCustomer.add(normalizedDoc)
-        }
       }
     }
 
@@ -176,25 +170,20 @@ export async function GET(request: NextRequest) {
 
       // Check if ANY negotiation was sent (paid or active, NOT cancelled) - for "Status Negociação" column
       // Cancelled negotiations should NOT count as "Enviada"
-      // Only count VMAX negotiation_status if customer has been synced to ASAAS (has asaas_customer_id)
-      // This aligns the count with the ASAAS sync "Já sincronizados" number
       const hasNegotiation =
         !isCancelled && (
           docsWithAnyNegotiation.has(cpfCnpj) ||
-          (docsWithAsaasCustomer.has(cpfCnpj) &&
-            vmax.negotiation_status &&
+          (vmax.negotiation_status &&
             ["active", "sent", "pending", "in_negotiation", "PAGO"].includes(
               vmax.negotiation_status
             ))
         )
 
       // Check if has active negotiation (not paid, not cancelled) - for filtering
-      // Only count VMAX negotiation_status if customer has been synced to ASAAS
       const hasActiveNegotiation =
         !isPaid && !isCancelled && (
           docsWithActiveAgreements.has(cpfCnpj) ||
-          (docsWithAsaasCustomer.has(cpfCnpj) &&
-            vmax.negotiation_status &&
+          (vmax.negotiation_status &&
             ["active", "sent", "pending", "in_negotiation"].includes(
               vmax.negotiation_status
             ))
