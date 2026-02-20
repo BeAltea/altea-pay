@@ -1252,6 +1252,142 @@ async function syncStuckClients(companyId: string, results: any, startTime: numb
   }
 }
 
+// Sync viewing info for all agreements with ASAAS payment IDs
+async function syncViewingInfo(
+  companyId: string,
+  startTime: number
+): Promise<{
+  checked: number
+  viewed: number
+  notViewed: number
+  errors: number
+}> {
+  const results = {
+    checked: 0,
+    viewed: 0,
+    notViewed: 0,
+    errors: 0,
+  }
+
+  // Max time for viewing sync (leave buffer for main sync)
+  const MAX_VIEWING_SYNC_MS = 15000
+  const elapsed = Date.now() - startTime
+  if (elapsed > MAX_VIEWING_SYNC_MS) {
+    console.log(`[ASAAS Sync] Skipping viewing sync - already at ${elapsed}ms`)
+    return results
+  }
+
+  console.log(`[ASAAS Sync] Starting viewing info sync for company ${companyId}...`)
+
+  // Get all agreements with ASAAS payment IDs that are PENDING or OVERDUE
+  const { data: agreements, error: queryError } = await supabase
+    .from("agreements")
+    .select("id, asaas_payment_id, notification_viewed, customers(name)")
+    .eq("company_id", companyId)
+    .not("asaas_payment_id", "is", null)
+    .in("status", ["active", "draft", "pending"])
+    .in("payment_status", ["pending", "overdue", "confirmed"])
+
+  if (queryError || !agreements) {
+    console.error("[ASAAS Sync] Error fetching agreements for viewing sync:", queryError)
+    return results
+  }
+
+  console.log(`[ASAAS Sync] Found ${agreements.length} agreements to check viewing info`)
+
+  const baseUrl = await getBaseUrl()
+  const totalAgreements = agreements.length
+
+  // Process each agreement with rate limiting
+  for (let i = 0; i < agreements.length; i++) {
+    // Check timeout
+    if (Date.now() - startTime > MAX_VIEWING_SYNC_MS + 10000) {
+      console.log(`[ASAAS Sync] Stopping viewing sync at ${i + 1}/${totalAgreements} due to timeout`)
+      break
+    }
+
+    const agreement = agreements[i]
+    const customerName = (agreement.customers as any)?.name || "Unknown"
+
+    try {
+      // Log progress
+      console.log(`[ASAAS Sync] Fetching viewing info ${i + 1}/${totalAgreements}: ${customerName}`)
+
+      // Fetch viewing info from ASAAS
+      const response = await fetch(`${baseUrl}/api/asaas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: `/payments/${agreement.asaas_payment_id}/viewingInfo`,
+          method: "GET",
+        }),
+      })
+
+      results.checked++
+
+      if (!response.ok) {
+        // 404 means the endpoint doesn't exist or payment not found - not an error
+        if (response.status === 404) {
+          results.notViewed++
+        } else {
+          console.error(`[ASAAS Sync] Error fetching viewing info for ${agreement.asaas_payment_id}: ${response.status}`)
+          results.errors++
+        }
+        continue
+      }
+
+      const contentType = response.headers.get("content-type") || ""
+      if (!contentType.includes("application/json")) {
+        results.errors++
+        continue
+      }
+
+      const viewingInfo = await response.json()
+
+      // Check if viewed
+      const isViewed = viewingInfo.viewed === true
+      const viewDate = viewingInfo.viewDate || viewingInfo.viewedDate || null
+
+      if (isViewed) {
+        // Update the agreement if not already marked as viewed
+        if (!agreement.notification_viewed) {
+          const { error: updateError } = await supabase
+            .from("agreements")
+            .update({
+              notification_viewed: true,
+              notification_viewed_at: viewDate || new Date().toISOString(),
+              notification_viewed_channel: "payment_link",
+            })
+            .eq("id", agreement.id)
+
+          if (updateError) {
+            console.error(`[ASAAS Sync] Failed to update viewing status for ${agreement.id}:`, updateError)
+            results.errors++
+          } else {
+            results.viewed++
+          }
+        } else {
+          results.viewed++
+        }
+      } else {
+        results.notViewed++
+      }
+
+      // Rate limiting: 250ms delay between requests
+      if (i < agreements.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 250))
+      }
+    } catch (error: any) {
+      console.error(`[ASAAS Sync] Error processing viewing info for ${agreement.id}:`, error.message)
+      results.errors++
+    }
+  }
+
+  console.log(`[ASAAS Sync] Viewing info sync completed: ${results.viewed} viewed, ${results.notViewed} not viewed, ${results.errors} errors`)
+
+  return results
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
   let currentStep = "initialization"
@@ -1323,6 +1459,9 @@ export async function POST(request: NextRequest) {
         startTime
       )
 
+      // Also sync viewing info for all existing agreements
+      const viewingResults = await syncViewingInfo(filters.companyId, startTime)
+
       const duration = Date.now() - startTime
       console.log(`[ASAAS Sync] Full sync completed in ${duration}ms`)
 
@@ -1340,6 +1479,7 @@ export async function POST(request: NextRequest) {
           errors: fullSyncResults.errors,
           unmatchedCustomers: fullSyncResults.unmatchedCustomers,
           syncedDetails: fullSyncResults.syncedDetails,
+          viewingInfo: viewingResults,
         },
       })
     }
@@ -1614,6 +1754,12 @@ export async function POST(request: NextRequest) {
       await syncStuckClients(filters.companyId, results, startTime, filters.createChargesForCustomerOnly || false)
     }
 
+    // Sync viewing info for all agreements with ASAAS payment IDs
+    if (filters.companyId) {
+      const viewingResults = await syncViewingInfo(filters.companyId, startTime)
+      ;(results as any).viewingInfo = viewingResults
+    }
+
     const duration = Date.now() - startTime
     console.log(`[ASAAS Sync] Completed in ${duration}ms:`, results)
 
@@ -1624,6 +1770,10 @@ export async function POST(request: NextRequest) {
     }
     if (results.incompleteAgreements && results.incompleteAgreements.length > 0) {
       message += `, ${results.incompleteAgreements.length} acordo(s) incompleto(s) detectado(s)`
+    }
+    if ((results as any).viewingInfo) {
+      const vi = (results as any).viewingInfo
+      message += `. Visualizações: ${vi.viewed} visualizada(s), ${vi.notViewed} não visualizada(s)`
     }
     if ((results as any).remainingCount && (results as any).remainingCount > 0) {
       message += `. Restam ${(results as any).remainingCount} cliente(s) para verificar.`

@@ -238,6 +238,48 @@ export async function resendAsaasPaymentNotification(
   return asaasRequest(`/payments/${paymentId}/resendNotification`, "POST", {})
 }
 
+// ====== Payment Viewing Info ======
+
+export interface PaymentViewingInfo {
+  viewed: boolean
+  viewDate: string | null
+}
+
+/**
+ * Get viewing information for a payment.
+ * Returns whether the customer has viewed/opened the charge.
+ */
+export async function getAsaasPaymentViewingInfo(
+  paymentId: string
+): Promise<PaymentViewingInfo> {
+  try {
+    const data = await asaasRequest(`/payments/${paymentId}/viewingInfo`, "GET")
+    return {
+      viewed: data.viewed ?? false,
+      viewDate: data.viewDate || data.viewedDate || null,
+    }
+  } catch (error: any) {
+    // If 404 or error, return not viewed
+    console.error(`[ASAAS] Error fetching viewing info for ${paymentId}:`, error.message)
+    return { viewed: false, viewDate: null }
+  }
+}
+
+/**
+ * Get payments for a customer from ASAAS.
+ */
+export async function getAsaasPaymentsForCustomer(
+  customerId: string
+): Promise<AsaasPayment[]> {
+  try {
+    const data = await asaasRequest(`/payments?customer=${customerId}`, "GET")
+    return data.data || []
+  } catch (error: any) {
+    console.error(`[ASAAS] Error fetching payments for customer ${customerId}:`, error.message)
+    return []
+  }
+}
+
 // ====== Notification Batch Update ======
 
 export interface NotificationConfig {
