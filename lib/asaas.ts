@@ -243,25 +243,32 @@ export async function resendAsaasPaymentNotification(
 export interface PaymentViewingInfo {
   viewed: boolean
   viewDate: string | null
+  channel: "invoice" | "boleto" | null
 }
 
 /**
  * Get viewing information for a payment.
  * Returns whether the customer has viewed/opened the charge.
+ * ASAAS returns invoiceViewedDate and/or boletoViewedDate.
  */
 export async function getAsaasPaymentViewingInfo(
   paymentId: string
 ): Promise<PaymentViewingInfo> {
   try {
     const data = await asaasRequest(`/payments/${paymentId}/viewingInfo`, "GET")
+    const invoiceViewedDate = data.invoiceViewedDate || null
+    const boletoViewedDate = data.boletoViewedDate || null
+    const viewed = !!(invoiceViewedDate || boletoViewedDate)
+
     return {
-      viewed: data.viewed ?? false,
-      viewDate: data.viewDate || data.viewedDate || null,
+      viewed,
+      viewDate: invoiceViewedDate || boletoViewedDate || null,
+      channel: invoiceViewedDate ? "invoice" : boletoViewedDate ? "boleto" : null,
     }
   } catch (error: any) {
     // If 404 or error, return not viewed
     console.error(`[ASAAS] Error fetching viewing info for ${paymentId}:`, error.message)
-    return { viewed: false, viewDate: null }
+    return { viewed: false, viewDate: null, channel: null }
   }
 }
 

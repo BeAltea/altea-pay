@@ -1344,9 +1344,12 @@ async function syncViewingInfo(
 
       const viewingInfo = await response.json()
 
-      // Check if viewed
-      const isViewed = viewingInfo.viewed === true
-      const viewDate = viewingInfo.viewDate || viewingInfo.viewedDate || null
+      // Check if viewed - ASAAS returns invoiceViewedDate and/or boletoViewedDate
+      const invoiceViewedDate = viewingInfo.invoiceViewedDate || null
+      const boletoViewedDate = viewingInfo.boletoViewedDate || null
+      const isViewed = !!(invoiceViewedDate || boletoViewedDate)
+      const viewDate = invoiceViewedDate || boletoViewedDate || null
+      const viewChannel = invoiceViewedDate ? "invoice" : boletoViewedDate ? "boleto" : "payment_link"
 
       if (isViewed) {
         // Update the agreement if not already marked as viewed
@@ -1356,7 +1359,7 @@ async function syncViewingInfo(
             .update({
               notification_viewed: true,
               notification_viewed_at: viewDate || new Date().toISOString(),
-              notification_viewed_channel: "payment_link",
+              notification_viewed_channel: viewChannel,
             })
             .eq("id", agreement.id)
 
