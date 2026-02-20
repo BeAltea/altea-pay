@@ -57,6 +57,12 @@ export interface CreatePaymentParams {
   installmentCount?: number
   installmentValue?: number
   postalService?: boolean
+  /**
+   * CRITICAL: This MUST always be false.
+   * AlteaPay handles ALL email notifications via SendGrid queue.
+   * ASAAS should NEVER send email notifications.
+   */
+  emailNotificationEnabled?: boolean
 }
 
 // ====== Core: Call /api/asaas route ======
@@ -175,7 +181,15 @@ export async function updateAsaasCustomer(
 export async function createAsaasPayment(
   params: CreatePaymentParams
 ): Promise<AsaasPayment> {
-  return asaasRequest("/payments", "POST", params)
+  // CRITICAL: ALWAYS set emailNotificationEnabled to false
+  // AlteaPay handles ALL email notifications via SendGrid queue
+  // ASAAS should NEVER send email notifications
+  const safeParams = {
+    ...params,
+    emailNotificationEnabled: false,
+    postalService: false,
+  }
+  return asaasRequest("/payments", "POST", safeParams)
 }
 
 export async function getAsaasPayment(paymentId: string): Promise<AsaasPayment> {

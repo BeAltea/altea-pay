@@ -1,0 +1,45 @@
+version: "3.8"
+
+# AlteaPay Docker Compose Configuration
+# Used for local development with Redis for BullMQ queues
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: alteapay-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Redis Commander for visual Redis management
+  # Access at http://localhost:8081
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: alteapay-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - tools
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+# Usage:
+# Start Redis only:      docker compose up -d redis
+# Start with tools:      docker compose --profile tools up -d
+# Stop all:              docker compose down
+# View logs:             docker compose logs -f redis

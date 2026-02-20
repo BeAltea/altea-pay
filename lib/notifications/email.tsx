@@ -1,6 +1,16 @@
 "use server"
 
-import { Resend } from "resend"
+/**
+ * Email Notifications Module
+ *
+ * IMPORTANT: This module sends ALL emails through the BullMQ queue.
+ * Emails are processed by the email worker and sent via SendGrid.
+ *
+ * ASAAS should NEVER send email notifications (emailNotificationEnabled: false).
+ * AlteaPay handles ALL customer emails through this queue system.
+ */
+
+import { queueEmail, type EmailJobData } from "@/lib/queue"
 
 interface SendEmailParams {
   to: string
@@ -8,77 +18,151 @@ interface SendEmailParams {
   html?: string
   body?: string
   text?: string
+  replyTo?: string
+  from?: string
+  fromName?: string
+  metadata?: {
+    customerId?: string
+    companyId?: string
+    agreementId?: string
+    templateName?: string
+    [key: string]: string | undefined
+  }
 }
 
-export async function sendEmail({ to, subject, html, body, text }: SendEmailParams) {
+/**
+ * Send email via queue (processed by SendGrid worker)
+ *
+ * This function adds the email to the BullMQ queue for async processing.
+ * The email worker will send it via SendGrid with retry logic.
+ */
+export async function sendEmail({ to, subject, html, body, text, replyTo, from, fromName, metadata }: SendEmailParams) {
   try {
     console.log("=".repeat(50))
-    console.log("[Resend] Starting email send")
-    console.log("[Resend] To:", to)
-    console.log("[Resend] Subject:", subject)
+    console.log("[Email Queue] Adding email to queue")
+    console.log("[Email Queue] To:", to)
+    console.log("[Email Queue] Subject:", subject)
 
     if (!to) {
-      console.error("[Resend] ERROR: Email address is required")
+      console.error("[Email Queue] ERROR: Email address is required")
       return { success: false, error: "Email é obrigatório" }
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(to)) {
-      console.error("[Resend] ERROR: Invalid email format")
+      console.error("[Email Queue] ERROR: Invalid email format")
       return { success: false, error: "Formato de email inválido" }
     }
 
-    console.log("[Resend] Email validation passed")
-    console.log("[Resend] Calling Resend API...")
-
-    if (!process.env.RESEND_API_KEY) {
-      console.error("[Resend] ERROR: RESEND_API_KEY not configured")
-      return { success: false, error: "API key do Resend não configurada" }
+    const htmlContent = html || body || ""
+    if (!htmlContent) {
+      console.error("[Email Queue] ERROR: Email content is required")
+      return { success: false, error: "Conteúdo do email é obrigatório" }
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY)
+    console.log("[Email Queue] Validation passed, adding to queue...")
 
-    const { data, error } = await resend.emails.send({
-      from: "AlteaPay Cobranças <relacionamento@alteapay.com>",
-      to: [to],
+    const emailData: EmailJobData = {
+      to,
       subject,
-      html: html || body || "",
-      text: text || stripHtml(html || body || ""),
-      replyTo: "relacionamento@alteapay.com",
-      headers: {
-        "X-Entity-Ref-ID": `alteapay-${Date.now()}`,
-        "List-Unsubscribe": "<mailto:relacionamento@alteapay.com?subject=unsubscribe>",
-        Precedence: "bulk",
-      },
-      tags: [{ name: "category", value: "payment-reminder" }],
-    })
-
-    if (error) {
-      console.error("[Resend] ERROR from API:", error)
-      console.error("[Resend] Error details:", JSON.stringify(error, null, 2))
-      console.error("=".repeat(50))
-
-      if (error.message?.includes("testing emails") || error.message?.includes("not verified")) {
-        return {
-          success: false,
-          error:
-            "⚠️ Domínio alteapay.com não verificado no Resend. Adicione os registros DNS (SPF, DKIM) no seu provedor de domínio e aguarde verificação.",
-        }
-      }
-
-      return { success: false, error: error.message || "Falha ao enviar email" }
+      html: htmlContent,
+      text: text || stripHtml(htmlContent),
+      replyTo: replyTo || "relacionamento@alteapay.com",
+      from,
+      fromName,
+      metadata,
     }
 
-    console.log("[Resend Response] ID:", data?.id)
-    console.log("[Resend] Email sent successfully!")
+    const job = await queueEmail(emailData)
+
+    console.log("[Email Queue] Job added successfully, ID:", job.id)
     console.log("=".repeat(50))
 
-    return { success: true, messageId: data?.id, message: `✅ Email enviado com sucesso (ID: ${data?.id})` }
+    return {
+      success: true,
+      jobId: job.id,
+      message: `✅ Email adicionado à fila (Job ID: ${job.id})`,
+    }
   } catch (error: any) {
     console.error("=".repeat(50))
-    console.error("[Resend] EXCEPTION occurred")
-    console.error("[Resend] Error message:", error.message)
+    console.error("[Email Queue] EXCEPTION occurred")
+    console.error("[Email Queue] Error message:", error.message)
     console.error("=".repeat(50))
+    return { success: false, error: error.message || "Falha ao adicionar email à fila" }
+  }
+}
+
+/**
+ * Send email synchronously via SendGrid (bypasses queue)
+ * Use only for critical emails that cannot be delayed
+ */
+export async function sendEmailSync({ to, subject, html, body, text, replyTo }: SendEmailParams) {
+  try {
+    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
+    const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || "noreply@alteapay.com"
+    const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || "AlteaPay"
+    const SENDGRID_REPLY_TO = process.env.SENDGRID_REPLY_TO || "relacionamento@alteapay.com"
+
+    if (!SENDGRID_API_KEY) {
+      console.error("[SendGrid] ERROR: SENDGRID_API_KEY not configured")
+      return { success: false, error: "SendGrid API key não configurada" }
+    }
+
+    if (!to) {
+      return { success: false, error: "Email é obrigatório" }
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(to)) {
+      return { success: false, error: "Formato de email inválido" }
+    }
+
+    const htmlContent = html || body || ""
+
+    const payload = {
+      personalizations: [
+        {
+          to: [{ email: to }],
+          subject,
+        },
+      ],
+      from: {
+        email: SENDGRID_FROM_EMAIL,
+        name: SENDGRID_FROM_NAME,
+      },
+      reply_to: {
+        email: replyTo || SENDGRID_REPLY_TO,
+      },
+      content: [
+        ...(text ? [{ type: "text/plain", value: text }] : []),
+        { type: "text/html", value: htmlContent },
+      ],
+    }
+
+    const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.error("[SendGrid] Error:", response.status, errorBody)
+      return { success: false, error: `SendGrid error: ${response.status}` }
+    }
+
+    const messageId = response.headers.get("x-message-id") || undefined
+
+    return {
+      success: true,
+      messageId,
+      message: `✅ Email enviado com sucesso (ID: ${messageId})`,
+    }
+  } catch (error: any) {
+    console.error("[SendGrid] Exception:", error.message)
     return { success: false, error: error.message || "Falha ao enviar email" }
   }
 }
@@ -120,7 +204,7 @@ export async function generateDebtCollectionEmail({
           <tr>
             <td style="padding: 20px 0;">
               <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                
+
                 <!-- Header -->
                 <tr>
                   <td style="padding: 30px 30px 20px 30px; text-align: center; background: linear-gradient(135deg, #1a1a2e 0%, #2d2d4a 100%); border-radius: 8px 8px 0 0;">
@@ -129,24 +213,24 @@ export async function generateDebtCollectionEmail({
                     </h1>
                   </td>
                 </tr>
-                
+
                 <!-- Body -->
                 <tr>
                   <td style="padding: 40px 30px;">
                     <p style="margin: 0 0 20px 0; color: #1f2937; font-size: 16px; line-height: 1.6;">
                       Olá ${customerName},
                     </p>
-                    
+
                     <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                      Este é um lembrete sobre um pagamento pendente relacionado aos serviços da empresa ${companyName}. 
+                      Este é um lembrete sobre um pagamento pendente relacionado aos serviços da empresa ${companyName}.
                       Estamos entrando em contato para facilitar a regularização da sua situação financeira.
                     </p>
-                    
+
                     <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                      Nosso objetivo é ajudá-lo a manter sua conta em dia e evitar qualquer transtorno. 
+                      Nosso objetivo é ajudá-lo a manter sua conta em dia e evitar qualquer transtorno.
                       Valorizamos muito seu relacionamento conosco.
                     </p>
-                    
+
                     <!-- Invoice Details Box -->
                     <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; margin: 25px 0;">
                       <tr>
@@ -175,16 +259,16 @@ export async function generateDebtCollectionEmail({
                         </td>
                       </tr>
                     </table>
-                    
+
                     <p style="margin: 25px 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                      Para facilitar o processo de pagamento, disponibilizamos uma área exclusiva onde você pode 
+                      Para facilitar o processo de pagamento, disponibilizamos uma área exclusiva onde você pode
                       visualizar todos os detalhes e escolher a forma de pagamento mais conveniente para você.
                     </p>
-                    
+
                     <p style="margin: 0 0 25px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
                       Acesse a área de pagamento clicando no botão abaixo:
                     </p>
-                    
+
                     <!-- CTA Button -->
                     <table role="presentation" style="width: 100%; margin: 30px 0;">
                       <tr>
@@ -195,22 +279,22 @@ export async function generateDebtCollectionEmail({
                         </td>
                       </tr>
                     </table>
-                    
+
                     <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                      Se você já realizou o pagamento, por favor desconsidere este email. 
-                      Caso tenha alguma dúvida ou necessite de assistência, nossa equipe está à disposição 
+                      Se você já realizou o pagamento, por favor desconsidere este email.
+                      Caso tenha alguma dúvida ou necessite de assistência, nossa equipe está à disposição
                       para ajudá-lo através do email relacionamento@alteapay.com
                     </p>
-                    
+
                     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-                    
+
                     <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.5;">
                       Atenciosamente,<br>
                       <strong style="color: #1f2937;">${companyName}</strong>
                     </p>
                   </td>
                 </tr>
-                
+
                 <!-- Footer -->
                 <tr>
                   <td style="padding: 25px 30px; background-color: #f9fafb; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">

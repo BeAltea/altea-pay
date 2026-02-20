@@ -21,6 +21,7 @@ import {
   Handshake,
   Calculator,
   FileUp,
+  ScrollText,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -154,6 +155,11 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           name: "Usuários",
           href: "/super-admin/users",
           icon: Users,
+        },
+        {
+          name: "Logs",
+          href: "/super-admin/logs",
+          icon: ScrollText,
         },
         {
           name: "Configurações",
