@@ -69,9 +69,10 @@ export async function GET(request: NextRequest) {
     // Include "completed"/"paid" for paid agreements and "cancelled" for cancelled negotiations
     // Also fetch notification viewed fields for visualization tracking
     // JOIN with customers to get document directly (more reliable than separate lookup)
+    // Include asaas_customer_id to filter for synced agreements (aligns with ASAAS sync count)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, asaas_customer_id, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
       .eq("company_id", companyId)
       .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
@@ -122,6 +123,9 @@ export async function GET(request: NextRequest) {
       const docFromJoin = customer?.document ? (customer.document || "").replace(/\D/g, "") : ""
       const docFromMap = customerIdToNormalizedDoc.get(a.customer_id) || ""
       const normalizedDoc = docFromJoin || docFromMap
+      // Check if agreement is linked to ASAAS (has asaas_customer_id)
+      // This aligns with the ASAAS sync "Já sincronizados" count
+      const hasAsaasLink = !!(a as any).asaas_customer_id
 
       if (normalizedDoc) {
         if (a.status === "cancelled") {
@@ -130,7 +134,11 @@ export async function GET(request: NextRequest) {
           docToCancelledCount.set(normalizedDoc, (docToCancelledCount.get(normalizedDoc) || 0) + 1)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
-          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
+          // Only count as "negotiation sent" if agreement has ASAAS link
+          // This filters out agreements without ASAAS integration
+          if (hasAsaasLink) {
+            docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
+          }
           if (a.status === "completed" || a.status === "paid") {
             docsWithPaidAgreements.add(normalizedDoc)
           } else {
