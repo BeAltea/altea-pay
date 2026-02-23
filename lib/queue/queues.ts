@@ -42,3 +42,54 @@ export const chargeQueue = new Queue(QUEUE_CONFIG.charge.name, {
     removeOnFail: QUEUE_CONFIG.charge.removeOnFail,
   },
 });
+
+// ASAAS Batch Queues
+export const asaasChargeCreateQueue = new Queue(QUEUE_CONFIG.asaasChargeCreate.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.asaasChargeCreate.retries.attempts,
+    backoff: QUEUE_CONFIG.asaasChargeCreate.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.asaasChargeCreate.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.asaasChargeCreate.removeOnFail,
+  },
+});
+
+export const asaasChargeUpdateQueue = new Queue(QUEUE_CONFIG.asaasChargeUpdate.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.asaasChargeUpdate.retries.attempts,
+    backoff: QUEUE_CONFIG.asaasChargeUpdate.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.asaasChargeUpdate.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.asaasChargeUpdate.removeOnFail,
+  },
+});
+
+export const asaasChargeCancelQueue = new Queue(QUEUE_CONFIG.asaasChargeCancel.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.asaasChargeCancel.retries.attempts,
+    backoff: QUEUE_CONFIG.asaasChargeCancel.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.asaasChargeCancel.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.asaasChargeCancel.removeOnFail,
+  },
+});
+
+export const asaasNotificationQueue = new Queue(QUEUE_CONFIG.asaasNotification.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.asaasNotification.retries.attempts,
+    backoff: QUEUE_CONFIG.asaasNotification.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.asaasNotification.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.asaasNotification.removeOnFail,
+  },
+});
+
+export const asaasSyncQueue = new Queue(QUEUE_CONFIG.asaasSync.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.asaasSync.retries.attempts,
+    backoff: QUEUE_CONFIG.asaasSync.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.asaasSync.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.asaasSync.removeOnFail,
+  },
+});

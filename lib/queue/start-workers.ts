@@ -1,6 +1,19 @@
 import { emailWorker } from './workers/email.worker';
 import { chargeWorker } from './workers/charge.worker';
-import { emailQueue, chargeQueue } from './queues';
+import { asaasChargeCreateWorker } from './workers/asaas-charge-create.worker';
+import { asaasChargeUpdateWorker } from './workers/asaas-charge-update.worker';
+import { asaasChargeCancelWorker } from './workers/asaas-charge-cancel.worker';
+import { asaasNotificationWorker } from './workers/asaas-notification.worker';
+import { asaasSyncWorker } from './workers/asaas-sync.worker';
+import {
+  emailQueue,
+  chargeQueue,
+  asaasChargeCreateQueue,
+  asaasChargeUpdateQueue,
+  asaasChargeCancelQueue,
+  asaasNotificationQueue,
+  asaasSyncQueue,
+} from './queues';
 import { startHealthCheck } from './health';
 
 console.log('==========================================');
@@ -9,16 +22,39 @@ console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`   Redis: ${(process.env.REDIS_URL || 'localhost').replace(/\/\/.*@/, '//***@')}`);
 console.log('==========================================');
 
-startHealthCheck({ emailQueue, chargeQueue });
+startHealthCheck({
+  emailQueue,
+  chargeQueue,
+  asaasChargeCreateQueue,
+  asaasChargeUpdateQueue,
+  asaasChargeCancelQueue,
+  asaasNotificationQueue,
+  asaasSyncQueue,
+});
 
 console.log('   Email Worker (SendGrid) - Active');
-console.log('   Charge Worker (ASAAS) - Active');
-console.log('   ASAAS: WhatsApp + SMS only (email disabled)');
+console.log('   Charge Worker (ASAAS Legacy) - Active');
+console.log('   ASAAS Charge Create Worker - Active');
+console.log('   ASAAS Charge Update Worker - Active');
+console.log('   ASAAS Charge Cancel Worker - Active');
+console.log('   ASAAS Notification Worker - Active');
+console.log('   ASAAS Sync Worker - Active');
+console.log('   Rate Limit: 10 req/s per ASAAS queue');
 console.log('==========================================');
+
+const allWorkers = [
+  emailWorker,
+  chargeWorker,
+  asaasChargeCreateWorker,
+  asaasChargeUpdateWorker,
+  asaasChargeCancelWorker,
+  asaasNotificationWorker,
+  asaasSyncWorker,
+];
 
 const shutdown = async (signal: string) => {
   console.log(`[WORKERS] ${signal} received. Shutting down...`);
-  await Promise.allSettled([emailWorker.close(), chargeWorker.close()]);
+  await Promise.allSettled(allWorkers.map((w) => w.close()));
   console.log('[WORKERS] Closed. Exiting.');
   process.exit(0);
 };

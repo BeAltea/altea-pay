@@ -1,20 +1,30 @@
 import http from 'http';
+import type { Queue } from 'bullmq';
 
 const PORT = parseInt(process.env.WORKER_HEALTH_PORT || '3001');
 
-export function startHealthCheck(deps: { emailQueue: any; chargeQueue: any }): void {
+type QueueMap = Record<string, Queue>;
+
+export function startHealthCheck(deps: QueueMap): void {
   const server = http.createServer(async (req, res) => {
     if (req.url === '/health' || req.url === '/') {
       try {
-        const [emailCounts, chargeCounts] = await Promise.all([
-          deps.emailQueue.getJobCounts('waiting', 'active', 'completed', 'failed'),
-          deps.chargeQueue.getJobCounts('waiting', 'active', 'completed', 'failed'),
-        ]);
+        const queueNames = Object.keys(deps);
+        const countsPromises = queueNames.map((name) =>
+          deps[name].getJobCounts('waiting', 'active', 'completed', 'failed')
+        );
+        const counts = await Promise.all(countsPromises);
+
+        const queues: Record<string, any> = {};
+        queueNames.forEach((name, i) => {
+          queues[name] = counts[i];
+        });
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           status: 'healthy',
           uptime: Math.floor(process.uptime()),
-          queues: { email: emailCounts, charge: chargeCounts },
+          queues,
         }));
       } catch (err: any) {
         res.writeHead(503, { 'Content-Type': 'application/json' });
