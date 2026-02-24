@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG } from '../config';
 import {
   asaasRequest,
@@ -27,7 +27,7 @@ export interface AsaasNotificationJobData {
   companyId?: string;
 }
 
-export const asaasNotificationWorker = new Worker<AsaasNotificationJobData>(
+export const asaasNotificationWorker = WorkerManager.registerWorker<AsaasNotificationJobData>(
   QUEUE_CONFIG.asaasNotification.name,
   async (job: Job<AsaasNotificationJobData>) => {
     const { batchId, jobIndex, asaasPaymentId, channels, agreementId, customerId } = job.data;
@@ -137,7 +137,6 @@ export const asaasNotificationWorker = new Worker<AsaasNotificationJobData>(
     }
   },
   {
-    connection,
     concurrency: 3,
     limiter: QUEUE_CONFIG.asaasNotification.limiter,
   }

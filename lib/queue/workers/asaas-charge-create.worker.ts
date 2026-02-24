@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG, ASAAS_NOTIFICATION_DEFAULTS } from '../config';
 import { emailQueue } from '../queues';
 import {
@@ -131,7 +131,7 @@ async function updateSupabaseRecords(
   }
 }
 
-export const asaasChargeCreateWorker = new Worker<AsaasChargeCreateJobData>(
+export const asaasChargeCreateWorker = WorkerManager.registerWorker<AsaasChargeCreateJobData>(
   QUEUE_CONFIG.asaasChargeCreate.name,
   async (job: Job<AsaasChargeCreateJobData>) => {
     const { batchId, jobIndex, customer, payment, agreementId, debtId, sendEmail, emailTemplate } = job.data;
@@ -189,6 +189,9 @@ export const asaasChargeCreateWorker = new Worker<AsaasChargeCreateJobData>(
 
       // Step 5: Queue email notification if requested
       if (sendEmail && emailTemplate && customer.email) {
+        // Ensure email worker is running before adding job
+        await WorkerManager.ensureWorkerRunning(QUEUE_CONFIG.email.name);
+
         await emailQueue.add(
           `charge-email-${asaasPayment.id}`,
           {
@@ -247,7 +250,6 @@ export const asaasChargeCreateWorker = new Worker<AsaasChargeCreateJobData>(
     }
   },
   {
-    connection,
     concurrency: 3,
     limiter: QUEUE_CONFIG.asaasChargeCreate.limiter,
   }

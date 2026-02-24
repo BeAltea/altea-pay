@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG } from '../config';
 import {
   asaasRequest,
@@ -63,7 +63,7 @@ function mapAsaasStatusToDebt(asaasStatus: string): string {
   return statusMap[asaasStatus] || 'open';
 }
 
-export const asaasSyncWorker = new Worker<AsaasSyncJobData>(
+export const asaasSyncWorker = WorkerManager.registerWorker<AsaasSyncJobData>(
   QUEUE_CONFIG.asaasSync.name,
   async (job: Job<AsaasSyncJobData>) => {
     const { batchId, jobIndex, asaasPaymentId, agreementId, debtId } = job.data;
@@ -177,7 +177,6 @@ export const asaasSyncWorker = new Worker<AsaasSyncJobData>(
     }
   },
   {
-    connection,
     concurrency: 5, // Higher concurrency for sync since it's mostly read operations
     limiter: QUEUE_CONFIG.asaasSync.limiter,
   }

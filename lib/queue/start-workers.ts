@@ -1,10 +1,14 @@
-import { emailWorker } from './workers/email.worker';
-import { chargeWorker } from './workers/charge.worker';
-import { asaasChargeCreateWorker } from './workers/asaas-charge-create.worker';
-import { asaasChargeUpdateWorker } from './workers/asaas-charge-update.worker';
-import { asaasChargeCancelWorker } from './workers/asaas-charge-cancel.worker';
-import { asaasNotificationWorker } from './workers/asaas-notification.worker';
-import { asaasSyncWorker } from './workers/asaas-sync.worker';
+import { WorkerManager } from './worker-manager';
+
+// Import workers to register them with WorkerManager
+import './workers/email.worker';
+import './workers/charge.worker';
+import './workers/asaas-charge-create.worker';
+import './workers/asaas-charge-update.worker';
+import './workers/asaas-charge-cancel.worker';
+import './workers/asaas-notification.worker';
+import './workers/asaas-sync.worker';
+
 import {
   emailQueue,
   chargeQueue,
@@ -32,34 +36,27 @@ startHealthCheck({
   asaasSyncQueue,
 });
 
-console.log('   Email Worker (SendGrid) - Active');
-console.log('   Charge Worker (ASAAS Legacy) - Active');
-console.log('   ASAAS Charge Create Worker - Active');
-console.log('   ASAAS Charge Update Worker - Active');
-console.log('   ASAAS Charge Cancel Worker - Active');
-console.log('   ASAAS Notification Worker - Active');
-console.log('   ASAAS Sync Worker - Active');
+// Log worker status
+const workerStatus = WorkerManager.getAllWorkerStatus();
+console.log('   Workers registered (on-demand activation):');
+Object.entries(workerStatus).forEach(([name, status]) => {
+  console.log(`      - ${name}: ${status.running ? 'running' : 'idle'}`);
+});
+
 console.log('   Rate Limit: 10 req/s per ASAAS queue');
+console.log('   DrainDelay: 30 seconds');
+console.log('   Workers will start when jobs are added');
 console.log('==========================================');
 
-const allWorkers = [
-  emailWorker,
-  chargeWorker,
-  asaasChargeCreateWorker,
-  asaasChargeUpdateWorker,
-  asaasChargeCancelWorker,
-  asaasNotificationWorker,
-  asaasSyncWorker,
-];
+// Start all workers immediately (warm start for dedicated worker process)
+// This is appropriate for ECS Fargate where we want workers ready
+WorkerManager.startAllWorkers().then(() => {
+  console.log('[WORKERS] All workers started and ready');
+}).catch((err) => {
+  console.error('[WORKERS] Failed to start workers:', err);
+  process.exit(1);
+});
 
-const shutdown = async (signal: string) => {
-  console.log(`[WORKERS] ${signal} received. Shutting down...`);
-  await Promise.allSettled(allWorkers.map((w) => w.close()));
-  console.log('[WORKERS] Closed. Exiting.');
-  process.exit(0);
-};
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+// Handle uncaught errors
 process.on('uncaughtException', (err) => console.error('[WORKERS] Uncaught:', err));
 process.on('unhandledRejection', (reason) => console.error('[WORKERS] Unhandled:', reason));

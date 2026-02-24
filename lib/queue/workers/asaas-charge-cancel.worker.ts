@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG } from '../config';
 import {
   asaasRequest,
@@ -23,7 +23,7 @@ export interface AsaasChargeCancelJobData {
   reason?: string;
 }
 
-export const asaasChargeCancelWorker = new Worker<AsaasChargeCancelJobData>(
+export const asaasChargeCancelWorker = WorkerManager.registerWorker<AsaasChargeCancelJobData>(
   QUEUE_CONFIG.asaasChargeCancel.name,
   async (job: Job<AsaasChargeCancelJobData>) => {
     const { batchId, jobIndex, asaasPaymentId, agreementId, debtId, reason } = job.data;
@@ -117,7 +117,6 @@ export const asaasChargeCancelWorker = new Worker<AsaasChargeCancelJobData>(
     }
   },
   {
-    connection,
     concurrency: 3,
     limiter: QUEUE_CONFIG.asaasChargeCancel.limiter,
   }

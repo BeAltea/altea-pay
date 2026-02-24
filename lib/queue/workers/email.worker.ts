@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG } from '../config';
 
 export interface EmailJobData {
@@ -69,7 +69,7 @@ async function sendEmailViaSendGrid(params: EmailJobData): Promise<SendGridRespo
   return { success: true, messageId };
 }
 
-export const emailWorker = new Worker<EmailJobData>(
+export const emailWorker = WorkerManager.registerWorker<EmailJobData>(
   QUEUE_CONFIG.email.name,
   async (job: Job<EmailJobData>) => {
     const { to, subject, metadata } = job.data;
@@ -92,7 +92,6 @@ export const emailWorker = new Worker<EmailJobData>(
     return { messageId: result.messageId };
   },
   {
-    connection,
     concurrency: 5,
     limiter: {
       max: 100,

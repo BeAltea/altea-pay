@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import { connection } from '../connection';
+import { Job } from 'bullmq';
+import { WorkerManager } from '../worker-manager';
 import { QUEUE_CONFIG, ASAAS_NOTIFICATION_DEFAULTS } from '../config';
 import { emailQueue } from '../queues';
 
@@ -139,7 +139,7 @@ async function configureNotifications(customerId: string): Promise<void> {
   }
 }
 
-export const chargeWorker = new Worker<ChargeJobData>(
+export const chargeWorker = WorkerManager.registerWorker<ChargeJobData>(
   QUEUE_CONFIG.charge.name,
   async (job: Job<ChargeJobData>) => {
     const { customer, payment, sendEmail, emailTemplate, metadata } = job.data;
@@ -190,6 +190,9 @@ export const chargeWorker = new Worker<ChargeJobData>(
     if (sendEmail && emailTemplate && customer.email) {
       console.log(`[CHARGE] Queueing email notification to ${customer.email}`);
 
+      // Ensure email worker is running before adding job
+      await WorkerManager.ensureWorkerRunning(QUEUE_CONFIG.email.name);
+
       await emailQueue.add(
         `charge-email-${asaasPayment.id}`,
         {
@@ -216,7 +219,6 @@ export const chargeWorker = new Worker<ChargeJobData>(
     };
   },
   {
-    connection,
     concurrency: 3,
     limiter: {
       max: 10,
