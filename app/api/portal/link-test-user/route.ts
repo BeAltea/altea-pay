@@ -1,124 +1,96 @@
-import { NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/service"
-import * as crypto from "crypto"
+import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex")
-}
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-// This endpoint links a test user (Fabio) to the portal
-// Only for development/testing purposes
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    // Verify this is a valid request (could add more security here)
-    const body = await request.json()
-    const { secret } = body
+    // Find usuario@alteapay.com in auth
+    const {
+      data: { users },
+    } = await supabaseAdmin.auth.admin.listUsers()
+    const targetUser = users?.find((u) => u.email === "usuario@alteapay.com")
 
-    // Simple secret check for safety
-    if (secret !== process.env.CRON_SECRET && secret !== "alteapay-test-2024") {
+    if (!targetUser) {
       return NextResponse.json(
-        { error: "Nao autorizado" },
-        { status: 401 }
+        { error: "usuario@alteapay.com not found in auth.users" },
+        { status: 404 }
       )
     }
 
-    const supabase = createServiceClient()
-
-    // Test user data - Fabio
-    const testUser = {
-      email: "usuario@alteapay.com",
-      password: "123456",
-      document: "41719010811", // CPF clean
-      document_type: "cpf",
-      name: "Fabio - Test User",
-    }
-
-    // Check if user already exists
-    const { data: existing } = await supabase
+    // Upsert final_client record
+    const { data: existing } = await supabaseAdmin
       .from("final_clients")
-      .select("id, email")
-      .eq("email", testUser.email)
-      .single()
+      .select("id")
+      .eq("document_number", "41719010811")
+      .maybeSingle()
 
     if (existing) {
-      // Update existing user
-      const { error: updateError } = await supabase
+      // Update existing record
+      await supabaseAdmin
         .from("final_clients")
         .update({
-          password_hash: hashPassword(testUser.password),
-          document: testUser.document,
-          document_type: testUser.document_type,
-          name: testUser.name,
-          is_active: true,
+          user_id: targetUser.id,
+          email: "usuario@alteapay.com",
+          full_name: "Fabio Moura Barros",
         })
         .eq("id", existing.id)
+    } else {
+      // Check if there's one with the old email
+      const { data: existingByEmail } = await supabaseAdmin
+        .from("final_clients")
+        .select("id")
+        .eq("email", "usuario@alteapay.com")
+        .maybeSingle()
 
-      if (updateError) {
-        console.error("[LINK-TEST-USER] Update error:", updateError)
-        return NextResponse.json(
-          { error: "Erro ao atualizar usuario" },
-          { status: 500 }
-        )
+      if (existingByEmail) {
+        await supabaseAdmin
+          .from("final_clients")
+          .update({
+            user_id: targetUser.id,
+            document_number: "41719010811",
+            document_type: "cpf",
+            full_name: "Fabio Moura Barros",
+          })
+          .eq("id", existingByEmail.id)
+      } else {
+        // Create new record
+        await supabaseAdmin.from("final_clients").insert({
+          user_id: targetUser.id,
+          email: "usuario@alteapay.com",
+          full_name: "Fabio Moura Barros",
+          document_type: "cpf",
+          document_number: "41719010811",
+          password_hash: null,
+        })
       }
-
-      console.log(`[LINK-TEST-USER] Updated existing user: ${testUser.email}`)
-
-      return NextResponse.json({
-        success: true,
-        message: "Usuario de teste atualizado",
-        user: {
-          id: existing.id,
-          email: testUser.email,
-          document: testUser.document,
-          document_type: testUser.document_type,
-        },
-      })
     }
 
-    // Create new user
-    const { data: newUser, error: insertError } = await supabase
-      .from("final_clients")
-      .insert({
-        email: testUser.email,
-        password_hash: hashPassword(testUser.password),
-        document: testUser.document,
-        document_type: testUser.document_type,
-        name: testUser.name,
-      })
-      .select("id, email, document, document_type")
-      .single()
+    // Update auth user metadata
+    await supabaseAdmin.auth.admin.updateUser(targetUser.id, {
+      user_metadata: {
+        ...targetUser.user_metadata,
+        role: "final_client",
+        document_type: "cpf",
+        document_number: "41719010811",
+        full_name: "Fabio Moura Barros",
+      },
+    })
 
-    if (insertError) {
-      console.error("[LINK-TEST-USER] Insert error:", insertError)
-      return NextResponse.json(
-        { error: "Erro ao criar usuario" },
-        { status: 500 }
-      )
-    }
-
-    console.log(`[LINK-TEST-USER] Created test user: ${testUser.email}`)
+    console.log(`[LINK-TEST-USER] Linked CPF 41719010811 to usuario@alteapay.com`)
 
     return NextResponse.json({
       success: true,
-      message: "Usuario de teste criado",
-      user: {
-        id: newUser.id,
-        email: newUser.email,
-        document: newUser.document,
-        document_type: newUser.document_type,
-      },
-      credentials: {
-        email: testUser.email,
-        password: testUser.password,
-      },
+      user_id: targetUser.id,
+      message: "Linked CPF 41719010811 to usuario@alteapay.com",
     })
-  } catch (error: any) {
-    console.error("[LINK-TEST-USER] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+  } catch (err: any) {
+    console.error("[LINK-TEST-USER] Error:", err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

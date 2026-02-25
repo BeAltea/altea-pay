@@ -1,33 +1,54 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { createBrowserClient } from "@supabase/ssr"
 
-interface PortalClient {
+// Types
+interface Profile {
   id: string
   email: string
+  full_name: string
   document_type: string
-  name: string | null
+  document_number: string
 }
 
-interface PortalDebt {
+interface Debt {
   id: string
-  company_name: string
+  client_name: string
   company_id: string
+  company_name: string
   description: string
   amount: number
   due_date: string
   days_overdue: number
-  status: string
-  agreement_id?: string
-  asaas_payment_url?: string
-  asaas_pix_qrcode_url?: string
-  asaas_boleto_url?: string
-  payment_status?: string
+  display_status: string
+  asaas_status: string | null
+  invoice_url: string | null
+  bankslip_url: string | null
+  pix_qrcode: string | null
+  agreement_id: string | null
+  agreement_status: string | null
+  source: string
 }
 
-type AuthMode = "login" | "signup"
-type FilterStatus = "all" | "open" | "overdue" | "paid"
+interface Summary {
+  total: number
+  total_amount: number
+  overdue: number
+  overdue_amount: number
+  pending: number
+  pending_amount: number
+  paid: number
+  paid_amount: number
+  in_negotiation: number
+  negotiation_amount: number
+  companies_count: number
+}
 
+type AuthState = "login" | "signup" | "dashboard"
+type Theme = "dark" | "light"
+
+// Format helpers
 function formatCPF(value: string): string {
   const clean = value.replace(/\D/g, "").slice(0, 11)
   if (clean.length <= 3) return clean
@@ -62,8 +83,8 @@ function formatDate(dateStr: string): string {
 }
 
 export default function PortalPage() {
-  const [authMode, setAuthMode] = useState<AuthMode>("login")
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authState, setAuthState] = useState<AuthState>("login")
+  const [theme, setTheme] = useState<Theme>("dark")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -71,39 +92,60 @@ export default function PortalPage() {
   // Auth form state
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [document, setDocument] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [documentNumber, setDocumentNumber] = useState("")
   const [documentType, setDocumentType] = useState<"cpf" | "cnpj">("cpf")
-  const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
 
-  // Client and debts state
-  const [client, setClient] = useState<PortalClient | null>(null)
-  const [debts, setDebts] = useState<PortalDebt[]>([])
-  const [debtsByCompany, setDebtsByCompany] = useState<Record<string, PortalDebt[]>>({})
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all")
+  // Dashboard state
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [debts, setDebts] = useState<Debt[]>([])
+  const [debtsByCompany, setDebtsByCompany] = useState<Record<string, Debt[]>>({})
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [filter, setFilter] = useState<"all" | "overdue" | "pending" | "paid">("all")
+
+  // Supabase client
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   // Check auth on mount
   useEffect(() => {
+    const savedTheme = localStorage.getItem("portal-theme") as Theme
+    if (savedTheme) setTheme(savedTheme)
     checkAuth()
   }, [])
 
   async function checkAuth() {
+    setIsLoading(true)
     try {
-      const response = await fetch("/api/portal/debts", {
-        credentials: "include",
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setClient(data.client)
-        setDebts(data.debts)
-        setDebtsByCompany(data.debts_by_company)
-        setIsAuthenticated(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await fetchDebts()
       }
     } catch (err) {
-      // Not authenticated
+      console.error("Auth check error:", err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function fetchDebts() {
+    try {
+      const response = await fetch("/api/portal/debts", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setProfile(data.profile)
+        setDebts(data.all_debts || [])
+        setDebtsByCompany(data.debts_by_company || {})
+        setSummary(data.summary)
+        setAuthState("dashboard")
+      } else if (response.status === 401) {
+        setAuthState("login")
+      }
+    } catch (err) {
+      console.error("Fetch debts error:", err)
     }
   }
 
@@ -113,24 +155,21 @@ export default function PortalPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("/api/portal/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error || "Erro ao fazer login")
+      if (signInError) {
+        setError(signInError.message === "Invalid login credentials"
+          ? "Email ou senha incorretos"
+          : signInError.message)
         return
       }
 
-      // Fetch debts after login
-      await checkAuth()
-    } catch (err) {
-      setError("Erro de conexao")
+      await fetchDebts()
+    } catch (err: any) {
+      setError(err.message || "Erro ao fazer login")
     } finally {
       setIsLoading(false)
     }
@@ -149,9 +188,9 @@ export default function PortalPage() {
         body: JSON.stringify({
           email,
           password,
-          document: document.replace(/\D/g, ""),
+          full_name: fullName,
           document_type: documentType,
-          name: name || undefined,
+          document_number: documentNumber.replace(/\D/g, ""),
           phone: phone || undefined,
         }),
       })
@@ -164,91 +203,590 @@ export default function PortalPage() {
       }
 
       setSuccess("Conta criada com sucesso! Faca login para continuar.")
-      setAuthMode("login")
+      setAuthState("login")
       setPassword("")
-    } catch (err) {
-      setError("Erro de conexao")
+    } catch (err: any) {
+      setError(err.message || "Erro de conexao")
     } finally {
       setIsLoading(false)
     }
   }
 
   async function handleLogout() {
-    try {
-      await fetch("/api/portal/logout", {
-        method: "POST",
-        credentials: "include",
-      })
-    } catch (err) {
-      // Ignore errors
-    }
-
-    setIsAuthenticated(false)
-    setClient(null)
+    await supabase.auth.signOut()
+    setAuthState("login")
+    setProfile(null)
     setDebts([])
     setDebtsByCompany({})
+    setSummary(null)
     setEmail("")
     setPassword("")
   }
 
+  function toggleTheme() {
+    const newTheme = theme === "dark" ? "light" : "dark"
+    setTheme(newTheme)
+    localStorage.setItem("portal-theme", newTheme)
+  }
+
   function handleDocumentChange(value: string) {
     if (documentType === "cpf") {
-      setDocument(formatCPF(value))
+      setDocumentNumber(formatCPF(value))
     } else {
-      setDocument(formatCNPJ(value))
+      setDocumentNumber(formatCNPJ(value))
     }
   }
 
-  function getFilteredDebts(): PortalDebt[] {
-    if (filterStatus === "all") return debts
-    if (filterStatus === "paid") {
-      return debts.filter((d) => d.payment_status === "received" || d.payment_status === "completed" || d.status === "paid")
-    }
-    if (filterStatus === "overdue") {
-      return debts.filter((d) => d.days_overdue > 0 || d.status === "overdue")
-    }
-    return debts.filter((d) => d.status === "open" || d.status === "pending")
+  function getFilteredDebts(): Debt[] {
+    if (filter === "all") return debts
+    return debts.filter((d) => d.display_status === filter)
   }
 
-  function getStatusBadge(debt: PortalDebt) {
-    if (debt.payment_status === "received" || debt.payment_status === "completed" || debt.status === "paid") {
-      return <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Pago</span>
+  function getStatusBadge(status: string) {
+    const badges: Record<string, { class: string; text: string }> = {
+      paid: { class: "badge-success", text: "Pago" },
+      overdue: { class: "badge-danger", text: "Vencido" },
+      pending: { class: "badge-warning", text: "Pendente" },
+      negotiation: { class: "badge-info", text: "Em Negociacao" },
     }
-    if (debt.days_overdue > 0 || debt.status === "overdue") {
-      return <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Vencido ({debt.days_overdue}d)</span>
-    }
-    return <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Aberto</span>
+    return badges[status] || { class: "badge-secondary", text: status }
   }
 
-  if (isLoading && !isAuthenticated) {
+  // Styles
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+
+    :root {
+      --dark-900: #0F1117;
+      --dark-800: #1A1D27;
+      --dark-700: #252836;
+      --dark-600: #353849;
+      --gold-400: #F5A623;
+      --gold-500: #E8950F;
+      --gold-600: #C77A00;
+      --green: #2DD4A8;
+      --red: #F06868;
+      --blue: #5B8DEF;
+      --orange: #F5A623;
+      --text-primary: #FFFFFF;
+      --text-secondary: #B8BCC8;
+      --text-muted: #6B7188;
+    }
+
+    [data-theme="light"] {
+      --dark-900: #F5F6FA;
+      --dark-800: #FFFFFF;
+      --dark-700: #F0F1F5;
+      --dark-600: #E2E4EC;
+      --text-primary: #1A1D27;
+      --text-secondary: #6B7188;
+      --text-muted: #9DA3B7;
+    }
+
+    .portal-container {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--dark-900);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .portal-card {
+      background: var(--dark-800);
+      border: 1px solid var(--dark-600);
+      border-radius: 14px;
+      padding: 24px;
+    }
+
+    .portal-input {
+      background: var(--dark-700);
+      border: 1px solid var(--dark-600);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text-primary);
+      width: 100%;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .portal-input:focus {
+      outline: none;
+      border-color: var(--gold-400);
+    }
+
+    .portal-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .portal-btn {
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
+      color: #1A1D27;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      width: 100%;
+      font-size: 14px;
+    }
+
+    .portal-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(245, 166, 35, 0.3);
+    }
+
+    .portal-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .portal-btn-outline {
+      background: transparent;
+      border: 1px solid var(--dark-600);
+      color: var(--text-primary);
+    }
+
+    .portal-btn-outline:hover {
+      background: var(--dark-700);
+      box-shadow: none;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-success { background: rgba(45, 212, 168, 0.15); color: var(--green); }
+    .badge-danger { background: rgba(240, 104, 104, 0.15); color: var(--red); }
+    .badge-warning { background: rgba(245, 166, 35, 0.15); color: var(--orange); }
+    .badge-info { background: rgba(91, 141, 239, 0.15); color: var(--blue); }
+    .badge-secondary { background: var(--dark-600); color: var(--text-secondary); }
+
+    .header {
+      background: var(--dark-800);
+      border-bottom: 1px solid var(--dark-600);
+      padding: 16px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--gold-400);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .summary-card {
+      background: var(--dark-800);
+      border: 1px solid var(--dark-600);
+      border-radius: 14px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .summary-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .summary-value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .summary-value.red { color: var(--red); }
+    .summary-value.gold { color: var(--gold-400); }
+    .summary-value.green { color: var(--green); }
+
+    .debt-card {
+      background: var(--dark-800);
+      border: 1px solid var(--dark-600);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 16px;
+      animation: fadeUp 0.3s ease-out;
+    }
+
+    .debt-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .company-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .company-avatar {
+      width: 48px;
+      height: 48px;
+      background: var(--dark-700);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: var(--gold-400);
+    }
+
+    .debt-amount {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--red);
+    }
+
+    .debt-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      padding-top: 16px;
+      border-top: 1px solid var(--dark-600);
+    }
+
+    .debt-detail {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .debt-detail-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .debt-detail-value {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .debt-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .action-btn-primary {
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
+      color: #1A1D27;
+    }
+
+    .action-btn-secondary {
+      background: var(--dark-700);
+      color: var(--text-primary);
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .filter-tab {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--dark-700);
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .filter-tab.active {
+      background: var(--gold-400);
+      color: #1A1D27;
+    }
+
+    .main-content {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .welcome-section {
+      margin-bottom: 32px;
+    }
+
+    .welcome-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .welcome-subtitle {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-muted);
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .debt-details {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .debt-actions {
+        margin-left: 0;
+        margin-top: 16px;
+        width: 100%;
+        flex-direction: column;
+      }
+
+      .action-btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    /* Auth styles */
+    .auth-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .auth-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--gold-400);
+      margin-bottom: 8px;
+    }
+
+    .auth-tabs {
+      display: flex;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--dark-600);
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .auth-tab.active {
+      color: var(--gold-400);
+      border-bottom-color: var(--gold-400);
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .doc-type-toggle {
+      display: flex;
+      gap: 12px;
+    }
+
+    .doc-type-option {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 8px;
+      background: var(--dark-700);
+      border: 1px solid var(--dark-600);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .doc-type-option.active {
+      border-color: var(--gold-400);
+      background: rgba(245, 166, 35, 0.1);
+    }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .alert-error {
+      background: rgba(240, 104, 104, 0.1);
+      border: 1px solid rgba(240, 104, 104, 0.3);
+      color: var(--red);
+    }
+
+    .alert-success {
+      background: rgba(45, 212, 168, 0.1);
+      border: 1px solid rgba(45, 212, 168, 0.3);
+      color: var(--green);
+    }
+
+    .theme-toggle {
+      background: var(--dark-700);
+      border: 1px solid var(--dark-600);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--text-primary);
+      font-size: 16px;
+    }
+
+    .loading-spinner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--dark-600);
+      border-top-color: var(--gold-400);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  `
+
+  // Loading state
+  if (isLoading && authState !== "dashboard") {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="portal-container" data-theme={theme}>
+        <style>{styles}</style>
+        <div className="loading-spinner">
+          <div className="spinner"></div>
+        </div>
       </div>
     )
   }
 
-  // Authenticated view - Show debts
-  if (isAuthenticated && client) {
+  // Dashboard view
+  if (authState === "dashboard" && profile) {
     const filteredDebts = getFilteredDebts()
-    const totalAmount = debts.reduce((sum, d) => sum + d.amount, 0)
-    const overdueAmount = debts.filter((d) => d.days_overdue > 0).reduce((sum, d) => sum + d.amount, 0)
+    const firstName = profile.full_name?.split(" ")[0] || "Usuario"
 
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="portal-container" data-theme={theme}>
+        <style>{styles}</style>
+
         {/* Header */}
-        <header className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Portal do Cliente</h1>
-                <p className="text-sm text-gray-600">
-                  Ola, {client.name || client.email}
-                </p>
-              </div>
+        <header className="header">
+          <div className="header-content">
+            <div className="logo">AlteaPay</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <button className="theme-toggle" onClick={toggleTheme}>
+                {theme === "dark" ? "☀️" : "🌙"}
+              </button>
+              <span style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
+                {profile.email}
+              </span>
               <button
+                className="portal-btn portal-btn-outline"
+                style={{ width: "auto", padding: "8px 16px" }}
                 onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 Sair
               </button>
@@ -256,308 +794,331 @@ export default function PortalPage() {
           </div>
         </header>
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-medium text-gray-500">Total de Dividas</h3>
-              <p className="text-2xl font-bold text-gray-900">{debts.length}</p>
+        {/* Main Content */}
+        <main className="main-content">
+          {/* Welcome */}
+          <section className="welcome-section">
+            <h1 className="welcome-title">Ola, {firstName}!</h1>
+            <p className="welcome-subtitle">
+              Confira suas dividas e realize pagamentos
+            </p>
+          </section>
+
+          {/* Summary */}
+          {summary && (
+            <div className="summary-grid">
+              <div className="summary-card">
+                <div className="summary-label">Total em Aberto</div>
+                <div className="summary-value red">
+                  {formatCurrency(summary.overdue_amount + summary.pending_amount)}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  {summary.overdue + summary.pending} divida(s)
+                </div>
+              </div>
+              <div className="summary-card">
+                <div className="summary-label">Em Negociacao</div>
+                <div className="summary-value gold">
+                  {formatCurrency(summary.negotiation_amount)}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  {summary.in_negotiation} divida(s)
+                </div>
+              </div>
+              <div className="summary-card">
+                <div className="summary-label">Ja Pago</div>
+                <div className="summary-value green">
+                  {formatCurrency(summary.paid_amount)}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  {summary.paid} divida(s)
+                </div>
+              </div>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-medium text-gray-500">Valor Total</h3>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalAmount)}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-medium text-gray-500">Valor Vencido</h3>
-              <p className="text-2xl font-bold text-red-600">{formatCurrency(overdueAmount)}</p>
-            </div>
-          </div>
+          )}
 
           {/* Filters */}
-          <div className="mb-6 flex gap-2">
-            {(["all", "open", "overdue", "paid"] as FilterStatus[]).map((status) => (
+          <div className="filter-tabs">
+            {[
+              { key: "all", label: "Todas" },
+              { key: "overdue", label: "Vencidas" },
+              { key: "pending", label: "Pendentes" },
+              { key: "paid", label: "Pagas" },
+            ].map((tab) => (
               <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`px-4 py-2 text-sm font-medium rounded-md ${
-                  filterStatus === status
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                }`}
+                key={tab.key}
+                className={`filter-tab ${filter === tab.key ? "active" : ""}`}
+                onClick={() => setFilter(tab.key as any)}
               >
-                {status === "all" && "Todos"}
-                {status === "open" && "Abertos"}
-                {status === "overdue" && "Vencidos"}
-                {status === "paid" && "Pagos"}
+                {tab.label}
               </button>
             ))}
           </div>
 
-          {/* Debts by Company */}
-          {Object.entries(debtsByCompany).length > 0 ? (
-            <div className="space-y-6">
-              {Object.entries(debtsByCompany).map(([companyName, companyDebts]) => {
-                const filteredCompanyDebts = companyDebts.filter((d) => {
-                  if (filterStatus === "all") return true
-                  if (filterStatus === "paid") return d.payment_status === "received" || d.payment_status === "completed" || d.status === "paid"
-                  if (filterStatus === "overdue") return d.days_overdue > 0 || d.status === "overdue"
-                  return d.status === "open" || d.status === "pending"
-                })
+          {/* Debts Section */}
+          <section>
+            <h2 className="section-title">Minhas Dividas</h2>
 
-                if (filteredCompanyDebts.length === 0) return null
+            {filteredDebts.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhuma divida encontrada</p>
+              </div>
+            ) : (
+              filteredDebts.map((debt, index) => {
+                const badge = getStatusBadge(debt.display_status)
+                const initials = debt.company_name
+                  .split(" ")
+                  .map((w) => w[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()
 
                 return (
-                  <div key={companyName} className="bg-white rounded-lg shadow overflow-hidden">
-                    <div className="px-6 py-4 bg-gray-50 border-b">
-                      <h2 className="text-lg font-semibold text-gray-900">{companyName}</h2>
-                      <p className="text-sm text-gray-600">
-                        {filteredCompanyDebts.length} divida(s)
-                      </p>
-                    </div>
-                    <div className="divide-y">
-                      {filteredCompanyDebts.map((debt) => (
-                        <div key={debt.id} className="px-6 py-4">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-gray-900">{debt.description}</p>
-                                {getStatusBadge(debt)}
-                              </div>
-                              <p className="text-sm text-gray-600 mt-1">
-                                Vencimento: {formatDate(debt.due_date)}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-lg font-bold text-gray-900">
-                                {formatCurrency(debt.amount)}
-                              </p>
-                              {debt.asaas_payment_url && debt.payment_status !== "received" && (
-                                <a
-                                  href={debt.asaas_payment_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-block mt-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700"
-                                >
-                                  Pagar Agora
-                                </a>
-                              )}
-                            </div>
+                  <div
+                    key={debt.id}
+                    className="debt-card"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    <div className="debt-card-header">
+                      <div className="company-info">
+                        <div className="company-avatar">{initials}</div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{debt.company_name}</div>
+                          <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                            {debt.description}
                           </div>
                         </div>
-                      ))}
+                      </div>
+                      <div className="debt-amount">{formatCurrency(debt.amount)}</div>
+                    </div>
+
+                    <div className="debt-details">
+                      <div className="debt-detail">
+                        <span className="debt-detail-label">Vencimento</span>
+                        <span className="debt-detail-value">{formatDate(debt.due_date)}</span>
+                      </div>
+
+                      {debt.days_overdue > 0 && (
+                        <div className="debt-detail">
+                          <span className="debt-detail-label">Dias em Atraso</span>
+                          <span className="debt-detail-value" style={{ color: "var(--red)" }}>
+                            {debt.days_overdue} dias
+                          </span>
+                        </div>
+                      )}
+
+                      <span className={`badge ${badge.class}`}>{badge.text}</span>
+
+                      <div className="debt-actions">
+                        {debt.invoice_url && debt.display_status !== "paid" && (
+                          <a
+                            href={debt.invoice_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="action-btn action-btn-primary"
+                          >
+                            Ver Fatura
+                          </a>
+                        )}
+                        {debt.bankslip_url && debt.display_status !== "paid" && (
+                          <a
+                            href={debt.bankslip_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="action-btn action-btn-secondary"
+                          >
+                            Boleto
+                          </a>
+                        )}
+                        {!debt.invoice_url && !debt.bankslip_url && debt.display_status !== "paid" && (
+                          <button className="action-btn action-btn-secondary" disabled>
+                            Negociar
+                          </button>
+                        )}
+                        {debt.display_status === "paid" && (
+                          <span style={{ color: "var(--green)", fontWeight: 500 }}>
+                            Pago
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <p className="text-gray-500">Nenhuma divida encontrada</p>
-            </div>
-          )}
+              })
+            )}
+          </section>
         </main>
       </div>
     )
   }
 
-  // Auth forms
+  // Auth view (login/signup)
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Portal do Cliente</h1>
-          <p className="text-gray-600 mt-2">Acesse suas dividas e realize pagamentos</p>
-        </div>
+    <div className="portal-container" data-theme={theme}>
+      <style>{styles}</style>
 
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          {/* Tab buttons */}
-          <div className="flex mb-6 border-b">
-            <button
-              onClick={() => { setAuthMode("login"); setError(""); setSuccess(""); }}
-              className={`flex-1 pb-3 text-sm font-medium ${
-                authMode === "login"
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Entrar
-            </button>
-            <button
-              onClick={() => { setAuthMode("signup"); setError(""); setSuccess(""); }}
-              className={`flex-1 pb-3 text-sm font-medium ${
-                authMode === "signup"
-                  ? "text-blue-600 border-b-2 border-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Criar Conta
-            </button>
+      <div className="auth-container">
+        <div className="auth-card portal-card">
+          <div className="auth-header">
+            <div className="auth-logo">AlteaPay</div>
+            <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
+              Portal do Cliente
+            </p>
           </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-              {error}
+          {/* Tabs */}
+          <div className="auth-tabs">
+            <div
+              className={`auth-tab ${authState === "login" ? "active" : ""}`}
+              onClick={() => {
+                setAuthState("login")
+                setError("")
+                setSuccess("")
+              }}
+            >
+              Entrar
             </div>
-          )}
-
-          {success && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm">
-              {success}
+            <div
+              className={`auth-tab ${authState === "signup" ? "active" : ""}`}
+              onClick={() => {
+                setAuthState("signup")
+                setError("")
+                setSuccess("")
+              }}
+            >
+              Criar Conta
             </div>
-          )}
+          </div>
 
-          {authMode === "login" ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+          {error && <div className="alert alert-error">{error}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
+
+          {authState === "login" ? (
+            <form className="auth-form" onSubmit={handleLogin}>
+              <div className="form-group">
+                <label className="form-label">Email</label>
                 <input
-                  id="email"
                   type="email"
+                  className="portal-input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="seu@email.com"
+                  required
                 />
               </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Senha
-                </label>
+              <div className="form-group">
+                <label className="form-label">Senha</label>
                 <input
-                  id="password"
                   type="password"
+                  className="portal-input"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="******"
+                  required
                 />
               </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
+              <button type="submit" className="portal-btn" disabled={isLoading}>
                 {isLoading ? "Entrando..." : "Entrar"}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSignup} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tipo de Documento
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="docType"
-                      value="cpf"
-                      checked={documentType === "cpf"}
-                      onChange={() => { setDocumentType("cpf"); setDocument(""); }}
-                      className="mr-2"
-                    />
-                    <span className="text-sm text-gray-700">CPF (Pessoa Fisica)</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="docType"
-                      value="cnpj"
-                      checked={documentType === "cnpj"}
-                      onChange={() => { setDocumentType("cnpj"); setDocument(""); }}
-                      className="mr-2"
-                    />
-                    <span className="text-sm text-gray-700">CNPJ (Pessoa Juridica)</span>
-                  </label>
+            <form className="auth-form" onSubmit={handleSignup}>
+              <div className="form-group">
+                <label className="form-label">Tipo de Documento</label>
+                <div className="doc-type-toggle">
+                  <div
+                    className={`doc-type-option ${documentType === "cpf" ? "active" : ""}`}
+                    onClick={() => {
+                      setDocumentType("cpf")
+                      setDocumentNumber("")
+                    }}
+                  >
+                    <span>CPF</span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Pessoa Fisica
+                    </span>
+                  </div>
+                  <div
+                    className={`doc-type-option ${documentType === "cnpj" ? "active" : ""}`}
+                    onClick={() => {
+                      setDocumentType("cnpj")
+                      setDocumentNumber("")
+                    }}
+                  >
+                    <span>CNPJ</span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Pessoa Juridica
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label htmlFor="document" className="block text-sm font-medium text-gray-700 mb-1">
-                  {documentType === "cpf" ? "CPF" : "CNPJ"}
-                </label>
+              <div className="form-group">
+                <label className="form-label">{documentType === "cpf" ? "CPF" : "CNPJ"}</label>
                 <input
-                  id="document"
                   type="text"
-                  value={document}
+                  className="portal-input"
+                  value={documentNumber}
                   onChange={(e) => handleDocumentChange(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder={documentType === "cpf" ? "000.000.000-00" : "00.000.000/0000-00"}
+                  required
                 />
               </div>
-              <div>
-                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+              <div className="form-group">
+                <label className="form-label">Nome Completo</label>
                 <input
-                  id="signup-email"
+                  type="text"
+                  className="portal-input"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Seu nome completo"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
                   type="email"
+                  className="portal-input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="seu@email.com"
+                  required
                 />
               </div>
-              <div>
-                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Senha
-                </label>
+              <div className="form-group">
+                <label className="form-label">Senha</label>
                 <input
-                  id="signup-password"
                   type="password"
+                  className="portal-input"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Minimo 6 caracteres"
+                  minLength={6}
+                  required
                 />
               </div>
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome (opcional)
-                </label>
+              <div className="form-group">
+                <label className="form-label">Telefone (opcional)</label>
                 <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Seu nome completo"
-                />
-              </div>
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefone (opcional)
-                </label>
-                <input
-                  id="phone"
                   type="tel"
+                  className="portal-input"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="(00) 00000-0000"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
+              <button type="submit" className="portal-btn" disabled={isLoading}>
                 {isLoading ? "Criando conta..." : "Criar Conta"}
               </button>
             </form>
           )}
-        </div>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Powered by AlteaPay
-        </p>
+          <div style={{ textAlign: "center", marginTop: "24px" }}>
+            <button className="theme-toggle" onClick={toggleTheme}>
+              {theme === "dark" ? "☀️ Tema Claro" : "🌙 Tema Escuro"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

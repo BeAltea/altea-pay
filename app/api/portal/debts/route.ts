@@ -1,284 +1,210 @@
-import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-interface PortalDebt {
-  id: string
-  company_name: string
-  company_id: string
-  description: string
-  amount: number
-  due_date: string
-  days_overdue: number
-  status: string
-  agreement_id?: string
-  asaas_payment_url?: string
-  asaas_pix_qrcode_url?: string
-  asaas_boleto_url?: string
-  payment_status?: string
-}
-
-async function getSessionClient(request: NextRequest) {
-  const token = request.cookies.get("portal_token")?.value
-
-  if (!token) {
-    return null
-  }
-
-  const supabase = createServiceClient()
-
-  // Find valid session
-  const { data: session } = await supabase
-    .from("final_client_sessions")
-    .select("final_client_id, expires_at")
-    .eq("token", token)
-    .single()
-
-  if (!session) {
-    return null
-  }
-
-  // Check if expired
-  if (new Date(session.expires_at) < new Date()) {
-    // Delete expired session
-    await supabase.from("final_client_sessions").delete().eq("token", token)
-    return null
-  }
-
-  // Get client
-  const { data: client } = await supabase
-    .from("final_clients")
-    .select("id, email, document, document_type, name, is_active")
-    .eq("id", session.final_client_id)
-    .single()
-
-  if (!client || !client.is_active) {
-    return null
-  }
-
-  return client
-}
-
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    // Get authenticated client
-    const client = await getSessionClient(request)
+    // Get authenticated user using Supabase SSR
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser()
 
-    if (!client) {
-      return NextResponse.json(
-        { error: "Nao autorizado" },
-        { status: 401 }
-      )
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Nao autorizado." }, { status: 401 })
     }
 
-    const supabase = createServiceClient()
-    const cleanDocument = client.document.replace(/\D/g, "")
-    const debts: PortalDebt[] = []
+    // Use service client for cross-company queries
+    const serviceSupabase = createServiceClient()
 
-    console.log(`[PORTAL-DEBTS] Fetching debts for document: ${cleanDocument}`)
+    // Get final_client profile
+    const { data: profile, error: profileErr } = await serviceSupabase
+      .from("final_clients")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle()
 
-    // Search in multiple tables that may contain debts
-    const tablesToSearch = ["VMAX", "customers", "clients"]
-
-    for (const tableName of tablesToSearch) {
-      try {
-        // Determine the document column based on table
-        let documentColumn = "document"
-        if (tableName === "VMAX") {
-          documentColumn = "CPF/CNPJ"
-        } else if (tableName === "clients") {
-          documentColumn = "document_number"
-        }
-
-        // Fetch records from the table
-        let query = supabase.from(tableName).select("*")
-
-        // For VMAX, we need to filter differently
-        if (tableName === "VMAX") {
-          // Get all records and filter in memory due to special column name
-          const { data: records, error } = await query
-
-          if (error) {
-            console.log(`[PORTAL-DEBTS] Table ${tableName} not accessible:`, error.message)
-            continue
-          }
-
-          // Filter by document
-          const matchingRecords = (records || []).filter((record: any) => {
-            const docValue = record["CPF/CNPJ"]
-            if (!docValue) return false
-            const cleanValue = String(docValue).replace(/\D/g, "")
-            return cleanValue === cleanDocument
-          })
-
-          // Get company info
-          const { data: vmaxCompany } = await supabase
-            .from("companies")
-            .select("id, name")
-            .eq("name", "VMAX")
-            .single()
-
-          for (const record of matchingRecords) {
-            // Parse amount from Vencido field
-            let amount = 0
-            if (record.Vencido) {
-              const vencidoStr = String(record.Vencido)
-              const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-              amount = parseFloat(cleanValue) || 0
-            }
-
-            // Parse days overdue
-            let daysOverdue = 0
-            if (record["Dias Inad."]) {
-              daysOverdue = parseInt(String(record["Dias Inad."]).replace(/\D/g, "")) || 0
-            }
-
-            // Try to find associated agreement
-            const { data: agreement } = await supabase
-              .from("agreements")
-              .select("id, asaas_payment_url, asaas_pix_qrcode_url, asaas_boleto_url, payment_status, status")
-              .eq("vmax_id", record.id)
-              .single()
-
-            debts.push({
-              id: record.id,
-              company_name: vmaxCompany?.name || "VMAX",
-              company_id: vmaxCompany?.id || "",
-              description: `Fatura - ${record.Cliente || "Sem descricao"}`,
-              amount,
-              due_date: record.Vecto || new Date().toISOString(),
-              days_overdue: daysOverdue,
-              status: daysOverdue > 0 ? "overdue" : "open",
-              agreement_id: agreement?.id,
-              asaas_payment_url: agreement?.asaas_payment_url,
-              asaas_pix_qrcode_url: agreement?.asaas_pix_qrcode_url,
-              asaas_boleto_url: agreement?.asaas_boleto_url,
-              payment_status: agreement?.payment_status || agreement?.status,
-            })
-          }
-        } else {
-          // For customers and clients tables
-          const { data: records, error } = await query
-
-          if (error) {
-            console.log(`[PORTAL-DEBTS] Table ${tableName} not accessible:`, error.message)
-            continue
-          }
-
-          const matchingRecords = (records || []).filter((record: any) => {
-            const docValue = record[documentColumn] || record.document || record.document_number
-            if (!docValue) return false
-            const cleanValue = String(docValue).replace(/\D/g, "")
-            return cleanValue === cleanDocument
-          })
-
-          for (const record of matchingRecords) {
-            // Get debts associated with this customer
-            const { data: customerDebts } = await supabase
-              .from("debts")
-              .select(`
-                id,
-                current_amount,
-                due_date,
-                days_overdue,
-                status,
-                company_id,
-                companies:company_id (name)
-              `)
-              .eq("customer_id", record.id)
-
-            for (const debt of customerDebts || []) {
-              // Get agreement for this debt
-              const { data: agreement } = await supabase
-                .from("agreements")
-                .select("id, asaas_payment_url, asaas_pix_qrcode_url, asaas_boleto_url, payment_status, status")
-                .eq("debt_id", debt.id)
-                .single()
-
-              debts.push({
-                id: debt.id,
-                company_name: (debt as any).companies?.name || "Empresa",
-                company_id: debt.company_id,
-                description: `Divida ref. ${record.name || record.Cliente || "Cliente"}`,
-                amount: debt.current_amount,
-                due_date: debt.due_date,
-                days_overdue: debt.days_overdue || 0,
-                status: debt.status,
-                agreement_id: agreement?.id,
-                asaas_payment_url: agreement?.asaas_payment_url,
-                asaas_pix_qrcode_url: agreement?.asaas_pix_qrcode_url,
-                asaas_boleto_url: agreement?.asaas_boleto_url,
-                payment_status: agreement?.payment_status || agreement?.status,
-              })
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`[PORTAL-DEBTS] Error searching ${tableName}:`, error)
-      }
+    if (profileErr || !profile) {
+      return NextResponse.json({ error: "Perfil nao encontrado." }, { status: 404 })
     }
 
-    // Also search agreements directly by customer document
-    try {
-      const { data: agreements } = await supabase
+    const cleanedDoc = profile.document_number.replace(/[^0-9]/g, "")
+
+    console.log(`[PORTAL-DEBTS] Fetching debts for document: ${cleanedDoc}`)
+
+    // Get all companies for mapping
+    const { data: allCompanies } = await serviceSupabase
+      .from("companies")
+      .select("id, name")
+
+    const companyMap = new Map(allCompanies?.map((c: any) => [c.id, c.name]) || [])
+
+    // Find customer by document
+    const { data: customer } = await serviceSupabase
+      .from("customers")
+      .select("id, name, document, company_id")
+      .eq("document", cleanedDoc)
+      .maybeSingle()
+
+    // Find all VMAX records matching this document
+    const { data: vmaxRecords } = await serviceSupabase.from("VMAX").select("*")
+
+    const matchingVmax = (vmaxRecords || []).filter((v: any) => {
+      const doc = v["CPF/CNPJ"]
+      if (!doc) return false
+      return doc.replace(/[^0-9]/g, "") === cleanedDoc
+    })
+
+    // Get agreements for this customer
+    let agreements: any[] = []
+    if (customer) {
+      const { data: customerAgreements } = await serviceSupabase
         .from("agreements")
-        .select(`
-          id,
-          total_amount,
-          first_due_date,
-          status,
-          payment_status,
-          asaas_payment_url,
-          asaas_pix_qrcode_url,
-          asaas_boleto_url,
-          company_id,
-          companies:company_id (name),
-          debts:debt_id (
-            id,
-            current_amount,
-            due_date,
-            days_overdue,
-            status
-          )
-        `)
+        .select("*")
+        .eq("customer_id", customer.id)
+        .order("created_at", { ascending: false })
 
-      // Filter agreements by customer document
-      // This requires looking up the customer associated with each agreement
-      // For now, we'll skip this as it's covered by the debt lookup above
-    } catch (error) {
-      console.error("[PORTAL-DEBTS] Error searching agreements:", error)
+      agreements = customerAgreements || []
+    }
+
+    // Build enriched debts list
+    const allDebts: any[] = []
+
+    for (const vmax of matchingVmax) {
+      // Parse amount
+      let amount = 0
+      if (vmax.Vencido) {
+        const vencidoStr = String(vmax.Vencido)
+        const cleanValue = vencidoStr
+          .replace(/R\$/g, "")
+          .replace(/\s/g, "")
+          .replace(/\./g, "")
+          .replace(",", ".")
+        amount = parseFloat(cleanValue) || 0
+      }
+
+      // Parse days overdue
+      let daysOverdue = 0
+      if (vmax["Dias Inad."]) {
+        daysOverdue = parseInt(String(vmax["Dias Inad."]).replace(/\D/g, "")) || 0
+      }
+
+      // Get company name
+      const companyId = vmax.id_company
+      const companyName = companyMap.get(companyId) || "Empresa"
+
+      // Find relevant agreement
+      const relevantAgreement = agreements.find(
+        (a: any) =>
+          a.asaas_status === "RECEIVED" ||
+          a.asaas_status === "CONFIRMED" ||
+          a.status === "completed" ||
+          a.status === "active"
+      ) || agreements[0]
+
+      // Determine status from agreement/ASAAS
+      let displayStatus = daysOverdue > 0 ? "overdue" : "pending"
+      let asaasPaymentUrl = null
+      let asaasBoletoUrl = null
+      let asaasPixQrcode = null
+      let asaasStatus = null
+
+      if (relevantAgreement) {
+        asaasPaymentUrl = relevantAgreement.asaas_payment_url
+        asaasBoletoUrl = relevantAgreement.asaas_boleto_url
+        asaasPixQrcode = relevantAgreement.asaas_pix_qrcode_url
+        asaasStatus = relevantAgreement.asaas_status
+
+        // Map ASAAS status
+        if (
+          asaasStatus === "RECEIVED" ||
+          asaasStatus === "CONFIRMED" ||
+          asaasStatus === "RECEIVED_IN_CASH"
+        ) {
+          displayStatus = "paid"
+        } else if (asaasStatus === "OVERDUE") {
+          displayStatus = "overdue"
+        } else if (relevantAgreement.status === "completed") {
+          displayStatus = "paid"
+        } else if (relevantAgreement.status === "active" && asaasPaymentUrl) {
+          displayStatus = "negotiation"
+        }
+      }
+
+      allDebts.push({
+        id: vmax.id,
+        client_name: vmax.Cliente,
+        company_id: companyId,
+        company_name: companyName,
+        description: `Fatura - ${vmax.Cliente || "Sem descricao"}`,
+        amount,
+        due_date: vmax.Vecto || new Date().toISOString(),
+        days_overdue: daysOverdue,
+        display_status: displayStatus,
+        asaas_status: asaasStatus,
+        invoice_url: asaasPaymentUrl,
+        bankslip_url: asaasBoletoUrl,
+        pix_qrcode: asaasPixQrcode,
+        agreement_id: relevantAgreement?.id,
+        agreement_status: relevantAgreement?.status,
+        source: "VMAX",
+      })
     }
 
     // Group by company
-    const debtsByCompany: Record<string, PortalDebt[]> = {}
-    for (const debt of debts) {
+    const debtsByCompany: Record<string, any[]> = {}
+    allDebts.forEach((debt) => {
       const key = debt.company_name
-      if (!debtsByCompany[key]) {
-        debtsByCompany[key] = []
-      }
+      if (!debtsByCompany[key]) debtsByCompany[key] = []
       debtsByCompany[key].push(debt)
+    })
+
+    // Calculate summary
+    const summary = {
+      total: allDebts.length,
+      total_amount: allDebts.reduce((s, d) => s + (d.amount || 0), 0),
+      overdue: allDebts.filter((d) => d.display_status === "overdue").length,
+      overdue_amount: allDebts
+        .filter((d) => d.display_status === "overdue")
+        .reduce((s, d) => s + (d.amount || 0), 0),
+      pending: allDebts.filter((d) => d.display_status === "pending").length,
+      pending_amount: allDebts
+        .filter((d) => d.display_status === "pending")
+        .reduce((s, d) => s + (d.amount || 0), 0),
+      paid: allDebts.filter((d) => d.display_status === "paid").length,
+      paid_amount: allDebts
+        .filter((d) => d.display_status === "paid")
+        .reduce((s, d) => s + (d.amount || 0), 0),
+      in_negotiation: allDebts.filter((d) => d.display_status === "negotiation").length,
+      negotiation_amount: allDebts
+        .filter((d) => d.display_status === "negotiation")
+        .reduce((s, d) => s + (d.amount || 0), 0),
+      companies_count: Object.keys(debtsByCompany).length,
     }
 
-    console.log(`[PORTAL-DEBTS] Found ${debts.length} debts for ${client.email}`)
+    console.log(`[PORTAL-DEBTS] Found ${allDebts.length} debts for ${profile.email}`)
 
     return NextResponse.json({
-      success: true,
-      client: {
-        id: client.id,
-        email: client.email,
-        document_type: client.document_type,
-        name: client.name,
+      profile: {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name,
+        document_type: profile.document_type,
+        document_number: profile.document_number,
       },
-      total_debts: debts.length,
+      companies: [...new Set(allDebts.map((d) => d.company_name))].map((name) => ({
+        name,
+        id: allDebts.find((d) => d.company_name === name)?.company_id,
+      })),
       debts_by_company: debtsByCompany,
-      debts,
+      all_debts: allDebts,
+      summary,
     })
-  } catch (error: any) {
-    console.error("[PORTAL-DEBTS] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+  } catch (err: any) {
+    console.error("[PORTAL-DEBTS] Error:", err)
+    return NextResponse.json({ error: "Erro interno." }, { status: 500 })
   }
 }
