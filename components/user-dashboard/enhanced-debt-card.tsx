@@ -37,6 +37,11 @@ interface EnhancedDebtCardProps {
     propensity_payment_score: string
     propensity_loan_score: string
     created_at: string
+    company_name?: string
+    asaas_payment_url?: string
+    asaas_status?: string
+    payment_status?: string
+    agreement_id?: string
   }
 }
 
@@ -49,6 +54,15 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
 
   const handlePaymentClick = () => {
     console.log("[v0] EnhancedDebtCard - Payment button clicked for debt:", debt.id)
+
+    // If we have an ASAAS payment URL, open it directly
+    if (debt.asaas_payment_url) {
+      console.log("[v0] EnhancedDebtCard - Opening ASAAS payment URL:", debt.asaas_payment_url)
+      window.open(debt.asaas_payment_url, "_blank")
+      return
+    }
+
+    // Fallback to modal if no ASAAS URL
     setIsPaymentModalOpen(true)
     console.log("[v0] EnhancedDebtCard - Payment modal state set to true")
   }
@@ -157,6 +171,8 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
                 <div>
                   <CardTitle className="text-lg">{debt.description}</CardTitle>
                   <p className="text-sm text-muted-foreground">
+                    {debt.company_name && <span className="font-medium">{debt.company_name}</span>}
+                    {debt.company_name && " • "}
                     Criada em {new Date(debt.created_at).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
@@ -230,10 +246,17 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
             {/* Actions */}
             {!isPaid && (
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <Button onClick={handlePaymentClick} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Pagar Agora
-                </Button>
+                {debt.asaas_payment_url ? (
+                  <Button onClick={handlePaymentClick} className="flex-1 bg-green-600 hover:bg-green-700">
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Ver Fatura / Pagar
+                  </Button>
+                ) : (
+                  <Button onClick={handlePaymentClick} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Pagar Agora
+                  </Button>
+                )}
 
                 <CreateNegotiationDialog
                   openDebts={[debt]}

@@ -138,21 +138,33 @@ export default async function UserDashboardPage() {
           })
 
           if (matchingRecords.length > 0) {
-            let companyId = profile.company_id
-            let companyName = "VMAX"
-
-            const { data: vmaxCompany } = await serviceSupabase
+            // Get all companies for lookup
+            const { data: companies } = await serviceSupabase
               .from("companies")
               .select("id, name")
-              .eq("name", "VMAX")
+
+            const companyMap = new Map(companies?.map((c: any) => [c.id, c.name]) || [])
+
+            // Get customer by document to find agreements
+            const { data: customer } = await serviceSupabase
+              .from("customers")
+              .select("id")
+              .eq("document", cleanCpfCnpj)
               .single()
 
-            if (vmaxCompany) {
-              companyId = vmaxCompany.id
-              companyName = vmaxCompany.name
+            // Get all agreements for this customer
+            let agreementsByCustomer: any[] = []
+            if (customer) {
+              const { data: agreements } = await serviceSupabase
+                .from("agreements")
+                .select("*")
+                .eq("customer_id", customer.id)
+                .order("created_at", { ascending: false })
+
+              agreementsByCustomer = agreements || []
             }
 
-            const formattedDebts = matchingRecords.map((debt) => {
+            const formattedDebts = matchingRecords.map((debt: any) => {
               let amount = 0
               if (debt.Vencido) {
                 const vencidoStr = String(debt.Vencido)
@@ -175,13 +187,51 @@ export default async function UserDashboardPage() {
 
               const dueDate = debt.Vecto || debt.due_date || new Date().toISOString()
 
+              // Get company name from id_company
+              const companyId = debt.id_company || profile.company_id
+              const companyName = companyMap.get(companyId) || "Empresa"
+
+              // Find the most recent active agreement for this customer
+              // Check both active agreements and RECEIVED payments
+              const relevantAgreement = agreementsByCustomer.find((a: any) =>
+                a.status === 'active' ||
+                a.status === 'completed' ||
+                a.asaas_status === 'RECEIVED' ||
+                a.asaas_status === 'CONFIRMED'
+              ) || agreementsByCustomer[0]
+
+              // Determine actual status based on agreement/ASAAS data
+              let actualStatus = daysOverdue > 0 ? "overdue" : "open"
+              let asaasPaymentUrl = null
+              let asaasStatus = null
+              let paymentStatus = null
+
+              if (relevantAgreement) {
+                asaasPaymentUrl = relevantAgreement.asaas_payment_url
+                asaasStatus = relevantAgreement.asaas_status
+                paymentStatus = relevantAgreement.payment_status
+
+                // Map ASAAS status to display status
+                if (asaasStatus === 'RECEIVED' || asaasStatus === 'CONFIRMED' || asaasStatus === 'RECEIVED_IN_CASH') {
+                  actualStatus = "paid"
+                } else if (relevantAgreement.status === 'completed') {
+                  actualStatus = "paid"
+                } else if (relevantAgreement.status === 'cancelled' && asaasStatus !== 'RECEIVED') {
+                  actualStatus = daysOverdue > 0 ? "overdue" : "open"
+                } else if (asaasStatus === 'OVERDUE') {
+                  actualStatus = "overdue"
+                } else if (asaasStatus === 'PENDING' && relevantAgreement.status === 'active') {
+                  actualStatus = "negotiated"
+                }
+              }
+
               return {
                 id: debt.id || `VMAX-${Math.random()}`,
                 user_id: user.id,
-                customer_id: null,
+                customer_id: customer?.id || null,
                 amount: amount,
                 due_date: dueDate,
-                status: daysOverdue > 0 ? "overdue" : "open",
+                status: actualStatus,
                 description: `Fatura - ${debt.Cliente || debt.name || "Sem descrição"}`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
@@ -193,6 +243,11 @@ export default async function UserDashboardPage() {
                 company_id: companyId,
                 company_name: companyName,
                 days_overdue: daysOverdue,
+                // ASAAS data
+                asaas_payment_url: asaasPaymentUrl,
+                asaas_status: asaasStatus,
+                payment_status: paymentStatus,
+                agreement_id: relevantAgreement?.id,
               }
             })
 
