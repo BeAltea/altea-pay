@@ -476,7 +476,7 @@ export default async function DashboardPage() {
               Negociacoes Recentes
             </span>
             <Link
-              href="/dashboard/acordos"
+              href="/dashboard/agreements"
               className="text-xs font-semibold hover:opacity-80"
               style={{ color: "var(--admin-gold-400)" }}
             >

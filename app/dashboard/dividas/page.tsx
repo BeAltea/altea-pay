@@ -55,21 +55,47 @@ export default async function DividasPage() {
     page++
   }
 
-  // Fetch non-cancelled agreements to determine actual payment status from ASAAS
+  // Fetch ALL agreements to determine actual payment status from ASAAS
   const { data: agreements } = await supabase
     .from("agreements")
     .select("customer_id, status, payment_status")
     .eq("company_id", companyId)
-    .neq("status", "cancelled")
 
-  // Build a map of customer_id -> agreement status for proper debt status calculation
-  const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean }>()
+  // Fetch customers table to map customer_id -> document (CPF/CNPJ)
+  const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
+  const customerDocMap = new Map<string, string>()
+
+  if (customerIds.length > 0) {
+    const { data: customersData } = await supabase
+      .from("customers")
+      .select("id, document")
+      .in("id", customerIds)
+
+    if (customersData) {
+      customersData.forEach((c: any) => {
+        const normalizedDoc = (c.document || "").replace(/\D/g, "")
+        if (normalizedDoc) {
+          customerDocMap.set(c.id, normalizedDoc)
+        }
+      })
+    }
+  }
+
+  // Build a map of normalized CPF/CNPJ -> agreement status for proper debt status calculation
+  // This matches the logic in relatorios and agreements pages
+  const docToStatus = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean }>()
 
   ;(agreements || []).forEach((a: any) => {
-    const customerId = a.customer_id
-    if (!customerId) return
+    const normalizedDoc = customerDocMap.get(a.customer_id)
+    if (!normalizedDoc) return
 
-    const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false }
+    const existing = docToStatus.get(normalizedDoc) || { hasAgreement: false, isPaid: false, isActive: false }
+
+    // Skip cancelled agreements for status calculation
+    if (a.status === "cancelled") {
+      return
+    }
+
     existing.hasAgreement = true
 
     // Check if this agreement has been paid (via ASAAS)
@@ -82,7 +108,7 @@ export default async function DividasPage() {
       existing.isActive = true
     }
 
-    agreementStatusMap.set(customerId, existing)
+    docToStatus.set(normalizedDoc, existing)
   })
 
   // Transform VMAX records to debt format with corrected status logic
@@ -102,8 +128,9 @@ export default async function DividasPage() {
       }
     }
 
-    // Determine status based on ASAAS payment data - NOT the legacy "DT Cancelamento" field
-    const agreementStatus = agreementStatusMap.get(record.id)
+    // Determine status based on ASAAS payment data using CPF/CNPJ mapping
+    const cpfCnpj = (record["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const agreementStatus = docToStatus.get(cpfCnpj)
     let status = "em_aberto"
     if (agreementStatus?.isPaid) {
       status = "quitada"
