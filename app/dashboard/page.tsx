@@ -126,7 +126,8 @@ export default async function DashboardPage() {
   }
 
   // Build map of customer_id -> agreement status (for ASAAS-backed negotiation status)
-  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean; isCancelled: boolean }>()
+  // This tracks UNIQUE CUSTOMERS to align with Super Admin logic
+  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean; isCancelled: boolean; hasActiveAgreement: boolean }>()
   const allAgreements = agreements || []
   // Active agreements exclude cancelled for stats calculation
   const activeAgreements = allAgreements.filter((a: any) => a.status !== "cancelled")
@@ -135,11 +136,14 @@ export default async function DashboardPage() {
     const customerId = a.customer_id
     if (!customerId) return
 
-    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false, isCancelled: false }
+    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false, isCancelled: false, hasActiveAgreement: false }
 
     // Track if cancelled - cancelled agreements should not count as "sent"
     if (a.status === "cancelled") {
       existing.isCancelled = true
+    } else {
+      // Has at least one non-cancelled agreement
+      existing.hasActiveAgreement = true
     }
 
     // Check if there's a real ASAAS charge (only count non-cancelled)
@@ -182,17 +186,28 @@ export default async function DashboardPage() {
     agingBuckets[bucket].value += amount
   })
 
-  // Count negotiations from agreements table - SAME LOGIC AS ACORDOS PAGE
-  // activeAgreements = all agreements minus cancelled (defined earlier in the code)
-  const negotiationsEnviadas = activeAgreements.length
+  // Count negotiations - ALIGNED WITH SUPER ADMIN LOGIC
+  // Count UNIQUE CUSTOMERS with non-cancelled agreements (not agreement records)
+  // This ensures consistency between portals
+  let customersWithNegotiation = 0
+  let customersWithPaidNegotiation = 0
+
+  agreementStatusMap.forEach((status) => {
+    // Customer has at least one non-cancelled agreement
+    if (status.hasActiveAgreement) {
+      customersWithNegotiation++
+    }
+    // Customer has at least one paid agreement
+    if (status.isPaid) {
+      customersWithPaidNegotiation++
+    }
+  })
+
+  const negotiationsEnviadas = customersWithNegotiation
   const negotiationsPendentes = totalClientes - negotiationsEnviadas
 
-  // Count paid negotiations
-  const negotiationsPagas = activeAgreements.filter((a: any) =>
-    a.payment_status === "received" ||
-    a.payment_status === "confirmed" ||
-    a.status === "completed"
-  ).length
+  // Count paid negotiations (unique customers with paid status)
+  const negotiationsPagas = customersWithPaidNegotiation
 
   // Calculate recovered debt from paid agreements
   const totalRecovered = activeAgreements
