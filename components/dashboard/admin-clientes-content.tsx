@@ -29,6 +29,7 @@ interface Cliente {
   asaasNegotiationStatus?: string
   hasAsaasCharge?: boolean
   hasActiveAgreement?: boolean
+  paymentStatus?: string | null // ASAAS payment status: pending, received, confirmed, overdue, etc.
   "Dias Inad.": number
   Vencido: string
   Vecto?: string
@@ -46,11 +47,12 @@ interface AdminClientesContentProps {
 type SortField = "name" | "debtValue" | "debtDate" | "diasAtraso" | "statusDivida" | "statusNegociacao"
 type SortDirection = "asc" | "desc"
 
-// Sort order for status columns
+// Sort order for status columns (debt status based on ASAAS payment status)
 const STATUS_DIVIDA_ORDER: Record<string, number> = {
-  em_aberto: 1,
-  parcial: 2,
-  quitada: 3,
+  em_aberto: 1,    // No negotiation sent
+  vencida: 2,      // ASAAS payment is overdue
+  aguardando: 3,   // Waiting for payment
+  quitada: 4,      // Paid
 }
 
 const STATUS_NEGOCIACAO_ORDER: Record<string, number> = {
@@ -149,18 +151,21 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         : (typeof rawDias === "string" ? (parseInt(rawDias.replace(/\./g, ""), 10) || 0) : 0)
       const asaasStatus = cliente.asaasNegotiationStatus
 
-      // Determine debt status
+      // Determine debt status using ASAAS payment_status as authoritative source
+      const paymentStatus = cliente.paymentStatus // pending, received, confirmed, overdue, etc.
       let debtStatus = "em_aberto"
-      if (asaasStatus === "PAGO") {
+      if (asaasStatus === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed") {
         debtStatus = "quitada"
+      } else if (paymentStatus === "overdue") {
+        debtStatus = "vencida"
       } else if (debtValue > 0 && asaasStatus === "ATIVA_ASAAS") {
-        debtStatus = "parcial" // Has active negotiation but not fully paid
+        debtStatus = "aguardando" // Has active negotiation pending payment
       }
 
       // Determine negotiation sort key
       let negotiationSortKey = STATUS_NEGOCIACAO_ORDER[asaasStatus || "NENHUMA"] || 4
       // If has ASAAS charge but overdue, use special "em_atraso" order
-      if (asaasStatus === "ATIVA_ASAAS" && diasAtraso > 0) {
+      if (asaasStatus === "ATIVA_ASAAS" && paymentStatus === "overdue") {
         negotiationSortKey = STATUS_NEGOCIACAO_ORDER["em_atraso"]
       }
 
@@ -219,23 +224,29 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       )
     }
 
-    // Debt status filter - using new display logic
+    // Debt status filter - using ASAAS payment_status as authoritative source
     if (debtStatusFilter !== "all") {
       filtered = filtered.filter(c => {
         const status = c.asaasNegotiationStatus
         const hasCharge = c.hasAsaasCharge
-        const diasInad = c.diasAtraso
+        const paymentStatus = c.paymentStatus // ASAAS payment status
 
         if (debtStatusFilter === "paga") {
-          return status === "PAGO"
+          return status === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed"
         }
         if (debtStatusFilter === "vencida") {
-          return (status === "ATIVA_ASAAS" || hasCharge) && diasInad > 0
+          // Vencida = ASAAS payment status is overdue
+          return paymentStatus === "overdue"
         }
         if (debtStatusFilter === "aguardando") {
-          return (status === "ATIVA_ASAAS" || hasCharge) && diasInad <= 0 && status !== "PAGO"
+          // Aguardando = has charge but not overdue and not paid
+          return (status === "ATIVA_ASAAS" || hasCharge) &&
+            paymentStatus !== "overdue" &&
+            paymentStatus !== "received" &&
+            paymentStatus !== "confirmed"
         }
         if (debtStatusFilter === "em_aberto") {
+          // Em aberto = no negotiation sent
           return !status || (!hasCharge && status !== "ATIVA_ASAAS" && status !== "PAGO")
         }
         return true
@@ -344,23 +355,24 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
   }
 
   // Status Dívida: "Em aberto" (red), "Aguardando pagamento" (blue), "Paga" (green), "Vencida" (orange)
+  // Uses ASAAS payment_status as the authoritative source for status display
   const getDebtStatusDisplay = (cliente: typeof clientesWithStatus[0]) => {
-    const status = cliente.asaasNegotiationStatus
+    const negotiationStatus = cliente.asaasNegotiationStatus
     const hasCharge = cliente.hasAsaasCharge
-    const diasInad = cliente.diasAtraso
+    const paymentStatus = cliente.paymentStatus // ASAAS payment status: pending, received, confirmed, overdue, etc.
 
-    // Paga - if negotiation status is PAGO
-    if (status === "PAGO") {
+    // Paga - if payment received/confirmed via ASAAS or negotiation status is PAGO
+    if (negotiationStatus === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed") {
       return { label: "Paga", color: "var(--admin-green)", bg: "var(--admin-green-bg)" }
     }
 
     // If has ASAAS charge (negotiation sent)
-    if (status === "ATIVA_ASAAS" || hasCharge) {
-      // Vencida - if has charge but overdue
-      if (diasInad > 0) {
+    if (negotiationStatus === "ATIVA_ASAAS" || hasCharge) {
+      // Vencida - if ASAAS payment status is overdue
+      if (paymentStatus === "overdue") {
         return { label: "Vencida", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
       }
-      // Aguardando pagamento - pending payment
+      // Aguardando pagamento - pending payment (ASAAS pending or no status yet)
       return { label: "Aguardando pagamento", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" }
     }
 

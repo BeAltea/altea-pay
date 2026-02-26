@@ -82,13 +82,13 @@ export default async function ClientesPage() {
 
     // Build a map of customer_id -> agreement status (based on ASAAS data)
     // MUST MATCH Acordos page logic: count all non-cancelled agreements
-    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean; hasActiveAgreement: boolean }>()
+    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean; hasActiveAgreement: boolean; paymentStatus: string | null }>()
 
     ;(agreements || []).forEach((a: any) => {
       const customerId = a.customer_id
       if (!customerId) return
 
-      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false, isCancelled: false, hasActiveAgreement: false }
+      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false, isCancelled: false, hasActiveAgreement: false, paymentStatus: null }
       existing.hasAgreement = true
 
       // Track cancelled status - cancelled agreements mean customer is back to "Em aberto"
@@ -105,6 +105,12 @@ export default async function ClientesPage() {
       // Check if there's a real ASAAS charge (only for non-cancelled)
       if (a.asaas_payment_id) {
         existing.hasAsaasCharge = true
+      }
+
+      // Store the actual ASAAS payment_status (e.g. "pending", "received", "overdue", "confirmed")
+      // This is the authoritative source for debt status display
+      if (a.payment_status) {
+        existing.paymentStatus = a.payment_status
       }
 
       // Check if this agreement has been paid (via ASAAS)
@@ -166,6 +172,7 @@ export default async function ClientesPage() {
         asaasNegotiationStatus, // Real ASAAS-backed status
         hasAsaasCharge: agreementStatus?.hasAsaasCharge || false,
         hasActiveAgreement: agreementStatus?.hasActiveAgreement || false, // For stats calculation
+        paymentStatus: agreementStatus?.paymentStatus || null, // ASAAS payment status for debt status display
       }
     })
 
