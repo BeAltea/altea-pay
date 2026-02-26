@@ -299,11 +299,15 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
       const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
-      const paymentRate = sent.length > 0 ? (paid.length / sent.length) * 100 : 0
+
+      // Count unique customers, not agreement records (to match Ao Vivo's 215)
+      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
+      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
+      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
 
       setDailyReport({
-        sent: sent.length,
-        paid: paid.length,
+        sent: uniqueSentCustomers,
+        paid: uniquePaidCustomers,
         revenue,
         paymentRate,
         activities,
@@ -356,7 +360,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const sent = sentData || []
       const paid = paidData || []
 
-      // Build daily breakdown
+      // Build daily breakdown - count unique customers per day
       const dailyBreakdown: PeriodReportData["dailyBreakdown"] = []
       const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"]
 
@@ -365,21 +369,29 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         dayDate.setDate(weekStart.getDate() + i)
         const dayStr = dayDate.toISOString().split("T")[0]
 
-        const daySent = sent.filter(a => a.created_at?.startsWith(dayStr)).length
-        const dayPaid = paid.filter(a => a.payment_received_at?.startsWith(dayStr))
-        const dayRevenue = dayPaid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+        const daySentAgreements = sent.filter(a => a.created_at?.startsWith(dayStr))
+        const dayPaidAgreements = paid.filter(a => a.payment_received_at?.startsWith(dayStr))
+        const dayRevenue = dayPaidAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+
+        // Count unique customers, not agreement records
+        const daySentCustomers = new Set(daySentAgreements.map(a => a.customer_id)).size
+        const dayPaidCustomers = new Set(dayPaidAgreements.map(a => a.customer_id)).size
 
         dailyBreakdown.push({
           day: dayStr,
           dayLabel: `${dayNames[dayDate.getDay()]} ${dayDate.getDate()}/${dayDate.getMonth() + 1}`,
-          sent: daySent,
-          paid: dayPaid.length,
+          sent: daySentCustomers,
+          paid: dayPaidCustomers,
           revenue: dayRevenue,
         })
       }
 
       const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
-      const paymentRate = sent.length > 0 ? (paid.length / sent.length) * 100 : 0
+
+      // Count unique customers, not agreement records (to match Ao Vivo's 215)
+      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
+      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
+      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
 
       // Get customer info for activities
       const allCustomerIds = [...new Set([
@@ -403,8 +415,8 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       })
 
       setWeeklyReport({
-        sent: sent.length,
-        paid: paid.length,
+        sent: uniqueSentCustomers,
+        paid: uniquePaidCustomers,
         revenue,
         paymentRate,
         activities,
@@ -460,7 +472,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const paid = paidData || []
       const all = allAgreements || []
 
-      // Build weekly breakdown
+      // Build weekly breakdown - count unique customers per week
       const weeklyBreakdown: PeriodReportData["weeklyBreakdown"] = []
       const weeksInMonth = Math.ceil(end.getDate() / 7)
 
@@ -468,10 +480,10 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         const weekStartDay = w * 7 + 1
         const weekEndDay = Math.min((w + 1) * 7, end.getDate())
 
-        const weekSent = sent.filter(a => {
+        const weekSentAgreements = sent.filter(a => {
           const day = new Date(a.created_at).getDate()
           return day >= weekStartDay && day <= weekEndDay
-        }).length
+        })
 
         const weekPaidAgreements = paid.filter(a => {
           const day = new Date(a.payment_received_at || a.created_at).getDate()
@@ -479,25 +491,38 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         })
         const weekRevenue = weekPaidAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
+        // Count unique customers, not agreement records
+        const weekSentCustomers = new Set(weekSentAgreements.map(a => a.customer_id)).size
+        const weekPaidCustomers = new Set(weekPaidAgreements.map(a => a.customer_id)).size
+
         weeklyBreakdown.push({
           week: `Semana ${w + 1}`,
           weekLabel: `${weekStartDay.toString().padStart(2, "0")}-${weekEndDay.toString().padStart(2, "0")}`,
-          sent: weekSent,
-          paid: weekPaidAgreements.length,
+          sent: weekSentCustomers,
+          paid: weekPaidCustomers,
           revenue: weekRevenue,
         })
       }
 
-      // Status breakdown
+      // Status breakdown - count unique customers per status
+      const aguardandoCustomers = new Set(all.filter(a => a.status !== "cancelled" && !["received", "confirmed"].includes(a.payment_status || "") && a.payment_status !== "overdue").map(a => a.customer_id))
+      const pagoCustomers = new Set(all.filter(a => ["received", "confirmed"].includes(a.payment_status || "")).map(a => a.customer_id))
+      const vencidaCustomers = new Set(all.filter(a => a.payment_status === "overdue").map(a => a.customer_id))
+      const canceladaCustomers = new Set(all.filter(a => a.status === "cancelled").map(a => a.customer_id))
+
       const statusBreakdown = {
-        aguardando: all.filter(a => a.status !== "cancelled" && !["received", "confirmed"].includes(a.payment_status || "") && a.payment_status !== "overdue").length,
-        pago: all.filter(a => ["received", "confirmed"].includes(a.payment_status || "")).length,
-        vencida: all.filter(a => a.payment_status === "overdue").length,
-        cancelada: all.filter(a => a.status === "cancelled").length,
+        aguardando: aguardandoCustomers.size,
+        pago: pagoCustomers.size,
+        vencida: vencidaCustomers.size,
+        cancelada: canceladaCustomers.size,
       }
 
       const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
-      const paymentRate = sent.length > 0 ? (paid.length / sent.length) * 100 : 0
+
+      // Count unique customers, not agreement records (to match Ao Vivo's 215)
+      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
+      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
+      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
 
       // Get customer info for top payments
       const allCustomerIds = [...new Set(paid.map(a => a.customer_id).filter(Boolean))]
@@ -520,8 +545,8 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         })
 
       setMonthlyReport({
-        sent: sent.length,
-        paid: paid.length,
+        sent: uniqueSentCustomers,
+        paid: uniquePaidCustomers,
         revenue,
         paymentRate,
         activities,
