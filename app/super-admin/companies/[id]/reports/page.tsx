@@ -1,68 +1,198 @@
-"use client"
-
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+import { notFound } from "next/navigation"
 import {
   FileText,
   ArrowLeft,
-  Download,
   TrendingUp,
   Users,
   DollarSign,
-  Calendar,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
   BarChart3,
-  PieChart,
 } from "lucide-react"
 
-export default function CompanyReportsPage({ params }: { params: { id: string } }) {
-  const { id } = params
-  const [selectedPeriod, setSelectedPeriod] = useState("current-month")
+interface CompanyReportsProps {
+  params: Promise<{
+    id: string
+  }>
+}
 
-  const companyName = "Enel Distribuição São Paulo"
+export default async function CompanyReportsPage({ params }: CompanyReportsProps) {
+  const { id } = await params
+  const supabase = createAdminClient()
 
-  const reportData = {
-    performance: {
-      totalCustomers: 1247,
-      totalDebts: 3456,
-      totalAmount: 2847392.5,
-      recoveredAmount: 1234567.89,
-      recoveryRate: 43.4,
-      monthlyGrowth: 12.5,
-    },
-    trends: [
-      { month: "Jan", recovered: 180000, target: 200000 },
-      { month: "Fev", recovered: 220000, target: 210000 },
-      { month: "Mar", recovered: 280000, target: 250000 },
-    ],
-    segments: [
-      { segment: "Residencial", customers: 856, amount: 1456789.23, rate: 45.2 },
-      { segment: "Comercial", customers: 312, amount: 987654.32, rate: 38.7 },
-      { segment: "Industrial", customers: 79, amount: 402948.95, rate: 52.1 },
-    ],
+  // Fetch company data
+  const { data: companyData, error: companyError } = await supabase
+    .from("companies")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (companyError || !companyData) {
+    console.error("[v0] Error fetching company:", companyError)
+    notFound()
   }
 
-  const handleExportReport = (reportType: string) => {
-    console.log("[v0] Exportando relatório:", reportType, "para empresa:", id)
+  // Fetch VMAX data for this company with pagination
+  let vmaxData: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
 
-    const csvContent = `data:text/csv;charset=utf-8,Relatório ${reportType} - ${companyName}\\n\\nPeríodo: ${selectedPeriod}\\nTotal de Clientes: ${reportData.performance.totalCustomers}\\nTaxa de Recuperação: ${reportData.performance.recoveryRate}%\\n\\nExportado em: ${new Date().toLocaleString("pt-BR")}`
+  while (hasMore) {
+    const { data: vmaxPage, error: vmaxPageError } = await supabase
+      .from("VMAX")
+      .select("*")
+      .eq("id_company", id)
+      .range(page * pageSize, (page + 1) * pageSize - 1)
 
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
-    link.setAttribute(
-      "download",
-      `relatorio-${reportType}-${companyName.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.csv`,
-    )
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    if (vmaxPageError) {
+      console.log("[v0] VMAX page error:", vmaxPageError.message)
+      break
+    }
 
-    alert(`Relatório ${reportType} exportado com sucesso!`)
+    if (vmaxPage && vmaxPage.length > 0) {
+      vmaxData = [...vmaxData, ...vmaxPage]
+      page++
+      hasMore = vmaxPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  // Fetch completed agreements for recovery calculation
+  const { data: completedAgreements } = await supabase
+    .from("agreements")
+    .select("id, agreed_amount, customer_id")
+    .eq("company_id", id)
+    .eq("status", "completed")
+
+  // Get customers for document mapping
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, document")
+    .eq("company_id", id)
+
+  // Build customer -> document map
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of customers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Get documents with paid agreements
+  const paidDocs = new Set<string>()
+  for (const a of completedAgreements || []) {
+    const doc = customerIdToDoc.get(a.customer_id)
+    if (doc) paidDocs.add(doc)
+  }
+
+  // Also check VMAX negotiation_status for PAGO
+  for (const v of vmaxData || []) {
+    if (v.negotiation_status === "PAGO") {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      if (doc) paidDocs.add(doc)
+    }
+  }
+
+  // Helper functions
+  const isPaid = (v: any) => {
+    const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+    return paidDocs.has(doc) || v.negotiation_status === "PAGO"
+  }
+
+  const parseVencido = (v: any) => {
+    const vencidoStr = String(v.Vencido || "0")
+    const cleanValue = vencidoStr
+      .replace(/R\$/g, "")
+      .replace(/\s/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+    return Number(cleanValue) || 0
+  }
+
+  // Calculate KPIs
+  const totalCustomers = vmaxData.length
+  const totalDebts = vmaxData.filter((v) => !isPaid(v)).length
+
+  const vmaxPendingAmount = vmaxData
+    .filter((v) => !isPaid(v))
+    .reduce((sum, v) => sum + parseVencido(v), 0)
+
+  const vmaxRecoveredAmount = vmaxData
+    .filter((v) => isPaid(v))
+    .reduce((sum, v) => sum + parseVencido(v), 0)
+
+  const totalOriginalAmount = vmaxPendingAmount + vmaxRecoveredAmount
+  const recoveryRate = totalOriginalAmount > 0 ? (vmaxRecoveredAmount / totalOriginalAmount) * 100 : 0
+
+  // Count by status
+  const aprovados = vmaxData.filter((v) => v.approval_status === "ACEITA").length
+  const rejeitados = vmaxData.filter((v) => v.approval_status === "REJEITA").length
+  const pendentes = vmaxData.filter((v) => !v.approval_status || v.approval_status === "PENDENTE").length
+
+  // Calculate overdue
+  const overdueCustomers = vmaxData.filter((v) => {
+    if (isPaid(v)) return false
+    const diasInadStr = String(v["Dias Inad."] || "0")
+    const diasInad = Number(diasInadStr.replace(/\./g, "")) || 0
+    return diasInad > 0
+  }).length
+
+  // Calculate average score
+  const scoresValidos = vmaxData
+    .map((c) => c.credit_score)
+    .filter((s) => s && s > 0)
+  const averageScore = scoresValidos.length > 0
+    ? scoresValidos.reduce((sum, s) => sum + s, 0) / scoresValidos.length
+    : 0
+
+  // Days overdue distribution
+  const daysOverdueData = vmaxData.map((v) => {
+    const diasStr = String(v["Dias Inad."] || "0")
+    return Number(diasStr.replace(/\./g, "")) || 0
+  })
+  const avgDaysOverdue = daysOverdueData.length > 0
+    ? daysOverdueData.reduce((sum, days) => sum + days, 0) / daysOverdueData.length
+    : 0
+
+  const debts0to30 = daysOverdueData.filter((d) => d >= 0 && d <= 30).length
+  const debts31to60 = daysOverdueData.filter((d) => d > 30 && d <= 60).length
+  const debts61to90 = daysOverdueData.filter((d) => d > 60 && d <= 90).length
+  const debtsOver90 = daysOverdueData.filter((d) => d > 90).length
+
+  const reportData = {
+    company: {
+      id: companyData.id,
+      name: companyData.name,
+    },
+    performance: {
+      totalCustomers,
+      totalDebts,
+      totalAmount: vmaxPendingAmount,
+      recoveredAmount: vmaxRecoveredAmount,
+      recoveryRate,
+      averageScore,
+      avgDaysOverdue,
+    },
+    status: {
+      aprovados,
+      rejeitados,
+      pendentes,
+      overdueCustomers,
+    },
+    distribution: {
+      debts0to30,
+      debts31to60,
+      debts61to90,
+      debtsOver90,
+    },
   }
 
   return (
@@ -71,18 +201,18 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0 flex items-center space-x-4">
           <Avatar className="h-16 w-16">
-            <AvatarImage src={`/generic-placeholder-icon.png`} alt={companyName} />
+            <AvatarImage src={companyData.logo_url || ""} alt={companyData.name} />
             <AvatarFallback className="bg-altea-gold/10 text-altea-navy text-lg">
-              {companyName
+              {companyData.name
                 .split(" ")
-                .map((n) => n[0])
+                .map((n: string) => n[0])
                 .join("")
                 .slice(0, 2)}
             </AvatarFallback>
           </Avatar>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Relatórios da Empresa</h1>
-            <p className="text-gray-600 dark:text-gray-400">{companyName}</p>
+            <p className="text-gray-600 dark:text-gray-400">{companyData.name}</p>
           </div>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
@@ -92,17 +222,6 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
               Voltar
             </Link>
           </Button>
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Selecionar período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current-month">Mês Atual</SelectItem>
-              <SelectItem value="last-month">Mês Anterior</SelectItem>
-              <SelectItem value="quarter">Trimestre</SelectItem>
-              <SelectItem value="year">Ano</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
@@ -114,21 +233,21 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reportData.performance.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+{reportData.performance.monthlyGrowth}%</span> vs mês anterior
-            </p>
+            <div className="text-2xl font-bold">{totalCustomers.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{overdueCustomers} inadimplentes</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Volume Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Volume em Cobrança</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {(reportData.performance.totalAmount / 1000000).toFixed(1)}M</div>
-            <p className="text-xs text-muted-foreground">Em cobrança</p>
+            <div className="text-2xl font-bold">
+              {vmaxPendingAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </div>
+            <p className="text-xs text-muted-foreground">{totalDebts} dívidas ativas</p>
           </CardContent>
         </Card>
 
@@ -138,216 +257,171 @@ export default function CompanyReportsPage({ params }: { params: { id: string } 
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{reportData.performance.recoveryRate.toFixed(1)}%</div>
+            <div className="text-2xl font-bold text-green-600">{recoveryRate.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              R$ {(reportData.performance.recoveredAmount / 1000).toFixed(0)}k recuperado
+              {vmaxRecoveredAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} recuperado
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Dívidas Ativas</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Score Médio</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reportData.performance.totalDebts.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Total de dívidas</p>
+            <div className="text-2xl font-bold">{averageScore.toFixed(0)}</div>
+            <p className="text-xs text-muted-foreground">Análise restritiva</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Report Tabs */}
-      <Tabs defaultValue="performance" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="trends">Tendências</TabsTrigger>
-          <TabsTrigger value="segments">Segmentação</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="performance" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center space-x-2">
-                  <BarChart3 className="h-5 w-5" />
-                  <span>Relatório de Performance</span>
-                </CardTitle>
-                <Button size="sm" onClick={() => handleExportReport("performance")}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium">Taxa de Recuperação</span>
-                    <span className="text-sm text-green-600">{reportData.performance.recoveryRate.toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-green-600 h-2 rounded-full"
-                      style={{ width: `${reportData.performance.recoveryRate}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+      {/* Status de Análises */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Status de Análises</CardTitle>
+            <CardDescription>Distribuição de aprovações e rejeições</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/10 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
                   <div>
-                    <p className="text-sm font-medium">Valor Recuperado</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      R$ {(reportData.performance.recoveredAmount / 1000).toFixed(0)}k
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Crescimento</p>
-                    <p className="text-2xl font-bold text-blue-600">+{reportData.performance.monthlyGrowth}%</p>
+                    <p className="font-semibold text-gray-900 dark:text-white">Aprovados</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Status: ACEITA</p>
                   </div>
                 </div>
-
-                <div className="pt-4 border-t">
-                  <h4 className="font-medium mb-2">Insights Principais</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>• Taxa de recuperação acima da média do setor</li>
-                    <li>• Crescimento consistente nos últimos 3 meses</li>
-                    <li>• Melhor performance em clientes residenciais</li>
-                    <li>• Oportunidade de melhoria em clientes comerciais</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center space-x-2">
-                  <Calendar className="h-5 w-5" />
-                  <span>Análise Temporal</span>
-                </CardTitle>
-                <Button size="sm" onClick={() => handleExportReport("temporal")}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-blue-600">
-                      {reportData.trends
-                        .reduce((sum, month) => sum + month.recovered, 0)
-                        .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </p>
-                    <p className="text-sm text-gray-600">Total recuperado no período</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    {reportData.trends.map((month, index) => (
-                      <div key={month.month} className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{month.month}</span>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-24 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full"
-                              style={{ width: `${(month.recovered / month.target) * 100}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm text-gray-600">
-                            {((month.recovered / month.target) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="trends" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center space-x-2">
-                <TrendingUp className="h-5 w-5" />
-                <span>Análise de Tendências</span>
-              </CardTitle>
-              <Button onClick={() => handleExportReport("tendencias")}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar Relatório
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {reportData.trends.map((month, index) => (
-                  <Card key={month.month}>
-                    <CardContent className="p-4">
-                      <div className="text-center">
-                        <h3 className="font-bold text-lg">{month.month}</h3>
-                        <p className="text-2xl font-bold text-green-600">
-                          {month.recovered.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Meta: {month.target.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </p>
-                        <div className="mt-2">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${month.recovered >= month.target ? "bg-green-600" : "bg-yellow-600"}`}
-                              style={{ width: `${Math.min((month.recovered / month.target) * 100, 100)}%` }}
-                            ></div>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {((month.recovered / month.target) * 100).toFixed(1)}% da meta
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                <p className="text-2xl font-bold text-green-600">{aprovados}</p>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="segments" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center space-x-2">
-                <PieChart className="h-5 w-5" />
-                <span>Segmentação de Clientes</span>
-              </CardTitle>
-              <Button onClick={() => handleExportReport("segmentacao")}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar Relatório
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {reportData.segments.map((segment, index) => (
+              <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-8 w-8 text-red-600" />
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white">Rejeitados</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Status: REJEITA</p>
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-red-600">{rejeitados}</p>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-8 w-8 text-orange-600" />
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white">Inadimplentes</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Com débitos vencidos</p>
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-orange-600">{overdueCustomers}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Resumo Financeiro</CardTitle>
+            <CardDescription>Visão geral dos valores em cobrança</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total em Cobrança</span>
+                  <span className="text-lg font-bold text-red-600">
+                    {vmaxPendingAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div className="bg-red-600 h-2 rounded-full" style={{ width: "100%" }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Valor Recuperado</span>
+                  <span className="text-lg font-bold text-green-600">
+                    {vmaxRecoveredAmount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
-                    key={segment.segment}
-                    className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <h3 className="font-medium">{segment.segment}</h3>
-                      <p className="text-sm text-gray-600">{segment.customers.toLocaleString()} clientes</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-bold">
-                        {segment.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </p>
-                      <p className="text-sm text-gray-600">Volume</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-bold text-green-600">{segment.rate.toFixed(1)}%</p>
-                      <p className="text-sm text-gray-600">Taxa</p>
-                    </div>
-                  </div>
-                ))}
+                    className="bg-green-600 h-2 rounded-full"
+                    style={{ width: `${recoveryRate}%` }}
+                  ></div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Taxa de Aprovação</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {totalCustomers > 0 ? ((aprovados / totalCustomers) * 100).toFixed(1) : 0}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Distribuição de Atrasos */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Distribuição de Atrasos</CardTitle>
+          <CardDescription>Classificação por dias de inadimplência</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/10 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="text-sm font-medium">0-30 dias</span>
+              </div>
+              <span className="text-lg font-bold">{debts0to30}</span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span className="text-sm font-medium">31-60 dias</span>
+              </div>
+              <span className="text-lg font-bold">{debts31to60}</span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                <span className="text-sm font-medium">61-90 dias</span>
+              </div>
+              <span className="text-lg font-bold">{debts61to90}</span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <span className="text-sm font-medium">+90 dias</span>
+              </div>
+              <span className="text-lg font-bold">{debtsOver90}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info about real data */}
+      <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-800">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
+            <div>
+              <p className="font-semibold text-blue-900 dark:text-blue-100">Dados Reais do Sistema</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                Todos os dados exibidos nesta página são provenientes do banco de dados real do sistema,
+                refletindo as análises restritivas realizadas via Assertiva e o status atual de cada cliente
+                da empresa {companyData.name}.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

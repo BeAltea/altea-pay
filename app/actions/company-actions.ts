@@ -1,6 +1,5 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 
@@ -17,6 +16,8 @@ export interface CreateCompanyParams {
 
 export interface UpdateCompanyParams extends CreateCompanyParams {
   id: string
+  status?: "active" | "inactive" | "suspended"
+  notes?: string
 }
 
 export interface DeleteCompanyParams {
@@ -56,7 +57,7 @@ const parseCSVLine = (line: string, delimiter: string): string[] => {
 
 export async function createCompany(params: CreateCompanyParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase
       .from("companies")
@@ -94,20 +95,29 @@ export async function createCompany(params: CreateCompanyParams) {
 
 export async function updateCompany(params: UpdateCompanyParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    const updateData: Record<string, unknown> = {
+      name: params.name,
+      cnpj: params.cnpj,
+      email: params.email,
+      phone: params.phone,
+      address: params.address || null,
+      city: params.city || null,
+      state: params.state || null,
+      zipcode: params.zipcode || null,
+    }
+
+    if (params.status !== undefined) {
+      updateData.status = params.status
+    }
+    if (params.notes !== undefined) {
+      updateData.description = params.notes
+    }
 
     const { data, error } = await supabase
       .from("companies")
-      .update({
-        name: params.name,
-        cnpj: params.cnpj,
-        email: params.email,
-        phone: params.phone,
-        address: params.address || null,
-        city: params.city || null,
-        state: params.state || null,
-        zipcode: params.zipcode || null,
-      })
+      .update(updateData)
       .eq("id", params.id)
       .select()
       .single()
@@ -116,6 +126,7 @@ export async function updateCompany(params: UpdateCompanyParams) {
 
     revalidatePath("/super-admin/companies")
     revalidatePath(`/super-admin/companies/${params.id}`)
+    revalidatePath(`/super-admin/companies/${params.id}/edit`)
 
     return {
       success: true,
@@ -134,7 +145,7 @@ export async function updateCompany(params: UpdateCompanyParams) {
 
 export async function deleteCompany(params: DeleteCompanyParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Check if company has users or data
     const { data: users } = await supabase.from("profiles").select("id").eq("company_id", params.id).limit(1)
@@ -339,7 +350,7 @@ export async function createCompanyWithCustomers(formData: FormData, customers?:
 export async function importCustomersToCompany(companyId: string, customers: any[]) {
   try {
     console.log("[v0] ===== INICIANDO IMPORTAÇÃO DE CLIENTES =====")
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     if (!companyId) {
       return {
@@ -429,8 +440,7 @@ export async function importCustomersToCompany(companyId: string, customers: any
     if (validCustomers.length > 0) {
       console.log("[v0] Inserindo clientes no banco de dados...")
 
-      const adminClient = createAdminClient()
-      const { data: insertedCustomers, error: customersError } = await adminClient
+      const { data: insertedCustomers, error: customersError } = await supabase
         .from("customers")
         .insert(validCustomers)
         .select()

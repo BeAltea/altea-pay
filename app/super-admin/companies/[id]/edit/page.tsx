@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,8 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
-import { Building2, Save, ArrowLeft } from "lucide-react"
+import { Building2, Save, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { updateCompany } from "@/app/actions/company-actions"
+import { useToast } from "@/hooks/use-toast"
+import { createBrowserClient } from "@/lib/supabase/client"
 
 interface CompanyFormData {
   name: string
@@ -27,24 +30,85 @@ interface CompanyFormData {
   notes: string
 }
 
-export default function EditCompanyPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function EditCompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const { toast } = useToast()
+  const [companyId, setCompanyId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
 
-  // Mock data for company
   const [formData, setFormData] = useState<CompanyFormData>({
-    name: "Enel Distribuição São Paulo",
-    cnpj: "33.479.023/0001-80",
-    email: "admin@enel.com.br",
-    phone: "(11) 3003-0303",
-    address: "Rua Ática, 673",
-    city: "São Paulo",
-    state: "SP",
-    zipCode: "04634-042",
+    name: "",
+    cnpj: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    zipCode: "",
     status: "active",
-    notes: "Empresa de distribuição de energia elétrica com excelente histórico de pagamentos.",
+    notes: "",
   })
+
+  useEffect(() => {
+    async function resolveParams() {
+      const resolvedParams = await params
+      setCompanyId(resolvedParams.id)
+    }
+    resolveParams()
+  }, [params])
+
+  useEffect(() => {
+    if (!companyId) return
+
+    async function fetchCompanyData() {
+      setIsFetching(true)
+      try {
+        const supabase = createBrowserClient()
+
+        const { data: company, error } = await supabase
+          .from("companies")
+          .select("*")
+          .eq("id", companyId)
+          .single()
+
+        if (error) throw error
+
+        if (company) {
+          setFormData({
+            name: company.name || "",
+            cnpj: company.cnpj || "",
+            email: company.email || "",
+            phone: company.phone || "",
+            address: company.address || "",
+            city: company.city || "",
+            state: company.state || "",
+            zipCode: company.zipcode || company.zip_code || "",
+            status: company.status || "active",
+            notes: company.notes || company.description || "",
+          })
+        } else {
+          toast({
+            title: "Erro",
+            description: "Empresa não encontrada",
+            variant: "destructive",
+          })
+          router.push("/super-admin/companies")
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching company:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar dados da empresa",
+          variant: "destructive",
+        })
+      } finally {
+        setIsFetching(false)
+      }
+    }
+
+    fetchCompanyData()
+  }, [companyId, router, toast])
 
   const handleInputChange = (field: keyof CompanyFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -52,16 +116,59 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!companyId) return
+
     setIsLoading(true)
 
-    console.log("[v0] Salvando dados da empresa:", formData)
+    try {
+      const result = await updateCompany({
+        id: companyId,
+        name: formData.name,
+        cnpj: formData.cnpj,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zipcode: formData.zipCode,
+        status: formData.status,
+        notes: formData.notes,
+      })
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (result.success) {
+        toast({
+          title: "Sucesso",
+          description: "Dados da empresa atualizados com sucesso!",
+        })
+        router.push(`/super-admin/companies/${companyId}`)
+      } else {
+        toast({
+          title: "Erro",
+          description: result.message || "Erro ao atualizar empresa",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error updating company:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar empresa",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-    alert("Dados da empresa atualizados com sucesso!")
-    setIsLoading(false)
-    router.push(`/super-admin/companies/${id}`)
+  if (isFetching || !companyId) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-altea-gold" />
+          <p className="text-gray-600 dark:text-gray-400">Carregando dados da empresa...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -76,17 +183,17 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
-                .slice(0, 2)}
+                .slice(0, 2) || "??"}
             </AvatarFallback>
           </Avatar>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Editar Empresa</h1>
-            <p className="text-gray-600 dark:text-gray-400">{formData.name}</p>
+            <p className="text-gray-600 dark:text-gray-400">{formData.name || "Carregando..."}</p>
           </div>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/companies/${id}`}>
+            <Link href={`/super-admin/companies/${companyId}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>
@@ -221,11 +328,14 @@ export default function EditCompanyPage({ params }: { params: { id: string } }) 
 
         <div className="flex justify-end space-x-4">
           <Button type="button" variant="outline" asChild>
-            <Link href={`/super-admin/companies/${id}`}>Cancelar</Link>
+            <Link href={`/super-admin/companies/${companyId}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? (
-              <>Salvando...</>
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Salvando...
+              </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
