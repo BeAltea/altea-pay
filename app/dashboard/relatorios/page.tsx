@@ -55,17 +55,104 @@ export default async function RelatoriosPage() {
     page++
   }
 
-  // Fetch non-cancelled agreements (aligns with Dashboard and Acordos page)
+  // Fetch ALL agreements for this company (including cancelled for stats)
   const { data: agreements } = await supabase
     .from("agreements")
     .select("*")
     .eq("company_id", companyId)
-    .neq("status", "cancelled")
     .order("created_at", { ascending: false })
 
-  // Build customer name lookup map from agreements
-  const agreementCustomerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
+  // Fetch customers table to map customer_id -> document
+  const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
+  const customerDocMap = new Map<string, string>()
+
+  if (customerIds.length > 0) {
+    const { data: customersData } = await supabase
+      .from("customers")
+      .select("id, document")
+      .in("id", customerIds)
+
+    if (customersData) {
+      customersData.forEach((c: any) => {
+        const normalizedDoc = (c.document || "").replace(/\D/g, "")
+        if (normalizedDoc) {
+          customerDocMap.set(c.id, normalizedDoc)
+        }
+      })
+    }
+  }
+
+  // Build maps from normalized document -> agreement status
+  // This matches Super Admin's logic exactly
+  const docToStatus = new Map<string, {
+    hasAgreement: boolean
+    hasActiveAgreement: boolean
+    isPaid: boolean
+    isCancelled: boolean
+    agreedAmount: number
+  }>()
+
+  for (const a of agreements || []) {
+    const normalizedDoc = customerDocMap.get(a.customer_id)
+    if (!normalizedDoc) continue
+
+    const existing = docToStatus.get(normalizedDoc) || {
+      hasAgreement: false,
+      hasActiveAgreement: false,
+      isPaid: false,
+      isCancelled: false,
+      agreedAmount: 0,
+    }
+
+    if (a.status === "cancelled") {
+      existing.isCancelled = true
+    } else {
+      existing.hasAgreement = true
+      existing.hasActiveAgreement = true
+      existing.agreedAmount = Math.max(existing.agreedAmount, Number(a.agreed_amount) || 0)
+
+      // Check if paid
+      if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+        existing.isPaid = true
+      }
+    }
+
+    docToStatus.set(normalizedDoc, existing)
+  }
+
+  // Count VMAX customers by their negotiation status (not agreement records)
+  let vmaxWithActiveNegotiation = 0
+  let vmaxWithPaidNegotiation = 0
+  let vmaxWithoutNegotiation = 0
+  let totalRecoveredValue = 0
+
+  vmaxRecords.forEach((vmax: any) => {
+    const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const status = docToStatus.get(cpfCnpj)
+
+    if (status?.isPaid) {
+      vmaxWithPaidNegotiation++
+      totalRecoveredValue += status.agreedAmount
+    } else if (status?.hasActiveAgreement) {
+      vmaxWithActiveNegotiation++
+    } else {
+      vmaxWithoutNegotiation++
+    }
+  })
+
+  // Total VMAX customers with any non-cancelled negotiation = 215 (matches Super Admin)
+  const totalWithNegotiation = vmaxWithActiveNegotiation + vmaxWithPaidNegotiation
+
+  // Calculate total debt value
+  const totalDebtValue = vmaxRecords.reduce((sum, r) => {
+    const vencidoStr = String(r.Vencido || "0")
+    const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+    return sum + (Number(cleanValue) || 0)
+  }, 0)
+
+  // Build customer name lookup for recent negotiations
   let customerNameMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
+  const agreementCustomerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
 
   if (agreementCustomerIds.length > 0) {
     // First try VMAX table
@@ -96,84 +183,41 @@ export default async function RelatoriosPage() {
     }
   }
 
-  // Build a map of customer_id -> agreement status for proper debt status calculation
-  const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean }>()
-  const allAgreements = agreements || []
-
-  allAgreements.forEach((a: any) => {
-    const customerId = a.customer_id
-    if (!customerId) return
-
-    const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false }
-    existing.hasAgreement = true
-
-    // Check if this agreement has been paid (via ASAAS)
-    if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
-      existing.isPaid = true
-    }
-
-    // Check if this agreement is active (pending payment)
-    if ((a.status === "active" || a.status === "draft") && a.payment_status !== "received" && a.payment_status !== "confirmed") {
-      existing.isActive = true
-    }
-
-    agreementStatusMap.set(customerId, existing)
-  })
-
-  // Calculate report data with corrected debt status logic
+  // Calculate report data - counting VMAX customers (not agreement records)
   const reportData = {
     // Live stats
     totalDebts: vmaxRecords.length,
-    totalDebtValue: vmaxRecords.reduce((sum, r) => {
-      const vencidoStr = String(r.Vencido || "0")
-      const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-      return sum + (Number(cleanValue) || 0)
-    }, 0),
-    activeNegotiations: allAgreements.filter((a: any) =>
-      (a.status === "active" || a.status === "draft") &&
-      a.payment_status !== "received" &&
-      a.payment_status !== "confirmed"
-    ).length,
-    recoveryRate: 0, // Will be calculated
+    totalDebtValue,
+    // Count VMAX customers with active negotiations (matches Super Admin's 215)
+    activeNegotiations: totalWithNegotiation,
+    recoveryRate: totalDebtValue > 0 ? (totalRecoveredValue / totalDebtValue) * 100 : 0,
 
-    // Debt by status - CORRECTED LOGIC based on ASAAS payment data
+    // Debt by status - count VMAX customers (not agreement records)
     debtsByStatus: {
-      // "Em aberto" = no agreement or agreement not active
-      em_aberto: vmaxRecords.filter((r: any) => {
-        const status = agreementStatusMap.get(r.id)
-        return !status || (!status.isPaid && !status.isActive)
-      }).length,
-      // "Em negociação" = has active agreement pending payment
-      em_negociacao: vmaxRecords.filter((r: any) => {
-        const status = agreementStatusMap.get(r.id)
-        return status?.isActive && !status.isPaid
-      }).length,
-      // "Acordo firmado" = count of active agreements (same as before)
-      acordo_firmado: allAgreements.filter((a: any) =>
-        (a.status === "active" || a.status === "draft") &&
-        a.payment_status !== "received" &&
-        a.payment_status !== "confirmed"
-      ).length,
-      // "Quitada" = ONLY if payment was received via ASAAS
-      quitada: vmaxRecords.filter((r: any) => {
-        const status = agreementStatusMap.get(r.id)
-        return status?.isPaid === true
-      }).length,
+      // "Em aberto" = VMAX customers without any negotiation
+      em_aberto: vmaxWithoutNegotiation,
+      // "Em negociação" = VMAX customers with active (unpaid) negotiation
+      em_negociacao: vmaxWithActiveNegotiation,
+      // "Acordo firmado" = same as em_negociacao (VMAX customers with active negotiation)
+      acordo_firmado: totalWithNegotiation,
+      // "Quitada" = VMAX customers with paid negotiation
+      quitada: vmaxWithPaidNegotiation,
     },
 
-    // Top debtors - with corrected status based on ASAAS data
+    // Top debtors - with corrected status based on document mapping
     topDebtors: vmaxRecords
       .map((r: any) => {
         const vencidoStr = String(r.Vencido || "0")
         const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
         const diasInad = Number(String(r["Dias Inad."] || "0").replace(/\./g, "")) || 0
-        const agreementStatus = agreementStatusMap.get(r.id)
+        const cpfCnpj = (r["CPF/CNPJ"] || "").replace(/\D/g, "")
+        const status = docToStatus.get(cpfCnpj)
 
-        let status = "em_aberto"
-        if (agreementStatus?.isPaid) {
-          status = "quitada"
-        } else if (agreementStatus?.isActive) {
-          status = "em_negociacao"
+        let statusLabel = "em_aberto"
+        if (status?.isPaid) {
+          statusLabel = "quitada"
+        } else if (status?.hasActiveAgreement) {
+          statusLabel = "em_negociacao"
         }
 
         return {
@@ -181,35 +225,31 @@ export default async function RelatoriosPage() {
           name: r.Cliente,
           value: Number(cleanValue) || 0,
           daysOverdue: diasInad,
-          status,
+          status: statusLabel,
         }
       })
       .sort((a: any, b: any) => b.value - a.value)
       .slice(0, 10),
 
-    // Recent negotiations with customer names
-    recentNegotiations: (agreements || []).slice(0, 10).map((a: any) => {
-      const customerInfo = customerNameMap.get(a.customer_id)
-      return {
-        id: a.id,
-        customerId: a.customer_id,
-        customerName: customerInfo?.name || null,
-        customerCpfCnpj: customerInfo?.cpfCnpj || null,
-        status: a.status,
-        value: Number(a.agreed_amount) || 0,
-        createdAt: a.created_at,
-      }
-    }),
+    // Recent negotiations (only non-cancelled) with customer names
+    recentNegotiations: (agreements || [])
+      .filter((a: any) => a.status !== "cancelled")
+      .slice(0, 10)
+      .map((a: any) => {
+        const customerInfo = customerNameMap.get(a.customer_id)
+        return {
+          id: a.id,
+          customerId: a.customer_id,
+          customerName: customerInfo?.name || null,
+          customerCpfCnpj: customerInfo?.cpfCnpj || null,
+          status: a.status,
+          value: Number(a.agreed_amount) || 0,
+          createdAt: a.created_at,
+        }
+      }),
 
-    // Calculate recovery rate
-    totalRecovered: (agreements || [])
-      .filter((a: any) => a.status === "completed" || a.payment_status === "received")
-      .reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0),
-  }
-
-  // Calculate recovery rate
-  if (reportData.totalDebtValue > 0) {
-    reportData.recoveryRate = (reportData.totalRecovered / reportData.totalDebtValue) * 100
+    // Total recovered value
+    totalRecovered: totalRecoveredValue,
   }
 
   return <AdminRelatoriosContent reportData={reportData} company={company} />
