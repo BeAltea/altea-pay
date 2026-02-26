@@ -5,9 +5,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import Link from "next/link"
-import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, ShieldCheck } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Users, Building2, Plus, Eye, Edit, UserCheck, ShieldCheck, MoreVertical, UserX, UserPlus, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { UserFilters } from "@/components/super-admin/user-filters"
+import { useToast } from "@/hooks/use-toast"
 
 interface User {
   id: string
@@ -29,11 +47,27 @@ interface Company {
 interface UsersClientProps {
   initialUsers: User[]
   companies: Company[]
+  currentUserId?: string
 }
 
-export function UsersClient({ initialUsers, companies }: UsersClientProps) {
+export function UsersClient({ initialUsers, companies, currentUserId }: UsersClientProps) {
+  const [users, setUsers] = useState<User[]>(initialUsers)
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [isFiltered, setIsFiltered] = useState(false)
+  const [suspendDialog, setSuspendDialog] = useState<{ open: boolean; user: User | null; action: "suspend" | "reactivate" }>({
+    open: false,
+    user: null,
+    action: "suspend",
+  })
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({
+    open: false,
+    user: null,
+  })
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const router = useRouter()
+  const { toast } = useToast()
 
   const handleFiltersChange = (filters: {
     search: string
@@ -41,9 +75,8 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
     status: string | null
     companyId: string | null
   }) => {
-    let filtered = [...initialUsers]
+    let filtered = [...users]
 
-    // Apply search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase()
       filtered = filtered.filter(
@@ -54,17 +87,14 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
       )
     }
 
-    // Apply role filter
     if (filters.role) {
       filtered = filtered.filter((user) => user.role === filters.role)
     }
 
-    // Apply status filter
     if (filters.status) {
       filtered = filtered.filter((user) => user.status === filters.status)
     }
 
-    // Apply company filter
     if (filters.companyId) {
       filtered = filtered.filter((user) => user.company_id === filters.companyId)
     }
@@ -73,17 +103,113 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
     setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null || filters.companyId !== null)
   }
 
-  const displayUsers = isFiltered ? filteredUsers : initialUsers
+  const canModifyUser = (user: User): boolean => {
+    // Cannot modify super admins
+    if (user.role === "super_admin") return false
+    // Cannot modify yourself
+    if (user.id === currentUserId) return false
+    return true
+  }
 
-  // Calculate unique companies with users
-  const companiesWithUsers = new Set(initialUsers.filter(u => u.company_id).map(u => u.company_id)).size
+  const handleSuspendClick = (user: User, action: "suspend" | "reactivate") => {
+    setSuspendDialog({ open: true, user, action })
+  }
+
+  const handleDeleteClick = (user: User) => {
+    setDeleteDialog({ open: true, user })
+    setDeleteConfirmText("")
+  }
+
+  const handleSuspendConfirm = async () => {
+    if (!suspendDialog.user) return
+
+    setIsProcessing(true)
+    try {
+      const response = await fetch(`/api/super-admin/users/${suspendDialog.user.id}/suspend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: suspendDialog.action }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao processar solicitação")
+      }
+
+      // Update local state
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === suspendDialog.user!.id
+            ? { ...u, status: suspendDialog.action === "suspend" ? "suspended" : "active" }
+            : u
+        )
+      )
+
+      toast({
+        title: suspendDialog.action === "suspend" ? "Usuário suspenso" : "Usuário reativado",
+        description: `${suspendDialog.user.full_name} foi ${suspendDialog.action === "suspend" ? "suspenso" : "reativado"} com sucesso.`,
+      })
+
+      setSuspendDialog({ open: false, user: null, action: "suspend" })
+      router.refresh()
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.user || deleteConfirmText !== "EXCLUIR") return
+
+    setIsProcessing(true)
+    try {
+      const response = await fetch(`/api/super-admin/users/${deleteDialog.user.id}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao excluir usuário")
+      }
+
+      // Remove from local state
+      setUsers(prev => prev.filter(u => u.id !== deleteDialog.user!.id))
+
+      toast({
+        title: "Usuário excluído",
+        description: `${deleteDialog.user.full_name} foi excluído permanentemente.`,
+      })
+
+      setDeleteDialog({ open: false, user: null })
+      setDeleteConfirmText("")
+      router.refresh()
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const displayUsers = isFiltered ? filteredUsers : users
+  const companiesWithUsers = new Set(users.filter(u => u.company_id).map(u => u.company_id)).size
 
   const totalStats = {
-    totalUsers: initialUsers.length,
-    activeUsers: initialUsers.filter((u) => u.status === "active").length,
-    superAdmins: initialUsers.filter((u) => u.role === "super_admin").length,
-    admins: initialUsers.filter((u) => u.role === "admin").length,
-    regularUsers: initialUsers.filter((u) => u.role === "user").length,
+    totalUsers: users.length,
+    activeUsers: users.filter((u) => u.status === "active").length,
+    superAdmins: users.filter((u) => u.role === "super_admin").length,
+    admins: users.filter((u) => u.role === "admin").length,
+    regularUsers: users.filter((u) => u.role === "user").length,
     companiesWithAccess: companiesWithUsers,
   }
 
@@ -164,7 +290,7 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
           <CardTitle>Usuários do Sistema</CardTitle>
           <CardDescription>
             {isFiltered
-              ? `${displayUsers.length} usuários encontrados (de ${initialUsers.length} total)`
+              ? `${displayUsers.length} usuários encontrados (de ${users.length} total)`
               : "Lista completa de todos os usuários cadastrados"}
           </CardDescription>
         </CardHeader>
@@ -197,7 +323,7 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
+                        <div className="flex items-center space-x-2 mb-1 flex-wrap">
                           <h3 className="font-medium text-gray-900 dark:text-white truncate">{user.full_name}</h3>
                           <Badge
                             className={
@@ -219,7 +345,7 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
                               user.status === "active"
                                 ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
                                 : user.status === "suspended"
-                                  ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                  ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
                                   : "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
                             }
                           >
@@ -265,6 +391,38 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
                           Editar
                         </Link>
                       </Button>
+
+                      {/* Actions Menu */}
+                      {canModifyUser(user) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {user.status === "suspended" ? (
+                              <DropdownMenuItem onClick={() => handleSuspendClick(user, "reactivate")}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Reativar Usuário
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => handleSuspendClick(user, "suspend")}>
+                                <UserX className="h-4 w-4 mr-2" />
+                                Suspender Usuário
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onClick={() => handleDeleteClick(user)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir Usuário
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -273,6 +431,106 @@ export function UsersClient({ initialUsers, companies }: UsersClientProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Suspend/Reactivate Dialog */}
+      <Dialog open={suspendDialog.open} onOpenChange={(open) => !isProcessing && setSuspendDialog({ ...suspendDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              {suspendDialog.action === "suspend" ? "Suspender Usuário" : "Reativar Usuário"}
+            </DialogTitle>
+            <DialogDescription>
+              {suspendDialog.action === "suspend" ? (
+                <>
+                  Tem certeza que deseja suspender o acesso de:
+                  <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <p className="font-medium">{suspendDialog.user?.email}</p>
+                    {suspendDialog.user?.company_name && (
+                      <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
+                    )}
+                  </div>
+                  <p className="mt-3">O usuário não poderá acessar a plataforma até ser reativado.</p>
+                </>
+              ) : (
+                <>
+                  Tem certeza que deseja reativar o acesso de:
+                  <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <p className="font-medium">{suspendDialog.user?.email}</p>
+                    {suspendDialog.user?.company_name && (
+                      <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
+                    )}
+                  </div>
+                  <p className="mt-3">O usuário poderá acessar a plataforma normalmente.</p>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuspendDialog({ open: false, user: null, action: "suspend" })} disabled={isProcessing}>
+              Cancelar
+            </Button>
+            <Button
+              variant={suspendDialog.action === "suspend" ? "destructive" : "default"}
+              onClick={handleSuspendConfirm}
+              disabled={isProcessing}
+            >
+              {isProcessing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {suspendDialog.action === "suspend" ? "Suspender Acesso" : "Reativar Acesso"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !isProcessing && setDeleteDialog({ ...deleteDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Excluir Usuário
+            </DialogTitle>
+            <DialogDescription>
+              <p className="font-semibold text-red-600">Esta ação é IRREVERSÍVEL.</p>
+              <p className="mt-2">O usuário será permanentemente removido da plataforma:</p>
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="font-medium text-red-800 dark:text-red-300">{deleteDialog.user?.email}</p>
+                {deleteDialog.user?.company_name && (
+                  <p className="text-sm text-red-600 dark:text-red-400">{deleteDialog.user.company_name}</p>
+                )}
+              </div>
+              <p className="mt-4">Digite <span className="font-mono font-bold">EXCLUIR</span> para confirmar:</p>
+              <Input
+                className="mt-2"
+                placeholder="Digite EXCLUIR"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                disabled={isProcessing}
+              />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialog({ open: false, user: null })
+                setDeleteConfirmText("")
+              }}
+              disabled={isProcessing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteConfirmText !== "EXCLUIR" || isProcessing}
+            >
+              {isProcessing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Excluir Permanentemente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

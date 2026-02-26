@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { UsersClient } from "@/components/super-admin/users-client"
 
 export const dynamic = "force-dynamic"
@@ -24,8 +24,8 @@ interface Company {
 async function fetchData() {
   const supabase = createAdminClient()
 
-  // Fetch profiles and companies in parallel
-  const [profilesResult, companiesResult] = await Promise.all([
+  // Fetch profiles, companies, and auth users in parallel
+  const [profilesResult, companiesResult, authUsersResult] = await Promise.all([
     supabase
       .from("profiles")
       .select(`
@@ -43,7 +43,8 @@ async function fetchData() {
     supabase
       .from("companies")
       .select("id, name")
-      .order("name")
+      .order("name"),
+    supabase.auth.admin.listUsers({ perPage: 1000 })
   ])
 
   if (profilesResult.error) {
@@ -54,28 +55,65 @@ async function fetchData() {
     console.error("[UsersPage] Error fetching companies:", companiesResult.error)
   }
 
+  // Build a map of user ID -> banned status
+  const bannedUsers = new Map<string, boolean>()
+  const lastSignInMap = new Map<string, string | null>()
+
+  if (authUsersResult.data?.users) {
+    for (const authUser of authUsersResult.data.users) {
+      // Check if user is banned (banned_until is set and in the future)
+      const isBanned = authUser.banned_until
+        ? new Date(authUser.banned_until) > new Date()
+        : false
+      bannedUsers.set(authUser.id, isBanned)
+      lastSignInMap.set(authUser.id, authUser.last_sign_in_at || null)
+    }
+  }
+
   console.log("[UsersPage] Profiles fetched:", profilesResult.data?.length || 0)
   console.log("[UsersPage] Companies fetched:", companiesResult.data?.length || 0)
+  console.log("[UsersPage] Auth users fetched:", authUsersResult.data?.users?.length || 0)
 
-  // Transform to User format
-  const users: User[] = (profilesResult.data || []).map((profile: any) => ({
-    id: profile.id,
-    email: profile.email || "",
-    full_name: profile.full_name || "Sem nome",
-    role: profile.role || "user",
-    company_name: profile.companies?.name,
-    company_id: profile.company_id,
-    status: "active" as const,
-    created_at: profile.created_at,
-  }))
+  // Transform to User format with banned status
+  const users: User[] = (profilesResult.data || []).map((profile: any) => {
+    const isBanned = bannedUsers.get(profile.id) || false
+    const lastSignIn = lastSignInMap.get(profile.id)
+
+    return {
+      id: profile.id,
+      email: profile.email || "",
+      full_name: profile.full_name || "Sem nome",
+      role: profile.role || "user",
+      company_name: profile.companies?.name,
+      company_id: profile.company_id,
+      status: isBanned ? "suspended" : "active" as const,
+      last_login: lastSignIn || undefined,
+      created_at: profile.created_at,
+    }
+  })
 
   const companies: Company[] = companiesResult.data || []
 
   return { users, companies }
 }
 
-export default async function UsersPage() {
-  const { users, companies } = await fetchData()
+async function getCurrentUserId() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id
+}
 
-  return <UsersClient initialUsers={users} companies={companies} />
+export default async function UsersPage() {
+  const [{ users, companies }, currentUserId] = await Promise.all([
+    fetchData(),
+    getCurrentUserId()
+  ])
+
+  return (
+    <UsersClient
+      initialUsers={users}
+      companies={companies}
+      currentUserId={currentUserId}
+    />
+  )
 }
