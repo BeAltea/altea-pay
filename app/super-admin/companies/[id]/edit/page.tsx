@@ -7,8 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { Building2, Save, ArrowLeft, Loader2 } from "lucide-react"
@@ -26,8 +24,6 @@ interface CompanyFormData {
   city: string
   state: string
   zipCode: string
-  status: "active" | "inactive" | "suspended"
-  notes: string
 }
 
 export default function EditCompanyPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,8 +42,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
     city: "",
     state: "",
     zipCode: "",
-    status: "active",
-    notes: "",
   })
 
   useEffect(() => {
@@ -83,9 +77,7 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
             address: company.address || "",
             city: company.city || "",
             state: company.state || "",
-            zipCode: company.zipcode || company.zip_code || "",
-            status: company.status || "active",
-            notes: company.notes || company.description || "",
+            zipCode: company.zip_code || "",
           })
         } else {
           toast({
@@ -131,8 +123,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
         city: formData.city,
         state: formData.state,
         zipcode: formData.zipCode,
-        status: formData.status,
-        notes: formData.notes,
       })
 
       if (result.success) {
@@ -255,19 +245,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Ativa</SelectItem>
-                  <SelectItem value="inactive">Inativa</SelectItem>
-                  <SelectItem value="suspended">Suspensa</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </CardContent>
         </Card>
 
@@ -303,25 +280,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
                   onChange={(e) => handleInputChange("zipCode", e.target.value)}
                 />
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Observações</CardTitle>
-            <CardDescription>Informações adicionais sobre a empresa</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notas</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => handleInputChange("notes", e.target.value)}
-                rows={4}
-                placeholder="Adicione observações sobre a empresa..."
-              />
             </div>
           </CardContent>
         </Card>

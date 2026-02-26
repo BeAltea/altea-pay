@@ -16,8 +16,7 @@ export interface CreateCompanyParams {
 
 export interface UpdateCompanyParams extends CreateCompanyParams {
   id: string
-  status?: "active" | "inactive" | "suspended"
-  notes?: string
+  // Note: status and notes/description columns don't exist in the companies table
 }
 
 export interface DeleteCompanyParams {
@@ -97,6 +96,7 @@ export async function updateCompany(params: UpdateCompanyParams) {
   try {
     const supabase = createAdminClient()
 
+    // Only update columns that exist in the companies table
     const updateData: Record<string, unknown> = {
       name: params.name,
       cnpj: params.cnpj,
@@ -105,15 +105,10 @@ export async function updateCompany(params: UpdateCompanyParams) {
       address: params.address || null,
       city: params.city || null,
       state: params.state || null,
-      zipcode: params.zipcode || null,
+      zip_code: params.zipcode || null,  // Column is zip_code, not zipcode
     }
 
-    if (params.status !== undefined) {
-      updateData.status = params.status
-    }
-    if (params.notes !== undefined) {
-      updateData.description = params.notes
-    }
+    console.log("[v0] Updating company:", params.id, "with data:", updateData)
 
     const { data, error } = await supabase
       .from("companies")
@@ -122,7 +117,10 @@ export async function updateCompany(params: UpdateCompanyParams) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("[v0] Supabase update error:", error)
+      throw error
+    }
 
     revalidatePath("/super-admin/companies")
     revalidatePath(`/super-admin/companies/${params.id}`)
