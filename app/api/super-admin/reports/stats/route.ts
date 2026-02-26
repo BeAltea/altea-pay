@@ -165,11 +165,11 @@ export async function GET(request: NextRequest) {
       const total = debt + received
       const rate = total > 0 ? (received / total) * 100 : 0
 
-      // Count UNIQUE CUSTOMERS with non-cancelled/non-draft agreements (not agreement records)
+      // Count UNIQUE CUSTOMERS with non-cancelled agreements (includes draft, active, completed, paid)
       // This matches the Super Admin Negociações page logic that shows 215
       const sentCustomerIds = new Set(
         companyAgreements
-          .filter((a) => a.status !== "cancelled" && a.status !== "draft")
+          .filter((a) => a.status !== "cancelled")
           .map((a) => a.customer_id)
       )
       const paidCustomerIds = new Set(
@@ -217,9 +217,10 @@ export async function GET(request: NextRequest) {
 
     // Count UNIQUE CUSTOMERS globally (not agreement records)
     // This ensures consistency with the Super Admin Negociações page showing 215
+    // IMPORTANT: Include draft status - only exclude cancelled
     const globalSentCustomerIds = new Set(
       allAgreements
-        .filter((a) => a.status !== "cancelled" && a.status !== "draft")
+        .filter((a) => a.status !== "cancelled")
         .map((a) => a.customer_id)
     )
     const globalPaidCustomerIds = new Set(
@@ -229,7 +230,7 @@ export async function GET(request: NextRequest) {
     )
     const globalOpenCustomerIds = new Set(
       allAgreements
-        .filter((a) => a.status === "active" || a.status === "pending")
+        .filter((a) => a.status === "active" || a.status === "pending" || a.status === "draft")
         .map((a) => a.customer_id)
     )
     const globalNegSent = globalSentCustomerIds.size
