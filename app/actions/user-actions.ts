@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export interface CreateUserParams {
@@ -25,7 +25,7 @@ export interface DeleteUserParams {
 
 export async function createUser(params: CreateUserParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -70,7 +70,7 @@ export async function createUser(params: CreateUserParams) {
 
 export async function updateUser(params: UpdateUserParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase
       .from("profiles")
@@ -105,7 +105,7 @@ export async function updateUser(params: UpdateUserParams) {
 
 export async function getUserById(userId: string) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: profile, error } = await supabase
       .from("profiles")
@@ -138,7 +138,7 @@ export async function getUserById(userId: string) {
 
 export async function getCompanies() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: companies, error } = await supabase
       .from("companies")
@@ -174,7 +174,7 @@ export async function updateUserProfile(params: {
   notes?: string
 }) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const updateData: Record<string, unknown> = {
       full_name: params.full_name,
@@ -218,7 +218,7 @@ export async function updateUserProfile(params: {
 
 export async function deleteUser(params: DeleteUserParams) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Delete profile (auth user will be handled by trigger)
     const { error } = await supabase.from("profiles").delete().eq("id", params.id)

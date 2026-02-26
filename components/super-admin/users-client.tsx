@@ -1,18 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +41,96 @@ interface UsersClientProps {
   initialUsers: User[]
   companies: Company[]
   currentUserId?: string
+}
+
+// Simple Actions Menu Component with native dropdown
+function UserActionsMenu({
+  user,
+  onSuspend,
+  onDelete,
+}: {
+  user: User
+  onSuspend: (action: "suspend" | "reactivate") => void
+  onDelete: () => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isOpen])
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0"
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsOpen(!isOpen)
+        }}
+      >
+        <span className="sr-only">Abrir menu</span>
+        <MoreVertical className="h-4 w-4" />
+      </Button>
+
+      {isOpen && (
+        <div
+          className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1"
+          style={{ zIndex: 9999 }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIsOpen(false)
+              onSuspend(user.status === "suspended" ? "reactivate" : "suspend")
+            }}
+            className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
+            {user.status === "suspended" ? (
+              <>
+                <UserPlus className="h-4 w-4 text-green-600" />
+                <span className="text-green-600">Reativar Usuário</span>
+              </>
+            ) : (
+              <>
+                <UserX className="h-4 w-4 text-orange-600" />
+                <span className="text-orange-600">Suspender Usuário</span>
+              </>
+            )}
+          </button>
+          <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIsOpen(false)
+              onDelete()
+            }}
+            className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 text-red-600"
+          >
+            <Trash2 className="h-4 w-4" />
+            Excluir Usuário
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function UsersClient({ initialUsers, companies, currentUserId }: UsersClientProps) {
@@ -378,7 +461,7 @@ export function UsersClient({ initialUsers, companies, currentUserId }: UsersCli
                       </div>
                     </div>
 
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 items-center">
                       <Button asChild size="sm" variant="outline">
                         <Link href={`/super-admin/users/${user.id}`}>
                           <Eye className="h-4 w-4 mr-1" />
@@ -392,37 +475,13 @@ export function UsersClient({ initialUsers, companies, currentUserId }: UsersCli
                         </Link>
                       </Button>
 
-                      {/* Actions Menu */}
+                      {/* Native Actions Menu */}
                       {canModifyUser(user) && (
-                        <DropdownMenu modal={false}>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                              <span className="sr-only">Abrir menu</span>
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            {user.status === "suspended" ? (
-                              <DropdownMenuItem onClick={() => handleSuspendClick(user, "reactivate")}>
-                                <UserPlus className="h-4 w-4 mr-2" />
-                                Reativar Usuário
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem onClick={() => handleSuspendClick(user, "suspend")}>
-                                <UserX className="h-4 w-4 mr-2" />
-                                Suspender Usuário
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600"
-                              onClick={() => handleDeleteClick(user)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir Usuário
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <UserActionsMenu
+                          user={user}
+                          onSuspend={(action) => handleSuspendClick(user, action)}
+                          onDelete={() => handleDeleteClick(user)}
+                        />
                       )}
                     </div>
                   </div>
@@ -441,30 +500,34 @@ export function UsersClient({ initialUsers, companies, currentUserId }: UsersCli
               <AlertTriangle className="h-5 w-5 text-orange-500" />
               {suspendDialog.action === "suspend" ? "Suspender Usuário" : "Reativar Usuário"}
             </DialogTitle>
-            <DialogDescription>
-              {suspendDialog.action === "suspend" ? (
-                <>
-                  Tem certeza que deseja suspender o acesso de:
-                  <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    <p className="font-medium">{suspendDialog.user?.email}</p>
-                    {suspendDialog.user?.company_name && (
-                      <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
-                    )}
-                  </div>
-                  <p className="mt-3">O usuário não poderá acessar a plataforma até ser reativado.</p>
-                </>
-              ) : (
-                <>
-                  Tem certeza que deseja reativar o acesso de:
-                  <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    <p className="font-medium">{suspendDialog.user?.email}</p>
-                    {suspendDialog.user?.company_name && (
-                      <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
-                    )}
-                  </div>
-                  <p className="mt-3">O usuário poderá acessar a plataforma normalmente.</p>
-                </>
-              )}
+            <DialogDescription asChild>
+              <div>
+                {suspendDialog.action === "suspend" ? (
+                  <>
+                    <p>Tem certeza que deseja suspender o acesso de:</p>
+                    <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                      <p className="font-medium">{suspendDialog.user?.full_name}</p>
+                      <p className="text-sm text-gray-500">{suspendDialog.user?.email}</p>
+                      {suspendDialog.user?.company_name && (
+                        <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
+                      )}
+                    </div>
+                    <p className="mt-3">O usuário não poderá acessar a plataforma até ser reativado.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Tem certeza que deseja reativar o acesso de:</p>
+                    <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                      <p className="font-medium">{suspendDialog.user?.full_name}</p>
+                      <p className="text-sm text-gray-500">{suspendDialog.user?.email}</p>
+                      {suspendDialog.user?.company_name && (
+                        <p className="text-sm text-gray-500">{suspendDialog.user.company_name}</p>
+                      )}
+                    </div>
+                    <p className="mt-3">O usuário poderá acessar a plataforma normalmente.</p>
+                  </>
+                )}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -491,23 +554,26 @@ export function UsersClient({ initialUsers, companies, currentUserId }: UsersCli
               <Trash2 className="h-5 w-5" />
               Excluir Usuário
             </DialogTitle>
-            <DialogDescription>
-              <p className="font-semibold text-red-600">Esta ação é IRREVERSÍVEL.</p>
-              <p className="mt-2">O usuário será permanentemente removido da plataforma:</p>
-              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="font-medium text-red-800 dark:text-red-300">{deleteDialog.user?.email}</p>
-                {deleteDialog.user?.company_name && (
-                  <p className="text-sm text-red-600 dark:text-red-400">{deleteDialog.user.company_name}</p>
-                )}
+            <DialogDescription asChild>
+              <div>
+                <p className="font-semibold text-red-600">Esta ação é IRREVERSÍVEL.</p>
+                <p className="mt-2">O usuário será permanentemente removido da plataforma:</p>
+                <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="font-medium text-red-800 dark:text-red-300">{deleteDialog.user?.full_name}</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">{deleteDialog.user?.email}</p>
+                  {deleteDialog.user?.company_name && (
+                    <p className="text-sm text-red-600 dark:text-red-400">{deleteDialog.user.company_name}</p>
+                  )}
+                </div>
+                <p className="mt-4">Digite <span className="font-mono font-bold">EXCLUIR</span> para confirmar:</p>
+                <Input
+                  className="mt-2"
+                  placeholder="Digite EXCLUIR"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  disabled={isProcessing}
+                />
               </div>
-              <p className="mt-4">Digite <span className="font-mono font-bold">EXCLUIR</span> para confirmar:</p>
-              <Input
-                className="mt-2"
-                placeholder="Digite EXCLUIR"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                disabled={isProcessing}
-              />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

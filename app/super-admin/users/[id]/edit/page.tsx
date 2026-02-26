@@ -34,10 +34,10 @@ interface Company {
   name: string
 }
 
-export default function EditUserPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { toast } = useToast()
+  const [userId, setUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
@@ -56,11 +56,21 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
   })
 
   useEffect(() => {
+    async function resolveParams() {
+      const resolvedParams = await params
+      setUserId(resolvedParams.id)
+    }
+    resolveParams()
+  }, [params])
+
+  useEffect(() => {
+    if (!userId) return
+
     async function fetchData() {
       setIsFetching(true)
       try {
         // Fetch user data
-        const userResult = await getUserById(id)
+        const userResult = await getUserById(userId)
         if (userResult.success && userResult.data) {
           const user = userResult.data
           setFormData({
@@ -103,7 +113,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     }
 
     fetchData()
-  }, [id, router, toast])
+  }, [userId, router, toast])
 
   const handleInputChange = (field: keyof UserFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -115,7 +125,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
     try {
       const result = await updateUserProfile({
-        id: id,
+        id: userId!,
         full_name: formData.full_name,
         email: formData.email,
         role: formData.role,
@@ -133,7 +143,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
           title: "Sucesso",
           description: "Dados do usuário atualizados com sucesso!",
         })
-        router.push(`/super-admin/users/${id}`)
+        router.push(`/super-admin/users/${userId}`)
       } else {
         toast({
           title: "Erro",
@@ -153,7 +163,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     }
   }
 
-  if (isFetching) {
+  if (isFetching || !userId) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center space-y-4">
@@ -186,7 +196,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
         </div>
         <div className="flex space-x-3 flex-shrink-0">
           <Button asChild variant="outline">
-            <Link href={`/super-admin/users/${id}`}>
+            <Link href={`/super-admin/users/${userId}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
             </Link>
@@ -348,7 +358,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
 
         <div className="flex justify-end space-x-4">
           <Button type="button" variant="outline" asChild>
-            <Link href={`/super-admin/users/${id}`}>Cancelar</Link>
+            <Link href={`/super-admin/users/${userId}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? (
