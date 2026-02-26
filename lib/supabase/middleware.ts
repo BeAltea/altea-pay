@@ -64,7 +64,7 @@ export async function updateSession(request: NextRequest) {
       },
     )
 
-    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/verify-email", "/auth/callback", "/auth/error", "/auth/reset-password", "/auth/forgot-password", "/auth/confirm"]
+    const publicPaths = ["/", "/auth/login", "/auth/register", "/auth/portal-register", "/auth/verify-email", "/auth/callback", "/auth/error", "/auth/reset-password", "/auth/forgot-password", "/auth/confirm"]
     const isPublicPath = publicPaths.includes(currentPath) || currentPath.startsWith("/auth/")
 
     let user = null
@@ -138,16 +138,52 @@ export async function updateSession(request: NextRequest) {
           }
         }
 
-        if (currentPath === "/" && user) {
+        // Check if user is a final_client (by checking final_clients table or user_metadata)
+        const isFinalClient = user.user_metadata?.role === "final_client"
+        if (!isFinalClient && userRole === "user") {
+          // Check if there's a final_clients record for this user
+          const { data: finalClientRecord } = await serviceSupabase
+            .from("final_clients")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+          if (finalClientRecord) {
+            userRole = "final_client"
+          }
+        } else if (isFinalClient) {
+          userRole = "final_client"
+        }
+
+        // Redirect authenticated users from landing/auth pages to their dashboard
+        const authPagesToRedirect = ["/", "/auth/login", "/auth/register"]
+        if (authPagesToRedirect.includes(currentPath) && user) {
           const url = request.nextUrl.clone()
-          url.pathname =
-            userRole === "super_admin" ? "/super-admin" : userRole === "admin" ? "/dashboard" : "/user-dashboard"
+          if (userRole === "super_admin") {
+            url.pathname = "/super-admin"
+          } else if (userRole === "admin") {
+            url.pathname = "/dashboard"
+          } else if (userRole === "final_client") {
+            url.pathname = "/portal"
+          } else {
+            url.pathname = "/user-dashboard"
+          }
           return NextResponse.redirect(url)
+        }
+
+        // Access control: redirect to appropriate dashboard based on role
+        const getDefaultPath = (role: string) => {
+          switch (role) {
+            case "super_admin": return "/super-admin"
+            case "admin": return "/dashboard"
+            case "final_client": return "/portal"
+            default: return "/user-dashboard"
+          }
         }
 
         if (currentPath.startsWith("/super-admin") && userRole !== "super_admin") {
           const url = request.nextUrl.clone()
-          url.pathname = userRole === "admin" ? "/dashboard" : "/user-dashboard"
+          url.pathname = getDefaultPath(userRole)
           return NextResponse.redirect(url)
         }
 
@@ -157,13 +193,20 @@ export async function updateSession(request: NextRequest) {
           userRole !== "admin"
         ) {
           const url = request.nextUrl.clone()
-          url.pathname = userRole === "super_admin" ? "/super-admin" : "/user-dashboard"
+          url.pathname = getDefaultPath(userRole)
           return NextResponse.redirect(url)
         }
 
         if (currentPath.startsWith("/user-dashboard") && userRole !== "user") {
           const url = request.nextUrl.clone()
-          url.pathname = userRole === "super_admin" ? "/super-admin" : "/dashboard"
+          url.pathname = getDefaultPath(userRole)
+          return NextResponse.redirect(url)
+        }
+
+        // Final clients can only access /portal
+        if (currentPath.startsWith("/portal") && userRole !== "final_client") {
+          const url = request.nextUrl.clone()
+          url.pathname = getDefaultPath(userRole)
           return NextResponse.redirect(url)
         }
       } catch (error) {

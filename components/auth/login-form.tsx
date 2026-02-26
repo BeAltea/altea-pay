@@ -46,6 +46,23 @@ export function LoginForm() {
           .single()
 
         if (profileError || !profile) {
+          // Check if this is a final_client before creating profile
+          const isFinalClient = data.user.user_metadata?.role === "final_client"
+
+          // Also check final_clients table
+          const { data: finalClientRecord } = await supabase
+            .from("final_clients")
+            .select("id")
+            .eq("user_id", data.user.id)
+            .maybeSingle()
+
+          if (isFinalClient || finalClientRecord) {
+            // Final clients don't need a profiles record, redirect to portal
+            router.push("/portal")
+            router.refresh()
+            return
+          }
+
           const { error: insertError } = await supabase.from("profiles").insert({
             id: data.user.id,
             email: data.user.email,
@@ -65,15 +82,33 @@ export function LoginForm() {
           return
         }
 
-        if (profile.role === "super_admin") {
+        // Check if user is a final_client (via user_metadata or final_clients table)
+        const isFinalClient = data.user.user_metadata?.role === "final_client"
+
+        if (isFinalClient) {
+          router.push("/portal")
+          router.refresh()
+        } else if (profile.role === "super_admin") {
           router.push("/super-admin")
           router.refresh()
         } else if (profile.role === "admin") {
           router.push("/dashboard")
           router.refresh()
         } else {
-          router.push("/user-dashboard")
-          router.refresh()
+          // Check if there's a final_clients record for this user
+          const { data: finalClientRecord } = await supabase
+            .from("final_clients")
+            .select("id")
+            .eq("user_id", data.user.id)
+            .maybeSingle()
+
+          if (finalClientRecord) {
+            router.push("/portal")
+            router.refresh()
+          } else {
+            router.push("/user-dashboard")
+            router.refresh()
+          }
         }
       }
     } catch (error: unknown) {
@@ -172,12 +207,21 @@ export function LoginForm() {
               </Button>
             </form>
             <div className="mt-4 sm:mt-6 text-center text-sm">
-              Não tem uma conta?{" "}
+              Nao tem uma conta?{" "}
               <Link
                 href="/auth/register"
                 className="text-altea-navy hover:text-altea-navy/80 font-medium underline underline-offset-4 cursor-pointer"
               >
                 Criar conta
+              </Link>
+            </div>
+            <div className="mt-2 text-center text-sm text-gray-500">
+              Possui dividas conosco?{" "}
+              <Link
+                href="/auth/portal-register"
+                className="text-altea-navy hover:text-altea-navy/80 font-medium underline underline-offset-4 cursor-pointer"
+              >
+                Portal do Cliente
               </Link>
             </div>
           </CardContent>
