@@ -216,13 +216,10 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h1
-          className="text-[26px] font-bold mb-1"
-          style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
-        >
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
           Acordos — {companyName}
         </h1>
-        <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
+        <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
           Acompanhe as negociacoes e acordos com seus clientes
         </p>
       </div>

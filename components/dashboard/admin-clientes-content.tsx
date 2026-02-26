@@ -384,13 +384,10 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h1
-          className="text-[26px] font-bold mb-1"
-          style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
-        >
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
           Clientes — {companyName}
         </h1>
-        <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
+        <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
           Visualize dividas e status de negociacao dos seus clientes
         </p>
       </div>
@@ -497,24 +494,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             </div>
           </div>
 
-          {/* Debt Status Filter */}
-          <Select value={debtStatusFilter} onValueChange={setDebtStatusFilter}>
-            <SelectTrigger
-              className="w-[180px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Status Divida" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="em_aberto">Em aberto</SelectItem>
-              <SelectItem value="aguardando">Aguardando pagamento</SelectItem>
-              <SelectItem value="paga">Paga</SelectItem>
-              <SelectItem value="vencida">Vencida</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Dias em Atraso Filter */}
+          {/* Dias em Atraso Filter - maps to TEMPO DÍVIDA column (4th) */}
           <Select value={diasFilter} onValueChange={setDiasFilter}>
             <SelectTrigger
               className="w-[140px] border-0"
@@ -531,7 +511,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
             </SelectContent>
           </Select>
 
-          {/* Negotiation Filter */}
+          {/* Negotiation Filter - maps to STATUS NEGOCIAÇÃO column (5th) */}
           <Select value={negotiationFilter} onValueChange={setNegotiationFilter}>
             <SelectTrigger
               className="w-[180px] border-0"
@@ -543,6 +523,23 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="enviada">Enviada</SelectItem>
               <SelectItem value="sem_negociacao">Sem negociacao</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Debt Status Filter - maps to STATUS DÍVIDA column (6th) */}
+          <Select value={debtStatusFilter} onValueChange={setDebtStatusFilter}>
+            <SelectTrigger
+              className="w-[180px] border-0"
+              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
+            >
+              <SelectValue placeholder="Status Divida" />
+            </SelectTrigger>
+            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="em_aberto">Em aberto</SelectItem>
+              <SelectItem value="aguardando">Aguardando pagamento</SelectItem>
+              <SelectItem value="paga">Paga</SelectItem>
+              <SelectItem value="vencida">Vencida</SelectItem>
             </SelectContent>
           </Select>
         </div>

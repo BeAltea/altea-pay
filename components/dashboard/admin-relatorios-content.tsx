@@ -102,13 +102,10 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1
-            className="text-[26px] font-bold mb-1"
-            style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
-          >
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
             Relatorios — {companyName}
           </h1>
-          <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
+          <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
             Acompanhe o desempenho da sua operacao de cobranca
           </p>
         </div>

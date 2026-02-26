@@ -227,13 +227,10 @@ export default async function DashboardPage() {
     <div className="space-y-7">
       {/* Page Header */}
       <div>
-        <h1
-          className="text-[26px] font-bold mb-1"
-          style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
-        >
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
           Dashboard — {companyName}
         </h1>
-        <p style={{ color: "var(--admin-text-secondary)", fontSize: "14px" }}>
+        <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
           Gestao de clientes e resultados de analises
         </p>
       </div>

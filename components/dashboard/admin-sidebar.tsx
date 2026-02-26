@@ -112,19 +112,13 @@ export function AdminSidebar({ user, isMobileMenuOpen, setIsMobileMenuOpen }: Ad
         >
           A
         </div>
-        <div>
-          <div
-            className="text-[19px] font-bold"
-            style={{ fontFamily: "'Playfair Display', serif", color: "var(--admin-text-primary)" }}
-          >
+        <div className="min-w-0">
+          <span className="text-lg font-semibold text-foreground truncate block">
             Altea Pay
-          </div>
-          <div
-            className="text-[11px] font-semibold"
-            style={{ color: "var(--admin-gold-400)" }}
-          >
+          </span>
+          <span className="text-xs text-altea-gold font-medium">
             {companyName}
-          </div>
+          </span>
         </div>
       </div>
 
