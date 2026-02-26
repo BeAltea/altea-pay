@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,26 +11,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, Search, Calendar, DollarSign, Handshake } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 
-interface Agreement {
+interface VmaxCustomer {
   id: string
-  customer_id: string
-  debt_id: string
-  original_amount: number
-  agreed_amount: number
-  discount_percentage: number
+  name: string
+  document: string
+  totalDebt: number
+  daysOverdue: number
+  hasNegotiation: boolean
+  isPaid: boolean
+  isCancelled: boolean
+  agreementId: string | null
+  agreedAmount: number
   installments: number
-  installment_amount: number
   status: string
-  created_at: string
-  customer_name?: string
-  customer_document?: string
-  debt_description?: string
-  debt_due_date?: string
+  paymentStatus: string | null
+  createdAt: string | null
 }
 
 export default function AgreementsPage() {
-  const [agreements, setAgreements] = useState<Agreement[]>([])
-  const [uniqueCustomerCount, setUniqueCustomerCount] = useState(0)
+  const [customers, setCustomers] = useState<VmaxCustomer[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -41,14 +40,14 @@ export default function AgreementsPage() {
     if (authLoading) return
 
     if (profile?.company_id) {
-      fetchAgreements()
+      fetchData()
     } else {
       console.log("[v0] Agreements - No company_id, skipping fetch")
       setLoading(false)
     }
   }, [profile?.company_id, authLoading])
 
-  async function fetchAgreements() {
+  async function fetchData() {
     if (!profile?.company_id) {
       console.log("[v0] No company_id, skipping fetch")
       setLoading(false)
@@ -56,91 +55,160 @@ export default function AgreementsPage() {
     }
 
     setLoading(true)
-    console.log("[v0] Fetching agreements for company:", profile.company_id)
+    console.log("[v0] Fetching agreements data for company:", profile.company_id)
 
     try {
-      // Fetch non-cancelled agreements (aligns with Dashboard and Super Admin)
-      const { data: agreementsData, error: agreementsError } = await supabase
+      // Step 1: Fetch ALL VMAX customers for this company (same as Super Admin)
+      let vmaxRecords: any[] = []
+      let page = 0
+      const pageSize = 1000
+
+      while (true) {
+        const { data: pageData } = await supabase
+          .from("VMAX")
+          .select("*")
+          .eq("id_company", profile.company_id)
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (!pageData || pageData.length === 0) break
+        vmaxRecords = [...vmaxRecords, ...pageData]
+        if (pageData.length < pageSize) break
+        page++
+      }
+
+      // Step 2: Fetch all agreements for this company
+      const { data: agreements } = await supabase
         .from("agreements")
         .select("*")
         .eq("company_id", profile.company_id)
-        .neq("status", "cancelled")
         .order("created_at", { ascending: false })
 
-      if (agreementsError) {
-        console.error("[v0] Error fetching agreements:", agreementsError)
-        // Don't throw - just show empty state
-        setAgreements([])
-        setLoading(false)
-        return
-      }
+      // Step 3: Fetch customers table to map customer_id -> document
+      const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
+      let customerDocMap = new Map<string, string>()
 
-      // If we have agreements, get customer info from customers table
-      if (agreementsData && agreementsData.length > 0) {
-        const customerIds = [...new Set(agreementsData.map(a => a.customer_id).filter(Boolean))]
+      if (customerIds.length > 0) {
+        const { data: customersData } = await supabase
+          .from("customers")
+          .select("id, document")
+          .in("id", customerIds)
 
-        // Store unique customer count to match Dashboard's "Negociações Enviadas"
-        setUniqueCustomerCount(customerIds.length)
-
-        if (customerIds.length > 0) {
-          // Fetch from customers table (where agreement.customer_id points)
-          const { data: customersData } = await supabase
-            .from("customers")
-            .select("id, name, document")
-            .in("id", customerIds)
-
-          const customerMap = new Map<string, { name: string; document: string }>()
-          if (customersData) {
-            customersData.forEach((c: any) => {
-              customerMap.set(c.id, { name: c.name || "", document: c.document || "" })
-            })
-          }
-
-          // Enrich agreements with customer data
-          const enrichedAgreements = agreementsData.map(agreement => ({
-            ...agreement,
-            customer_name: customerMap.get(agreement.customer_id)?.name || null,
-            customer_document: customerMap.get(agreement.customer_id)?.document || null,
-          }))
-
-          setAgreements(enrichedAgreements)
-        } else {
-          setAgreements(agreementsData)
+        if (customersData) {
+          customersData.forEach((c: any) => {
+            const normalizedDoc = (c.document || "").replace(/\D/g, "")
+            if (normalizedDoc) {
+              customerDocMap.set(c.id, normalizedDoc)
+            }
+          })
         }
-      } else {
-        setAgreements([])
-        setUniqueCustomerCount(0)
       }
 
-      console.log("[v0] Fetched agreements:", agreementsData?.length || 0)
+      // Step 4: Build maps from normalized document -> agreement info
+      // This matches Super Admin's logic exactly
+      const docToAgreements = new Map<string, any[]>()
+
+      for (const a of agreements || []) {
+        const normalizedDoc = customerDocMap.get(a.customer_id)
+        if (!normalizedDoc) continue
+
+        if (!docToAgreements.has(normalizedDoc)) {
+          docToAgreements.set(normalizedDoc, [])
+        }
+        docToAgreements.get(normalizedDoc)!.push(a)
+      }
+
+      // Step 5: For each VMAX customer, determine negotiation status
+      // This matches Super Admin's hasNegotiation logic exactly
+      const customersWithNegotiations: VmaxCustomer[] = []
+
+      for (const vmax of vmaxRecords) {
+        const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+        const customerAgreements = docToAgreements.get(cpfCnpj) || []
+
+        // Filter to non-cancelled agreements
+        const activeAgreements = customerAgreements.filter(a => a.status !== "cancelled")
+        const cancelledAgreements = customerAgreements.filter(a => a.status === "cancelled")
+
+        // Check if has any non-cancelled agreement (matches Super Admin's hasNegotiation)
+        const hasNegotiation = activeAgreements.length > 0
+
+        // Only include customers who have negotiations (to match "Enviada" filter)
+        if (!hasNegotiation) continue
+
+        // Get the latest active agreement for this customer
+        const latestAgreement = activeAgreements[0] // Already sorted by created_at desc
+
+        // Check if paid
+        const isPaid = activeAgreements.some(a =>
+          a.status === "completed" || a.status === "paid" ||
+          a.payment_status === "received" || a.payment_status === "confirmed"
+        )
+
+        // Check if was cancelled but has no active agreement (can send new)
+        const isCancelled = cancelledAgreements.length > 0 && activeAgreements.length === 0
+
+        // Parse debt value
+        const vencidoStr = String(vmax.Vencido || "0")
+        const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+        const totalDebt = Number(cleanValue) || 0
+
+        const diasInadStr = String(vmax["Dias Inad."] || "0")
+        const daysOverdue = Number(diasInadStr.replace(/\./g, "")) || 0
+
+        customersWithNegotiations.push({
+          id: vmax.id,
+          name: vmax.Cliente || "Cliente",
+          document: vmax["CPF/CNPJ"] || "N/A",
+          totalDebt,
+          daysOverdue: isPaid ? 0 : daysOverdue,
+          hasNegotiation: true,
+          isPaid,
+          isCancelled,
+          agreementId: latestAgreement?.id || null,
+          agreedAmount: Number(latestAgreement?.agreed_amount) || 0,
+          installments: latestAgreement?.installments || 1,
+          status: latestAgreement?.status || "active",
+          paymentStatus: latestAgreement?.payment_status || null,
+          createdAt: latestAgreement?.created_at || null,
+        })
+      }
+
+      setCustomers(customersWithNegotiations)
+      console.log("[v0] Customers with negotiations:", customersWithNegotiations.length)
     } catch (error: any) {
-      console.error("[v0] Unexpected error fetching agreements:", error)
-      setAgreements([])
+      console.error("[v0] Unexpected error fetching data:", error)
+      setCustomers([])
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredAgreements = agreements.filter((agreement) => {
-    // When searchTerm is empty, match all
-    const matchesSearch = !searchTerm ||
-      agreement.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agreement.customer_document?.includes(searchTerm)
-    const matchesStatus = statusFilter === "all" || agreement.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((customer) => {
+      const matchesSearch = !searchTerm ||
+        customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.document?.includes(searchTerm)
 
-  // Stats calculated from all fetched agreements (cancelled are already excluded from query)
-  const totalAgreedValue = agreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+      let matchesStatus = true
+      if (statusFilter === "active") {
+        matchesStatus = customer.status === "active" || customer.status === "draft"
+      } else if (statusFilter === "completed") {
+        matchesStatus = customer.status === "completed" || customer.isPaid
+      }
 
-  const completedValue = agreements
-    .filter(a => a.status === "completed")
-    .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+      return matchesSearch && matchesStatus
+    })
+  }, [customers, searchTerm, statusFilter])
 
-  const averageInstallments =
-    agreements.length > 0
-      ? agreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / agreements.length
-      : 0
+  // Stats - count customers (not agreements), sum their agreed amounts
+  const totalCount = customers.length
+  const totalAgreedValue = customers.reduce((sum, c) => sum + c.agreedAmount, 0)
+  const completedValue = customers
+    .filter(c => c.isPaid || c.status === "completed")
+    .reduce((sum, c) => sum + c.agreedAmount, 0)
+  const averageInstallments = totalCount > 0
+    ? customers.reduce((sum, c) => sum + c.installments, 0) / totalCount
+    : 0
 
   if (loading) {
     return (
@@ -167,7 +235,7 @@ export default function AgreementsPage() {
             <Handshake className="h-8 w-8 text-blue-500" />
             <div>
               <p className="text-sm text-muted-foreground">Total de Acordos</p>
-              <p className="text-2xl font-bold">{uniqueCustomerCount}</p>
+              <p className="text-2xl font-bold">{totalCount}</p>
             </div>
           </div>
         </Card>
@@ -238,76 +306,70 @@ export default function AgreementsPage() {
 
       {/* Content */}
       <div className="space-y-4">
-          {filteredAgreements.map((agreement) => (
-            <Card key={agreement.id} className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{agreement.customer_name || "Cliente não identificado"}</h3>
-                    <Badge
-                      variant={
-                        agreement.status === "active"
+        {filteredCustomers.map((customer) => (
+          <Card key={customer.id} className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="font-semibold">{customer.name}</h3>
+                  <Badge
+                    variant={
+                      customer.isPaid || customer.status === "completed"
+                        ? "secondary"
+                        : customer.status === "active" || customer.status === "draft"
                           ? "default"
-                          : agreement.status === "completed"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {agreement.status === "active"
+                          : "destructive"
+                    }
+                  >
+                    {customer.isPaid || customer.status === "completed"
+                      ? "Concluído"
+                      : customer.status === "active" || customer.status === "draft"
                         ? "Ativo"
-                        : agreement.status === "completed"
-                          ? "Concluído"
-                          : "Cancelado"}
-                    </Badge>
+                        : "Pendente"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  {customer.document}
+                </p>
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Dívida Original</p>
+                    <p className="font-medium">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(customer.totalDebt)}
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {agreement.customer_document || "N/A"}
-                  </p>
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Valor Original</p>
-                      <p className="font-medium">
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(Number(agreement.original_amount) || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Valor Acordado</p>
-                      <p className="font-medium text-green-600">
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(Number(agreement.agreed_amount) || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Desconto</p>
-                      <p className="font-medium">{Number(agreement.discount_percentage || 0).toFixed(1)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Parcelas</p>
-                      <p className="font-medium">
-                        {Number(agreement.installments) || 0}x de{" "}
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(Number(agreement.installment_amount) || 0)}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-muted-foreground">Valor Acordado</p>
+                    <p className="font-medium text-green-600">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(customer.agreedAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Dias em Atraso</p>
+                    <p className="font-medium">{customer.daysOverdue}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Parcelas</p>
+                    <p className="font-medium">{customer.installments}x</p>
                   </div>
                 </div>
               </div>
-            </Card>
-          ))}
+            </div>
+          </Card>
+        ))}
 
-          {filteredAgreements.length === 0 && (
-            <Card className="p-12 text-center">
-              <Handshake className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">Nenhum acordo encontrado</p>
-            </Card>
-          )}
+        {filteredCustomers.length === 0 && (
+          <Card className="p-12 text-center">
+            <Handshake className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Nenhum acordo encontrado</p>
+          </Card>
+        )}
       </div>
     </div>
   )
