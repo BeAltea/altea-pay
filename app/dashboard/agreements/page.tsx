@@ -58,11 +58,12 @@ export default function AgreementsPage() {
     console.log("[v0] Fetching agreements for company:", profile.company_id)
 
     try {
-      // Fetch agreements without joins (relationships may not exist)
+      // Fetch non-cancelled agreements (aligns with Dashboard and Super Admin)
       const { data: agreementsData, error: agreementsError } = await supabase
         .from("agreements")
         .select("*")
         .eq("company_id", profile.company_id)
+        .neq("status", "cancelled")
         .order("created_at", { ascending: false })
 
       if (agreementsError) {
@@ -124,18 +125,16 @@ export default function AgreementsPage() {
     return matchesSearch && matchesStatus
   })
 
-  // Stats calculated from active agreements only (exclude cancelled)
-  const activeAgreements = agreements.filter(a => a.status !== "cancelled")
-
-  const totalAgreedValue = activeAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+  // Stats calculated from all fetched agreements (cancelled are already excluded from query)
+  const totalAgreedValue = agreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const completedValue = agreements
     .filter(a => a.status === "completed")
     .reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const averageInstallments =
-    activeAgreements.length > 0
-      ? activeAgreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / activeAgreements.length
+    agreements.length > 0
+      ? agreements.reduce((sum, a) => sum + (Number(a.installments) || 0), 0) / agreements.length
       : 0
 
   if (loading) {
@@ -163,7 +162,7 @@ export default function AgreementsPage() {
             <Handshake className="h-8 w-8 text-blue-500" />
             <div>
               <p className="text-sm text-muted-foreground">Total de Acordos</p>
-              <p className="text-2xl font-bold">{activeAgreements.length}</p>
+              <p className="text-2xl font-bold">{agreements.length}</p>
             </div>
           </div>
         </Card>
@@ -228,7 +227,6 @@ export default function AgreementsPage() {
             <SelectItem value="all">Todos os status</SelectItem>
             <SelectItem value="active">Ativo</SelectItem>
             <SelectItem value="completed">Concluído</SelectItem>
-            <SelectItem value="cancelled">Cancelado</SelectItem>
           </SelectContent>
         </Select>
       </div>
