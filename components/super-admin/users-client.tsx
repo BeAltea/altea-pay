@@ -394,13 +394,14 @@ export function UsersClient({ initialUsers, companies, currentUserId }: UsersCli
 
                       {/* Actions Menu */}
                       {canModifyUser(user) && (
-                        <DropdownMenu>
+                        <DropdownMenu modal={false}>
                           <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="ghost">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Abrir menu</span>
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="w-48">
                             {user.status === "suspended" ? (
                               <DropdownMenuItem onClick={() => handleSuspendClick(user, "reactivate")}>
                                 <UserPlus className="h-4 w-4 mr-2" />
