@@ -55,11 +55,12 @@ export default async function DividasPage() {
     page++
   }
 
-  // Fetch agreements to determine actual payment status from ASAAS
+  // Fetch non-cancelled agreements to determine actual payment status from ASAAS
   const { data: agreements } = await supabase
     .from("agreements")
     .select("customer_id, status, payment_status")
     .eq("company_id", companyId)
+    .neq("status", "cancelled")
 
   // Build a map of customer_id -> agreement status for proper debt status calculation
   const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean }>()

@@ -37,11 +37,13 @@ export default async function AcordosPage() {
     .eq("id", companyId)
     .single()
 
-  // Fetch all agreements for this company
+  // Fetch all non-cancelled agreements for this company
+  // This aligns with Dashboard and Super Admin which exclude cancelled agreements
   const { data: agreements } = await supabase
     .from("agreements")
     .select("*")
     .eq("company_id", companyId)
+    .neq("status", "cancelled")
     .order("created_at", { ascending: false })
 
   // Fetch customer info for each agreement (check both VMAX and customers tables)

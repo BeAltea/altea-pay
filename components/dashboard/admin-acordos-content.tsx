@@ -89,21 +89,28 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
 
-  // Stats
+  // Stats - only non-cancelled agreements are passed from server (aligns with Dashboard)
   const stats = useMemo(() => {
+    // Recovered = completed or payment received via ASAAS
     const recovered = acordos
-      .filter(a => a.status === "completed" || a.paymentStatus === "received")
+      .filter(a => a.status === "completed" || a.paymentStatus === "received" || a.paymentStatus === "confirmed")
       .reduce((sum, a) => sum + a.agreedAmount, 0)
 
+    // Open value = active/draft agreements minus what's been paid
     const openValue = acordos
       .filter(a => a.status === "active" || a.status === "draft")
       .reduce((sum, a) => sum + (a.agreedAmount - a.paidAmount), 0)
 
+    // Total = all non-cancelled agreements (matches Dashboard "Negociações Enviadas")
     const total = acordos.length
-    const open = acordos.filter(a => a.status === "active" || a.status === "draft").length
-    const closed = acordos.filter(a => a.status === "completed" || a.status === "cancelled").length
 
-    return { recovered, openValue, total, open, closed }
+    // Open = active or draft status
+    const open = acordos.filter(a => a.status === "active" || a.status === "draft").length
+
+    // Completed = agreements marked as completed (paid in full)
+    const completed = acordos.filter(a => a.status === "completed").length
+
+    return { recovered, openValue, total, open, completed }
   }, [acordos])
 
   const filteredAndSortedAcordos = useMemo(() => {
@@ -118,12 +125,11 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
       )
     }
 
-    // Status filter
+    // Status filter (cancelled agreements are excluded at the server level)
     if (statusFilter !== "all") {
       filtered = filtered.filter(a => {
         if (statusFilter === "open") return a.status === "active" || a.status === "draft"
         if (statusFilter === "completed") return a.status === "completed"
-        if (statusFilter === "cancelled") return a.status === "cancelled"
         if (statusFilter === "overdue") return a.status === "breached" || a.status === "defaulted"
         return true
       })
@@ -201,11 +207,11 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
     return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
   }
 
+  // Status config for badges (cancelled agreements are excluded at the server level)
   const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
     draft: { label: "Aberto", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
     active: { label: "Ativo", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
     completed: { label: "Concluido", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
-    cancelled: { label: "Cancelado", color: "var(--admin-red)", bg: "var(--admin-red-bg)" },
     breached: { label: "Em atraso", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
     defaulted: { label: "Inadimplente", color: "var(--admin-red)", bg: "var(--admin-red-bg)" },
   }
@@ -289,11 +295,11 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle className="w-4 h-4" style={{ color: "var(--admin-green)" }} />
             <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Acordos Encerrados
+              Acordos Concluidos
             </span>
           </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-text-primary)" }}>
-            {stats.closed}
+          <div className="text-lg font-bold" style={{ color: "var(--admin-green)" }}>
+            {stats.completed}
           </div>
         </div>
       </div>
@@ -334,7 +340,6 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="open">Aberto/Ativo</SelectItem>
               <SelectItem value="completed">Concluido</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
               <SelectItem value="overdue">Em atraso</SelectItem>
             </SelectContent>
           </Select>

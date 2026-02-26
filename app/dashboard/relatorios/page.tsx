@@ -55,11 +55,12 @@ export default async function RelatoriosPage() {
     page++
   }
 
-  // Fetch agreements
+  // Fetch non-cancelled agreements (aligns with Dashboard and Acordos page)
   const { data: agreements } = await supabase
     .from("agreements")
     .select("*")
     .eq("company_id", companyId)
+    .neq("status", "cancelled")
     .order("created_at", { ascending: false })
 
   // Build customer name lookup map from agreements
