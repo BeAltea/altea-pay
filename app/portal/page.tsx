@@ -149,40 +149,59 @@ export default function PortalPage() {
     return badges[status] || { class: "badge-secondary", text: status }
   }
 
-  // Styles
+  // Styles aligned with super-admin design system
   const styles = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
     :root {
-      --dark-900: #0F1117;
-      --dark-800: #1A1D27;
-      --dark-700: #252836;
-      --dark-600: #353849;
+      /* Light theme - matching globals.css admin theme */
+      --bg-primary: #F8F9FC;
+      --bg-secondary: #FFFFFF;
+      --bg-tertiary: #F1F3F9;
+      --bg-elevated: #FFFFFF;
+      --border-color: #E2E8F0;
+      --text-primary: #1A1D27;
+      --text-secondary: #4A5568;
+      --text-muted: #718096;
+      --gold-400: #E8950F;
+      --gold-500: #D4820A;
+      --gold-600: #B36D00;
+      --green: #059669;
+      --green-bg: rgba(5, 150, 105, 0.1);
+      --red: #DC2626;
+      --red-bg: rgba(220, 38, 38, 0.1);
+      --blue: #2563EB;
+      --blue-bg: rgba(37, 99, 235, 0.1);
+      --orange: #D97706;
+      --orange-bg: rgba(217, 119, 6, 0.1);
+    }
+
+    [data-theme="dark"] {
+      /* Dark theme - matching globals.css admin theme */
+      --bg-primary: #0F1117;
+      --bg-secondary: #1A1D27;
+      --bg-tertiary: #252836;
+      --bg-elevated: #323647;
+      --border-color: #323647;
+      --text-primary: #F0F1F5;
+      --text-secondary: #9DA3B7;
+      --text-muted: #6B7188;
       --gold-400: #F5A623;
       --gold-500: #E8950F;
       --gold-600: #C77A00;
       --green: #2DD4A8;
+      --green-bg: rgba(45, 212, 168, 0.1);
       --red: #F06868;
+      --red-bg: rgba(240, 104, 104, 0.1);
       --blue: #5B8DEF;
+      --blue-bg: rgba(91, 141, 239, 0.1);
       --orange: #F5A623;
-      --text-primary: #FFFFFF;
-      --text-secondary: #B8BCC8;
-      --text-muted: #6B7188;
-    }
-
-    [data-theme="light"] {
-      --dark-900: #F5F6FA;
-      --dark-800: #FFFFFF;
-      --dark-700: #F0F1F5;
-      --dark-600: #E2E4EC;
-      --text-primary: #1A1D27;
-      --text-secondary: #6B7188;
-      --text-muted: #9DA3B7;
+      --orange-bg: rgba(245, 166, 35, 0.1);
     }
 
     .portal-container {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--dark-900);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
       color: var(--text-primary);
       min-height: 100vh;
     }
@@ -192,16 +211,16 @@ export default function PortalPage() {
       color: #1A1D27;
       border: none;
       border-radius: 8px;
-      padding: 14px 24px;
+      padding: 10px 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: all 0.2s;
       font-size: 14px;
     }
 
     .portal-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(245, 166, 35, 0.3);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
     }
 
     .portal-btn:disabled {
@@ -212,13 +231,14 @@ export default function PortalPage() {
 
     .portal-btn-outline {
       background: transparent;
-      border: 1px solid var(--dark-600);
+      border: 1px solid var(--border-color);
       color: var(--text-primary);
     }
 
     .portal-btn-outline:hover {
-      background: var(--dark-700);
+      background: var(--bg-tertiary);
       box-shadow: none;
+      transform: none;
     }
 
     .badge {
@@ -228,34 +248,103 @@ export default function PortalPage() {
       font-weight: 500;
     }
 
-    .badge-success { background: rgba(45, 212, 168, 0.15); color: var(--green); }
-    .badge-danger { background: rgba(240, 104, 104, 0.15); color: var(--red); }
-    .badge-warning { background: rgba(245, 166, 35, 0.15); color: var(--orange); }
-    .badge-info { background: rgba(91, 141, 239, 0.15); color: var(--blue); }
-    .badge-secondary { background: var(--dark-600); color: var(--text-secondary); }
+    .badge-success { background: var(--green-bg); color: var(--green); }
+    .badge-danger { background: var(--red-bg); color: var(--red); }
+    .badge-warning { background: var(--orange-bg); color: var(--orange); }
+    .badge-info { background: var(--blue-bg); color: var(--blue); }
+    .badge-secondary { background: var(--bg-elevated); color: var(--text-secondary); }
 
     .header {
-      background: var(--dark-800);
-      border-bottom: 1px solid var(--dark-600);
-      padding: 16px 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
       position: sticky;
       top: 0;
       z-index: 100;
     }
 
     .header-content {
-      max-width: 960px;
+      max-width: 1024px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .logo {
-      font-family: 'Playfair Display', serif;
-      font-size: 24px;
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon-inner {
+      width: 20px;
+      height: 20px;
+      background: #1A1D27;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-weight: 700;
+      font-size: 12px;
       color: var(--gold-400);
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .logo-subtitle {
+      font-size: 11px;
+      color: var(--gold-400);
+      font-weight: 500;
+    }
+
+    .user-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      color: #1A1D27;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .user-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .user-email {
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     .summary-grid {
@@ -266,11 +355,17 @@ export default function PortalPage() {
     }
 
     .summary-card {
-      background: var(--dark-800);
-      border: 1px solid var(--dark-600);
-      border-radius: 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
       padding: 20px;
-      text-align: center;
+    }
+
+    .summary-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
     }
 
     .summary-label {
@@ -278,25 +373,49 @@ export default function PortalPage() {
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 8px;
+      font-weight: 500;
     }
+
+    .summary-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .summary-icon-red { background: var(--red-bg); }
+    .summary-icon-gold { background: var(--orange-bg); }
+    .summary-icon-green { background: var(--green-bg); }
 
     .summary-value {
       font-size: 28px;
       font-weight: 700;
+      margin-bottom: 4px;
     }
 
     .summary-value.red { color: var(--red); }
     .summary-value.gold { color: var(--gold-400); }
     .summary-value.green { color: var(--green); }
 
+    .summary-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
     .debt-card {
-      background: var(--dark-800);
-      border: 1px solid var(--dark-600);
-      border-radius: 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
       padding: 20px;
-      margin-bottom: 16px;
-      animation: fadeUp 0.3s ease-out;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+
+    .debt-card:hover {
+      border-color: var(--gold-400);
     }
 
     .debt-card-header {
@@ -313,19 +432,32 @@ export default function PortalPage() {
     }
 
     .company-avatar {
-      width: 48px;
-      height: 48px;
-      background: var(--dark-700);
-      border-radius: 12px;
+      width: 44px;
+      height: 44px;
+      background: var(--bg-tertiary);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 600;
+      font-size: 14px;
       color: var(--gold-400);
     }
 
+    .company-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .company-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
     .debt-amount {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       color: var(--red);
     }
@@ -336,7 +468,7 @@ export default function PortalPage() {
       gap: 16px;
       align-items: center;
       padding-top: 16px;
-      border-top: 1px solid var(--dark-600);
+      border-top: 1px solid var(--border-color);
     }
 
     .debt-detail {
@@ -349,11 +481,13 @@ export default function PortalPage() {
       font-size: 11px;
       color: var(--text-muted);
       text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
 
     .debt-detail-value {
       font-size: 14px;
       font-weight: 500;
+      color: var(--text-primary);
     }
 
     .debt-actions {
@@ -363,7 +497,7 @@ export default function PortalPage() {
     }
 
     .action-btn {
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 8px;
       font-size: 13px;
       font-weight: 500;
@@ -381,9 +515,19 @@ export default function PortalPage() {
       color: #1A1D27;
     }
 
+    .action-btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+    }
+
     .action-btn-secondary {
-      background: var(--dark-700);
+      background: var(--bg-tertiary);
       color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .action-btn-secondary:hover {
+      background: var(--bg-elevated);
     }
 
     .filter-tabs {
@@ -394,23 +538,27 @@ export default function PortalPage() {
 
     .filter-tab {
       padding: 8px 16px;
-      border-radius: 20px;
+      border-radius: 8px;
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
-      background: var(--dark-700);
+      background: var(--bg-tertiary);
       color: var(--text-secondary);
       border: 1px solid transparent;
       transition: all 0.2s;
     }
 
+    .filter-tab:hover {
+      background: var(--bg-elevated);
+    }
+
     .filter-tab.active {
-      background: var(--gold-400);
+      background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
       color: #1A1D27;
     }
 
     .main-content {
-      max-width: 960px;
+      max-width: 1024px;
       margin: 0 auto;
       padding: 32px 24px;
     }
@@ -420,10 +568,10 @@ export default function PortalPage() {
     }
 
     .welcome-title {
-      font-family: 'Playfair Display', serif;
-      font-size: 32px;
+      font-size: 28px;
       font-weight: 700;
       margin-bottom: 8px;
+      color: var(--text-primary);
     }
 
     .welcome-subtitle {
@@ -438,23 +586,64 @@ export default function PortalPage() {
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--text-primary);
     }
 
     .empty-state {
       text-align: center;
       padding: 48px 24px;
       color: var(--text-muted);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
     }
 
-    @keyframes fadeUp {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    .theme-toggle {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--text-primary);
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-elevated);
+    }
+
+    .loading-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg-primary);
+    }
+
+    .loading-spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-color);
+      border-top-color: var(--gold-400);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     @media (max-width: 768px) {
@@ -478,36 +667,18 @@ export default function PortalPage() {
         width: 100%;
         justify-content: center;
       }
-    }
 
-    .theme-toggle {
-      background: var(--dark-700);
-      border: 1px solid var(--dark-600);
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-      color: var(--text-primary);
-      font-size: 16px;
-    }
+      .user-info {
+        display: none;
+      }
 
-    .loading-spinner {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-    }
+      .header-content {
+        padding: 0 16px;
+      }
 
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid var(--dark-600);
-      border-top-color: var(--gold-400);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+      .main-content {
+        padding: 24px 16px;
+      }
     }
   `
 
@@ -516,8 +687,11 @@ export default function PortalPage() {
     return (
       <div className="portal-container" data-theme={theme}>
         <style>{styles}</style>
-        <div className="loading-spinner">
-          <div className="spinner"></div>
+        <div className="loading-container">
+          <div className="loading-spinner">
+            <div className="spinner"></div>
+            <span className="loading-text">Carregando...</span>
+          </div>
         </div>
       </div>
     )
@@ -528,8 +702,11 @@ export default function PortalPage() {
     return (
       <div className="portal-container" data-theme={theme}>
         <style>{styles}</style>
-        <div className="loading-spinner">
-          <div className="spinner"></div>
+        <div className="loading-container">
+          <div className="loading-spinner">
+            <div className="spinner"></div>
+            <span className="loading-text">Carregando...</span>
+          </div>
         </div>
       </div>
     )
@@ -537,25 +714,40 @@ export default function PortalPage() {
 
   const filteredDebts = getFilteredDebts()
   const firstName = profile.full_name?.split(" ")[0] || "Usuario"
+  const userInitials = profile.full_name
+    ? profile.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
+    : "U"
 
   return (
     <div className="portal-container" data-theme={theme}>
       <style>{styles}</style>
 
-      {/* Header */}
+      {/* Header - matching super-admin design */}
       <header className="header">
         <div className="header-content">
-          <div className="logo">AlteaPay</div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <button className="theme-toggle" onClick={toggleTheme}>
+          {/* Logo - matching super-admin sidebar logo */}
+          <div className="logo-container">
+            <div className="logo-icon">
+              <div className="logo-icon-inner">A</div>
+            </div>
+            <div>
+              <div className="logo-text">Altea Pay</div>
+              <div className="logo-subtitle">Portal do Cliente</div>
+            </div>
+          </div>
+
+          {/* User section */}
+          <div className="user-section">
+            <button className="theme-toggle" onClick={toggleTheme} title="Alternar tema">
               {theme === "dark" ? "☀️" : "🌙"}
             </button>
-            <span style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-              {profile.email}
-            </span>
+            <div className="user-avatar">{userInitials}</div>
+            <div className="user-info">
+              <span className="user-name">{profile.full_name || "Usuario"}</span>
+              <span className="user-email">{profile.email}</span>
+            </div>
             <button
               className="portal-btn portal-btn-outline"
-              style={{ width: "auto", padding: "8px 16px" }}
               onClick={handleLogout}
             >
               Sair
@@ -574,40 +766,49 @@ export default function PortalPage() {
           </p>
         </section>
 
-        {/* Summary */}
+        {/* Summary Cards - matching super-admin card style */}
         {summary && (
           <div className="summary-grid">
             <div className="summary-card">
-              <div className="summary-label">Total em Aberto</div>
+              <div className="summary-card-header">
+                <span className="summary-label">Total em Aberto</span>
+                <div className="summary-icon summary-icon-red">📊</div>
+              </div>
               <div className="summary-value red">
                 {formatCurrency(summary.overdue_amount + summary.pending_amount)}
               </div>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div className="summary-subtitle">
                 {summary.overdue + summary.pending} divida(s)
               </div>
             </div>
             <div className="summary-card">
-              <div className="summary-label">Em Negociacao</div>
+              <div className="summary-card-header">
+                <span className="summary-label">Em Negociacao</span>
+                <div className="summary-icon summary-icon-gold">🤝</div>
+              </div>
               <div className="summary-value gold">
                 {formatCurrency(summary.negotiation_amount)}
               </div>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div className="summary-subtitle">
                 {summary.in_negotiation} divida(s)
               </div>
             </div>
             <div className="summary-card">
-              <div className="summary-label">Ja Pago</div>
+              <div className="summary-card-header">
+                <span className="summary-label">Ja Pago</span>
+                <div className="summary-icon summary-icon-green">✓</div>
+              </div>
               <div className="summary-value green">
                 {formatCurrency(summary.paid_amount)}
               </div>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div className="summary-subtitle">
                 {summary.paid} divida(s)
               </div>
             </div>
           </div>
         )}
 
-        {/* Filters */}
+        {/* Filters - matching super-admin button style */}
         <div className="filter-tabs">
           {[
             { key: "all", label: "Todas" },
@@ -634,7 +835,7 @@ export default function PortalPage() {
               <p>Nenhuma divida encontrada</p>
             </div>
           ) : (
-            filteredDebts.map((debt, index) => {
+            filteredDebts.map((debt) => {
               const badge = getStatusBadge(debt.display_status)
               const initials = debt.company_name
                 .split(" ")
@@ -644,19 +845,13 @@ export default function PortalPage() {
                 .toUpperCase()
 
               return (
-                <div
-                  key={debt.id}
-                  className="debt-card"
-                  style={{ animationDelay: `${index * 0.05}s` }}
-                >
+                <div key={debt.id} className="debt-card">
                   <div className="debt-card-header">
                     <div className="company-info">
                       <div className="company-avatar">{initials}</div>
                       <div>
-                        <div style={{ fontWeight: 600 }}>{debt.company_name}</div>
-                        <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                          {debt.description}
-                        </div>
+                        <div className="company-name">{debt.company_name}</div>
+                        <div className="company-desc">{debt.description}</div>
                       </div>
                     </div>
                     <div className="debt-amount">{formatCurrency(debt.amount)}</div>
@@ -706,7 +901,7 @@ export default function PortalPage() {
                         </button>
                       )}
                       {debt.display_status === "paid" && (
-                        <span style={{ color: "var(--green)", fontWeight: 500 }}>
+                        <span style={{ color: "var(--green)", fontWeight: 500, fontSize: "14px" }}>
                           Pago
                         </span>
                       )}
