@@ -165,11 +165,20 @@ export async function GET(request: NextRequest) {
       const total = debt + received
       const rate = total > 0 ? (received / total) * 100 : 0
 
-      // ONLY status === "completed" counts as paid
-      const negSent = companyAgreements.filter(
-        (a) => a.status !== "cancelled" && a.status !== "draft"
-      ).length
-      const negPaid = companyAgreements.filter((a) => a.status === "completed").length
+      // Count UNIQUE CUSTOMERS with non-cancelled/non-draft agreements (not agreement records)
+      // This matches the Super Admin Negociações page logic that shows 215
+      const sentCustomerIds = new Set(
+        companyAgreements
+          .filter((a) => a.status !== "cancelled" && a.status !== "draft")
+          .map((a) => a.customer_id)
+      )
+      const paidCustomerIds = new Set(
+        companyAgreements
+          .filter((a) => a.status === "completed")
+          .map((a) => a.customer_id)
+      )
+      const negSent = sentCustomerIds.size
+      const negPaid = paidCustomerIds.size
 
       return {
         id: company.id,
@@ -206,13 +215,26 @@ export async function GET(request: NextRequest) {
     const globalTotal = globalDebt + globalReceived
     const globalRecoveryRate = globalTotal > 0 ? (globalReceived / globalTotal) * 100 : 0
 
-    const globalNegSent = allAgreements.filter(
-      (a) => a.status !== "cancelled" && a.status !== "draft"
-    ).length
-    const globalNegPaid = allAgreements.filter((a) => a.status === "completed").length
-    const globalNegOpen = allAgreements.filter(
-      (a) => (a.status === "active" || a.status === "pending")
-    ).length
+    // Count UNIQUE CUSTOMERS globally (not agreement records)
+    // This ensures consistency with the Super Admin Negociações page showing 215
+    const globalSentCustomerIds = new Set(
+      allAgreements
+        .filter((a) => a.status !== "cancelled" && a.status !== "draft")
+        .map((a) => a.customer_id)
+    )
+    const globalPaidCustomerIds = new Set(
+      allAgreements
+        .filter((a) => a.status === "completed")
+        .map((a) => a.customer_id)
+    )
+    const globalOpenCustomerIds = new Set(
+      allAgreements
+        .filter((a) => a.status === "active" || a.status === "pending")
+        .map((a) => a.customer_id)
+    )
+    const globalNegSent = globalSentCustomerIds.size
+    const globalNegPaid = globalPaidCustomerIds.size
+    const globalNegOpen = globalOpenCustomerIds.size
     const globalNegPaidRate = globalNegSent > 0 ? (globalNegPaid / globalNegSent) * 100 : 0
 
     // Generate monthly chart data

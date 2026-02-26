@@ -44,14 +44,38 @@ export default async function SuperAdminClientesPage() {
     .from("agreements")
     .select("customer_id, status, payment_status, asaas_payment_id, company_id")
 
-  // Build agreement status map
-  const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean }>()
+  // Fetch customers table to map customer_id -> document (CPF/CNPJ)
+  const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
+  const customerDocMap = new Map<string, string>()
+
+  if (customerIds.length > 0) {
+    const { data: customersData } = await supabase
+      .from("customers")
+      .select("id, document")
+      .in("id", customerIds)
+
+    if (customersData) {
+      customersData.forEach((c: any) => {
+        const normalizedDoc = (c.document || "").replace(/\D/g, "")
+        if (normalizedDoc) {
+          customerDocMap.set(c.id, normalizedDoc)
+        }
+      })
+    }
+  }
+
+  // Build agreement status map keyed by normalized CPF/CNPJ (not customer_id)
+  // This allows matching with VMAX records by document
+  const docToStatus = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean }>()
 
   ;(agreements || []).forEach((a: any) => {
-    const customerId = a.customer_id
-    if (!customerId) return
+    const normalizedDoc = customerDocMap.get(a.customer_id)
+    if (!normalizedDoc) return
 
-    const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false }
+    // Skip cancelled agreements
+    if (a.status === "cancelled") return
+
+    const existing = docToStatus.get(normalizedDoc) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false }
     existing.hasAgreement = true
 
     if (a.asaas_payment_id) {
@@ -66,7 +90,7 @@ export default async function SuperAdminClientesPage() {
       existing.isActive = true
     }
 
-    agreementStatusMap.set(customerId, existing)
+    docToStatus.set(normalizedDoc, existing)
   })
 
   // Transform VMAX records to client format
@@ -77,7 +101,9 @@ export default async function SuperAdminClientesPage() {
 
     const diasInad = Number(String(record["Dias Inad."] || "0").replace(/\./g, "")) || 0
 
-    const agreementStatus = agreementStatusMap.get(record.id)
+    // Look up by normalized CPF/CNPJ to match VMAX records to agreements
+    const cpfCnpj = (record["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const agreementStatus = docToStatus.get(cpfCnpj)
 
     let negotiationStatus = "NENHUMA"
     if (agreementStatus?.isPaid) {
