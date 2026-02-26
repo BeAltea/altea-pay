@@ -30,6 +30,7 @@ interface Agreement {
 
 export default function AgreementsPage() {
   const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [uniqueCustomerCount, setUniqueCustomerCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -78,6 +79,9 @@ export default function AgreementsPage() {
       if (agreementsData && agreementsData.length > 0) {
         const customerIds = [...new Set(agreementsData.map(a => a.customer_id).filter(Boolean))]
 
+        // Store unique customer count to match Dashboard's "Negociações Enviadas"
+        setUniqueCustomerCount(customerIds.length)
+
         if (customerIds.length > 0) {
           // Fetch from customers table (where agreement.customer_id points)
           const { data: customersData } = await supabase
@@ -105,6 +109,7 @@ export default function AgreementsPage() {
         }
       } else {
         setAgreements([])
+        setUniqueCustomerCount(0)
       }
 
       console.log("[v0] Fetched agreements:", agreementsData?.length || 0)
@@ -162,7 +167,7 @@ export default function AgreementsPage() {
             <Handshake className="h-8 w-8 text-blue-500" />
             <div>
               <p className="text-sm text-muted-foreground">Total de Acordos</p>
-              <p className="text-2xl font-bold">{agreements.length}</p>
+              <p className="text-2xl font-bold">{uniqueCustomerCount}</p>
             </div>
           </div>
         </Card>
