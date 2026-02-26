@@ -8,18 +8,26 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Filter } from "lucide-react"
 
+interface Company {
+  id: string
+  name: string
+}
+
 interface UserFiltersProps {
   onFiltersChange: (filters: {
     search: string
     role: string | null
     status: string | null
+    companyId: string | null
   }) => void
+  companies?: Company[]
 }
 
-export function UserFilters({ onFiltersChange }: UserFiltersProps) {
+export function UserFilters({ onFiltersChange, companies = [] }: UserFiltersProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null)
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -27,12 +35,13 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
         search: searchTerm,
         role: roleFilter,
         status: statusFilter,
+        companyId: companyFilter,
       })
     }, 300)
 
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, roleFilter, statusFilter])
+  }, [searchTerm, roleFilter, statusFilter, companyFilter])
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -46,13 +55,19 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
 
   const handleStatusFilter = (value: string) => {
     const status = value === "all" ? null : value
-    setStatusFilter(value)
+    setStatusFilter(status)
+  }
+
+  const handleCompanyFilter = (value: string) => {
+    const companyId = value === "all" ? null : value
+    setCompanyFilter(companyId)
   }
 
   const clearFilters = () => {
     setSearchTerm("")
     setRoleFilter(null)
     setStatusFilter(null)
+    setCompanyFilter(null)
   }
 
   return (
@@ -70,6 +85,22 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {companies.length > 0 && (
+              <Select value={companyFilter || "all"} onValueChange={handleCompanyFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Empresas</SelectItem>
+                  {companies.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             <Select value={roleFilter || "all"} onValueChange={handleRoleFilter}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="Função" />
@@ -94,7 +125,7 @@ export function UserFilters({ onFiltersChange }: UserFiltersProps) {
               </SelectContent>
             </Select>
 
-            {(searchTerm || roleFilter || statusFilter) && (
+            {(searchTerm || roleFilter || statusFilter || companyFilter) && (
               <Button variant="outline" size="sm" onClick={clearFilters}>
                 <Filter className="h-4 w-4 mr-2" />
                 Limpar

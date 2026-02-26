@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
-import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2 } from "lucide-react"
+import { Users, Shield, Building2, Plus, Eye, Edit, UserCheck, UserX, Clock, Loader2, ShieldCheck } from "lucide-react"
 import { UserFilters } from "@/components/super-admin/user-filters"
 import { createBrowserClient } from "@/lib/supabase/client"
 
@@ -23,41 +23,59 @@ interface User {
   total_logins: number
 }
 
+interface Company {
+  id: string
+  name: string
+}
+
 export default function UsersPage() {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [isFiltered, setIsFiltered] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchData = async () => {
       try {
         const supabase = createBrowserClient()
 
-        const { data: profiles, error } = await supabase
-          .from("profiles")
-          .select(`
-            id,
-            email,
-            full_name,
-            role,
-            company_id,
-            created_at,
-            companies (
-              name
-            )
-          `)
-          .order("created_at", { ascending: false })
+        // Fetch profiles and companies in parallel
+        const [profilesResult, companiesResult] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select(`
+              id,
+              email,
+              full_name,
+              role,
+              company_id,
+              created_at,
+              companies (
+                name
+              )
+            `)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("companies")
+            .select("id, name")
+            .order("name")
+        ])
 
-        if (error) {
-          console.error("[v0] Erro ao buscar profiles:", error)
-          throw error
+        if (profilesResult.error) {
+          console.error("[v0] Erro ao buscar profiles:", profilesResult.error)
+          throw profilesResult.error
         }
 
-        console.log("[v0] Total de usuários carregados:", profiles?.length || 0)
+        if (companiesResult.error) {
+          console.error("[v0] Erro ao buscar companies:", companiesResult.error)
+        }
+
+        console.log("[v0] Total de usuários carregados:", profilesResult.data?.length || 0)
+        console.log("[v0] Total de empresas carregadas:", companiesResult.data?.length || 0)
 
         // Transform to User format
-        const users: User[] = (profiles || []).map((profile: any) => ({
+        const users: User[] = (profilesResult.data || []).map((profile: any) => ({
           id: profile.id,
           email: profile.email || "",
           full_name: profile.full_name || "Sem nome",
@@ -71,21 +89,23 @@ export default function UsersPage() {
         }))
 
         setAllUsers(users)
+        setCompanies(companiesResult.data || [])
         console.log("[v0] Usuários carregados com sucesso:", users.length)
       } catch (error) {
-        console.error("[v0] Erro ao carregar usuários:", error)
+        console.error("[v0] Erro ao carregar dados:", error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchUsers()
+    fetchData()
   }, [])
 
   const handleFiltersChange = (filters: {
     search: string
     role: string | null
     status: string | null
+    companyId: string | null
   }) => {
     console.log("[v0] Aplicando filtros:", filters)
 
@@ -112,12 +132,20 @@ export default function UsersPage() {
       filtered = filtered.filter((user) => user.status === filters.status)
     }
 
+    // Apply company filter
+    if (filters.companyId) {
+      filtered = filtered.filter((user) => user.company_id === filters.companyId)
+    }
+
     console.log("[v0] Usuários filtrados:", filtered.length, "de", allUsers.length)
     setFilteredUsers(filtered)
-    setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null)
+    setIsFiltered(filters.search !== "" || filters.role !== null || filters.status !== null || filters.companyId !== null)
   }
 
   const displayUsers = isFiltered ? filteredUsers : allUsers
+
+  // Calculate unique companies with users
+  const companiesWithUsers = new Set(allUsers.filter(u => u.company_id).map(u => u.company_id)).size
 
   const totalStats = {
     totalUsers: allUsers.length,
@@ -125,6 +153,7 @@ export default function UsersPage() {
     superAdmins: allUsers.filter((u) => u.role === "super_admin").length,
     admins: allUsers.filter((u) => u.role === "admin").length,
     regularUsers: allUsers.filter((u) => u.role === "user").length,
+    companiesWithAccess: companiesWithUsers,
   }
 
   if (loading) {
@@ -140,9 +169,9 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Gerenciamento de Usuários</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Usuários & Acessos</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm sm:text-base">
-            Gerencie todos os usuários do sistema Altea Pay.
+            Gerencie os usuários e permissões de acesso à plataforma.
           </p>
         </div>
         <div className="flex space-x-3 flex-shrink-0">
@@ -157,7 +186,7 @@ export default function UsersPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
@@ -171,8 +200,19 @@ export default function UsersPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Empresas com Acesso</CardTitle>
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalStats.companiesWithAccess}</div>
+            <p className="text-xs text-muted-foreground">Com usuários ativos</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Super Admins</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalStats.superAdmins}</div>
@@ -190,32 +230,10 @@ export default function UsersPage() {
             <p className="text-xs text-muted-foreground">Por empresa</p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Regulares</CardTitle>
-            <UserX className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.regularUsers}</div>
-            <p className="text-xs text-muted-foreground">Acesso limitado</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Ativos</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.activeUsers}</div>
-            <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Search and Filters */}
-      <UserFilters onFiltersChange={handleFiltersChange} />
+      <UserFilters onFiltersChange={handleFiltersChange} companies={companies} />
 
       {/* Users List */}
       <Card>

@@ -148,12 +148,12 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
       ],
     },
     {
-      label: "SISTEMA",
+      label: "ADMINISTRAÇÃO",
       items: [
         {
-          name: "Usuários",
+          name: "Usuários & Acessos",
           href: "/super-admin/users",
-          icon: Users,
+          icon: Shield,
         },
         {
           name: "Configurações",
