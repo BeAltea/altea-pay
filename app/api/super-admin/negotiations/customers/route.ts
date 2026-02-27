@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
         agreementStatus: paymentInfo?.agreementStatus || null,
         agreementId: paymentInfo?.agreementId || null,
         asaasPaymentId: paymentInfo?.asaasPaymentId || null,
-        dueDate: paymentInfo?.dueDate || vmax.Vecto || null, // Agreement due date or VMAX due date
+        dueDate: paymentInfo?.dueDate || null, // ASAAS charge due date only (not VMAX Vecto)
         notificationViewed: paymentInfo?.notificationViewed || false,
         notificationViewedAt: paymentInfo?.notificationViewedAt || null,
         notificationViewedChannel: paymentInfo?.notificationViewedChannel || null,

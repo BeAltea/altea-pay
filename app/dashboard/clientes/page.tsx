@@ -59,9 +59,10 @@ export default async function ClientesPage() {
     }
 
     // Fetch agreements to determine actual ASAAS-backed negotiation status
+    // Include due_date for the Vencimento column (ASAAS charge due date)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("customer_id, status, payment_status, asaas_payment_id")
+      .select("customer_id, status, payment_status, asaas_payment_id, due_date")
       .eq("company_id", profile.company_id)
 
     // Fetch customers to map external_id (VMAX ID) -> customer_id
@@ -82,13 +83,13 @@ export default async function ClientesPage() {
 
     // Build a map of customer_id -> agreement status (based on ASAAS data)
     // MUST MATCH Acordos page logic: count all non-cancelled agreements
-    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean; hasActiveAgreement: boolean; paymentStatus: string | null }>()
+    const agreementStatusMap = new Map<string, { hasAgreement: boolean; isPaid: boolean; isActive: boolean; hasAsaasCharge: boolean; isCancelled: boolean; hasActiveAgreement: boolean; paymentStatus: string | null; dueDate: string | null }>()
 
     ;(agreements || []).forEach((a: any) => {
       const customerId = a.customer_id
       if (!customerId) return
 
-      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false, isCancelled: false, hasActiveAgreement: false, paymentStatus: null }
+      const existing = agreementStatusMap.get(customerId) || { hasAgreement: false, isPaid: false, isActive: false, hasAsaasCharge: false, isCancelled: false, hasActiveAgreement: false, paymentStatus: null, dueDate: null }
       existing.hasAgreement = true
 
       // Track cancelled status - cancelled agreements mean customer is back to "Em aberto"
@@ -111,6 +112,12 @@ export default async function ClientesPage() {
       // This is the authoritative source for debt status display
       if (a.payment_status) {
         existing.paymentStatus = a.payment_status
+      }
+
+      // Store ASAAS due_date for Vencimento column (only for non-cancelled agreements with ASAAS charge)
+      // This is the ASAAS charge due date, not the original VMAX debt date
+      if (a.due_date && a.asaas_payment_id) {
+        existing.dueDate = a.due_date
       }
 
       // Check if this agreement has been paid (via ASAAS)
@@ -173,6 +180,7 @@ export default async function ClientesPage() {
         hasAsaasCharge: agreementStatus?.hasAsaasCharge || false,
         hasActiveAgreement: agreementStatus?.hasActiveAgreement || false, // For stats calculation
         paymentStatus: agreementStatus?.paymentStatus || null, // ASAAS payment status for debt status display
+        asaasDueDate: agreementStatus?.dueDate || null, // ASAAS charge due date (replaces VMAX Vecto)
       }
     })
 

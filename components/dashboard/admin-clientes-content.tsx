@@ -33,6 +33,7 @@ interface Cliente {
   "Dias Inad.": number
   Vencido: string
   Vecto?: string
+  asaasDueDate?: string | null // ASAAS charge due date (only for clients with active charges)
   analysis_metadata: any
   behavioralData?: any
   restrictive_analysis_logs?: any
@@ -305,12 +306,12 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       })
     }
 
-    // Vencimento date range filter
+    // Vencimento date range filter (uses ASAAS due date, not VMAX Vecto)
     if (vencimentoFrom) {
-      filtered = filtered.filter(c => c.Vecto && c.Vecto >= vencimentoFrom)
+      filtered = filtered.filter(c => c.asaasDueDate && c.asaasDueDate >= vencimentoFrom)
     }
     if (vencimentoTo) {
-      filtered = filtered.filter(c => c.Vecto && c.Vecto <= vencimentoTo)
+      filtered = filtered.filter(c => c.asaasDueDate && c.asaasDueDate <= vencimentoTo)
     }
 
     // Sort
@@ -324,8 +325,9 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
           comparison = (a.debtValue || 0) - (b.debtValue || 0)
           break
         case "debtDate":
-          const dateA = a["Vecto"] ? new Date(a["Vecto"]).getTime() : 0
-          const dateB = b["Vecto"] ? new Date(b["Vecto"]).getTime() : 0
+          // Sort by ASAAS due date (only clients with charges have this)
+          const dateA = a.asaasDueDate ? new Date(a.asaasDueDate).getTime() : 0
+          const dateB = b.asaasDueDate ? new Date(b.asaasDueDate).getTime() : 0
           comparison = dateA - dateB
           break
         case "diasAtraso":
@@ -744,13 +746,13 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                         </span>
                       </td>
 
-                      {/* Vencimento */}
+                      {/* Vencimento - ASAAS charge due date (only for clients with active charges) */}
                       <td className="px-4 py-3">
                         <span
                           className="text-sm"
-                          style={{ color: getVencimentoColor(cliente.Vecto, cliente.debtStatus) }}
+                          style={{ color: getVencimentoColor(cliente.asaasDueDate || undefined, cliente.debtStatus) }}
                         >
-                          {formatVencimento(cliente.Vecto)}
+                          {formatVencimento(cliente.asaasDueDate || undefined)}
                         </span>
                       </td>
 
