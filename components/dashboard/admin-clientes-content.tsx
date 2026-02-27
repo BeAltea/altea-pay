@@ -130,6 +130,27 @@ function getDiasAtrasoLabel(dias: number): string {
   return `${dias} dias`
 }
 
+function formatVencimento(dateStr: string | undefined): string {
+  if (!dateStr) return "—"
+  const date = new Date(dateStr)
+  return date.toLocaleDateString("pt-BR")
+}
+
+function getVencimentoColor(dateStr: string | undefined, debtStatus: string): string {
+  if (!dateStr) return "var(--admin-text-muted)"
+  if (debtStatus === "quitada") return "var(--admin-text-muted)"
+
+  const date = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  date.setHours(0, 0, 0, 0)
+  const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 0) return "var(--admin-red, #ef4444)"
+  if (diffDays <= 7) return "var(--admin-gold-400, #f59e0b)"
+  return "var(--admin-green, #22c55e)"
+}
+
 export function AdminClientesContent({ clientes, company }: AdminClientesContentProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("name")
@@ -137,6 +158,8 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
   const [debtStatusFilter, setDebtStatusFilter] = useState("all")
   const [diasFilter, setDiasFilter] = useState("all")
   const [negotiationFilter, setNegotiationFilter] = useState("all")
+  const [vencimentoFrom, setVencimentoFrom] = useState("")
+  const [vencimentoTo, setVencimentoTo] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(50)
 
@@ -282,6 +305,14 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       })
     }
 
+    // Vencimento date range filter
+    if (vencimentoFrom) {
+      filtered = filtered.filter(c => c.Vecto && c.Vecto >= vencimentoFrom)
+    }
+    if (vencimentoTo) {
+      filtered = filtered.filter(c => c.Vecto && c.Vecto <= vencimentoTo)
+    }
+
     // Sort
     const sorted = [...filtered].sort((a, b) => {
       let comparison = 0
@@ -313,7 +344,7 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
     })
 
     return sorted
-  }, [clientesWithStatus, searchTerm, debtStatusFilter, diasFilter, negotiationFilter, sortField, sortDirection])
+  }, [clientesWithStatus, searchTerm, debtStatusFilter, diasFilter, negotiationFilter, vencimentoFrom, vencimentoTo, sortField, sortDirection])
 
   const paginatedClientes = useMemo(() => {
     const start = (currentPage - 1) * perPage
@@ -542,6 +573,26 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
               <SelectItem value="vencida">Vencida</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Vencimento Date Range Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: "var(--admin-text-muted)" }}>Vencimento:</span>
+            <input
+              type="date"
+              value={vencimentoFrom}
+              onChange={(e) => setVencimentoFrom(e.target.value)}
+              className="rounded-lg px-2 py-1.5 text-xs border-0"
+              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
+            />
+            <span style={{ color: "var(--admin-text-muted)" }}>até</span>
+            <input
+              type="date"
+              value={vencimentoTo}
+              onChange={(e) => setVencimentoTo(e.target.value)}
+              className="rounded-lg px-2 py-1.5 text-xs border-0"
+              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
+            />
+          </div>
         </div>
       </div>
 
@@ -563,12 +614,6 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                     Cliente
                     <SortIcon field="name" />
                   </div>
-                </th>
-                <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                  style={{ color: "var(--admin-text-muted)" }}
-                >
-                  Cidade
                 </th>
                 <th
                   className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
@@ -598,6 +643,16 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                   <div className="flex items-center gap-1">
                     Status Negociacao
                     <SortIcon field="statusNegociacao" />
+                  </div>
+                </th>
+                <th
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  style={{ color: "var(--admin-text-muted)" }}
+                  onClick={() => toggleSort("debtDate")}
+                >
+                  <div className="flex items-center gap-1">
+                    Vencimento
+                    <SortIcon field="debtDate" />
                   </div>
                 </th>
                 <th
@@ -659,13 +714,6 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                         </div>
                       </td>
 
-                      {/* Cidade */}
-                      <td className="px-4 py-3">
-                        <span className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
-                          {cliente.Cidade || "—"}
-                        </span>
-                      </td>
-
                       {/* Divida */}
                       <td className="px-4 py-3">
                         <span
@@ -693,6 +741,16 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                           style={{ background: negotiation.bg, color: negotiation.color }}
                         >
                           {negotiation.label}
+                        </span>
+                      </td>
+
+                      {/* Vencimento */}
+                      <td className="px-4 py-3">
+                        <span
+                          className="text-sm"
+                          style={{ color: getVencimentoColor(cliente.Vecto, cliente.debtStatus) }}
+                        >
+                          {formatVencimento(cliente.Vecto)}
                         </span>
                       </td>
 

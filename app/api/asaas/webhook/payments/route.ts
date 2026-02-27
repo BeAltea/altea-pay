@@ -278,6 +278,10 @@ export async function POST(request: NextRequest) {
     if (payment.paymentDate || payment.clientPaymentDate) {
       agreementUpdate.asaas_payment_date = payment.paymentDate || payment.clientPaymentDate
     }
+    // Sync due date from ASAAS (in case it was changed)
+    if (payment.dueDate) {
+      agreementUpdate.due_date = payment.dueDate
+    }
 
     // Set payment_received_at for received events
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_DUNNING_RECEIVED") {

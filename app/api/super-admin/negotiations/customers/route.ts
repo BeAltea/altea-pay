@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     // JOIN with customers to get document directly (more reliable than separate lookup)
     const { data: agreements } = await supabase
       .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
+      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, due_date, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
       .eq("company_id", companyId)
       .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
 
@@ -105,6 +105,7 @@ export async function GET(request: NextRequest) {
       agreementId: string | null;
       asaasPaymentId: string | null;
       agreementStatus: string | null;
+      dueDate: string | null;
       notificationViewed: boolean;
       notificationViewedAt: string | null;
       notificationViewedChannel: string | null;
@@ -141,6 +142,7 @@ export async function GET(request: NextRequest) {
             agreementId: a.id || null,
             asaasPaymentId: a.asaas_payment_id || null,
             agreementStatus: a.status || null,
+            dueDate: a.due_date || null,
             notificationViewed: !!a.notification_viewed,
             notificationViewedAt: a.notification_viewed_at || null,
             notificationViewedChannel: a.notification_viewed_channel || null,
@@ -206,7 +208,6 @@ export async function GET(request: NextRequest) {
         id: vmax.id,
         name: vmax.Cliente || "Cliente",
         document: vmax["CPF/CNPJ"] || "N/A",
-        city: vmax.Cidade || null,
         email,
         phone,
         status,
@@ -223,6 +224,7 @@ export async function GET(request: NextRequest) {
         agreementStatus: paymentInfo?.agreementStatus || null,
         agreementId: paymentInfo?.agreementId || null,
         asaasPaymentId: paymentInfo?.asaasPaymentId || null,
+        dueDate: paymentInfo?.dueDate || vmax.Vecto || null, // Agreement due date or VMAX due date
         notificationViewed: paymentInfo?.notificationViewed || false,
         notificationViewedAt: paymentInfo?.notificationViewedAt || null,
         notificationViewedChannel: paymentInfo?.notificationViewedChannel || null,

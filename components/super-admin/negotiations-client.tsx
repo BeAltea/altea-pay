@@ -30,6 +30,7 @@ import {
   BarChart3,
   ArrowUpDown,
   CalendarClock,
+  Calendar,
   RefreshCw,
   XCircle,
   Eye,
@@ -41,7 +42,6 @@ type VmaxCustomer = {
   id: string
   name: string
   document: string
-  city: string | null
   status: "active" | "overdue" | "negotiating" | "paid"
   totalDebt: number
   originalDebt?: number
@@ -58,6 +58,7 @@ type VmaxCustomer = {
   agreementStatus?: string | null // Agreement status (active, cancelled, completed, etc.)
   asaasPaymentId?: string | null // ASAAS payment ID for cancellation
   agreementId?: string | null // Agreement ID for cancellation
+  dueDate?: string | null // Due date from agreement or VMAX
   notificationViewed?: boolean // Whether the notification/payment link was viewed
   notificationViewedAt?: string | null // When it was viewed
   notificationViewedChannel?: string | null // Which channel (whatsapp, email, payment_link)
@@ -75,11 +76,13 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [negotiationFilter, setNegotiationFilter] = useState<"all" | "enviada" | "sem_negociacao">("all")
   const [debtStatusFilter, setDebtStatusFilter] = useState<"all" | "em_aberto" | "aguardando" | "paga" | "vencida">("all")
+  const [dueDateFrom, setDueDateFrom] = useState<string>("")
+  const [dueDateTo, setDueDateTo] = useState<string>("")
   const [displayLimit, setDisplayLimit] = useState<number>(50)
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set())
   const [showModal, setShowModal] = useState(false)
   const [sending, setSending] = useState(false)
-  const [sortField, setSortField] = useState<"name" | "debt" | "debtAge" | null>(null)
+  const [sortField, setSortField] = useState<"name" | "debt" | "debtAge" | "dueDate" | null>(null)
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [syncing, setSyncing] = useState(false)
 
@@ -291,9 +294,18 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       }
 
       // Search filter
-      if (!searchTerm) return true
-      const s = searchTerm.toLowerCase()
-      return c.name.toLowerCase().includes(s) || c.document.toLowerCase().includes(s)
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase()
+        if (!c.name.toLowerCase().includes(s) && !c.document.toLowerCase().includes(s)) {
+          return false
+        }
+      }
+
+      // Due date range filter
+      if (dueDateFrom && c.dueDate && c.dueDate < dueDateFrom) return false
+      if (dueDateTo && c.dueDate && c.dueDate > dueDateTo) return false
+
+      return true
     })
 
     // Apply sorting
@@ -306,21 +318,52 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           cmp = a.totalDebt - b.totalDebt
         } else if (sortField === "debtAge") {
           cmp = a.daysOverdue - b.daysOverdue
+        } else if (sortField === "dueDate") {
+          const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0
+          const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0
+          cmp = dateA - dateB
         }
         return sortOrder === "asc" ? cmp : -cmp
       })
     }
 
     return result
-  }, [customers, searchTerm, negotiationFilter, debtStatusFilter, sortField, sortOrder])
+  }, [customers, searchTerm, negotiationFilter, debtStatusFilter, dueDateFrom, dueDateTo, sortField, sortOrder])
 
-  const toggleSort = (field: "name" | "debt" | "debtAge") => {
+  const toggleSort = (field: "name" | "debt" | "debtAge" | "dueDate") => {
     if (sortField === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc")
     } else {
       setSortField(field)
       setSortOrder("desc")
     }
+  }
+
+  // Format due date with color coding
+  const formatDueDate = (dateStr: string | null | undefined, isPaid: boolean, paymentStatus: string | null) => {
+    if (!dateStr) return <span className="text-muted-foreground">-</span>
+
+    const date = new Date(dateStr)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
+
+    const formatted = date.toLocaleDateString("pt-BR")
+    const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Color coding
+    let colorClass = "text-muted-foreground" // default gray
+    if (isPaid || paymentStatus === "received" || paymentStatus === "confirmed") {
+      colorClass = "text-gray-400 dark:text-gray-500" // gray for paid
+    } else if (diffDays < 0) {
+      colorClass = "text-red-600 dark:text-red-400" // red for overdue
+    } else if (diffDays <= 7) {
+      colorClass = "text-orange-600 dark:text-orange-400" // orange for due soon
+    } else {
+      colorClass = "text-green-600 dark:text-green-400" // green for future
+    }
+
+    return <span className={colorClass}>{formatted}</span>
   }
 
   const getDebtAgeColor = (days: number) => {
@@ -1100,7 +1143,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           </CardHeader>
           <CardContent>
             {/* Filters */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Buscar</Label>
                 <div className="relative">
@@ -1140,6 +1183,22 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                     <SelectItem value="vencida">Vencida</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Vencimento De</Label>
+                <Input
+                  type="date"
+                  value={dueDateFrom}
+                  onChange={(e) => setDueDateFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Vencimento Até</Label>
+                <Input
+                  type="date"
+                  value={dueDateTo}
+                  onChange={(e) => setDueDateTo(e.target.value)}
+                />
               </div>
               <div>
                 <Label className="text-sm font-medium mb-2 block">Exibir</Label>
@@ -1304,7 +1363,6 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   Cliente
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "name" ? "text-primary" : "opacity-50"}`} />
                 </button>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Cidade</span>
                 <button
                   onClick={() => toggleSort("debt")}
                   className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -1322,6 +1380,14 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Negociação</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Dívida</span>
+                <button
+                  onClick={() => toggleSort("dueDate")}
+                  className="hidden lg:flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Calendar className="h-3 w-3" />
+                  Vencimento
+                  <ArrowUpDown className={`h-3 w-3 ${sortField === "dueDate" ? "text-primary" : "opacity-50"}`} />
+                </button>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center" title="Cobrança Visualizada">Visualizada</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Canceladas</span>
                 <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Ações</span>
@@ -1353,10 +1419,6 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                       <div className="min-w-0 lg:col-span-2">
                         <p className="text-sm font-medium truncate">{customer.name}</p>
                         <p className="text-xs text-muted-foreground">{customer.document}</p>
-                      </div>
-                      {/* City */}
-                      <div className="text-sm text-muted-foreground truncate hidden lg:block">
-                        {customer.city || "-"}
                       </div>
                       {/* Debt - always show original value */}
                       <div className="flex items-center gap-1">
@@ -1425,6 +1487,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                             Em aberto
                           </Badge>
                         )}
+                      </div>
+                      {/* Vencimento - Due Date */}
+                      <div className="text-sm hidden lg:block">
+                        {formatDueDate(customer.dueDate, isPaid, customer.paymentStatus)}
                       </div>
                       {/* Cobrança Visualizada - Green dot if viewed, grey if not */}
                       <div className="hidden lg:flex justify-center">
