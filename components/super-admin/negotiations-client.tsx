@@ -1143,23 +1143,23 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           </CardHeader>
           <CardContent>
             {/* Filters */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Buscar</Label>
+            <div className="mb-6 flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px] max-w-[280px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Buscar</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Nome, CPF/CNPJ..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 h-9"
                   />
                 </div>
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Status Negociação</Label>
+              <div className="w-[160px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Status Negociação</Label>
                 <Select value={negotiationFilter} onValueChange={(v: any) => setNegotiationFilter(v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1169,41 +1169,43 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Status Dívida</Label>
+              <div className="w-[160px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Status Dívida</Label>
                 <Select value={debtStatusFilter} onValueChange={(v: any) => setDebtStatusFilter(v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="em_aberto">Em aberto</SelectItem>
-                    <SelectItem value="aguardando">Aguardando pagamento</SelectItem>
+                    <SelectItem value="aguardando">Aguardando</SelectItem>
                     <SelectItem value="paga">Paga</SelectItem>
                     <SelectItem value="vencida">Vencida</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Vencimento De</Label>
+              <div className="w-[130px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Vencimento De</Label>
                 <Input
                   type="date"
                   value={dueDateFrom}
                   onChange={(e) => setDueDateFrom(e.target.value)}
+                  className="h-9"
                 />
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Vencimento Até</Label>
+              <div className="w-[130px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Vencimento Até</Label>
                 <Input
                   type="date"
                   value={dueDateTo}
                   onChange={(e) => setDueDateTo(e.target.value)}
+                  className="h-9"
                 />
               </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Exibir</Label>
+              <div className="w-[90px]">
+                <Label className="text-xs font-medium mb-1.5 block text-muted-foreground">Exibir</Label>
                 <Select value={String(displayLimit)} onValueChange={(v) => setDisplayLimit(Number(v))}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1271,17 +1273,17 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
             {/* Selection dropdown and column headers */}
             <div className="flex items-center gap-2 mb-3 pb-3 border-b">
               {/* Selection dropdown */}
-              <div ref={selectionDropdownRef} className="relative flex-shrink-0">
+              <div ref={selectionDropdownRef} className="relative w-[44px] flex-shrink-0">
                 <button
                   onClick={() => setSelectionDropdownOpen(!selectionDropdownOpen)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-muted transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors"
                   disabled={selectableCustomers.length === 0}
                 >
                   <Checkbox
                     checked={selectedCustomers.size > 0}
                     className="pointer-events-none border-foreground/70"
                   />
-                  <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${selectionDropdownOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${selectionDropdownOpen ? "rotate-180" : ""}`} />
                 </button>
 
                 {selectionDropdownOpen && (
@@ -1355,114 +1357,114 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                   </div>
                 )}
               </div>
-              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-2 items-center">
+              {/* Column headers - fixed widths matching data rows */}
+              <div className="flex-1 hidden lg:flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 <button
                   onClick={() => toggleSort("name")}
-                  className="lg:col-span-2 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
+                  className="w-[180px] flex-shrink-0 flex items-center gap-1 hover:text-foreground transition-colors text-left"
                 >
                   Cliente
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "name" ? "text-primary" : "opacity-50"}`} />
                 </button>
                 <button
                   onClick={() => toggleSort("debt")}
-                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-[100px] flex-shrink-0 flex items-center gap-1 hover:text-foreground transition-colors"
                 >
                   Dívida
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "debt" ? "text-primary" : "opacity-50"}`} />
                 </button>
                 <button
                   onClick={() => toggleSort("debtAge")}
-                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-[90px] flex-shrink-0 flex items-center gap-1 hover:text-foreground transition-colors whitespace-nowrap"
                 >
-                  <CalendarClock className="h-3 w-3" />
-                  Tempo Dívida
+                  Tempo
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "debtAge" ? "text-primary" : "opacity-50"}`} />
                 </button>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Negociação</span>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block">Status Dívida</span>
+                <span className="w-[110px] flex-shrink-0 whitespace-nowrap">Status Neg.</span>
+                <span className="w-[100px] flex-shrink-0 whitespace-nowrap">Status Dív.</span>
                 <button
                   onClick={() => toggleSort("dueDate")}
-                  className="hidden lg:flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="w-[95px] flex-shrink-0 flex items-center gap-1 hover:text-foreground transition-colors whitespace-nowrap"
                 >
-                  <Calendar className="h-3 w-3" />
-                  Vencimento
+                  Vencim.
                   <ArrowUpDown className={`h-3 w-3 ${sortField === "dueDate" ? "text-primary" : "opacity-50"}`} />
                 </button>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center" title="Cobrança Visualizada">Visualizada</span>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Canceladas</span>
-                <span className="text-sm font-medium text-muted-foreground hidden lg:block text-center">Ações</span>
+                <span className="w-[70px] flex-shrink-0 text-center whitespace-nowrap" title="Visualizada">Visual.</span>
+                <span className="w-[70px] flex-shrink-0 text-center whitespace-nowrap">Canc.</span>
+                <span className="w-[80px] flex-shrink-0 text-center">Ações</span>
+              </div>
+              {/* Mobile headers */}
+              <div className="flex-1 lg:hidden flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span>Cliente / Dívida</span>
               </div>
             </div>
 
             {/* Customer list */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               {displayedCustomers.map((customer) => {
                 const debtAgeColors = getDebtAgeColor(customer.daysOverdue)
                 const isPaid = isCustomerPaid(customer)
                 return (
                   <div
                     key={customer.id}
-                    className={`flex items-center gap-3 p-3 border border-border rounded-lg transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2.5 border border-border rounded-lg transition-colors ${
                       isPaid
                         ? "opacity-50 cursor-not-allowed bg-muted/30"
                         : "hover:bg-muted/50"
                     }`}
                   >
-                    <Checkbox
-                      checked={selectedCustomers.has(customer.id)}
-                      onCheckedChange={() => toggleSelect(customer.id)}
-                      disabled={isPaid}
-                      className="border-foreground/70 flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-2 items-center">
+                    <div className="w-[44px] flex-shrink-0 flex justify-center">
+                      <Checkbox
+                        checked={selectedCustomers.has(customer.id)}
+                        onCheckedChange={() => toggleSelect(customer.id)}
+                        disabled={isPaid}
+                        className="border-foreground/70"
+                      />
+                    </div>
+                    {/* Desktop layout - fixed widths matching headers */}
+                    <div className="flex-1 hidden lg:flex items-center gap-2">
                       {/* Name + Document */}
-                      <div className="min-w-0 lg:col-span-2">
-                        <p className="text-sm font-medium truncate">{customer.name}</p>
+                      <div className="w-[180px] flex-shrink-0 min-w-0">
+                        <p className="text-sm font-medium truncate" title={customer.name}>{customer.name}</p>
                         <p className="text-xs text-muted-foreground">{customer.document}</p>
                       </div>
-                      {/* Debt - always show original value */}
-                      <div className="flex items-center gap-1">
+                      {/* Debt */}
+                      <div className="w-[100px] flex-shrink-0 flex items-center gap-1">
                         <DollarSign className={`h-3.5 w-3.5 flex-shrink-0 ${customer.isPaid ? "text-green-500" : "text-red-500"}`} />
                         <span className={`text-sm font-semibold ${customer.isPaid ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                           {formatCurrency(customer.totalDebt)}
                         </span>
                       </div>
                       {/* Tempo da Dívida */}
-                      <div>
-                        <Badge className={`${debtAgeColors.bg} ${debtAgeColors.text} border-0 text-xs font-medium`}>
-                          <CalendarClock className="mr-1 h-3 w-3" />
+                      <div className="w-[90px] flex-shrink-0">
+                        <Badge className={`${debtAgeColors.bg} ${debtAgeColors.text} border-0 text-xs font-medium whitespace-nowrap`}>
                           {formatDebtAge(customer.daysOverdue)}
                         </Badge>
                       </div>
-                      {/* Status Negociação - Enviada / Cancelada / Sem negociação */}
-                      <div>
+                      {/* Status Negociação */}
+                      <div className="w-[110px] flex-shrink-0">
                         {customer.isCancelled ? (
-                          <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
-                            <XCircle className="mr-1 h-3 w-3" />
+                          <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs whitespace-nowrap">
                             Cancelada
                           </Badge>
                         ) : customer.hasNegotiation ? (
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs">
-                            <Send className="mr-1 h-3 w-3" />
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 text-xs whitespace-nowrap">
                             Enviada
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                            <Clock className="mr-1 h-3 w-3" />
-                            Sem negociação
+                          <Badge variant="outline" className="text-xs text-muted-foreground whitespace-nowrap">
+                            Sem neg.
                           </Badge>
                         )}
                       </div>
-                      {/* Status Dívida - Paga / Em aberto / Aguardando / Vencida */}
-                      <div>
+                      {/* Status Dívida */}
+                      <div className="w-[100px] flex-shrink-0">
                         {customer.isPaid || customer.status === "paid" ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-xs">
-                            <CheckCircle className="mr-1 h-3 w-3" />
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 text-xs whitespace-nowrap">
                             Paga
                           </Badge>
                         ) : customer.isCancelled ? (
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs">
-                            <AlertTriangle className="mr-1 h-3 w-3" />
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs whitespace-nowrap">
                             Em aberto
                           </Badge>
                         ) : customer.hasNegotiation ? (
@@ -1470,30 +1472,29 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                             const statusInfo = getPaymentStatusInfo(customer.paymentStatus, customer.asaasStatus)
                             if (statusInfo) {
                               return (
-                                <Badge className={`${statusInfo.className} text-xs`}>
+                                <Badge className={`${statusInfo.className} text-xs whitespace-nowrap`}>
                                   {statusInfo.label}
                                 </Badge>
                               )
                             }
                             return (
-                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs">
-                                Aguardando
+                              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs whitespace-nowrap">
+                                Aguard.
                               </Badge>
                             )
                           })()
                         ) : (
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs">
-                            <AlertTriangle className="mr-1 h-3 w-3" />
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 text-xs whitespace-nowrap">
                             Em aberto
                           </Badge>
                         )}
                       </div>
-                      {/* Vencimento - Due Date */}
-                      <div className="text-sm hidden lg:block">
+                      {/* Vencimento */}
+                      <div className="w-[95px] flex-shrink-0 text-sm">
                         {formatDueDate(customer.dueDate, isPaid, customer.paymentStatus)}
                       </div>
-                      {/* Cobrança Visualizada - Green dot if viewed, grey if not */}
-                      <div className="hidden lg:flex justify-center">
+                      {/* Visualizada */}
+                      <div className="w-[70px] flex-shrink-0 flex justify-center">
                         {customer.hasNegotiation && !customer.isCancelled ? (
                           customer.notificationViewed ? (
                             <div
@@ -1503,32 +1504,29 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                                 : "Cobrança visualizada"
                               }
                             >
-                              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                              <Eye className="h-3 w-3 text-green-600 dark:text-green-400" />
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
                             </div>
                           ) : (
                             <div className="flex items-center gap-1" title="Ainda não visualizada">
-                              <span className="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600" />
-                              <Eye className="h-3 w-3 text-gray-400 dark:text-gray-500" />
+                              <span className="h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600" />
                             </div>
                           )
                         ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                          <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                         )}
                       </div>
-                      {/* Canceladas column - count of cancelled negotiations */}
-                      <div className="hidden lg:flex justify-center">
+                      {/* Canceladas */}
+                      <div className="w-[70px] flex-shrink-0 flex justify-center">
                         {customer.cancelledCount && customer.cancelledCount > 0 ? (
-                          <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                             {customer.cancelledCount}x
                           </span>
                         ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                          <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                         )}
                       </div>
-                      {/* Actions column - Cancel or Sync button */}
-                      <div className="hidden lg:flex justify-center gap-1">
-                        {/* Show Cancel if has ASAAS payment and status is PENDING or OVERDUE */}
+                      {/* Actions */}
+                      <div className="w-[80px] flex-shrink-0 flex justify-center">
                         {customer.asaasPaymentId &&
                          customer.asaasStatus !== "RECEIVED" &&
                          customer.asaasStatus !== "CONFIRMED" &&
@@ -1536,32 +1534,48 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
                             onClick={() => handleCancelNegotiation(customer)}
                           >
-                            <XCircle className="h-3.5 w-3.5 mr-1" />
                             Cancelar
                           </Button>
                         ) : customer.asaasStatus === "DELETED" ? (
-                          <span className="text-xs text-muted-foreground">Cancelada</span>
+                          <span className="text-xs text-muted-foreground">—</span>
                         ) : !customer.hasNegotiation || customer.isCancelled ? (
-                          // Show sync button for clients without negotiation
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            className="h-6 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
                             onClick={() => handleSyncSingleClient(customer)}
                             disabled={syncingClientId === customer.id}
                             title="Verificar se este cliente existe no ASAAS"
                           >
                             {syncingClientId === customer.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
+                              <RefreshCw className="h-3 w-3" />
                             )}
                           </Button>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Mobile layout */}
+                    <div className="flex-1 lg:hidden min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className="text-sm font-medium truncate">{customer.name}</p>
+                        <span className={`text-sm font-semibold ${customer.isPaid ? "text-green-600" : "text-red-600"}`}>
+                          {formatCurrency(customer.totalDebt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground">{customer.document}</span>
+                        <Badge className={`${debtAgeColors.bg} ${debtAgeColors.text} border-0 text-xs`}>
+                          {formatDebtAge(customer.daysOverdue)}
+                        </Badge>
+                        {customer.hasNegotiation && (
+                          <Badge className="bg-green-100 text-green-700 text-xs">Enviada</Badge>
                         )}
                       </div>
                     </div>

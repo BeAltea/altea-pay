@@ -578,20 +578,20 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
 
           {/* Vencimento Date Range Filter */}
           <div className="flex items-center gap-2">
-            <span className="text-xs" style={{ color: "var(--admin-text-muted)" }}>Vencimento:</span>
+            <span className="text-xs whitespace-nowrap" style={{ color: "var(--admin-text-muted)" }}>Vencimento:</span>
             <input
               type="date"
               value={vencimentoFrom}
               onChange={(e) => setVencimentoFrom(e.target.value)}
-              className="rounded-lg px-2 py-1.5 text-xs border-0"
+              className="rounded-lg px-2 py-1.5 h-9 text-xs border-0 w-[120px]"
               style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
             />
-            <span style={{ color: "var(--admin-text-muted)" }}>até</span>
+            <span className="text-xs" style={{ color: "var(--admin-text-muted)" }}>até</span>
             <input
               type="date"
               value={vencimentoTo}
               onChange={(e) => setVencimentoTo(e.target.value)}
-              className="rounded-lg px-2 py-1.5 text-xs border-0"
+              className="rounded-lg px-2 py-1.5 h-9 text-xs border-0 w-[120px]"
               style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
             />
           </div>
@@ -604,11 +604,11 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
       >
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full table-fixed">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[22%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("name")}
                 >
@@ -618,52 +618,52 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[13%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("debtValue")}
                 >
                   <div className="flex items-center gap-1">
-                    Divida
+                    Dívida
                     <SortIcon field="debtValue" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[12%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("diasAtraso")}
                 >
-                  <div className="flex items-center gap-1">
-                    Tempo Divida
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    Tempo
                     <SortIcon field="diasAtraso" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[15%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("statusNegociacao")}
                 >
-                  <div className="flex items-center gap-1">
-                    Status Negociacao
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    Status Neg.
                     <SortIcon field="statusNegociacao" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[13%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("debtDate")}
                 >
-                  <div className="flex items-center gap-1">
-                    Vencimento
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    Vencim.
                     <SortIcon field="debtDate" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
+                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer w-[15%]"
                   style={{ color: "var(--admin-text-muted)" }}
                   onClick={() => toggleSort("statusDivida")}
                 >
-                  <div className="flex items-center gap-1">
-                    Status Divida
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    Status Dív.
                     <SortIcon field="statusDivida" />
                   </div>
                 </th>
