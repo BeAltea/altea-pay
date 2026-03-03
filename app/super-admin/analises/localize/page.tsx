@@ -175,13 +175,24 @@ export default function LocalizePage() {
   const loadCompanies = async () => {
     try {
       setLoadingCompanies(true)
+      console.log("[Localize] Fetching companies...")
       const res = await fetch("/api/companies")
-      if (res.ok) {
-        const data = await res.json()
-        setCompanies(data.companies || data || [])
+      const data = await res.json()
+
+      if (!res.ok) {
+        console.error("[Localize] API error:", data)
+        toast({
+          title: "Erro ao carregar empresas",
+          description: data.details || data.error || "Erro desconhecido",
+          variant: "destructive",
+        })
+        return
       }
+
+      console.log("[Localize] Companies loaded:", data.companies?.length || 0)
+      setCompanies(data.companies || [])
     } catch (error) {
-      console.error("Error loading companies:", error)
+      console.error("[Localize] Error loading companies:", error)
       toast({
         title: "Erro",
         description: "Não foi possível carregar as empresas",
