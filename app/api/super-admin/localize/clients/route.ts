@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
       totalFilteredCount = count || 0
     }
 
-    // Get summary stats using count queries with head: true to avoid 1000 limit
+    // Get summary stats using paginated fetch to avoid 1000 limit
     // Total count
     const { count: totalCount } = await supabase
       .from("VMAX")
@@ -135,22 +135,37 @@ export async function GET(request: NextRequest) {
       .not("Email", "is", null)
       .neq("Email", "")
 
-    // With phone count - has ANY phone field filled
-    // Fetch minimal data to calculate
-    const { data: phoneCheckData } = await supabase
-      .from("VMAX")
-      .select(`"Telefone 1", "Telefone 2"`)
-      .eq("id_company", companyId)
-      .limit(10000) // Higher limit for phone check
+    // With phone count - need to paginate to get ALL records (Supabase limits to 1000)
+    // Use the SAME logic as hasPhoneValue to ensure consistency
+    let allPhoneData: any[] = []
+    let phonePageNumber = 0
+    const phonePageSize = 1000
+    let hasMorePhoneData = true
 
-    const phoneStats = phoneCheckData || []
-    const withPhoneCount = phoneStats.filter((c) => {
+    while (hasMorePhoneData) {
+      const { data: phonePageData } = await supabase
+        .from("VMAX")
+        .select(`"Telefone 1", "Telefone 2"`)
+        .eq("id_company", companyId)
+        .range(phonePageNumber * phonePageSize, (phonePageNumber + 1) * phonePageSize - 1)
+
+      if (phonePageData && phonePageData.length > 0) {
+        allPhoneData = [...allPhoneData, ...phonePageData]
+        phonePageNumber++
+        hasMorePhoneData = phonePageData.length === phonePageSize
+      } else {
+        hasMorePhoneData = false
+      }
+    }
+
+    // Use EXACTLY the same logic as hasPhoneValue function
+    const withPhoneCount = allPhoneData.filter((c) => {
       const tel1 = c["Telefone 1"] && c["Telefone 1"].trim() !== ""
       const tel2 = c["Telefone 2"] && c["Telefone 2"].trim() !== ""
       return tel1 || tel2
     }).length
 
-    const total = totalCount || phoneStats.length
+    const total = totalCount || allPhoneData.length
     const withEmail = withEmailCount || 0
     const withPhone = withPhoneCount
 
