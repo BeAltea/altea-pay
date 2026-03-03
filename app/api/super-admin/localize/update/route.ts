@@ -78,10 +78,8 @@ export async function POST(request: NextRequest) {
     for (const update of updates) {
       const { client_id, email, phone, whatsapp, assertiva_protocolo } = update
 
-      console.log(`[Localize Update] Processing client ${client_id}: email=${email}, phone=${phone}`)
-
       try {
-        // CRITICAL: Fetch current client data to verify fields are empty
+        // Fetch current client data to verify fields are empty
         const { data: client, error: clientError } = await supabase
           .from("VMAX")
           .select(`id, Email, "Telefone 1", id_company`)
@@ -89,15 +87,7 @@ export async function POST(request: NextRequest) {
           .eq("id_company", company_id)
           .single()
 
-        console.log(`[Localize Update] Client ${client_id} BEFORE:`, {
-          found: !!client,
-          error: clientError?.message,
-          currentEmail: client?.Email,
-          currentPhone: client?.["Telefone 1"],
-        })
-
         if (clientError || !client) {
-          console.error(`[Localize Update] Client ${client_id} not found:`, clientError)
           details.push({
             client_id,
             email_updated: false,
@@ -123,13 +113,9 @@ export async function POST(request: NextRequest) {
           if (currentEmail === "") {
             updateData.Email = email.trim()
             emailUpdated = true
-            console.log(`[Localize Update] Will update email to: ${email.trim()}`)
           } else {
             skippedReasons.push(`Email já existente: ${currentEmail}`)
-            console.log(`[Localize Update] Skipping email - already has: ${currentEmail}`)
           }
-        } else {
-          console.log(`[Localize Update] No email provided to update`)
         }
 
         // Only update phone if current is empty AND new phone is provided
@@ -137,20 +123,14 @@ export async function POST(request: NextRequest) {
           if (currentPhone === "") {
             updateData["Telefone 1"] = phone.trim()
             phoneUpdated = true
-            console.log(`[Localize Update] Will update phone to: ${phone.trim()}`)
           } else {
             skippedReasons.push(`Telefone já existente: ${currentPhone}`)
-            console.log(`[Localize Update] Skipping phone - already has: ${currentPhone}`)
           }
-        } else {
-          console.log(`[Localize Update] No phone provided to update`)
         }
 
         // Apply update if there's anything to update
         if (Object.keys(updateData).length > 0) {
           updateData.updated_at = new Date().toISOString()
-
-          console.log(`[Localize Update] Executing update with data:`, updateData)
 
           const { data: updateResult, error: updateError } = await supabase
             .from("VMAX")
@@ -158,12 +138,6 @@ export async function POST(request: NextRequest) {
             .eq("id", client_id)
             .eq("id_company", company_id)
             .select()
-
-          console.log(`[Localize Update] Update result:`, {
-            data: updateResult,
-            error: updateError?.message,
-            rowsAffected: updateResult?.length || 0,
-          })
 
           if (updateError) {
             console.error(`[Localize Update] Error updating client ${client_id}:`, updateError)
@@ -189,18 +163,6 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // Verify the update actually worked
-          const { data: afterUpdate } = await supabase
-            .from("VMAX")
-            .select(`id, Email, "Telefone 1"`)
-            .eq("id", client_id)
-            .single()
-
-          console.log(`[Localize Update] Client ${client_id} AFTER:`, {
-            email: afterUpdate?.Email,
-            phone: afterUpdate?.["Telefone 1"],
-          })
-
           // Update the log record to mark data as applied
           if (assertiva_protocolo) {
             await supabase
@@ -216,7 +178,6 @@ export async function POST(request: NextRequest) {
 
           updated++
         } else {
-          console.log(`[Localize Update] Nothing to update for client ${client_id}`)
           skipped++
         }
 
