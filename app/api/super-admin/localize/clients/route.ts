@@ -79,32 +79,41 @@ export async function GET(request: NextRequest) {
     }
 
     // ========================================================================
-    // STEP 1: Fetch ALL clients for this company (paginated to avoid limits)
+    // STEP 1: Fetch ALL clients for this company using KEYSET pagination
+    // NOTE: Using .gt() cursor instead of .range() because .range() returns stale data
+    // This is a known Supabase caching issue with OFFSET-based pagination
     // ========================================================================
     let allClients: any[] = []
-    let pageNum = 0
+    let lastCliente: string | null = null
     const pageSize = 1000
     let hasMore = true
 
     while (hasMore) {
-      const { data: pageData, error } = await supabase
+      let query = supabase
         .from("VMAX")
         .select(`id, Cliente, "CPF/CNPJ", Email, "Telefone 1", "Telefone 2", id_company, created_at, updated_at`)
         .eq("id_company", companyId)
         .order("Cliente", { ascending: true })
-        .range(pageNum * pageSize, (pageNum + 1) * pageSize - 1)
+        .limit(pageSize)
 
-      if (error) {
-        console.error("[Localize API] Error fetching clients:", error)
+      // Use cursor-based pagination (keyset) instead of offset
+      if (lastCliente !== null) {
+        query = query.gt("Cliente", lastCliente)
+      }
+
+      const { data: pageData, error: fetchError } = await query
+
+      if (fetchError) {
+        console.error("[Localize API] Error fetching clients:", fetchError)
         return NextResponse.json(
-          { error: "Erro ao buscar clientes", details: error.message },
+          { error: "Erro ao buscar clientes", details: fetchError.message },
           { status: 500 }
         )
       }
 
       if (pageData && pageData.length > 0) {
         allClients = [...allClients, ...pageData]
-        pageNum++
+        lastCliente = pageData[pageData.length - 1].Cliente
         hasMore = pageData.length === pageSize
       } else {
         hasMore = false
