@@ -451,6 +451,9 @@ export default function LocalizePage() {
         ((r.found_email && !r.current_email) || (r.found_phones.best && !r.current_phone))
     )
 
+    console.log("[Localize Frontend] searchResults:", searchResults)
+    console.log("[Localize Frontend] toApply:", toApply)
+
     if (toApply.length === 0) {
       toast({
         title: "Aviso",
@@ -459,6 +462,19 @@ export default function LocalizePage() {
       return
     }
 
+    const updates = toApply.map((r) => ({
+      client_id: r.client_id,
+      email: r.found_email && !r.current_email ? r.found_email : undefined,
+      phone:
+        r.found_phones.best && !r.current_phone
+          ? r.found_phones.best.numero
+          : undefined,
+      whatsapp: r.found_phones.best?.whatsapp,
+      assertiva_protocolo: r.assertiva_protocolo,
+    }))
+
+    console.log("[Localize Frontend] Sending updates:", updates)
+
     try {
       setIsApplying(true)
       const res = await fetch("/api/super-admin/localize/update", {
@@ -466,31 +482,31 @@ export default function LocalizePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_id: selectedCompany,
-          updates: toApply.map((r) => ({
-            client_id: r.client_id,
-            email: r.found_email && !r.current_email ? r.found_email : undefined,
-            phone:
-              r.found_phones.best && !r.current_phone
-                ? r.found_phones.best.numero
-                : undefined,
-            whatsapp: r.found_phones.best?.whatsapp,
-            assertiva_protocolo: r.assertiva_protocolo,
-          })),
+          updates,
         }),
       })
 
+      const data = await res.json()
+      console.log("[Localize Frontend] Update response:", data)
+
       if (res.ok) {
-        const data = await res.json()
+        if (data.updated > 0) {
+          toast({
+            title: "Sucesso",
+            description: `${data.updated} cadastros atualizados`,
+          })
+        } else {
+          toast({
+            title: "Aviso",
+            description: `Nenhum cadastro atualizado. ${data.skipped} ignorados, ${data.errors} erros.`,
+            variant: "destructive",
+          })
+          console.log("[Localize Frontend] Details:", data.details)
+        }
 
-        toast({
-          title: "Sucesso",
-          description: `${data.updated} cadastros atualizados`,
-        })
-
-        // Close modal and refresh table after successful update
+        // Close modal and refresh table after update attempt
         closeResultsAndRefresh()
       } else {
-        const data = await res.json()
         toast({
           title: "Erro",
           description: data.error || "Não foi possível atualizar",
