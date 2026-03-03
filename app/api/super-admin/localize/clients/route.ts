@@ -7,6 +7,13 @@ export const dynamic = "force-dynamic"
 // SINGLE SOURCE OF TRUTH: All filtering uses these functions
 // ============================================================================
 
+interface LocalizeLogInfo {
+  queried: boolean
+  lastQueryDate: string | null
+  emailFound: boolean | null  // null = never queried, true = found, false = not found
+  phoneFound: boolean | null
+}
+
 // Check if client has a valid phone (either Telefone 1 OR Telefone 2)
 function hasPhoneValue(client: any): boolean {
   const tel1 = client["Telefone 1"] && String(client["Telefone 1"]).trim() !== ""
@@ -20,15 +27,40 @@ function hasEmailValue(client: any): boolean {
 }
 
 // Apply filter to a list of clients - used for BOTH counting and filtering
-function applyFilter(clients: any[], filter: string): any[] {
+// Now includes localize query info for more precise filtering
+function applyFilter(
+  clients: any[],
+  filter: string,
+  localizeMap: Map<string, LocalizeLogInfo>
+): any[] {
   switch (filter) {
     case "no_email":
+      // All clients without email (regardless of query status)
       return clients.filter((c) => !hasEmailValue(c))
     case "no_phone":
+      // All clients without phone (regardless of query status)
       return clients.filter((c) => !hasPhoneValue(c))
     case "incomplete":
       // Incomplete = no email OR no phone (UNION, not intersection)
       return clients.filter((c) => !hasEmailValue(c) || !hasPhoneValue(c))
+    case "localize_no_email":
+      // Queried via Localize but no email was found
+      return clients.filter((c) => {
+        const info = localizeMap.get(c.id)
+        return !hasEmailValue(c) && info?.queried && info?.emailFound === false
+      })
+    case "localize_no_phone":
+      // Queried via Localize but no phone was found
+      return clients.filter((c) => {
+        const info = localizeMap.get(c.id)
+        return !hasPhoneValue(c) && info?.queried && info?.phoneFound === false
+      })
+    case "never_queried":
+      // Never queried via Localize and missing data
+      return clients.filter((c) => {
+        const info = localizeMap.get(c.id)
+        return (!hasEmailValue(c) || !hasPhoneValue(c)) && !info?.queried
+      })
     case "all":
     default:
       return clients
@@ -121,7 +153,38 @@ export async function GET(request: NextRequest) {
     }
 
     // ========================================================================
-    // STEP 2: Calculate summary stats using the SAME filter functions
+    // STEP 2: Fetch ALL Localize logs for this company to build query status map
+    // ========================================================================
+    const allClientIds = allClients.map((c) => c.id)
+    const localizeMap = new Map<string, LocalizeLogInfo>()
+
+    // Fetch logs in chunks to avoid query limits
+    const logChunkSize = 500
+    for (let i = 0; i < allClientIds.length; i += logChunkSize) {
+      const chunkIds = allClientIds.slice(i, i + logChunkSize)
+      const { data: logData } = await supabase
+        .from("assertiva_localize_logs")
+        .select("client_id, created_at, best_email, best_phone, query_status")
+        .eq("company_id", companyId)
+        .in("client_id", chunkIds)
+        .order("created_at", { ascending: false })
+
+      for (const log of logData || []) {
+        // Only keep the most recent log per client
+        if (!localizeMap.has(log.client_id)) {
+          localizeMap.set(log.client_id, {
+            queried: true,
+            lastQueryDate: log.created_at,
+            // If query was successful, check if email/phone were found
+            emailFound: log.query_status === "error" ? null : (log.best_email ? true : false),
+            phoneFound: log.query_status === "error" ? null : (log.best_phone ? true : false),
+          })
+        }
+      }
+    }
+
+    // ========================================================================
+    // STEP 3: Calculate summary stats using the SAME filter functions
     // ========================================================================
     const total = allClients.length
     const withEmailList = allClients.filter((c) => hasEmailValue(c))
@@ -132,45 +195,40 @@ export async function GET(request: NextRequest) {
     const withoutEmail = total - withEmail
     const withoutPhone = total - withPhone
 
-    // Validation: these MUST be mathematically consistent
-    console.log(`[Localize API] Stats: total=${total}, withEmail=${withEmail}, withoutEmail=${withoutEmail}, withPhone=${withPhone}, withoutPhone=${withoutPhone}`)
+    // Calculate Localize-specific stats
+    const localizeNoEmail = allClients.filter((c) => {
+      const info = localizeMap.get(c.id)
+      return !hasEmailValue(c) && info?.queried && info?.emailFound === false
+    }).length
+
+    const localizeNoPhone = allClients.filter((c) => {
+      const info = localizeMap.get(c.id)
+      return !hasPhoneValue(c) && info?.queried && info?.phoneFound === false
+    }).length
+
+    const neverQueried = allClients.filter((c) => {
+      const info = localizeMap.get(c.id)
+      return (!hasEmailValue(c) || !hasPhoneValue(c)) && !info?.queried
+    }).length
+
+    console.log(`[Localize API] Stats: total=${total}, withEmail=${withEmail}, withoutEmail=${withoutEmail}, withPhone=${withPhone}, withoutPhone=${withoutPhone}, localizeNoEmail=${localizeNoEmail}, localizeNoPhone=${localizeNoPhone}, neverQueried=${neverQueried}`)
 
     // ========================================================================
-    // STEP 3: Apply search filter (if any)
+    // STEP 4: Apply search filter (if any)
     // ========================================================================
     let searchFilteredClients = applySearch(allClients, search)
 
     // ========================================================================
-    // STEP 4: Apply category filter using the SAME functions as counting
+    // STEP 5: Apply category filter using the SAME functions as counting
     // ========================================================================
-    const filteredClients = applyFilter(searchFilteredClients, filter)
+    const filteredClients = applyFilter(searchFilteredClients, filter, localizeMap)
     const totalFilteredCount = filteredClients.length
 
     // ========================================================================
-    // STEP 5: Apply pagination
+    // STEP 6: Apply pagination
     // ========================================================================
     const offset = (page - 1) * perPage
     const clients = filteredClients.slice(offset, offset + perPage)
-
-    // ========================================================================
-    // STEP 6: Get last assertiva query dates for paginated clients
-    // ========================================================================
-    const clientIds = clients.map((c) => c.id)
-    let lastQueryMap = new Map<string, string>()
-
-    if (clientIds.length > 0) {
-      const { data: logData } = await supabase
-        .from("assertiva_localize_logs")
-        .select("client_id, created_at")
-        .in("client_id", clientIds)
-        .order("created_at", { ascending: false })
-
-      for (const log of logData || []) {
-        if (!lastQueryMap.has(log.client_id)) {
-          lastQueryMap.set(log.client_id, log.created_at)
-        }
-      }
-    }
 
     // ========================================================================
     // STEP 7: Format response using the SAME helper functions
@@ -184,6 +242,9 @@ export async function GET(request: NextRequest) {
       const hasEmail = hasEmailValue(client)
       const hasPhone = hasPhoneValue(client)
 
+      // Get Localize info
+      const localizeInfo = localizeMap.get(client.id)
+
       // Get phone values with String() for safety
       const telefone1 = client["Telefone 1"] && String(client["Telefone 1"]).trim() !== ""
         ? String(client["Telefone 1"]).trim()
@@ -193,15 +254,31 @@ export async function GET(request: NextRequest) {
         : null
       const bestPhone = telefone1 || telefone2
 
-      let status: "complete" | "no_email" | "no_phone" | "no_data"
+      // Determine status with Localize context
+      let status: "complete" | "no_email" | "no_phone" | "no_data" | "localize_no_email" | "localize_no_phone" | "localize_no_data"
       if (hasEmail && hasPhone) {
         status = "complete"
       } else if (!hasEmail && !hasPhone) {
-        status = "no_data"
+        // Check if Localize was queried
+        if (localizeInfo?.queried && localizeInfo.emailFound === false && localizeInfo.phoneFound === false) {
+          status = "localize_no_data"
+        } else {
+          status = "no_data"
+        }
       } else if (!hasEmail) {
-        status = "no_email"
+        // Check if Localize was queried for email
+        if (localizeInfo?.queried && localizeInfo.emailFound === false) {
+          status = "localize_no_email"
+        } else {
+          status = "no_email"
+        }
       } else {
-        status = "no_phone"
+        // Has email but no phone
+        if (localizeInfo?.queried && localizeInfo.phoneFound === false) {
+          status = "localize_no_phone"
+        } else {
+          status = "no_phone"
+        }
       }
 
       return {
@@ -212,7 +289,10 @@ export async function GET(request: NextRequest) {
         email: client.Email ? String(client.Email).trim() || null : null,
         phone: bestPhone,
         phone2: telefone2 && telefone1 ? telefone2 : null,
-        last_assertiva_query: lastQueryMap.get(client.id) || null,
+        last_assertiva_query: localizeInfo?.lastQueryDate || null,
+        localize_queried: localizeInfo?.queried || false,
+        localize_email_found: localizeInfo?.emailFound,
+        localize_phone_found: localizeInfo?.phoneFound,
         status,
       }
     })
@@ -231,9 +311,13 @@ export async function GET(request: NextRequest) {
       summary: {
         total,
         with_email: withEmail,
-        without_email: withoutEmail,  // Calculated consistently: total - withEmail
+        without_email: withoutEmail,
         with_phone: withPhone,
-        without_phone: withoutPhone,  // Calculated consistently: total - withPhone
+        without_phone: withoutPhone,
+        // Localize-specific stats
+        localize_no_email: localizeNoEmail,
+        localize_no_phone: localizeNoPhone,
+        never_queried: neverQueried,
       },
     })
   } catch (error: any) {

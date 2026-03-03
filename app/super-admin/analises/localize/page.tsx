@@ -60,7 +60,10 @@ interface Client {
   phone: string | null
   phone2: string | null
   last_assertiva_query: string | null
-  status: "complete" | "no_email" | "no_phone" | "no_data"
+  localize_queried: boolean
+  localize_email_found: boolean | null
+  localize_phone_found: boolean | null
+  status: "complete" | "no_email" | "no_phone" | "no_data" | "localize_no_email" | "localize_no_phone" | "localize_no_data"
 }
 
 interface SearchResult {
@@ -105,6 +108,9 @@ interface Summary {
   without_email: number
   with_phone: number
   without_phone: number
+  localize_no_email: number
+  localize_no_phone: number
+  never_queried: number
 }
 
 interface Pagination {
@@ -114,7 +120,7 @@ interface Pagination {
   total_pages: number
 }
 
-type FilterType = "all" | "no_email" | "no_phone" | "incomplete"
+type FilterType = "all" | "no_email" | "no_phone" | "incomplete" | "localize_no_email" | "localize_no_phone" | "never_queried"
 
 export default function LocalizePage() {
   const { toast } = useToast()
@@ -138,6 +144,9 @@ export default function LocalizePage() {
     without_email: 0,
     with_phone: 0,
     without_phone: 0,
+    localize_no_email: 0,
+    localize_no_phone: 0,
+    never_queried: 0,
   })
   const [loading, setLoading] = useState(false)
   const [loadingCompanies, setLoadingCompanies] = useState(true)
@@ -215,6 +224,7 @@ export default function LocalizePage() {
         page: pagination.page.toString(),
         per_page: pagination.per_page.toString(),
         ...(search && { search }),
+        _t: Date.now().toString(), // Cache-busting
       })
 
       const res = await fetch(`/api/super-admin/localize/clients?${params}`)
@@ -565,6 +575,27 @@ export default function LocalizePage() {
             Sem dados
           </Badge>
         )
+      case "localize_no_email":
+        return (
+          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+            <Search className="w-3 h-3 mr-1" />
+            Localize: sem email
+          </Badge>
+        )
+      case "localize_no_phone":
+        return (
+          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+            <Search className="w-3 h-3 mr-1" />
+            Localize: sem tel
+          </Badge>
+        )
+      case "localize_no_data":
+        return (
+          <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">
+            <Search className="w-3 h-3 mr-1" />
+            Localize: sem dados
+          </Badge>
+        )
     }
   }
 
@@ -690,9 +721,12 @@ export default function LocalizePage() {
                   {(
                     [
                       { value: "all", label: "Todos" },
-                      { value: "no_email", label: "Sem Email" },
-                      { value: "no_phone", label: "Sem Telefone" },
+                      { value: "no_email", label: "Sem Email", count: summary.without_email },
+                      { value: "no_phone", label: "Sem Telefone", count: summary.without_phone },
                       { value: "incomplete", label: "Dados Incompletos" },
+                      { value: "localize_no_email", label: "Localize: Sem Email", count: summary.localize_no_email },
+                      { value: "localize_no_phone", label: "Localize: Sem Telefone", count: summary.localize_no_phone },
+                      { value: "never_queried", label: "Nunca Consultado", count: summary.never_queried },
                     ] as const
                   ).map((f) => (
                     <Button
@@ -700,11 +734,15 @@ export default function LocalizePage() {
                       variant={filter === f.value ? "default" : "outline"}
                       size="sm"
                       onClick={() => {
-                        setFilter(f.value)
+                        setFilter(f.value as FilterType)
                         setPagination((p) => ({ ...p, page: 1 }))
                       }}
+                      className="gap-1"
                     >
                       {f.label}
+                      {"count" in f && f.count !== undefined && (
+                        <span className="text-xs opacity-70">({f.count})</span>
+                      )}
                     </Button>
                   ))}
                 </div>
