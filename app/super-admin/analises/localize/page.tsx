@@ -480,20 +480,20 @@ export default function LocalizePage() {
 
       if (res.ok) {
         const data = await res.json()
-        // Mark all as applied
-        const appliedIds = new Set(
-          data.details
-            .filter((d: any) => d.email_updated || d.phone_updated)
-            .map((d: any) => d.client_id)
-        )
-        setSearchResults((prev) =>
-          prev.map((r) =>
-            appliedIds.has(r.client_id) ? { ...r, applied: true } : r
-          )
-        )
+
         toast({
           title: "Sucesso",
           description: `${data.updated} cadastros atualizados`,
+        })
+
+        // Close modal and refresh table after successful update
+        closeResultsAndRefresh()
+      } else {
+        const data = await res.json()
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível atualizar",
+          variant: "destructive",
         })
       }
     } catch (error) {
