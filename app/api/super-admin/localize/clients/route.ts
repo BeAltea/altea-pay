@@ -33,6 +33,22 @@ export async function GET(request: NextRequest) {
     // Calculate offset
     const offset = (page - 1) * perPage
 
+    // Helper to check if client has phone
+    const hasPhoneValue = (client: any): boolean => {
+      const tel1 = client["Telefone 1"] && client["Telefone 1"].trim() !== ""
+      const tel2 = client["Telefone 2"] && client["Telefone 2"].trim() !== ""
+      return tel1 || tel2
+    }
+
+    // Helper to check if client has email
+    const hasEmailValue = (client: any): boolean => {
+      return !!(client.Email && client.Email.trim() !== "")
+    }
+
+    // For no_phone and incomplete filters, we need to filter in JS
+    // because Supabase can't express "BOTH phone columns are empty"
+    const needsJsFilter = filter === "no_phone" || filter === "incomplete"
+
     // Build base query - selecting from VMAX table
     // VMAX has 2 phone columns: "Telefone 1" and "Telefone 2" (no plain "Telefone")
     let query = supabase
@@ -43,35 +59,65 @@ export async function GET(request: NextRequest) {
       )
       .eq("id_company", companyId)
 
-    // Apply filters
-    if (filter === "no_email") {
-      query = query.or("Email.is.null,Email.eq.")
-    } else if (filter === "no_phone") {
-      // No phone = BOTH phone fields are null/empty (need AND logic)
-      // Supabase doesn't support complex AND+OR, so we filter in JS after fetch
-    } else if (filter === "incomplete") {
-      // Either no email OR no phone - simplified filter
-      query = query.or("Email.is.null,Email.eq.")
-    }
-
-    // Apply search
+    // Apply search if present
     if (search) {
       query = query.or(`Cliente.ilike.%${search}%,"CPF/CNPJ".ilike.%${search}%`)
     }
 
-    // Apply pagination
-    query = query
-      .order("Cliente", { ascending: true })
-      .range(offset, offset + perPage - 1)
+    // Apply simple filters directly in query
+    if (filter === "no_email") {
+      query = query.or("Email.is.null,Email.eq.")
+    }
 
-    const { data: clients, error, count } = await query
+    let clients: any[] = []
+    let totalFilteredCount = 0
 
-    if (error) {
-      console.error("[Localize API] Error fetching clients:", error)
-      return NextResponse.json(
-        { error: "Erro ao buscar clientes", details: error.message },
-        { status: 500 }
-      )
+    if (needsJsFilter) {
+      // Fetch ALL records and filter in JS (needed for complex phone logic)
+      const { data: allClients, error: fetchError } = await query
+        .order("Cliente", { ascending: true })
+        .limit(10000)
+
+      if (fetchError) {
+        console.error("[Localize API] Error fetching clients:", fetchError)
+        return NextResponse.json(
+          { error: "Erro ao buscar clientes", details: fetchError.message },
+          { status: 500 }
+        )
+      }
+
+      // Apply JS filter
+      let filteredClients = allClients || []
+      if (filter === "no_phone") {
+        // No phone = BOTH phone fields are null/empty
+        filteredClients = filteredClients.filter((c) => !hasPhoneValue(c))
+      } else if (filter === "incomplete") {
+        // Incomplete = no email OR no phone
+        filteredClients = filteredClients.filter((c) => !hasEmailValue(c) || !hasPhoneValue(c))
+      }
+
+      totalFilteredCount = filteredClients.length
+
+      // Apply pagination manually
+      clients = filteredClients.slice(offset, offset + perPage)
+    } else {
+      // Apply pagination in query for simple filters (all, no_email)
+      query = query
+        .order("Cliente", { ascending: true })
+        .range(offset, offset + perPage - 1)
+
+      const { data: fetchedClients, error: fetchError, count } = await query
+
+      if (fetchError) {
+        console.error("[Localize API] Error fetching clients:", fetchError)
+        return NextResponse.json(
+          { error: "Erro ao buscar clientes", details: fetchError.message },
+          { status: 500 }
+        )
+      }
+
+      clients = fetchedClients || []
+      totalFilteredCount = count || 0
     }
 
     // Get summary stats using count queries with head: true to avoid 1000 limit
@@ -167,10 +213,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       clients: formattedClients,
       pagination: {
-        total: count || 0,
+        total: totalFilteredCount,
         page,
         per_page: perPage,
-        total_pages: Math.ceil((count || 0) / perPage),
+        total_pages: Math.ceil(totalFilteredCount / perPage),
       },
       summary: {
         total,
