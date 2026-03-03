@@ -3,10 +3,58 @@ import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
 
+// ============================================================================
+// SINGLE SOURCE OF TRUTH: All filtering uses these functions
+// ============================================================================
+
+// Check if client has a valid phone (either Telefone 1 OR Telefone 2)
+function hasPhoneValue(client: any): boolean {
+  const tel1 = client["Telefone 1"] && String(client["Telefone 1"]).trim() !== ""
+  const tel2 = client["Telefone 2"] && String(client["Telefone 2"]).trim() !== ""
+  return tel1 || tel2
+}
+
+// Check if client has a valid email
+function hasEmailValue(client: any): boolean {
+  return !!(client.Email && String(client.Email).trim() !== "")
+}
+
+// Apply filter to a list of clients - used for BOTH counting and filtering
+function applyFilter(clients: any[], filter: string): any[] {
+  switch (filter) {
+    case "no_email":
+      return clients.filter((c) => !hasEmailValue(c))
+    case "no_phone":
+      return clients.filter((c) => !hasPhoneValue(c))
+    case "incomplete":
+      // Incomplete = no email OR no phone (UNION, not intersection)
+      return clients.filter((c) => !hasEmailValue(c) || !hasPhoneValue(c))
+    case "all":
+    default:
+      return clients
+  }
+}
+
+// Apply search filter
+function applySearch(clients: any[], search: string): any[] {
+  if (!search) return clients
+  const searchLower = search.toLowerCase()
+  return clients.filter((c) => {
+    const name = (c.Cliente || "").toLowerCase()
+    const doc = (c["CPF/CNPJ"] || "").toLowerCase()
+    return name.includes(searchLower) || doc.includes(searchLower)
+  })
+}
+
 /**
  * GET /api/super-admin/localize/clients
  *
  * Lists clients from VMAX table for a specific company with filters.
+ *
+ * IMPORTANT: This endpoint uses a SINGLE SOURCE OF TRUTH approach:
+ * - Fetch ALL clients for the company once (paginated to avoid Supabase limit)
+ * - Apply the SAME filter functions for counting AND for table display
+ * - This guarantees counters and filters always match
  */
 export async function GET(request: NextRequest) {
   try {
@@ -30,176 +78,111 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Calculate offset
-    const offset = (page - 1) * perPage
+    // ========================================================================
+    // STEP 1: Fetch ALL clients for this company (paginated to avoid limits)
+    // ========================================================================
+    let allClients: any[] = []
+    let pageNum = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    // Helper to check if client has phone
-    const hasPhoneValue = (client: any): boolean => {
-      const tel1 = client["Telefone 1"] && client["Telefone 1"].trim() !== ""
-      const tel2 = client["Telefone 2"] && client["Telefone 2"].trim() !== ""
-      return tel1 || tel2
-    }
-
-    // Helper to check if client has email
-    const hasEmailValue = (client: any): boolean => {
-      return !!(client.Email && client.Email.trim() !== "")
-    }
-
-    // For no_phone and incomplete filters, we need to filter in JS
-    // because Supabase can't express "BOTH phone columns are empty"
-    const needsJsFilter = filter === "no_phone" || filter === "incomplete"
-
-    // Build base query - selecting from VMAX table
-    // VMAX has 2 phone columns: "Telefone 1" and "Telefone 2" (no plain "Telefone")
-    let query = supabase
-      .from("VMAX")
-      .select(
-        `id, Cliente, "CPF/CNPJ", Email, "Telefone 1", "Telefone 2", id_company, created_at, updated_at`,
-        { count: "exact" }
-      )
-      .eq("id_company", companyId)
-
-    // Apply search if present
-    if (search) {
-      query = query.or(`Cliente.ilike.%${search}%,"CPF/CNPJ".ilike.%${search}%`)
-    }
-
-    // Apply simple filters directly in query
-    if (filter === "no_email") {
-      query = query.or("Email.is.null,Email.eq.")
-    }
-
-    let clients: any[] = []
-    let totalFilteredCount = 0
-
-    if (needsJsFilter) {
-      // Fetch ALL records and filter in JS (needed for complex phone logic)
-      const { data: allClients, error: fetchError } = await query
-        .order("Cliente", { ascending: true })
-        .limit(10000)
-
-      if (fetchError) {
-        console.error("[Localize API] Error fetching clients:", fetchError)
-        return NextResponse.json(
-          { error: "Erro ao buscar clientes", details: fetchError.message },
-          { status: 500 }
-        )
-      }
-
-      // Apply JS filter
-      let filteredClients = allClients || []
-      if (filter === "no_phone") {
-        // No phone = BOTH phone fields are null/empty
-        filteredClients = filteredClients.filter((c) => !hasPhoneValue(c))
-      } else if (filter === "incomplete") {
-        // Incomplete = no email OR no phone
-        filteredClients = filteredClients.filter((c) => !hasEmailValue(c) || !hasPhoneValue(c))
-      }
-
-      totalFilteredCount = filteredClients.length
-
-      // Apply pagination manually
-      clients = filteredClients.slice(offset, offset + perPage)
-    } else {
-      // Apply pagination in query for simple filters (all, no_email)
-      query = query
-        .order("Cliente", { ascending: true })
-        .range(offset, offset + perPage - 1)
-
-      const { data: fetchedClients, error: fetchError, count } = await query
-
-      if (fetchError) {
-        console.error("[Localize API] Error fetching clients:", fetchError)
-        return NextResponse.json(
-          { error: "Erro ao buscar clientes", details: fetchError.message },
-          { status: 500 }
-        )
-      }
-
-      clients = fetchedClients || []
-      totalFilteredCount = count || 0
-    }
-
-    // Get summary stats using paginated fetch to avoid 1000 limit
-    // Total count
-    const { count: totalCount } = await supabase
-      .from("VMAX")
-      .select("*", { count: "exact", head: true })
-      .eq("id_company", companyId)
-
-    // With email count
-    const { count: withEmailCount } = await supabase
-      .from("VMAX")
-      .select("*", { count: "exact", head: true })
-      .eq("id_company", companyId)
-      .not("Email", "is", null)
-      .neq("Email", "")
-
-    // With phone count - need to paginate to get ALL records (Supabase limits to 1000)
-    // Use the SAME logic as hasPhoneValue to ensure consistency
-    let allPhoneData: any[] = []
-    let phonePageNumber = 0
-    const phonePageSize = 1000
-    let hasMorePhoneData = true
-
-    while (hasMorePhoneData) {
-      const { data: phonePageData } = await supabase
+    while (hasMore) {
+      const { data: pageData, error } = await supabase
         .from("VMAX")
-        .select(`"Telefone 1", "Telefone 2"`)
+        .select(`id, Cliente, "CPF/CNPJ", Email, "Telefone 1", "Telefone 2", id_company, created_at, updated_at`)
         .eq("id_company", companyId)
-        .range(phonePageNumber * phonePageSize, (phonePageNumber + 1) * phonePageSize - 1)
+        .order("Cliente", { ascending: true })
+        .range(pageNum * pageSize, (pageNum + 1) * pageSize - 1)
 
-      if (phonePageData && phonePageData.length > 0) {
-        allPhoneData = [...allPhoneData, ...phonePageData]
-        phonePageNumber++
-        hasMorePhoneData = phonePageData.length === phonePageSize
+      if (error) {
+        console.error("[Localize API] Error fetching clients:", error)
+        return NextResponse.json(
+          { error: "Erro ao buscar clientes", details: error.message },
+          { status: 500 }
+        )
+      }
+
+      if (pageData && pageData.length > 0) {
+        allClients = [...allClients, ...pageData]
+        pageNum++
+        hasMore = pageData.length === pageSize
       } else {
-        hasMorePhoneData = false
+        hasMore = false
       }
     }
 
-    // Use EXACTLY the same logic as hasPhoneValue function
-    const withPhoneCount = allPhoneData.filter((c) => {
-      const tel1 = c["Telefone 1"] && c["Telefone 1"].trim() !== ""
-      const tel2 = c["Telefone 2"] && c["Telefone 2"].trim() !== ""
-      return tel1 || tel2
-    }).length
+    // ========================================================================
+    // STEP 2: Calculate summary stats using the SAME filter functions
+    // ========================================================================
+    const total = allClients.length
+    const withEmailList = allClients.filter((c) => hasEmailValue(c))
+    const withPhoneList = allClients.filter((c) => hasPhoneValue(c))
 
-    const total = totalCount || allPhoneData.length
-    const withEmail = withEmailCount || 0
-    const withPhone = withPhoneCount
+    const withEmail = withEmailList.length
+    const withPhone = withPhoneList.length
+    const withoutEmail = total - withEmail
+    const withoutPhone = total - withPhone
 
-    // Get last assertiva query dates for these clients
-    const clientIds = (clients || []).map((c) => c.id)
-    const { data: logData } = await supabase
-      .from("assertiva_localize_logs")
-      .select("client_id, created_at")
-      .in("client_id", clientIds)
-      .order("created_at", { ascending: false })
+    // Validation: these MUST be mathematically consistent
+    console.log(`[Localize API] Stats: total=${total}, withEmail=${withEmail}, withoutEmail=${withoutEmail}, withPhone=${withPhone}, withoutPhone=${withoutPhone}`)
 
-    // Create a map of client_id to last query date
-    const lastQueryMap = new Map<string, string>()
-    for (const log of logData || []) {
-      if (!lastQueryMap.has(log.client_id)) {
-        lastQueryMap.set(log.client_id, log.created_at)
+    // ========================================================================
+    // STEP 3: Apply search filter (if any)
+    // ========================================================================
+    let searchFilteredClients = applySearch(allClients, search)
+
+    // ========================================================================
+    // STEP 4: Apply category filter using the SAME functions as counting
+    // ========================================================================
+    const filteredClients = applyFilter(searchFilteredClients, filter)
+    const totalFilteredCount = filteredClients.length
+
+    // ========================================================================
+    // STEP 5: Apply pagination
+    // ========================================================================
+    const offset = (page - 1) * perPage
+    const clients = filteredClients.slice(offset, offset + perPage)
+
+    // ========================================================================
+    // STEP 6: Get last assertiva query dates for paginated clients
+    // ========================================================================
+    const clientIds = clients.map((c) => c.id)
+    let lastQueryMap = new Map<string, string>()
+
+    if (clientIds.length > 0) {
+      const { data: logData } = await supabase
+        .from("assertiva_localize_logs")
+        .select("client_id, created_at")
+        .in("client_id", clientIds)
+        .order("created_at", { ascending: false })
+
+      for (const log of logData || []) {
+        if (!lastQueryMap.has(log.client_id)) {
+          lastQueryMap.set(log.client_id, log.created_at)
+        }
       }
     }
 
-    // Format response - check phone columns: "Telefone 1" and "Telefone 2"
-    const formattedClients = (clients || []).map((client) => {
+    // ========================================================================
+    // STEP 7: Format response using the SAME helper functions
+    // ========================================================================
+    const formattedClients = clients.map((client) => {
       const cpfCnpj = client["CPF/CNPJ"] || ""
       const cleanDoc = cpfCnpj.replace(/\D/g, "")
       const documentType = cleanDoc.length === 14 ? "cnpj" : "cpf"
 
-      const hasEmail = !!(client.Email && client.Email.trim() !== "")
+      // Use the SAME helper functions for consistency
+      const hasEmail = hasEmailValue(client)
+      const hasPhone = hasPhoneValue(client)
 
-      // Check phone fields - priority: Telefone 1 > Telefone 2
-      const telefone1 = client["Telefone 1"] && client["Telefone 1"].trim() !== "" ? client["Telefone 1"].trim() : null
-      const telefone2 = client["Telefone 2"] && client["Telefone 2"].trim() !== "" ? client["Telefone 2"].trim() : null
-
-      // Best phone = first non-null
+      // Get phone values with String() for safety
+      const telefone1 = client["Telefone 1"] && String(client["Telefone 1"]).trim() !== ""
+        ? String(client["Telefone 1"]).trim()
+        : null
+      const telefone2 = client["Telefone 2"] && String(client["Telefone 2"]).trim() !== ""
+        ? String(client["Telefone 2"]).trim()
+        : null
       const bestPhone = telefone1 || telefone2
-      const hasPhone = !!bestPhone
 
       let status: "complete" | "no_email" | "no_phone" | "no_data"
       if (hasEmail && hasPhone) {
@@ -217,14 +200,17 @@ export async function GET(request: NextRequest) {
         name: client.Cliente || "",
         cpf_cnpj: cpfCnpj,
         document_type: documentType,
-        email: client.Email || null,
+        email: client.Email ? String(client.Email).trim() || null : null,
         phone: bestPhone,
-        phone2: telefone2 && telefone1 ? telefone2 : null, // Secondary phone if both exist
+        phone2: telefone2 && telefone1 ? telefone2 : null,
         last_assertiva_query: lastQueryMap.get(client.id) || null,
         status,
       }
     })
 
+    // ========================================================================
+    // STEP 8: Return response with mathematically consistent counters
+    // ========================================================================
     return NextResponse.json({
       clients: formattedClients,
       pagination: {
@@ -236,9 +222,9 @@ export async function GET(request: NextRequest) {
       summary: {
         total,
         with_email: withEmail,
-        without_email: total - withEmail,
+        without_email: withoutEmail,  // Calculated consistently: total - withEmail
         with_phone: withPhone,
-        without_phone: total - withPhone,
+        without_phone: withoutPhone,  // Calculated consistently: total - withPhone
       },
     })
   } catch (error: any) {
