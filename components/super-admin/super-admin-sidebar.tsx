@@ -21,6 +21,7 @@ import {
   Handshake,
   Calculator,
   FileUp,
+  MapPin,
 } from "lucide-react"
 
 interface SuperAdminSidebarProps {
@@ -97,6 +98,11 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
           name: "Análise 360",
           href: "/super-admin/analises/comportamental",
           icon: Sparkles,
+        },
+        {
+          name: "Localize",
+          href: "/super-admin/analises/localize",
+          icon: MapPin,
         },
         // Hidden: Análise Consolidada (code preserved but not visible)
         {
