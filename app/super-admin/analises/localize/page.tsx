@@ -491,7 +491,7 @@ export default function LocalizePage() {
               Localize — Enriquecimento Cadastral
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Consulte a Assertiva para atualizar emails e telefones de clientes
+              Consulte e atualize emails e telefones de clientes
             </p>
           </div>
         </div>
@@ -503,25 +503,39 @@ export default function LocalizePage() {
           <CardTitle className="text-lg">Selecione a Empresa</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select
-            value={selectedCompany}
-            onValueChange={(value) => {
-              setSelectedCompany(value)
-              setSelectedClients(new Set())
-              setPagination((p) => ({ ...p, page: 1 }))
-            }}
-          >
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue placeholder="Selecione uma empresa..." />
-            </SelectTrigger>
-            <SelectContent>
-              {companies.map((company) => (
-                <SelectItem key={company.id} value={company.id}>
-                  {company.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {loadingCompanies ? (
+            <div className="flex items-center gap-2 text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Carregando empresas...</span>
+            </div>
+          ) : companies.length === 0 ? (
+            <div className="text-gray-500">
+              Nenhuma empresa encontrada.{" "}
+              <Button variant="link" className="p-0 h-auto" onClick={loadCompanies}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <Select
+              value={selectedCompany}
+              onValueChange={(value) => {
+                setSelectedCompany(value)
+                setSelectedClients(new Set())
+                setPagination((p) => ({ ...p, page: 1 }))
+              }}
+            >
+              <SelectTrigger className="w-full max-w-md">
+                <SelectValue placeholder="Selecione uma empresa..." />
+              </SelectTrigger>
+              <SelectContent>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
@@ -632,7 +646,7 @@ export default function LocalizePage() {
               className="bg-altea-gold hover:bg-altea-gold/90 text-altea-navy"
             >
               <Search className="w-4 h-4 mr-2" />
-              Consultar Assertiva
+              Enriquecer Cadastro
               {selectedClients.size > 0 && ` (${selectedClients.size})`}
             </Button>
           </div>
@@ -762,9 +776,9 @@ export default function LocalizePage() {
       <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar Consulta Assertiva</DialogTitle>
+            <DialogTitle>Confirmar Consulta</DialogTitle>
             <DialogDescription>
-              Deseja consultar {selectedClients.size} clientes na Assertiva Localize?
+              Deseja enriquecer o cadastro de {selectedClients.size} clientes?
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -805,7 +819,7 @@ export default function LocalizePage() {
       <Dialog open={showProgressModal} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Consultando Assertiva...</DialogTitle>
+            <DialogTitle>Consultando dados...</DialogTitle>
           </DialogHeader>
           <div className="py-6">
             <Progress value={searchProgress} className="mb-4" />
