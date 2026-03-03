@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { consultarDocumento, LocalizeResult } from "@/services/assertivaLocalizeService"
+import { assertivaLocalizeQueue } from "@/lib/queue/queues"
+import { randomUUID } from "crypto"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300 // 5 minutes max for batch processing
+export const maxDuration = 300 // 5 minutes max for small batch processing
 
 interface SearchRequest {
   client_ids: string[]
   company_id: string
+  auto_apply?: boolean
+  use_queue?: boolean // Force queue processing
 }
 
 interface SearchResultItem {
@@ -33,6 +37,11 @@ interface SearchResultItem {
  * POST /api/super-admin/localize/search
  *
  * Execute Assertiva Localize queries for a list of clients.
+ *
+ * For batches > 50 clients or when use_queue=true, uses BullMQ queue
+ * and returns a job_id for polling status.
+ *
+ * For small batches (<= 50), processes synchronously and returns results.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -43,7 +52,7 @@ export async function POST(request: NextRequest) {
     )
 
     const body: SearchRequest = await request.json()
-    const { client_ids, company_id } = body
+    const { client_ids, company_id, auto_apply = false, use_queue = false } = body
 
     if (!company_id) {
       return NextResponse.json(
@@ -55,13 +64,6 @@ export async function POST(request: NextRequest) {
     if (!client_ids || !Array.isArray(client_ids) || client_ids.length === 0) {
       return NextResponse.json(
         { error: "client_ids deve ser um array não vazio" },
-        { status: 400 }
-      )
-    }
-
-    if (client_ids.length > 200) {
-      return NextResponse.json(
-        { error: "Máximo de 200 clientes por requisição" },
         { status: 400 }
       )
     }
@@ -80,6 +82,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // For large batches or when explicitly requested, use queue
+    const QUEUE_THRESHOLD = 50
+    const shouldUseQueue = use_queue || client_ids.length > QUEUE_THRESHOLD
+
+    if (shouldUseQueue) {
+      // Create a batch ID for tracking
+      const batchId = randomUUID()
+
+      // Add job to queue
+      const job = await assertivaLocalizeQueue.add(
+        "localize-batch",
+        {
+          batchId,
+          companyId: company_id,
+          clientIds: client_ids,
+          filterUsed: "manual" as const,
+          totalClients: client_ids.length,
+          autoApply: auto_apply,
+        },
+        {
+          jobId: batchId,
+        }
+      )
+
+      console.log(`[Localize Search] Created queue job ${job.id} for ${client_ids.length} clients`)
+
+      return NextResponse.json({
+        queued: true,
+        job_id: job.id,
+        batch_id: batchId,
+        total_clients: client_ids.length,
+        message: `Processamento de ${client_ids.length} clientes iniciado. Use /status?job_id=${job.id} para acompanhar.`,
+      })
+    }
+
+    // For small batches, process synchronously (original behavior)
     // Fetch clients from VMAX
     const { data: clients, error: clientsError } = await supabase
       .from("VMAX")
@@ -102,20 +140,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify all requested clients belong to the company
-    if (clients.length !== client_ids.length) {
-      const foundIds = new Set(clients.map((c) => c.id))
-      const missingIds = client_ids.filter((id) => !foundIds.has(id))
-      console.warn(`[Localize Search] Missing clients: ${missingIds.join(", ")}`)
-    }
-
     // Process clients in chunks with rate limiting
     const results: SearchResultItem[] = []
     const chunkSize = 5
-    const delayBetweenRequests = 300 // 300ms between individual requests
-    const delayBetweenChunks = 1000 // 1s between chunks
+    const delayBetweenRequests = 300
+    const delayBetweenChunks = 1000
 
-    console.log(`[Localize Search] Processing ${clients.length} clients in chunks of ${chunkSize}`)
+    console.log(`[Localize Search] Processing ${clients.length} clients synchronously`)
 
     for (let i = 0; i < clients.length; i += chunkSize) {
       const chunk = clients.slice(i, i + chunkSize)
@@ -148,7 +179,6 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          // Query Assertiva
           const localizeResult = await consultarDocumento(cleanDoc)
 
           const resultItem: SearchResultItem = {
@@ -176,7 +206,7 @@ export async function POST(request: NextRequest) {
 
           results.push(resultItem)
 
-          // Log the query to assertiva_localize_logs
+          // Log the query
           await supabase.from("assertiva_localize_logs").insert({
             company_id,
             client_id: client.id,
@@ -219,19 +249,16 @@ export async function POST(request: NextRequest) {
           })
         }
 
-        // Delay between requests
         if (j < chunk.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, delayBetweenRequests))
         }
       }
 
-      // Delay between chunks
       if (i + chunkSize < clients.length) {
         await new Promise((resolve) => setTimeout(resolve, delayBetweenChunks))
       }
     }
 
-    // Calculate summary
     const summary = {
       total_consulted: results.length,
       success: results.filter((r) => r.status === "success").length,
@@ -244,6 +271,7 @@ export async function POST(request: NextRequest) {
     console.log(`[Localize Search] Completed:`, summary)
 
     return NextResponse.json({
+      queued: false,
       results,
       summary,
     })
