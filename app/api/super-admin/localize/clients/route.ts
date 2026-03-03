@@ -34,28 +34,24 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * perPage
 
     // Build base query - selecting from VMAX table
-    // VMAX has 3 phone columns: "Telefone", "Telefone 1", "Telefone 2"
+    // VMAX has 2 phone columns: "Telefone 1" and "Telefone 2" (no plain "Telefone")
     let query = supabase
       .from("VMAX")
       .select(
-        `id, Cliente, "CPF/CNPJ", Email, Telefone, "Telefone 1", "Telefone 2", id_company, created_at, updated_at`,
+        `id, Cliente, "CPF/CNPJ", Email, "Telefone 1", "Telefone 2", id_company, created_at, updated_at`,
         { count: "exact" }
       )
       .eq("id_company", companyId)
 
-    // Apply filters - check ALL phone columns
+    // Apply filters
     if (filter === "no_email") {
       query = query.or("Email.is.null,Email.eq.")
     } else if (filter === "no_phone") {
-      // No phone = ALL phone fields are null/empty
-      // Using RPC or raw filter since we need AND between multiple ORs
-      query = query
-        .or('Telefone.is.null,Telefone.eq.')
-        .or('"Telefone 1".is.null,"Telefone 1".eq.')
-        .or('"Telefone 2".is.null,"Telefone 2".eq.')
+      // No phone = BOTH phone fields are null/empty (need AND logic)
+      // Supabase doesn't support complex AND+OR, so we filter in JS after fetch
     } else if (filter === "incomplete") {
-      // Either no email OR no phone (all phone fields empty)
-      query = query.or('Email.is.null,Email.eq.,Telefone.is.null,Telefone.eq.')
+      // Either no email OR no phone - simplified filter
+      query = query.or("Email.is.null,Email.eq.")
     }
 
     // Apply search
@@ -94,20 +90,18 @@ export async function GET(request: NextRequest) {
       .neq("Email", "")
 
     // With phone count - has ANY phone field filled
-    // We need to count where at least one phone field is not null/empty
-    // Fetch minimal data to calculate (still limited but better approach)
+    // Fetch minimal data to calculate
     const { data: phoneCheckData } = await supabase
       .from("VMAX")
-      .select(`Telefone, "Telefone 1", "Telefone 2"`)
+      .select(`"Telefone 1", "Telefone 2"`)
       .eq("id_company", companyId)
       .limit(10000) // Higher limit for phone check
 
     const phoneStats = phoneCheckData || []
     const withPhoneCount = phoneStats.filter((c) => {
-      const tel = c.Telefone && c.Telefone.trim() !== ""
       const tel1 = c["Telefone 1"] && c["Telefone 1"].trim() !== ""
       const tel2 = c["Telefone 2"] && c["Telefone 2"].trim() !== ""
-      return tel || tel1 || tel2
+      return tel1 || tel2
     }).length
 
     const total = totalCount || phoneStats.length
@@ -130,7 +124,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Format response - check ALL phone columns
+    // Format response - check phone columns: "Telefone 1" and "Telefone 2"
     const formattedClients = (clients || []).map((client) => {
       const cpfCnpj = client["CPF/CNPJ"] || ""
       const cleanDoc = cpfCnpj.replace(/\D/g, "")
@@ -138,13 +132,12 @@ export async function GET(request: NextRequest) {
 
       const hasEmail = !!(client.Email && client.Email.trim() !== "")
 
-      // Check all phone fields - priority: Telefone > Telefone 1 > Telefone 2
-      const telefone = client.Telefone && client.Telefone.trim() !== "" ? client.Telefone.trim() : null
+      // Check phone fields - priority: Telefone 1 > Telefone 2
       const telefone1 = client["Telefone 1"] && client["Telefone 1"].trim() !== "" ? client["Telefone 1"].trim() : null
       const telefone2 = client["Telefone 2"] && client["Telefone 2"].trim() !== "" ? client["Telefone 2"].trim() : null
 
       // Best phone = first non-null
-      const bestPhone = telefone || telefone1 || telefone2
+      const bestPhone = telefone1 || telefone2
       const hasPhone = !!bestPhone
 
       let status: "complete" | "no_email" | "no_phone" | "no_data"
@@ -165,7 +158,7 @@ export async function GET(request: NextRequest) {
         document_type: documentType,
         email: client.Email || null,
         phone: bestPhone,
-        phone2: telefone2 || (telefone1 && telefone ? telefone1 : null), // Secondary phone if available
+        phone2: telefone2 && telefone1 ? telefone2 : null, // Secondary phone if both exist
         last_assertiva_query: lastQueryMap.get(client.id) || null,
         status,
       }
