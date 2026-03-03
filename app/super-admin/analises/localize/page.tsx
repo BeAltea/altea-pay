@@ -279,6 +279,81 @@ export default function LocalizePage() {
       }
 
       const data = await res.json()
+
+      // Check if the request was queued for async processing
+      if (data.queued) {
+        // Start polling for progress
+        const jobId = data.job_id
+        let pollCount = 0
+        const maxPolls = 600 // 20 minutes max (2s intervals)
+
+        const pollStatus = async () => {
+          try {
+            const statusRes = await fetch(`/api/super-admin/localize/status?job_id=${jobId}`)
+            if (!statusRes.ok) throw new Error("Erro ao verificar status")
+
+            const statusData = await statusRes.json()
+            const progress = statusData.progress || {}
+
+            setSearchProgress(progress.percentage || 0)
+            setCurrentSearchClient(progress.currentClientName || "")
+            setSearchSummary({
+              total_consulted: progress.processed || 0,
+              success: progress.emailsFound + progress.phonesFound,
+              emails_found: progress.emailsFound || 0,
+              phones_found: progress.phonesFound || 0,
+              not_found: progress.notFound || 0,
+              errors: progress.errors || 0,
+            })
+
+            if (statusData.status === "completed") {
+              setSearchProgress(100)
+              setIsSearching(false)
+
+              // Fetch results from logs
+              toast({
+                title: "Processamento concluído",
+                description: `${progress.emailsFound} emails e ${progress.phonesFound} telefones encontrados`,
+              })
+
+              setTimeout(() => {
+                setShowProgressModal(false)
+                // Reload clients to see updated data
+                loadClients()
+                setSelectedClients(new Set())
+              }, 1000)
+              return
+            }
+
+            if (statusData.status === "failed") {
+              throw new Error(statusData.failedReason || "Erro no processamento")
+            }
+
+            // Continue polling
+            pollCount++
+            if (pollCount < maxPolls) {
+              setTimeout(pollStatus, 2000)
+            } else {
+              throw new Error("Timeout aguardando processamento")
+            }
+          } catch (pollError: any) {
+            console.error("Polling error:", pollError)
+            toast({
+              title: "Erro",
+              description: pollError.message,
+              variant: "destructive",
+            })
+            setShowProgressModal(false)
+            setIsSearching(false)
+          }
+        }
+
+        // Start polling
+        setTimeout(pollStatus, 2000)
+        return
+      }
+
+      // Synchronous processing - show results directly
       setSearchResults(data.results || [])
       setSearchSummary(data.summary || searchSummary)
       setSearchProgress(100)
@@ -834,12 +909,29 @@ export default function LocalizePage() {
           </DialogHeader>
           <div className="py-6">
             <Progress value={searchProgress} className="mb-4" />
-            <div className="text-center text-sm text-gray-500">
+            <div className="text-center text-sm text-gray-500 space-y-2">
               {isSearching ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processando consultas...</span>
-                </div>
+                <>
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      Processando {searchSummary.total_consulted} de {selectedClients.size}...
+                    </span>
+                  </div>
+                  {currentSearchClient && (
+                    <div className="text-xs truncate max-w-[300px] mx-auto">
+                      {currentSearchClient}
+                    </div>
+                  )}
+                  <div className="flex justify-center gap-4 text-xs mt-3">
+                    <span className="text-green-600">
+                      📧 {searchSummary.emails_found} emails
+                    </span>
+                    <span className="text-blue-600">
+                      📱 {searchSummary.phones_found} telefones
+                    </span>
+                  </div>
+                </>
               ) : (
                 <span>Concluído!</span>
               )}
