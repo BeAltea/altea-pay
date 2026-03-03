@@ -8,6 +8,7 @@ import './workers/asaas-charge-update.worker';
 import './workers/asaas-charge-cancel.worker';
 import './workers/asaas-notification.worker';
 import './workers/asaas-sync.worker';
+import './workers/assertiva-localize.worker';
 
 import {
   emailQueue,
@@ -17,6 +18,7 @@ import {
   asaasChargeCancelQueue,
   asaasNotificationQueue,
   asaasSyncQueue,
+  assertivaLocalizeQueue,
 } from './queues';
 import { startHealthCheck } from './health';
 
@@ -34,6 +36,7 @@ startHealthCheck({
   asaasChargeCancelQueue,
   asaasNotificationQueue,
   asaasSyncQueue,
+  assertivaLocalizeQueue,
 });
 
 // Log worker status

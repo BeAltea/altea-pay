@@ -93,3 +93,14 @@ export const asaasSyncQueue = new Queue(QUEUE_CONFIG.asaasSync.name, {
     removeOnFail: QUEUE_CONFIG.asaasSync.removeOnFail,
   },
 });
+
+// Assertiva Localize Queue
+export const assertivaLocalizeQueue = new Queue(QUEUE_CONFIG.assertivaLocalize.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.assertivaLocalize.retries.attempts,
+    backoff: QUEUE_CONFIG.assertivaLocalize.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.assertivaLocalize.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.assertivaLocalize.removeOnFail,
+  },
+});

@@ -108,6 +108,19 @@ export const QUEUE_CONFIG = {
       duration: 1000,
     },
   },
+  // Assertiva Localize Queue - for enriching customer data
+  assertivaLocalize: {
+    name: 'alteapay-assertiva-localize',
+    retries: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential' as const,
+        delay: 5000,
+      },
+    },
+    removeOnComplete: { age: 86400 }, // Keep for 24h
+    removeOnFail: { age: 604800 }, // Keep failures for 7 days
+  },
 } as const;
 
 // ASAAS notification defaults - WhatsApp + SMS enabled, email disabled (we use SendGrid)
