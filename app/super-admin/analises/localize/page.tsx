@@ -159,18 +159,19 @@ export default function LocalizePage() {
   })
   const [isSearching, setIsSearching] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // Load companies on mount
   useEffect(() => {
     loadCompanies()
   }, [])
 
-  // Load clients when company or filter changes
+  // Load clients when company, filter, or refresh trigger changes
   useEffect(() => {
     if (selectedCompany) {
       loadClients()
     }
-  }, [selectedCompany, filter, pagination.page, search])
+  }, [selectedCompany, filter, pagination.page, search, refreshTrigger])
 
   const loadCompanies = async () => {
     try {
@@ -318,9 +319,9 @@ export default function LocalizePage() {
 
               setTimeout(() => {
                 setShowProgressModal(false)
-                // Reload clients to see updated data
-                loadClients()
                 setSelectedClients(new Set())
+                // Force re-fetch by incrementing trigger
+                setRefreshTrigger((prev) => prev + 1)
               }, 1000)
               return
             }
@@ -511,7 +512,8 @@ export default function LocalizePage() {
     setShowResultsModal(false)
     setSearchResults([])
     setSelectedClients(new Set())
-    loadClients()
+    // Force re-fetch by incrementing trigger (useEffect will call loadClients)
+    setRefreshTrigger((prev) => prev + 1)
   }
 
   const formatDocument = (doc: string) => {
