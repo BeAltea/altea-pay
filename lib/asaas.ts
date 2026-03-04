@@ -1,17 +1,23 @@
 /**
- * Asaas Payment Gateway - ALL calls go through /api/asaas route
- * 
- * Server Actions CANNOT read process.env in v0 preview.
- * API Routes CAN read process.env.
- * 
- * Solution: Every function here calls /api/asaas (API Route) which
- * reads ASAAS_API_KEY and forwards the request to Asaas.
- * 
- * The host URL is obtained from next/headers to ensure it works
- * in any environment (v0 preview, Vercel, localhost).
+ * Asaas Payment Gateway
+ *
+ * Two modes of operation:
+ * 1. Direct mode: When ASAAS_API_KEY is available (workers, API routes)
+ *    Calls ASAAS API directly for better performance.
+ *
+ * 2. Proxy mode: When ASAAS_API_KEY is NOT available (Server Actions in v0 preview)
+ *    Calls /api/asaas which forwards requests to ASAAS.
+ *
+ * Workers MUST use direct mode because there's no Next.js server to proxy through.
  */
 
-import { headers } from "next/headers"
+let headersModule: typeof import("next/headers") | null = null
+try {
+  // Dynamic import to avoid errors in worker context
+  headersModule = require("next/headers")
+} catch {
+  // Not in Next.js context (e.g., worker)
+}
 
 // ====== Types ======
 
@@ -59,15 +65,23 @@ export interface CreatePaymentParams {
   postalService?: boolean
 }
 
-// ====== Core: Call /api/asaas route ======
+// ====== Core: Direct or Proxy mode ======
+
+const ASAAS_API_URL = process.env.ASAAS_API_URL || "https://api.asaas.com/v3"
+
+function canUseDirectMode(): boolean {
+  return !!process.env.ASAAS_API_KEY
+}
 
 async function getBaseUrl(): Promise<string> {
   try {
-    const h = await headers()
-    const host = h.get("host")
-    const proto = h.get("x-forwarded-proto") || "https"
-    if (host) {
-      return `${proto}://${host}`
+    if (headersModule) {
+      const h = await headersModule.headers()
+      const host = h.get("host")
+      const proto = h.get("x-forwarded-proto") || "https"
+      if (host) {
+        return `${proto}://${host}`
+      }
     }
   } catch {
     // headers() not available (e.g. called outside request context)
@@ -82,11 +96,47 @@ async function getBaseUrl(): Promise<string> {
   return "http://localhost:3000"
 }
 
-async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
+async function asaasRequestDirect(endpoint: string, method = "GET", body?: unknown): Promise<any> {
+  const apiKey = process.env.ASAAS_API_KEY!
+  const url = `${ASAAS_API_URL}${endpoint}`
+
+  console.log("[ASAAS-DIRECT]", method, endpoint)
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "access_token": apiKey,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  })
+
+  const contentType = res.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    const text = await res.text()
+    console.error("[ASAAS-DIRECT] Non-JSON response:", res.status, text.substring(0, 300))
+    throw new Error(`Erro ASAAS (status ${res.status})`)
+  }
+
+  const json = await res.json()
+
+  if (!res.ok) {
+    const msg = json.errors?.[0]?.description || json.error || `Erro Asaas (${res.status})`
+    console.error("[ASAAS-DIRECT] Error:", res.status, JSON.stringify(json))
+    const error: any = new Error(msg)
+    error.response = { status: res.status, data: json }
+    throw error
+  }
+
+  return json
+}
+
+async function asaasRequestProxy(endpoint: string, method = "GET", body?: unknown): Promise<any> {
   const baseUrl = await getBaseUrl()
   const url = `${baseUrl}/api/asaas`
 
-  console.log("[v0] asaasRequest via proxy:", method, endpoint, "baseUrl:", baseUrl)
+  console.log("[ASAAS-PROXY]", method, endpoint, "baseUrl:", baseUrl)
 
   const res = await fetch(url, {
     method: "POST",
@@ -104,7 +154,7 @@ async function asaasRequest(endpoint: string, method = "GET", body?: unknown): P
   const contentType = res.headers.get("content-type") || ""
   if (!contentType.includes("application/json")) {
     const text = await res.text()
-    console.error("[v0] Proxy returned non-JSON:", res.status, text.substring(0, 300))
+    console.error("[ASAAS-PROXY] Non-JSON response:", res.status, text.substring(0, 300))
     throw new Error(`Erro interno do servidor ao acessar Asaas (status ${res.status}). Verifique se o projeto foi deployado corretamente.`)
   }
 
@@ -112,11 +162,18 @@ async function asaasRequest(endpoint: string, method = "GET", body?: unknown): P
 
   if (!res.ok) {
     const msg = json.error || json.errors?.[0]?.description || `Erro Asaas (${res.status})`
-    console.error("[v0] Proxy error response:", res.status, JSON.stringify(json))
+    console.error("[ASAAS-PROXY] Error:", res.status, JSON.stringify(json))
     throw new Error(msg)
   }
 
   return json
+}
+
+async function asaasRequest(endpoint: string, method = "GET", body?: unknown): Promise<any> {
+  if (canUseDirectMode()) {
+    return asaasRequestDirect(endpoint, method, body)
+  }
+  return asaasRequestProxy(endpoint, method, body)
 }
 
 // ====== Customer Functions ======
