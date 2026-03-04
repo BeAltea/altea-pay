@@ -8,10 +8,12 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 300 // 5 minutes max for small batch processing
 
 interface SearchRequest {
-  client_ids: string[]
+  client_ids?: string[]
   company_id: string
   auto_apply?: boolean
   use_queue?: boolean // Force queue processing
+  select_all?: boolean // Select all clients matching filter
+  filter?: string // Filter to use when select_all is true
 }
 
 interface SearchResultItem {
@@ -52,18 +54,11 @@ export async function POST(request: NextRequest) {
     )
 
     const body: SearchRequest = await request.json()
-    const { client_ids, company_id, auto_apply = false, use_queue = false } = body
+    const { client_ids, company_id, auto_apply = false, use_queue = false, select_all = false, filter = "all" } = body
 
     if (!company_id) {
       return NextResponse.json(
         { error: "company_id é obrigatório" },
-        { status: 400 }
-      )
-    }
-
-    if (!client_ids || !Array.isArray(client_ids) || client_ids.length === 0) {
-      return NextResponse.json(
-        { error: "client_ids deve ser um array não vazio" },
         { status: 400 }
       )
     }
@@ -82,9 +77,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Determine which client IDs to process
+    let idsToProcess: string[] = []
+
+    if (select_all && filter) {
+      // Fetch ALL client IDs matching the filter using RPC
+      console.log(`[Localize Search] select_all=true, fetching all IDs for filter="${filter}"`)
+
+      const { data: rpcIds, error: rpcError } = await supabase.rpc(
+        "get_localize_client_ids",
+        { p_company_id: company_id, p_filter: filter }
+      )
+
+      if (rpcError) {
+        console.error("[Localize Search] RPC error, falling back to manual query:", rpcError)
+        // Fallback: fetch all and filter manually
+        const { data: allClients } = await supabase
+          .from("VMAX")
+          .select("id")
+          .eq("id_company", company_id)
+
+        idsToProcess = (allClients || []).map((c: any) => c.id)
+      } else {
+        idsToProcess = (rpcIds || []).map((r: any) => r.id)
+      }
+
+      console.log(`[Localize Search] Found ${idsToProcess.length} clients for filter "${filter}"`)
+    } else if (client_ids && Array.isArray(client_ids) && client_ids.length > 0) {
+      idsToProcess = client_ids
+    } else {
+      return NextResponse.json(
+        { error: "client_ids deve ser um array não vazio ou select_all deve ser true" },
+        { status: 400 }
+      )
+    }
+
+    if (idsToProcess.length === 0) {
+      return NextResponse.json(
+        { error: "Nenhum cliente encontrado para o filtro selecionado" },
+        { status: 404 }
+      )
+    }
+
     // For large batches or when explicitly requested, use queue
     const QUEUE_THRESHOLD = 50
-    const shouldUseQueue = use_queue || client_ids.length > QUEUE_THRESHOLD
+    const shouldUseQueue = use_queue || idsToProcess.length > QUEUE_THRESHOLD
 
     if (shouldUseQueue) {
       // Create a batch ID for tracking
@@ -96,9 +133,9 @@ export async function POST(request: NextRequest) {
         {
           batchId,
           companyId: company_id,
-          clientIds: client_ids,
-          filterUsed: "manual" as const,
-          totalClients: client_ids.length,
+          clientIds: idsToProcess,
+          filterUsed: select_all ? filter : "manual",
+          totalClients: idsToProcess.length,
           autoApply: auto_apply,
         },
         {
@@ -106,14 +143,14 @@ export async function POST(request: NextRequest) {
         }
       )
 
-      console.log(`[Localize Search] Created queue job ${job.id} for ${client_ids.length} clients`)
+      console.log(`[Localize Search] Created queue job ${job.id} for ${idsToProcess.length} clients`)
 
       return NextResponse.json({
         queued: true,
         job_id: job.id,
         batch_id: batchId,
-        total_clients: client_ids.length,
-        message: `Processamento de ${client_ids.length} clientes iniciado. Use /status?job_id=${job.id} para acompanhar.`,
+        total_clients: idsToProcess.length,
+        message: `Processamento de ${idsToProcess.length} clientes iniciado. Use /status?job_id=${job.id} para acompanhar.`,
       })
     }
 
@@ -122,7 +159,7 @@ export async function POST(request: NextRequest) {
     const { data: clients, error: clientsError } = await supabase
       .from("VMAX")
       .select(`id, Cliente, "CPF/CNPJ", Email, "Telefone 1", id_company`)
-      .in("id", client_ids)
+      .in("id", idsToProcess)
       .eq("id_company", company_id)
 
     if (clientsError) {

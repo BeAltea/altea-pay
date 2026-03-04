@@ -1,5 +1,6 @@
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { PAID_AGREEMENT_STATUSES, PAID_ASAAS_STATUSES, PAID_PAYMENT_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -30,6 +31,7 @@ interface Agreement {
   company_id: string
   status: string
   asaas_status?: string
+  payment_status?: string
   agreed_amount?: number
   created_at: string
 }
@@ -102,7 +104,7 @@ export async function GET(request: NextRequest) {
     while (hasMore) {
       const { data: agreementsPage } = await supabase
         .from("agreements")
-        .select("id, customer_id, company_id, status, asaas_status, agreed_amount, created_at")
+        .select("id, customer_id, company_id, status, asaas_status, payment_status, agreed_amount, created_at")
         .range(page * pageSize, (page + 1) * pageSize - 1)
 
       if (agreementsPage && agreementsPage.length > 0) {
@@ -127,10 +129,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build paidDocsMap - ONLY status === "completed" counts as paid
+    // Build paidDocsMap - check for all paid status variants
+    // Agreement status can be "completed" or "paid" (webhook sets "paid")
+    // Also check payment_status = "received" and asaas_status = "RECEIVED"
     const paidDocsByCompany = new Map<string, Set<string>>()
     for (const a of allAgreements) {
-      if (a.status === "completed") {
+      const isPaid =
+        PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+        PAID_PAYMENT_STATUSES.includes((a as any).payment_status as any) ||
+        PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+
+      if (isPaid) {
         const doc = customerIdToDoc.get(a.customer_id)
         if (doc && a.company_id) {
           if (!paidDocsByCompany.has(a.company_id)) {
@@ -174,7 +183,11 @@ export async function GET(request: NextRequest) {
       )
       const paidCustomerIds = new Set(
         companyAgreements
-          .filter((a) => a.status === "completed")
+          .filter((a) =>
+            PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+            PAID_PAYMENT_STATUSES.includes((a as any).payment_status as any) ||
+            PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+          )
           .map((a) => a.customer_id)
       )
       const negSent = sentCustomerIds.size
@@ -225,7 +238,11 @@ export async function GET(request: NextRequest) {
     )
     const globalPaidCustomerIds = new Set(
       allAgreements
-        .filter((a) => a.status === "completed")
+        .filter((a) =>
+          PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+          PAID_PAYMENT_STATUSES.includes((a as any).payment_status as any) ||
+          PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+        )
         .map((a) => a.customer_id)
     )
     const globalOpenCustomerIds = new Set(
@@ -260,7 +277,11 @@ export async function GET(request: NextRequest) {
       const monthReceived = isPastOrCurrent
         ? allAgreements
             .filter((a) => {
-              if (a.status !== "completed") return false
+              const isPaid =
+                PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+                PAID_PAYMENT_STATUSES.includes((a as any).payment_status as any) ||
+                PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+              if (!isPaid) return false
               const aDate = new Date(a.created_at)
               return (
                 aDate.getFullYear() === date.getFullYear() &&

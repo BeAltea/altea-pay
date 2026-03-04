@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { SendEmailPageClient } from "@/components/super-admin/send-email-page-client"
+import { PAID_AGREEMENT_STATUSES, PAID_ASAAS_STATUSES, PAID_PAYMENT_STATUSES, PAID_VMAX_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -74,7 +75,7 @@ async function fetchData() {
   while (hasMore) {
     const { data: vmaxPage, error: vmaxError } = await supabase
       .from("VMAX")
-      .select('id, Email, "CPF/CNPJ", "Dias Inad.", id_company')
+      .select('id, Email, "CPF/CNPJ", "Dias Inad.", id_company, negotiation_status')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (vmaxError) {
@@ -92,6 +93,92 @@ async function fetchData() {
   }
 
   console.log("[v0] Fetched", vmaxData.length, "VMAX records for debt days")
+
+  // Fetch agreements to identify paid clients
+  let allAgreements: any[] = []
+  page = 0
+  hasMore = true
+
+  while (hasMore) {
+    const { data: agreementsPage, error: agreementsError } = await supabase
+      .from("agreements")
+      .select("id, customer_id, company_id, status, asaas_status, payment_status")
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (agreementsError) {
+      console.error("[v0] Error fetching agreements:", agreementsError)
+      break
+    }
+
+    if (agreementsPage && agreementsPage.length > 0) {
+      allAgreements = [...allAgreements, ...agreementsPage]
+      page++
+      hasMore = agreementsPage.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  console.log("[v0] Fetched", allAgreements.length, "agreements")
+
+  // Fetch customers to map customer_id to document (CPF/CNPJ)
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, document, company_id")
+
+  // Build customer ID to document map
+  const customerIdToDoc = new Map<string, string>()
+  for (const c of customers || []) {
+    if (c.document) {
+      customerIdToDoc.set(c.id, c.document.replace(/\D/g, ""))
+    }
+  }
+
+  // Build set of paid CPF/CNPJs by company
+  const paidDocsByCompany = new Map<string, Set<string>>()
+  for (const a of allAgreements) {
+    const isPaid =
+      PAID_AGREEMENT_STATUSES.includes(a.status) ||
+      PAID_PAYMENT_STATUSES.includes(a.payment_status) ||
+      PAID_ASAAS_STATUSES.includes(a.asaas_status)
+
+    if (isPaid) {
+      const doc = customerIdToDoc.get(a.customer_id)
+      if (doc && a.company_id) {
+        if (!paidDocsByCompany.has(a.company_id)) {
+          paidDocsByCompany.set(a.company_id, new Set())
+        }
+        paidDocsByCompany.get(a.company_id)!.add(doc)
+      }
+    }
+  }
+
+  // Also check VMAX negotiation_status = PAGO
+  const paidVmaxDocs = new Map<string, Set<string>>()
+  for (const v of vmaxData) {
+    if (PAID_VMAX_STATUSES.includes(v.negotiation_status)) {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      const companyId = v.id_company
+      if (doc && companyId) {
+        if (!paidVmaxDocs.has(companyId)) {
+          paidVmaxDocs.set(companyId, new Set())
+        }
+        paidVmaxDocs.get(companyId)!.add(doc)
+      }
+    }
+  }
+
+  // Build email to CPF/CNPJ map from VMAX (to check if recipient's debt is paid)
+  const emailToDocMap = new Map<string, { doc: string; companyId: string }>()
+  for (const v of vmaxData) {
+    const email = (v.Email || "").toLowerCase().trim()
+    const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const companyId = v.id_company
+    if (email && doc && companyId) {
+      const key = `${companyId}:${email}`
+      emailToDocMap.set(key, { doc, companyId })
+    }
+  }
 
   // Create a map of email -> max days overdue (by company)
   const emailToDaysMap = new Map<string, number>()
@@ -176,9 +263,27 @@ async function fetchData() {
 
   console.log("[v0] Created tracking map for", Object.keys(emailTrackingMap).length, "users")
 
-  // Group recipients by company
+  // Group recipients by company, EXCLUDING clients with paid debts
   const recipientsMap: Record<string, { id: string; name: string; email: string; daysOverdue: number }[]> = {}
+  let excludedPaidCount = 0
+
   for (const recipient of allRecipients) {
+    const email = recipient.client_email.toLowerCase().trim()
+    const key = `${recipient.company_id}:${email}`
+
+    // Check if this recipient's debt is paid
+    const docInfo = emailToDocMap.get(key)
+    if (docInfo) {
+      const companyPaidDocs = paidDocsByCompany.get(docInfo.companyId) || new Set()
+      const companyPaidVmax = paidVmaxDocs.get(docInfo.companyId) || new Set()
+
+      if (companyPaidDocs.has(docInfo.doc) || companyPaidVmax.has(docInfo.doc)) {
+        // Skip this recipient - their debt is paid
+        excludedPaidCount++
+        continue
+      }
+    }
+
     if (!recipientsMap[recipient.company_id]) {
       recipientsMap[recipient.company_id] = []
     }
@@ -189,6 +294,8 @@ async function fetchData() {
       daysOverdue: recipient.daysOverdue || 0,
     })
   }
+
+  console.log("[v0] Excluded", excludedPaidCount, "recipients with paid debts")
 
   console.log("[v0] ========== END SEND EMAIL PAGE ==========")
 

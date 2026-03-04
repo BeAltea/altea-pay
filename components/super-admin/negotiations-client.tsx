@@ -272,20 +272,23 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       if (negotiationFilter === "sem_negociacao" && c.hasNegotiation) return false
 
       // Status Dívida filter
+      // IMPORTANT: Only RECEIVED means payment received. CONFIRMED means processing/awaiting clearance.
       const isPaidStatus = c.isPaid || c.status === "paid" ||
-        c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
-        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+        c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" ||
+        c.paymentStatus === "received"
 
       if (debtStatusFilter === "em_aberto") {
         // Em aberto: debt not paid, no ASAAS charge
         if (isPaidStatus || c.hasNegotiation) return false
       }
       if (debtStatusFilter === "aguardando") {
-        // Aguardando pagamento: ASAAS charge PENDING
-        if (c.asaasStatus !== "PENDING" && c.paymentStatus !== "pending") return false
+        // Aguardando pagamento: ASAAS charge PENDING or CONFIRMED (processing)
+        const isAwaiting = c.asaasStatus === "PENDING" || c.asaasStatus === "CONFIRMED" ||
+          c.paymentStatus === "pending" || c.paymentStatus === "confirmed"
+        if (!isAwaiting) return false
       }
       if (debtStatusFilter === "paga") {
-        // Paga: ASAAS status RECEIVED/CONFIRMED or debt status paid
+        // Paga: Only RECEIVED status (money actually received)
         if (!isPaidStatus) return false
       }
       if (debtStatusFilter === "vencida") {

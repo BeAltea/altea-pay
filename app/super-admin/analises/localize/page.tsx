@@ -108,9 +108,10 @@ interface Summary {
   without_email: number
   with_phone: number
   without_phone: number
-  localize_no_email: number
-  localize_no_phone: number
-  never_queried: number
+  no_email_never_queried: number
+  no_phone_never_queried: number
+  incomplete_never_queried: number
+  incomplete_already_queried: number
 }
 
 interface Pagination {
@@ -120,7 +121,7 @@ interface Pagination {
   total_pages: number
 }
 
-type FilterType = "all" | "no_email" | "no_phone" | "incomplete" | "localize_no_email" | "localize_no_phone" | "never_queried"
+type FilterType = "all" | "no_email_never_queried" | "no_phone_never_queried" | "incomplete_never_queried" | "incomplete_already_queried"
 
 export default function LocalizePage() {
   const { toast } = useToast()
@@ -144,9 +145,10 @@ export default function LocalizePage() {
     without_email: 0,
     with_phone: 0,
     without_phone: 0,
-    localize_no_email: 0,
-    localize_no_phone: 0,
-    never_queried: 0,
+    no_email_never_queried: 0,
+    no_phone_never_queried: 0,
+    incomplete_never_queried: 0,
+    incomplete_already_queried: 0,
   })
   const [loading, setLoading] = useState(false)
   const [loadingCompanies, setLoadingCompanies] = useState(true)
@@ -170,8 +172,6 @@ export default function LocalizePage() {
   const [isApplying, setIsApplying] = useState(false)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [selectAllFromFilter, setSelectAllFromFilter] = useState(false)
-  const [allFilteredIds, setAllFilteredIds] = useState<string[]>([])
-  const [loadingAllIds, setLoadingAllIds] = useState(false)
 
   // Load companies on mount
   useEffect(() => {
@@ -260,48 +260,20 @@ export default function LocalizePage() {
     }
   }
 
-  // Fetch all client IDs for the current filter (for "Select All from Filter")
-  const handleSelectAllFromFilter = async () => {
-    if (!selectedCompany) return
-
-    try {
-      setLoadingAllIds(true)
-      const params = new URLSearchParams({
-        company_id: selectedCompany,
-        filter,
-        per_page: "10000", // Get all
-        ...(search && { search }),
-        _t: Date.now().toString(),
-      })
-
-      const res = await fetch(`/api/super-admin/localize/clients?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        const allIds = (data.clients || []).map((c: Client) => c.id)
-        setAllFilteredIds(allIds)
-        setSelectedClients(new Set(allIds))
-        setSelectAllFromFilter(true)
-        toast({
-          title: "Selecionados",
-          description: `${allIds.length} clientes selecionados do filtro "${filter}"`,
-        })
-      }
-    } catch (error) {
-      console.error("Error fetching all IDs:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível selecionar todos os clientes",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingAllIds(false)
-    }
+  // Select all clients for the current filter (backend will resolve IDs via RPC)
+  const handleSelectAllFromFilter = () => {
+    setSelectAllFromFilter(true)
+    // Show all current page clients as selected visually
+    setSelectedClients(new Set(clients.map((c) => c.id)))
+    toast({
+      title: "Selecionados",
+      description: `Todos os ${pagination.total} clientes do filtro serão processados`,
+    })
   }
 
   const handleClearSelection = () => {
     setSelectedClients(new Set())
     setSelectAllFromFilter(false)
-    setAllFilteredIds([])
   }
 
   const handleSelectClient = (id: string) => {
@@ -315,7 +287,7 @@ export default function LocalizePage() {
   }
 
   const handleSearch = async () => {
-    if (selectedClients.size === 0) return
+    if (selectedClients.size === 0 && !selectAllFromFilter) return
 
     setShowConfirmModal(false)
     setShowProgressModal(true)
@@ -324,13 +296,22 @@ export default function LocalizePage() {
     setCurrentSearchClient("")
 
     try {
+      // When selectAllFromFilter is true, send filter to backend instead of IDs
+      const requestBody = selectAllFromFilter
+        ? {
+            select_all: true,
+            filter,
+            company_id: selectedCompany,
+          }
+        : {
+            client_ids: Array.from(selectedClients),
+            company_id: selectedCompany,
+          }
+
       const res = await fetch("/api/super-admin/localize/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_ids: Array.from(selectedClients),
-          company_id: selectedCompany,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!res.ok) {
@@ -378,6 +359,7 @@ export default function LocalizePage() {
               setTimeout(() => {
                 setShowProgressModal(false)
                 setSelectedClients(new Set())
+                setSelectAllFromFilter(false)
                 // Force re-fetch by incrementing trigger
                 setRefreshTrigger((prev) => prev + 1)
               }, 1000)
@@ -580,7 +562,6 @@ export default function LocalizePage() {
     setSearchResults([])
     setSelectedClients(new Set())
     setSelectAllFromFilter(false)
-    setAllFilteredIds([])
     // Force re-fetch by incrementing trigger (useEffect will call loadClients)
     setRefreshTrigger((prev) => prev + 1)
   }
@@ -771,13 +752,11 @@ export default function LocalizePage() {
                 <div className="flex flex-wrap gap-2">
                   {(
                     [
-                      { value: "all", label: "Todos" },
-                      { value: "no_email", label: "Sem Email", count: summary.without_email },
-                      { value: "no_phone", label: "Sem Telefone", count: summary.without_phone },
-                      { value: "incomplete", label: "Dados Incompletos" },
-                      { value: "localize_no_email", label: "Localize: Sem Email", count: summary.localize_no_email },
-                      { value: "localize_no_phone", label: "Localize: Sem Telefone", count: summary.localize_no_phone },
-                      { value: "never_queried", label: "Nunca Consultado", count: summary.never_queried },
+                      { value: "all", label: "Todos", count: summary.total },
+                      { value: "no_email_never_queried", label: "Sem Email (Nunca Consultado)", count: summary.no_email_never_queried },
+                      { value: "no_phone_never_queried", label: "Sem Tel. (Nunca Consultado)", count: summary.no_phone_never_queried },
+                      { value: "incomplete_never_queried", label: "Incompleto (Nunca Consultado)", count: summary.incomplete_never_queried },
+                      { value: "incomplete_already_queried", label: "Incompleto (Já Consultado)", count: summary.incomplete_already_queried },
                     ] as const
                   ).map((f) => (
                     <Button
@@ -793,7 +772,7 @@ export default function LocalizePage() {
                       className="gap-1"
                     >
                       {f.label}
-                      {"count" in f && f.count !== undefined && (
+                      {f.count !== undefined && (
                         <span className="text-xs opacity-70">({f.count})</span>
                       )}
                     </Button>
@@ -823,15 +802,15 @@ export default function LocalizePage() {
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">
                 Exibindo {clients.length} de {pagination.total} clientes
-                {selectedClients.size > 0 && (
+                {(selectedClients.size > 0 || selectAllFromFilter) && (
                   <span className="ml-2 font-medium text-altea-gold">
-                    | {selectedClients.size} selecionados
+                    | {selectAllFromFilter ? pagination.total : selectedClients.size} selecionados
                     {selectAllFromFilter && " (todos do filtro)"}
                   </span>
                 )}
               </div>
               <div className="flex gap-2">
-                {selectedClients.size > 0 && (
+                {(selectedClients.size > 0 || selectAllFromFilter) && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -842,12 +821,14 @@ export default function LocalizePage() {
                 )}
                 <Button
                   onClick={() => setShowConfirmModal(true)}
-                  disabled={selectedClients.size === 0}
+                  disabled={selectedClients.size === 0 && !selectAllFromFilter}
                   className="bg-altea-gold hover:bg-altea-gold/90 text-altea-navy"
                 >
                   <Search className="w-4 h-4 mr-2" />
                   Enriquecer Cadastro
-                  {selectedClients.size > 0 && ` (${selectedClients.size})`}
+                  {(selectedClients.size > 0 || selectAllFromFilter) &&
+                    ` (${selectAllFromFilter ? pagination.total : selectedClients.size})`
+                  }
                 </Button>
               </div>
             </div>
@@ -865,11 +846,7 @@ export default function LocalizePage() {
                   size="sm"
                   className="text-blue-700 dark:text-blue-300 font-medium"
                   onClick={handleSelectAllFromFilter}
-                  disabled={loadingAllIds}
                 >
-                  {loadingAllIds ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                  ) : null}
                   Selecionar todos os {pagination.total} do filtro
                 </Button>
               </div>
@@ -878,7 +855,7 @@ export default function LocalizePage() {
             {selectAllFromFilter && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center justify-between">
                 <span className="text-sm text-green-700 dark:text-green-300">
-                  ✓ Todos os {selectedClients.size} clientes do filtro "{filter}" estão selecionados.
+                  ✓ Todos os {pagination.total} clientes do filtro serão processados.
                 </span>
                 <Button
                   variant="link"
@@ -1019,7 +996,12 @@ export default function LocalizePage() {
           <DialogHeader>
             <DialogTitle>Confirmar Consulta</DialogTitle>
             <DialogDescription>
-              Deseja enriquecer o cadastro de {selectedClients.size} clientes?
+              Deseja enriquecer o cadastro de {selectAllFromFilter ? pagination.total : selectedClients.size} clientes?
+              {selectAllFromFilter && (
+                <span className="block mt-1 text-green-600">
+                  (Todos os clientes do filtro selecionado)
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -1070,7 +1052,7 @@ export default function LocalizePage() {
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>
-                      Processando {searchSummary.total_consulted} de {selectedClients.size}...
+                      Processando {searchSummary.total_consulted} de {selectAllFromFilter ? pagination.total : selectedClients.size}...
                     </span>
                   </div>
                   {currentSearchClient && (
