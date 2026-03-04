@@ -169,6 +169,9 @@ export default function LocalizePage() {
   const [isSearching, setIsSearching] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [selectAllFromFilter, setSelectAllFromFilter] = useState(false)
+  const [allFilteredIds, setAllFilteredIds] = useState<string[]>([])
+  const [loadingAllIds, setLoadingAllIds] = useState(false)
 
   // Load companies on mount
   useEffect(() => {
@@ -251,9 +254,54 @@ export default function LocalizePage() {
   const handleSelectAll = () => {
     if (selectedClients.size === clients.length) {
       setSelectedClients(new Set())
+      setSelectAllFromFilter(false)
     } else {
       setSelectedClients(new Set(clients.map((c) => c.id)))
     }
+  }
+
+  // Fetch all client IDs for the current filter (for "Select All from Filter")
+  const handleSelectAllFromFilter = async () => {
+    if (!selectedCompany) return
+
+    try {
+      setLoadingAllIds(true)
+      const params = new URLSearchParams({
+        company_id: selectedCompany,
+        filter,
+        per_page: "10000", // Get all
+        ...(search && { search }),
+        _t: Date.now().toString(),
+      })
+
+      const res = await fetch(`/api/super-admin/localize/clients?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        const allIds = (data.clients || []).map((c: Client) => c.id)
+        setAllFilteredIds(allIds)
+        setSelectedClients(new Set(allIds))
+        setSelectAllFromFilter(true)
+        toast({
+          title: "Selecionados",
+          description: `${allIds.length} clientes selecionados do filtro "${filter}"`,
+        })
+      }
+    } catch (error) {
+      console.error("Error fetching all IDs:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível selecionar todos os clientes",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingAllIds(false)
+    }
+  }
+
+  const handleClearSelection = () => {
+    setSelectedClients(new Set())
+    setSelectAllFromFilter(false)
+    setAllFilteredIds([])
   }
 
   const handleSelectClient = (id: string) => {
@@ -649,6 +697,7 @@ export default function LocalizePage() {
               onValueChange={(value) => {
                 setSelectedCompany(value)
                 setSelectedClients(new Set())
+                setSelectAllFromFilter(false)
                 setPagination((p) => ({ ...p, page: 1 }))
               }}
             >
@@ -736,6 +785,8 @@ export default function LocalizePage() {
                       onClick={() => {
                         setFilter(f.value as FilterType)
                         setPagination((p) => ({ ...p, page: 1 }))
+                        setSelectedClients(new Set())
+                        setSelectAllFromFilter(false)
                       }}
                       className="gap-1"
                     >
@@ -766,24 +817,77 @@ export default function LocalizePage() {
           </Card>
 
           {/* Action Bar */}
-          <div className="flex justify-between items-center">
-            <div className="text-sm text-gray-500">
-              Exibindo {clients.length} de {pagination.total} clientes
-              {selectedClients.size > 0 && (
-                <span className="ml-2 font-medium text-altea-gold">
-                  | {selectedClients.size} selecionados
-                </span>
-              )}
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <div className="text-sm text-gray-500">
+                Exibindo {clients.length} de {pagination.total} clientes
+                {selectedClients.size > 0 && (
+                  <span className="ml-2 font-medium text-altea-gold">
+                    | {selectedClients.size} selecionados
+                    {selectAllFromFilter && " (todos do filtro)"}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {selectedClients.size > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearSelection}
+                  >
+                    Limpar seleção
+                  </Button>
+                )}
+                <Button
+                  onClick={() => setShowConfirmModal(true)}
+                  disabled={selectedClients.size === 0}
+                  className="bg-altea-gold hover:bg-altea-gold/90 text-altea-navy"
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  Enriquecer Cadastro
+                  {selectedClients.size > 0 && ` (${selectedClients.size})`}
+                </Button>
+              </div>
             </div>
-            <Button
-              onClick={() => setShowConfirmModal(true)}
-              disabled={selectedClients.size === 0}
-              className="bg-altea-gold hover:bg-altea-gold/90 text-altea-navy"
-            >
-              <Search className="w-4 h-4 mr-2" />
-              Enriquecer Cadastro
-              {selectedClients.size > 0 && ` (${selectedClients.size})`}
-            </Button>
+
+            {/* Select All from Filter Banner */}
+            {selectedClients.size === clients.length &&
+             pagination.total > clients.length &&
+             !selectAllFromFilter && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-center justify-between">
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  Todos os {clients.length} clientes desta página estão selecionados.
+                </span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-blue-700 dark:text-blue-300 font-medium"
+                  onClick={handleSelectAllFromFilter}
+                  disabled={loadingAllIds}
+                >
+                  {loadingAllIds ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                  ) : null}
+                  Selecionar todos os {pagination.total} do filtro
+                </Button>
+              </div>
+            )}
+
+            {selectAllFromFilter && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center justify-between">
+                <span className="text-sm text-green-700 dark:text-green-300">
+                  ✓ Todos os {selectedClients.size} clientes do filtro "{filter}" estão selecionados.
+                </span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-green-700 dark:text-green-300"
+                  onClick={handleClearSelection}
+                >
+                  Limpar seleção
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Clients Table */}
