@@ -405,7 +405,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   // Helper to check if a customer is paid (cannot select for negotiation)
   const isCustomerPaid = (c: VmaxCustomer) => {
     return c.isPaid || c.status === "paid" ||
-      c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
+      c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
       c.paymentStatus === "received" || c.paymentStatus === "confirmed"
   }
 
@@ -885,7 +885,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const total = customers.length
 
     // Paid customers (completed negotiations)
-    const paidCustomers = customers.filter((c) => c.isPaid || c.status === "paid")
+    // Include all paid status variants: CONFIRMED, RECEIVED, RECEIVED_IN_CASH
+    const paidCustomers = customers.filter((c) =>
+      c.isPaid || c.status === "paid" ||
+      c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
+      c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+    )
     const paidCount = paidCustomers.length
 
     // Cancelled customers (can send new negotiation)
@@ -912,8 +917,13 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const recoveredDebt = paidCustomers.reduce((sum, c) => sum + c.totalDebt, 0)
 
     // Pending debt (non-paid customers)
+    // Exclude all paid status variants
     const pendingDebt = customers
-      .filter((c) => !c.isPaid && c.status !== "paid")
+      .filter((c) =>
+        !c.isPaid && c.status !== "paid" &&
+        c.asaasStatus !== "RECEIVED" && c.asaasStatus !== "RECEIVED_IN_CASH" && c.asaasStatus !== "CONFIRMED" &&
+        c.paymentStatus !== "received" && c.paymentStatus !== "confirmed"
+      )
       .reduce((sum, c) => sum + c.totalDebt, 0)
 
     return {
