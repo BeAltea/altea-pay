@@ -110,8 +110,8 @@ interface Summary {
   without_phone: number
   no_email_never_queried: number
   no_phone_never_queried: number
-  incomplete_never_queried: number
-  incomplete_already_queried: number
+  no_email_queried: number
+  no_phone_queried: number
 }
 
 interface Pagination {
@@ -121,7 +121,7 @@ interface Pagination {
   total_pages: number
 }
 
-type FilterType = "all" | "no_email_never_queried" | "no_phone_never_queried" | "incomplete_never_queried" | "incomplete_already_queried"
+type FilterType = "all" | "no_email_never_queried" | "no_phone_never_queried" | "no_email_queried" | "no_phone_queried"
 
 export default function LocalizePage() {
   const { toast } = useToast()
@@ -147,8 +147,8 @@ export default function LocalizePage() {
     without_phone: 0,
     no_email_never_queried: 0,
     no_phone_never_queried: 0,
-    incomplete_never_queried: 0,
-    incomplete_already_queried: 0,
+    no_email_queried: 0,
+    no_phone_queried: 0,
   })
   const [loading, setLoading] = useState(false)
   const [loadingCompanies, setLoadingCompanies] = useState(true)
@@ -297,15 +297,18 @@ export default function LocalizePage() {
 
     try {
       // When selectAllFromFilter is true, send filter to backend instead of IDs
+      // IMPORTANT: auto_apply = true to automatically update client records with found data
       const requestBody = selectAllFromFilter
         ? {
             select_all: true,
             filter,
             company_id: selectedCompany,
+            auto_apply: true,
           }
         : {
             client_ids: Array.from(selectedClients),
             company_id: selectedCompany,
+            auto_apply: true,
           }
 
       const res = await fetch("/api/super-admin/localize/search", {
@@ -756,8 +759,8 @@ export default function LocalizePage() {
                       { value: "all", label: "Todos", count: summary.total },
                       { value: "no_email_never_queried", label: "Sem Email (Nunca Consultado)", count: summary.no_email_never_queried },
                       { value: "no_phone_never_queried", label: "Sem Tel. (Nunca Consultado)", count: summary.no_phone_never_queried },
-                      { value: "incomplete_never_queried", label: "Incompleto (Nunca Consultado)", count: summary.incomplete_never_queried },
-                      { value: "incomplete_already_queried", label: "Incompleto (Já Consultado)", count: summary.incomplete_already_queried },
+                      { value: "no_email_queried", label: "Sem Email (Já Consultado)", count: summary.no_email_queried },
+                      { value: "no_phone_queried", label: "Sem Tel. (Já Consultado)", count: summary.no_phone_queried },
                     ] as const
                   ).map((f) => (
                     <Button

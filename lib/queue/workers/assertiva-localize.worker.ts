@@ -158,27 +158,38 @@ export const assertivaLocalizeWorker = WorkerManager.registerWorker<AssertivaLoc
             const currentEmail = client.Email?.trim() || '';
             const currentPhone = (client['Telefone 1'] || '').trim();
 
+            console.log(`[ASSERTIVA-LOCALIZE] Client ${clientId} (${client.Cliente}): checking auto-apply`);
+            console.log(`[ASSERTIVA-LOCALIZE]   - Current email: "${currentEmail}", Found email: "${result.bestEmail}"`);
+            console.log(`[ASSERTIVA-LOCALIZE]   - Current phone: "${currentPhone}", Found phone: "${result.phones.best?.numero}"`);
+
             // Only update empty fields
             if (!currentEmail && result.bestEmail) {
               updates.Email = result.bestEmail;
               progress.emailsApplied++;
+              console.log(`[ASSERTIVA-LOCALIZE]   - Will apply email: ${result.bestEmail}`);
             }
             if (!currentPhone && result.phones.best?.numero) {
               updates['Telefone 1'] = result.phones.best.numero;
               progress.phonesApplied++;
+              console.log(`[ASSERTIVA-LOCALIZE]   - Will apply phone: ${result.phones.best.numero}`);
             }
 
             if (Object.keys(updates).length > 0) {
               updates.updated_at = new Date().toISOString();
 
-              const { error: updateError } = await supabase
+              console.log(`[ASSERTIVA-LOCALIZE]   - Executing UPDATE on VMAX for ${clientId}:`, updates);
+              const { data: updateData, error: updateError } = await supabase
                 .from('VMAX')
                 .update(updates)
-                .eq('id', clientId);
+                .eq('id', clientId)
+                .select('id, Email, "Telefone 1"');
 
               if (updateError) {
-                console.error(`[ASSERTIVA-LOCALIZE] Failed to update client ${clientId}:`, updateError);
+                console.error(`[ASSERTIVA-LOCALIZE]   - UPDATE FAILED for ${clientId}:`, updateError);
+              } else if (!updateData || updateData.length === 0) {
+                console.error(`[ASSERTIVA-LOCALIZE]   - UPDATE returned empty (RLS blocked or ID not found)`);
               } else {
+                console.log(`[ASSERTIVA-LOCALIZE]   - UPDATE SUCCESS: ${clientId} ->`, updateData[0]);
                 // Update the log with applied data
                 await supabase
                   .from('assertiva_localize_logs')
@@ -192,7 +203,11 @@ export const assertivaLocalizeWorker = WorkerManager.registerWorker<AssertivaLoc
                   .order('created_at', { ascending: false })
                   .limit(1);
               }
+            } else {
+              console.log(`[ASSERTIVA-LOCALIZE]   - Nothing to apply (fields already filled or no data found)`);
             }
+          } else if (!autoApply) {
+            console.log(`[ASSERTIVA-LOCALIZE] Client ${clientId}: autoApply is FALSE, skipping auto-apply`);
           }
         } catch (error: any) {
           console.error(`[ASSERTIVA-LOCALIZE] Error querying ${cleanDoc}:`, error.message);

@@ -266,6 +266,47 @@ export async function POST(request: NextRequest) {
             email_before: client.Email || null,
             phone_before: client["Telefone 1"] || null,
           })
+
+          // Auto-apply found data to client record (sync processing)
+          if (auto_apply && localizeResult.success) {
+            const updates: Record<string, any> = {}
+            const currentEmail = (client.Email || "").trim()
+            const currentPhone = (client["Telefone 1"] || "").trim()
+
+            if (!currentEmail && localizeResult.bestEmail) {
+              updates.Email = localizeResult.bestEmail
+            }
+            if (!currentPhone && localizeResult.phones.best?.numero) {
+              updates["Telefone 1"] = localizeResult.phones.best.numero
+            }
+
+            if (Object.keys(updates).length > 0) {
+              updates.updated_at = new Date().toISOString()
+              console.log(`[Localize Search] Auto-applying to ${client.id}:`, updates)
+
+              const { error: updateError } = await supabase
+                .from("VMAX")
+                .update(updates)
+                .eq("id", client.id)
+
+              if (updateError) {
+                console.error(`[Localize Search] Auto-apply failed for ${client.id}:`, updateError)
+              } else {
+                // Update the log with applied data
+                await supabase
+                  .from("assertiva_localize_logs")
+                  .update({
+                    email_applied: updates.Email || null,
+                    phone_applied: updates["Telefone 1"] || null,
+                    applied_at: new Date().toISOString(),
+                  })
+                  .eq("client_id", client.id)
+                  .eq("company_id", company_id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+              }
+            }
+          }
         } catch (error: any) {
           console.error(`[Localize Search] Error querying ${cleanDoc}:`, error)
           results.push({
