@@ -647,8 +647,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     // 3. No issues, open modal directly
     setDiscountType("none")
     setDiscountValue("")
-    setPaymentMethods(new Set())
-    setNotificationChannels(new Set())
+    setPaymentMethods(new Set(["boleto", "pix", "credit_card"]))
+    setNotificationChannels(new Set(["email", "whatsapp"]))
     setShowModal(true)
   }
 
@@ -657,8 +657,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     setDuplicateCustomers([])
     setDiscountType("none")
     setDiscountValue("")
-    setPaymentMethods(new Set())
-    setNotificationChannels(new Set())
+    setPaymentMethods(new Set(["boleto", "pix", "credit_card"]))
+    setNotificationChannels(new Set(["email", "whatsapp"]))
     setShowModal(true)
   }
 
