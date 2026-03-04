@@ -89,8 +89,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   // Modal form state
   const [discountType, setDiscountType] = useState<"none" | "percentage" | "fixed">("none")
   const [discountValue, setDiscountValue] = useState<string>("")
-  const [paymentMethods, setPaymentMethods] = useState<Set<string>>(new Set())
-  const [notificationChannels, setNotificationChannels] = useState<Set<string>>(new Set())
+  const [paymentMethods, setPaymentMethods] = useState<Set<string>>(new Set(["boleto", "pix", "credit_card"]))
+  const [notificationChannels, setNotificationChannels] = useState<Set<string>>(new Set(["email", "sms", "whatsapp"]))
 
   // Duplicate warning dialog state
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
