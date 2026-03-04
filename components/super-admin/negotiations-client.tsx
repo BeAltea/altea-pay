@@ -272,23 +272,22 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       if (negotiationFilter === "sem_negociacao" && c.hasNegotiation) return false
 
       // Status Dívida filter
-      // IMPORTANT: Only RECEIVED means payment received. CONFIRMED means processing/awaiting clearance.
+      // CONFIRMED and RECEIVED both mean payment is done (shows as "Pago" in UI)
       const isPaidStatus = c.isPaid || c.status === "paid" ||
-        c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" ||
-        c.paymentStatus === "received"
+        c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
+        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
 
       if (debtStatusFilter === "em_aberto") {
         // Em aberto: debt not paid, no ASAAS charge
         if (isPaidStatus || c.hasNegotiation) return false
       }
       if (debtStatusFilter === "aguardando") {
-        // Aguardando pagamento: ASAAS charge PENDING or CONFIRMED (processing)
-        const isAwaiting = c.asaasStatus === "PENDING" || c.asaasStatus === "CONFIRMED" ||
-          c.paymentStatus === "pending" || c.paymentStatus === "confirmed"
+        // Aguardando pagamento: ASAAS charge PENDING only (CONFIRMED = paid)
+        const isAwaiting = c.asaasStatus === "PENDING" || c.paymentStatus === "pending"
         if (!isAwaiting) return false
       }
       if (debtStatusFilter === "paga") {
-        // Paga: Only RECEIVED status (money actually received)
+        // Paga: CONFIRMED or RECEIVED status
         if (!isPaidStatus) return false
       }
       if (debtStatusFilter === "vencida") {
@@ -660,11 +659,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   }
 
   // Helper to format payment status for display
+  // NOTE: Both "confirmed" and "received" show as "Pago" because ASAAS CONFIRMED means payment confirmed
   const getPaymentStatusInfo = (paymentStatus: string | null, asaasStatus: string | null) => {
     // Map payment_status to display info
     const statusMap: Record<string, { label: string; className: string }> = {
       pending: { label: "Aguardando", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
-      confirmed: { label: "Confirmado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+      confirmed: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
       received: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
       overdue: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
       refunded: { label: "Reembolsado", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
@@ -679,7 +679,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     if (asaasStatus) {
       const asaasMap: Record<string, { label: string; className: string }> = {
         PENDING: { label: "Aguardando", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
-        CONFIRMED: { label: "Confirmado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+        CONFIRMED: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
         RECEIVED: { label: "Pago", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
         OVERDUE: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
         REFUNDED: { label: "Reembolsado", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },

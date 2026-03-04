@@ -8,11 +8,12 @@
 // Agreement statuses that indicate the debt is PAID
 export const PAID_AGREEMENT_STATUSES = ["paid", "completed"] as const
 
-// Payment statuses that indicate the payment was RECEIVED (money in account)
-export const PAID_PAYMENT_STATUSES = ["received"] as const
+// Payment statuses that indicate the payment was CONFIRMED/RECEIVED
+// NOTE: In ASAAS, CONFIRMED means payment confirmed (shows as "Pago" in UI)
+export const PAID_PAYMENT_STATUSES = ["received", "confirmed"] as const
 
-// ASAAS statuses that indicate the payment was RECEIVED
-export const PAID_ASAAS_STATUSES = ["RECEIVED", "RECEIVED_IN_CASH"] as const
+// ASAAS statuses that indicate the payment was CONFIRMED/RECEIVED
+export const PAID_ASAAS_STATUSES = ["RECEIVED", "RECEIVED_IN_CASH", "CONFIRMED"] as const
 
 // VMAX negotiation statuses that indicate PAID
 export const PAID_VMAX_STATUSES = ["PAGO"] as const
@@ -74,6 +75,7 @@ export function isAnyPaidStatus(status?: string | null): boolean {
     normalizedStatus === "COMPLETED" ||
     normalizedStatus === "RECEIVED" ||
     normalizedStatus === "RECEIVED_IN_CASH" ||
+    normalizedStatus === "CONFIRMED" ||
     normalizedStatus === "PAGO"
   )
 }
