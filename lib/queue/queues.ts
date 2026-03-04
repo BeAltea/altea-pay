@@ -104,3 +104,14 @@ export const assertivaLocalizeQueue = new Queue(QUEUE_CONFIG.assertivaLocalize.n
     removeOnFail: QUEUE_CONFIG.assertivaLocalize.removeOnFail,
   },
 });
+
+// Bulk Email Queue - for sending emails to many recipients
+export const bulkEmailQueue = new Queue(QUEUE_CONFIG.bulkEmail.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.bulkEmail.retries.attempts,
+    backoff: QUEUE_CONFIG.bulkEmail.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.bulkEmail.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.bulkEmail.removeOnFail,
+  },
+});

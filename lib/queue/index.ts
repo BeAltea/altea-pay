@@ -7,6 +7,8 @@ export {
   asaasChargeCancelQueue,
   asaasNotificationQueue,
   asaasSyncQueue,
+  assertivaLocalizeQueue,
+  bulkEmailQueue,
 } from './queues';
 export { QUEUE_CONFIG, ASAAS_NOTIFICATION_DEFAULTS } from './config';
 export type { EmailJobData } from './workers/email.worker';
@@ -16,3 +18,4 @@ export type { AsaasChargeUpdateJobData } from './workers/asaas-charge-update.wor
 export type { AsaasChargeCancelJobData } from './workers/asaas-charge-cancel.worker';
 export type { AsaasNotificationJobData } from './workers/asaas-notification.worker';
 export type { AsaasSyncJobData } from './workers/asaas-sync.worker';
+export type { BulkEmailJobData, BulkEmailProgress, BulkEmailResult } from './workers/bulk-email.worker';

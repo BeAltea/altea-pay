@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,6 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { useToast } from "@/hooks/use-toast"
 import {
   Building2,
   Users,
@@ -49,7 +50,39 @@ import {
   ChevronsLeft,
   ChevronsRight,
   XCircle,
+  Clock,
 } from "lucide-react"
+
+// LocalStorage key for background jobs
+const BACKGROUND_JOBS_KEY = "alteapay_bulk_email_jobs"
+
+interface BackgroundJob {
+  jobId: string
+  totalRecipients: number
+  subject: string
+  startedAt: string
+}
+
+function getBackgroundJobs(): BackgroundJob[] {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = localStorage.getItem(BACKGROUND_JOBS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+function addBackgroundJob(job: BackgroundJob) {
+  const jobs = getBackgroundJobs()
+  jobs.push(job)
+  localStorage.setItem(BACKGROUND_JOBS_KEY, JSON.stringify(jobs))
+}
+
+function removeBackgroundJob(jobId: string) {
+  const jobs = getBackgroundJobs().filter((j) => j.jobId !== jobId)
+  localStorage.setItem(BACKGROUND_JOBS_KEY, JSON.stringify(jobs))
+}
 
 interface Company {
   id: string
@@ -137,6 +170,7 @@ function parseTestEmails(input: string): string[] {
 
 export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: SendEmailFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("")
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<Set<string>>(new Set())
   const [subject, setSubject] = useState("")
@@ -170,6 +204,10 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
   const [selectionDropdownOpen, setSelectionDropdownOpen] = useState(false)
   const selectionDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Background job polling state
+  const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+
   // Send result modal state
   const [sendModal, setSendModal] = useState<SendModalData>({
     isOpen: false,
@@ -179,6 +217,64 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
     totalFailed: 0,
     recipients: [],
   })
+
+  // Poll for background job status
+  const pollJobStatus = useCallback(async (job: BackgroundJob) => {
+    try {
+      const response = await fetch(`/api/super-admin/send-email/status?job_id=${job.jobId}`)
+      if (!response.ok) return
+
+      const data = await response.json()
+
+      if (data.status === "completed") {
+        // Job completed - show toast and remove from tracking
+        removeBackgroundJob(job.jobId)
+        setBackgroundJobs((prev) => prev.filter((j) => j.jobId !== job.jobId))
+
+        const result = data.result
+        toast({
+          title: result?.totalFailed === 0 ? "Emails enviados com sucesso!" : "Envio concluido com erros",
+          description: `${result?.totalSent || 0} enviados, ${result?.totalFailed || 0} falharam de ${job.totalRecipients} emails`,
+          variant: result?.totalFailed === 0 ? "default" : "destructive",
+        })
+
+        // Refresh page to update tracking data
+        router.refresh()
+      } else if (data.status === "failed") {
+        // Job failed - show error toast and remove
+        removeBackgroundJob(job.jobId)
+        setBackgroundJobs((prev) => prev.filter((j) => j.jobId !== job.jobId))
+
+        toast({
+          title: "Erro no envio de emails",
+          description: data.error || "Erro desconhecido ao processar emails",
+          variant: "destructive",
+        })
+      }
+      // If still active/waiting, continue polling
+    } catch (error) {
+      console.error("Error polling job status:", error)
+    }
+  }, [toast, router])
+
+  // Initialize and poll background jobs
+  useEffect(() => {
+    // Load jobs from localStorage on mount
+    const stored = getBackgroundJobs()
+    setBackgroundJobs(stored)
+
+    // Start polling interval
+    pollingRef.current = setInterval(() => {
+      const jobs = getBackgroundJobs()
+      jobs.forEach((job) => pollJobStatus(job))
+    }, 3000) // Poll every 3 seconds
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+    }
+  }, [pollJobStatus])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -408,63 +504,80 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
       const recipientsList = recipientsWithNames.map((r) => ({ id: r.id, email: r.email }))
 
+      // Send single request - API decides if it should queue or process sync
+      const response = await fetch("/api/super-admin/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: isTestMode ? null : selectedCompanyId,
+          recipients: recipientsList,
+          subject,
+          htmlBody,
+          isTestMode,
+        }),
+      })
+
+      // Check content-type before parsing as JSON
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text()
+        throw new Error(`Servidor retornou resposta inválida: ${text.substring(0, 100)}...`)
+      }
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao enviar email")
+      }
+
+      // Check if the request was queued (background processing)
+      if (data.queued === true) {
+        // Add to background jobs and start polling
+        const job: BackgroundJob = {
+          jobId: data.job_id,
+          totalRecipients: data.total_recipients,
+          subject: subject,
+          startedAt: new Date().toISOString(),
+        }
+        addBackgroundJob(job)
+        setBackgroundJobs((prev) => [...prev, job])
+
+        // Show toast notification
+        toast({
+          title: "Envio iniciado em background",
+          description: `${data.total_recipients} emails sendo processados. Você pode navegar normalmente.`,
+        })
+
+        // Reset form
+        if (isTestMode) {
+          setTestEmailsInput("")
+        } else {
+          setSelectedRecipientIds(new Set())
+          setSelectionMode("none")
+        }
+        setSubject("")
+        setHtmlBody("")
+
+        return
+      }
+
+      // Synchronous processing - show results modal
       // Build email -> name map for result matching
       const emailToRecipient = new Map<string, { id: string; name: string; email: string }>()
       recipientsWithNames.forEach((r) => emailToRecipient.set(r.email, r))
 
-      // Send in batches of 10 to avoid timeouts
-      const BATCH_SIZE = 10
-      const batches = []
-      for (let i = 0; i < recipientsList.length; i += BATCH_SIZE) {
-        batches.push(recipientsList.slice(i, i + BATCH_SIZE))
-      }
-
-      let totalSent = 0
-      let totalFailed = 0
       const allRecipientResults: RecipientSendResult[] = []
-
-      for (const batch of batches) {
-        const response = await fetch("/api/super-admin/send-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyId: isTestMode ? null : selectedCompanyId,
-            recipients: batch,
-            subject,
-            htmlBody,
-            isTestMode,
-          }),
-        })
-
-        // Check content-type before parsing as JSON
-        const contentType = response.headers.get("content-type")
-        if (!contentType || !contentType.includes("application/json")) {
-          const text = await response.text()
-          throw new Error(`Servidor retornou resposta inválida: ${text.substring(0, 100)}...`)
-        }
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || "Erro ao enviar email")
-        }
-
-        totalSent += data.totalSent || 0
-        totalFailed += data.totalFailed || 0
-
-        // Process results from API
-        if (data.results) {
-          for (const result of data.results) {
-            const recipient = emailToRecipient.get(result.email)
-            if (recipient) {
-              allRecipientResults.push({
-                id: recipient.id,
-                name: recipient.name,
-                email: result.email,
-                success: result.success,
-                error: result.error,
-              })
-            }
+      if (data.results) {
+        for (const result of data.results) {
+          const recipient = emailToRecipient.get(result.email)
+          if (recipient) {
+            allRecipientResults.push({
+              id: recipient.id,
+              name: recipient.name,
+              email: result.email,
+              success: result.success,
+              error: result.error,
+            })
           }
         }
       }
@@ -474,13 +587,13 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
         isOpen: true,
         sentAt: new Date().toISOString(),
         totalAttempted: recipientsWithNames.length,
-        totalSent,
-        totalFailed,
+        totalSent: data.totalSent || 0,
+        totalFailed: data.totalFailed || 0,
         recipients: allRecipientResults,
       })
 
       // Only reset form on complete success
-      if (totalFailed === 0) {
+      if (data.totalFailed === 0) {
         if (isTestMode) {
           setTestEmailsInput("")
         } else {
@@ -538,6 +651,37 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
 
   return (
     <div className="space-y-6">
+      {/* Background Jobs Progress Banner */}
+      {backgroundJobs.length > 0 && (
+        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+          <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-pulse" />
+          <AlertDescription>
+            <div className="flex flex-col gap-2">
+              <span className="font-medium text-blue-700 dark:text-blue-300">
+                {backgroundJobs.length === 1
+                  ? "Enviando emails em background..."
+                  : `${backgroundJobs.length} envios em andamento...`}
+              </span>
+              {backgroundJobs.map((job) => (
+                <div
+                  key={job.jobId}
+                  className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>
+                    {job.totalRecipients} emails - &quot;{job.subject.substring(0, 40)}
+                    {job.subject.length > 40 ? "..." : ""}&quot;
+                  </span>
+                </div>
+              ))}
+              <span className="text-xs text-blue-500 dark:text-blue-500">
+                Voce pode navegar normalmente. Sera notificado quando terminar.
+              </span>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Result Alert */}
       {result && (
         <Alert variant={result.success ? "default" : "destructive"}>

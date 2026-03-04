@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { validateSendGridConfig } from "@/lib/notifications/sendgrid"
+import { bulkEmailQueue } from "@/lib/queue/queues"
+import { randomUUID } from "crypto"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
-export const maxDuration = 60 // Allow up to 60 seconds for large batches
+export const maxDuration = 60 // Allow up to 60 seconds for small batches (sync mode)
 
 const noCacheHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -95,12 +97,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Corpo do email é obrigatório" }, { status: 400, headers: noCacheHeaders })
     }
 
-    // Get SendGrid configuration
-    const apiKey = process.env.SENDGRID_API_KEY
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SENDGRID_SENDER_EMAIL || "noreply@alteapay.com"
-    const fromName = process.env.SENDGRID_FROM_NAME || process.env.SENDGRID_SENDER_NAME || "AlteaPay"
-    const replyTo = process.env.SENDGRID_REPLY_TO
-
     // Strip HTML for plain text version
     const textContent = htmlBody
       .replace(/<[^>]*>/g, "")
@@ -111,6 +107,52 @@ export async function POST(request: NextRequest) {
       .replace(/\s+/g, " ")
       .trim()
 
+    // For batches > 30 recipients, use queue to avoid timeout
+    // Netlify has ~10s limit, so we need to be quick
+    const QUEUE_THRESHOLD = 30
+    const useQueue = body.use_queue === true || recipients.length > QUEUE_THRESHOLD
+
+    if (useQueue) {
+      // Queue the job and return immediately
+      const jobId = randomUUID()
+
+      const job = await bulkEmailQueue.add(
+        "bulk-email",
+        {
+          companyId: isTestMode ? null : companyId,
+          recipients: recipients.map((r) => ({ id: r.id, email: r.email })),
+          subject,
+          htmlBody,
+          textBody: textContent,
+          isTestMode: isTestMode || false,
+          sentBy: user.id,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          jobId,
+        }
+      )
+
+      console.log(`[v0] Created bulk email job ${job.id} for ${recipients.length} recipients`)
+
+      return NextResponse.json(
+        {
+          queued: true,
+          job_id: job.id,
+          total_recipients: recipients.length,
+          message: `Envio de ${recipients.length} emails iniciado em background. Use /status?job_id=${job.id} para acompanhar.`,
+        },
+        { headers: noCacheHeaders }
+      )
+    }
+
+    // For small batches, process synchronously (original behavior)
+    // Get SendGrid configuration
+    const apiKey = process.env.SENDGRID_API_KEY
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SENDGRID_SENDER_EMAIL || "noreply@alteapay.com"
+    const fromName = process.env.SENDGRID_FROM_NAME || process.env.SENDGRID_SENDER_NAME || "AlteaPay"
+    const replyTo = process.env.SENDGRID_REPLY_TO
+
     const adminClient = createAdminClient()
     const results: SendResult[] = []
     let totalSent = 0
@@ -119,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     // Parallel sending with concurrency limit to avoid timeout
     const CHUNK_SIZE = 10 // Send 10 emails at a time in parallel
-    console.log(`[v0] Sending ${recipients.length} emails in parallel chunks of ${CHUNK_SIZE} ${isTestMode ? "(TEST MODE - no tracking)" : "with tracking"}...`)
+    console.log(`[v0] Sending ${recipients.length} emails synchronously in chunks of ${CHUNK_SIZE} ${isTestMode ? "(TEST MODE - no tracking)" : "with tracking"}...`)
 
     // Helper function to send a single email
     async function sendSingleEmail(recipient: RecipientData): Promise<SendResult> {
@@ -231,6 +273,7 @@ export async function POST(request: NextRequest) {
 
     const modeLabel = isTestMode ? " (modo de teste)" : ""
     return NextResponse.json({
+      queued: false,
       success: totalFailed === 0,
       totalSent,
       totalFailed,

@@ -121,6 +121,19 @@ export const QUEUE_CONFIG = {
     removeOnComplete: { age: 86400 }, // Keep for 24h
     removeOnFail: { age: 604800 }, // Keep failures for 7 days
   },
+  // Bulk Email Queue - for sending emails to many recipients
+  bulkEmail: {
+    name: 'alteapay-bulk-email',
+    retries: {
+      attempts: 1, // No retries for bulk jobs - individual emails have their own retry
+      backoff: {
+        type: 'exponential' as const,
+        delay: 1000,
+      },
+    },
+    removeOnComplete: { age: 86400 }, // Keep for 24h for status polling
+    removeOnFail: { age: 604800 }, // Keep failures for 7 days
+  },
 } as const;
 
 // ASAAS notification defaults - WhatsApp + SMS enabled, email disabled (we use SendGrid)
