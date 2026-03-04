@@ -187,6 +187,16 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const selectionDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Queue progress bar state
+  const [queueStatus, setQueueStatus] = useState<{
+    active: number
+    waiting: number
+    completed: number
+    total: number
+  } | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const queuePollingRef = useRef<NodeJS.Timeout | null>(null)
+
   // Close selection dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -265,6 +275,53 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       }
     }
   }, [backgroundJob, selectedCompanyId])
+
+  // Queue progress polling - start when batch is sent
+  const startQueuePolling = useCallback((totalCustomers: number) => {
+    setIsProcessing(true)
+    setQueueStatus({ active: 0, waiting: totalCustomers, completed: 0, total: totalCustomers })
+
+    const pollQueueStatus = async () => {
+      try {
+        const res = await fetch("/api/queue/status")
+        if (!res.ok) return
+
+        const data = await res.json()
+        setQueueStatus({
+          active: data.active,
+          waiting: data.waiting,
+          completed: data.completed,
+          total: totalCustomers,
+        })
+
+        // Queue is empty - processing complete
+        if (data.waiting === 0 && data.active === 0) {
+          if (queuePollingRef.current) {
+            clearInterval(queuePollingRef.current)
+            queuePollingRef.current = null
+          }
+          setIsProcessing(false)
+          setQueueStatus(null)
+        }
+      } catch (error) {
+        console.error("Error polling queue status:", error)
+      }
+    }
+
+    // Poll immediately, then every 1500ms
+    pollQueueStatus()
+    queuePollingRef.current = setInterval(pollQueueStatus, 1500)
+  }, [])
+
+  // Cleanup queue polling on unmount
+  useEffect(() => {
+    return () => {
+      if (queuePollingRef.current) {
+        clearInterval(queuePollingRef.current)
+        queuePollingRef.current = null
+      }
+    }
+  }, [])
 
   // Check notification viewed status from ASAAS API
   const checkNotificationStatus = useCallback(async (companyId: string) => {
@@ -683,6 +740,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
           totalCustomers: result.total_customers,
           startedAt: new Date().toISOString(),
         })
+
+        // Start queue progress polling
+        startQueuePolling(result.total_customers)
 
         toast.success(`Processamento de ${result.total_customers} negociações iniciado em background. Você pode continuar navegando.`)
 
@@ -1203,6 +1263,31 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Queue Progress Bar */}
+      {isProcessing && queueStatus && (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Enviando negociações...
+            </span>
+            <span className="text-sm text-blue-600 dark:text-blue-400">
+              {queueStatus.total - queueStatus.waiting - queueStatus.active} / {queueStatus.total} concluídas
+            </span>
+          </div>
+          <div className="h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-500"
+              style={{
+                width: `${queueStatus.total > 0 ? ((queueStatus.total - queueStatus.waiting - queueStatus.active) / queueStatus.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <div className="mt-2 text-xs text-blue-500 dark:text-blue-400">
+            {queueStatus.active} processando agora · {queueStatus.waiting} aguardando
+          </div>
         </div>
       )}
 
