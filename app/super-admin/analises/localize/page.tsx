@@ -398,6 +398,7 @@ export default function LocalizePage() {
       setSearchResults(data.results || [])
       setSearchSummary(data.summary || searchSummary)
       setSearchProgress(100)
+      setIsSearching(false)
 
       // Show results modal
       setTimeout(() => {
@@ -412,9 +413,9 @@ export default function LocalizePage() {
         variant: "destructive",
       })
       setShowProgressModal(false)
-    } finally {
       setIsSearching(false)
     }
+    // Note: Don't set isSearching=false here - it's handled in polling callbacks for queued jobs
   }
 
   const handleApplyResult = async (result: SearchResult) => {
