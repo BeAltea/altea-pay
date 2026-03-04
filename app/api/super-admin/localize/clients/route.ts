@@ -302,26 +302,35 @@ export async function GET(request: NextRequest) {
     // ========================================================================
     // STEP 8: Return response with mathematically consistent counters
     // ========================================================================
-    return NextResponse.json({
-      clients: formattedClients,
-      pagination: {
-        total: totalFilteredCount,
-        page,
-        per_page: perPage,
-        total_pages: Math.ceil(totalFilteredCount / perPage),
+    return NextResponse.json(
+      {
+        clients: formattedClients,
+        pagination: {
+          total: totalFilteredCount,
+          page,
+          per_page: perPage,
+          total_pages: Math.ceil(totalFilteredCount / perPage),
+        },
+        summary: {
+          total,
+          with_email: withEmail,
+          without_email: withoutEmail,
+          with_phone: withPhone,
+          without_phone: withoutPhone,
+          // Localize-specific stats
+          localize_no_email: localizeNoEmail,
+          localize_no_phone: localizeNoPhone,
+          never_queried: neverQueried,
+        },
       },
-      summary: {
-        total,
-        with_email: withEmail,
-        without_email: withoutEmail,
-        with_phone: withPhone,
-        without_phone: withoutPhone,
-        // Localize-specific stats
-        localize_no_email: localizeNoEmail,
-        localize_no_phone: localizeNoPhone,
-        never_queried: neverQueried,
-      },
-    })
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    )
   } catch (error: any) {
     console.error("[Localize API] Error:", error)
     return NextResponse.json(

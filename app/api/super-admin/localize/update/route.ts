@@ -203,12 +203,19 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Localize Update] Completed: ${updated} updated, ${skipped} skipped, ${errors} errors`)
 
-    return NextResponse.json({
-      updated,
-      skipped,
-      errors,
-      details,
-    })
+    return NextResponse.json(
+      {
+        updated,
+        skipped,
+        errors,
+        details,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    )
   } catch (error: any) {
     console.error("[Localize Update] Error:", error)
     return NextResponse.json(

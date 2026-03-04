@@ -579,6 +579,8 @@ export default function LocalizePage() {
     setShowResultsModal(false)
     setSearchResults([])
     setSelectedClients(new Set())
+    setSelectAllFromFilter(false)
+    setAllFilteredIds([])
     // Force re-fetch by incrementing trigger (useEffect will call loadClients)
     setRefreshTrigger((prev) => prev + 1)
   }
