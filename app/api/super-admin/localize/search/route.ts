@@ -120,8 +120,10 @@ export async function POST(request: NextRequest) {
     }
 
     // For large batches or when explicitly requested, use queue
-    const QUEUE_THRESHOLD = 50
-    const shouldUseQueue = use_queue || idsToProcess.length > QUEUE_THRESHOLD
+    // Threshold lowered to 30 to avoid serverless timeout (Netlify ~10s limit)
+    // At 5 clients/chunk with 300ms delay + 1s between chunks, 30 clients = ~9s
+    const QUEUE_THRESHOLD = 30
+    const shouldUseQueue = use_queue || idsToProcess.length >= QUEUE_THRESHOLD
 
     if (shouldUseQueue) {
       // Create a batch ID for tracking
