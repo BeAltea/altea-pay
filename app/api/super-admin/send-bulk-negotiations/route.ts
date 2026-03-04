@@ -10,8 +10,10 @@ import {
   createAsaasPayment,
   resendAsaasPaymentNotification,
 } from "@/lib/asaas"
+import { bulkNegotiationsQueue } from "@/lib/queue/queues"
+import { randomUUID } from "crypto"
 
-// Allow up to 120 seconds for large batches (50+ negotiations)
+// Allow up to 120 seconds for small batches (sync mode)
 export const maxDuration = 120
 
 interface SendBulkNegotiationsParams {
@@ -816,6 +818,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Sem permissão", sent: 0, results: [] }, { status: 403 })
     }
 
+    // For batches > 5 customers, use queue to avoid Netlify timeout (10-26s limit)
+    // Each negotiation can take 3-5 seconds due to multiple ASAAS API calls
+    const QUEUE_THRESHOLD = 5
+    const useQueue = params.customerIds.length > QUEUE_THRESHOLD
+
+    if (useQueue) {
+      // Queue the job and return immediately
+      const jobId = randomUUID()
+
+      const job = await bulkNegotiationsQueue.add(
+        "bulk-negotiations",
+        {
+          companyId: params.companyId,
+          customerIds: params.customerIds,
+          discountType: params.discountType,
+          discountValue: params.discountValue,
+          paymentMethods: params.paymentMethods,
+          notificationChannels: params.notificationChannels,
+          userId: user.id,
+          attendantName: profile.full_name || "Super Admin",
+          createdAt: new Date().toISOString(),
+        },
+        {
+          jobId,
+        }
+      )
+
+      console.log(`[sendBulkNegotiations] Created queue job ${job.id} for ${params.customerIds.length} negotiations`)
+
+      return NextResponse.json({
+        queued: true,
+        job_id: job.id,
+        total_customers: params.customerIds.length,
+        message: `Processamento de ${params.customerIds.length} negociações iniciado em background. Use /status?job_id=${job.id} para acompanhar.`,
+      })
+    }
+
+    // For small batches, process synchronously (original behavior)
     const supabase = createAdminClient()
     const allResults: NegotiationResult[] = []
 
@@ -880,12 +920,14 @@ export async function POST(request: NextRequest) {
     const errorSummary: Record<string, number> = {}
     for (const result of allResults) {
       if (result.status === "failed" && result.error) {
-        const errorType = result.error.split(":")[0] || result.error
+        const errorMessage = result.error.message || "Erro desconhecido"
+        const errorType = errorMessage.split(":")[0] || errorMessage
         errorSummary[errorType] = (errorSummary[errorType] || 0) + 1
       }
     }
 
     return NextResponse.json({
+      queued: false,
       success: sentCount > 0,
       sent: sentCount,
       failed: failedCount,

@@ -177,6 +177,14 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
   // Selection dropdown state
   const [selectionDropdownOpen, setSelectionDropdownOpen] = useState(false)
+
+  // Background job tracking state
+  const [backgroundJob, setBackgroundJob] = useState<{
+    jobId: string
+    totalCustomers: number
+    startedAt: string
+  } | null>(null)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const selectionDropdownRef = useRef<HTMLDivElement>(null)
 
   // Close selection dropdown when clicking outside
@@ -189,6 +197,74 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
+
+  // Poll for background job status
+  useEffect(() => {
+    if (!backgroundJob) return
+
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(`/api/super-admin/send-bulk-negotiations/status?job_id=${backgroundJob.jobId}`)
+        if (!res.ok) return
+
+        const data = await res.json()
+
+        if (data.status === "completed") {
+          // Job completed - show results
+          setBackgroundJob(null)
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current)
+            pollingRef.current = null
+          }
+
+          const result = data.result
+          if (result) {
+            setSendResults({
+              sent: result.sent,
+              failed: result.failed,
+              total: result.total,
+              results: result.results,
+              stepLabels: result.stepLabels,
+            })
+            setShowResultsModal(true)
+
+            if (result.failed === 0) {
+              toast.success(`Negociação enviada com sucesso para todos os ${result.sent} cliente(s)!`)
+            } else {
+              toast.warning(`Concluído com ${result.failed} erro(s). Veja detalhes abaixo.`)
+            }
+
+            // Reload customers to update status
+            if (selectedCompanyId) {
+              loadCustomers(selectedCompanyId)
+            }
+          }
+        } else if (data.status === "failed") {
+          // Job failed
+          setBackgroundJob(null)
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current)
+            pollingRef.current = null
+          }
+          toast.error(data.error || "Erro ao processar negociações")
+        }
+        // If still active/waiting, continue polling
+      } catch (error) {
+        console.error("Error polling job status:", error)
+      }
+    }
+
+    // Poll immediately, then every 3 seconds
+    pollStatus()
+    pollingRef.current = setInterval(pollStatus, 3000)
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  }, [backgroundJob, selectedCompanyId])
 
   // Check notification viewed status from ASAAS API
   const checkNotificationStatus = useCallback(async (companyId: string) => {
@@ -599,6 +675,22 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
       setShowModal(false) // Close send modal
 
+      // Check if the request was queued (background processing)
+      if (result.queued === true) {
+        // Start background job tracking
+        setBackgroundJob({
+          jobId: result.job_id,
+          totalCustomers: result.total_customers,
+          startedAt: new Date().toISOString(),
+        })
+
+        toast.success(`Processamento de ${result.total_customers} negociações iniciado em background. Você pode continuar navegando.`)
+
+        setSelectedCustomers(new Set())
+        return
+      }
+
+      // Synchronous processing response
       if (result.success) {
         const totalSelected = selectedCustomers.size
 

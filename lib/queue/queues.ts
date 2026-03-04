@@ -115,3 +115,14 @@ export const bulkEmailQueue = new Queue(QUEUE_CONFIG.bulkEmail.name, {
     removeOnFail: QUEUE_CONFIG.bulkEmail.removeOnFail,
   },
 });
+
+// Bulk Negotiations Queue - for sending negotiations to ASAAS
+export const bulkNegotiationsQueue = new Queue(QUEUE_CONFIG.bulkNegotiations.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.bulkNegotiations.retries.attempts,
+    backoff: QUEUE_CONFIG.bulkNegotiations.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.bulkNegotiations.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.bulkNegotiations.removeOnFail,
+  },
+});
