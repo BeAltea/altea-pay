@@ -478,39 +478,59 @@ async function syncFromAsaas(
       if (cpf) vmaxByCpf.set(cpf, vmax)
     }
 
-    // STEP 3: Load all existing agreements for this company
-    const { data: agreements } = await supabase
-      .from("agreements")
-      .select("id, customer_id, asaas_customer_id, asaas_payment_id, status, customers(document)")
-      .eq("company_id", companyId)
-      .in("status", ["active", "draft", "pending", "completed", "paid"])
-
-    // Build map: ASAAS customer ID -> agreement
+    // STEP 3: Load all existing agreements for this company (with pagination)
+    // Supabase has a default limit of 1000 rows, so we need to paginate
     const agreementByAsaasCustomerId = new Map<string, any>()
-    // Build map: normalized CPF/CNPJ -> agreement
     const agreementByCpf = new Map<string, any>()
-    for (const ag of agreements || []) {
-      if (ag.asaas_customer_id) {
-        agreementByAsaasCustomerId.set(ag.asaas_customer_id, ag)
+    let agreementOffset = 0
+    const agreementPageSize = 1000
+
+    while (true) {
+      const { data: agreementPage } = await supabase
+        .from("agreements")
+        .select("id, customer_id, asaas_customer_id, asaas_payment_id, status, customers(document)")
+        .eq("company_id", companyId)
+        .in("status", ["active", "draft", "pending", "completed", "paid"])
+        .range(agreementOffset, agreementOffset + agreementPageSize - 1)
+
+      if (!agreementPage || agreementPage.length === 0) break
+
+      for (const ag of agreementPage) {
+        if (ag.asaas_customer_id) {
+          agreementByAsaasCustomerId.set(ag.asaas_customer_id, ag)
+        }
+        const customer = ag.customers as any
+        if (customer?.document) {
+          const cpf = normalizeCpfCnpj(customer.document)
+          if (cpf) agreementByCpf.set(cpf, ag)
+        }
       }
-      const customer = ag.customers as any
-      if (customer?.document) {
-        const cpf = normalizeCpfCnpj(customer.document)
-        if (cpf) agreementByCpf.set(cpf, ag)
-      }
+
+      if (agreementPage.length < agreementPageSize) break
+      agreementOffset += agreementPageSize
     }
 
-    // STEP 4: Load all local customers for this company
-    const { data: localCustomers } = await supabase
-      .from("customers")
-      .select("id, document, name")
-      .eq("company_id", companyId)
-
-    // Build map: normalized CPF/CNPJ -> local customer
+    // STEP 4: Load all local customers for this company (with pagination)
     const localCustomerByCpf = new Map<string, any>()
-    for (const c of localCustomers || []) {
-      const cpf = normalizeCpfCnpj(c.document)
-      if (cpf) localCustomerByCpf.set(cpf, c)
+    let customerOffset = 0
+    const customerPageSize = 1000
+
+    while (true) {
+      const { data: customerPage } = await supabase
+        .from("customers")
+        .select("id, document, name")
+        .eq("company_id", companyId)
+        .range(customerOffset, customerOffset + customerPageSize - 1)
+
+      if (!customerPage || customerPage.length === 0) break
+
+      for (const c of customerPage) {
+        const cpf = normalizeCpfCnpj(c.document)
+        if (cpf) localCustomerByCpf.set(cpf, c)
+      }
+
+      if (customerPage.length < customerPageSize) break
+      customerOffset += customerPageSize
     }
 
     console.log(`[ASAAS Sync] Matching ${asaasCustomers.length} ASAAS customers against ${vmaxByCpf.size} VMAX, ${agreementByCpf.size} agreements, ${localCustomerByCpf.size} local customers`)
