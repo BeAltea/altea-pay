@@ -3,18 +3,30 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
+// User roles in the system
+export type UserRole = "super_admin" | "admin" | "user" | "viewer"
+
+// Viewer role is read-only and can only see assigned company data
+export function isViewerRole(role: string | null | undefined): boolean {
+  return role === "viewer"
+}
+
+export function canPerformActions(role: string | null | undefined): boolean {
+  return !isViewerRole(role)
+}
+
 export interface CreateUserParams {
   email: string
   password: string
   fullName: string
-  role: "super_admin" | "admin" | "user"
+  role: UserRole
   companyId?: string
 }
 
 export interface UpdateUserParams {
   id: string
   fullName: string
-  role: "super_admin" | "admin" | "user"
+  role: UserRole
   companyId?: string
   status: "active" | "inactive" | "suspended"
 }
@@ -164,7 +176,7 @@ export async function updateUserProfile(params: {
   id: string
   full_name: string
   email?: string
-  role: "super_admin" | "admin" | "user"
+  role: UserRole
   status?: "active" | "inactive" | "suspended"
   company_id?: string | null
   phone?: string

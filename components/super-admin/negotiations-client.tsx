@@ -37,6 +37,7 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { toast } from "sonner"
+import { ReadOnlyGuard, useCanPerformActions } from "@/components/super-admin/read-only-guard"
 
 type VmaxCustomer = {
   id: string
@@ -1308,26 +1309,30 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 Clientes ({filteredCustomers.length} de {customers.length})
               </CardTitle>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleSyncWithAsaas}
-                  disabled={syncing}
-                >
-                  {syncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Sincronizar ASAAS
-                </Button>
-                <Button
-                  onClick={openSendModal}
-                  disabled={selectedCustomers.size === 0}
-                  className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90"
-                >
-                  <Send className="mr-2 h-4 w-4" />
-                  Enviar Negociacao ({selectedCustomers.size})
-                </Button>
+                <ReadOnlyGuard>
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncWithAsaas}
+                    disabled={syncing}
+                  >
+                    {syncing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sincronizar ASAAS
+                  </Button>
+                </ReadOnlyGuard>
+                <ReadOnlyGuard>
+                  <Button
+                    onClick={openSendModal}
+                    disabled={selectedCustomers.size === 0}
+                    className="bg-altea-gold text-altea-navy hover:bg-altea-gold/90"
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    Enviar Negociacao ({selectedCustomers.size})
+                  </Button>
+                </ReadOnlyGuard>
               </div>
             </div>
           </CardHeader>
@@ -1721,31 +1726,35 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                          customer.asaasStatus !== "RECEIVED" &&
                          customer.asaasStatus !== "CONFIRMED" &&
                          customer.asaasStatus !== "DELETED" ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                            onClick={() => handleCancelNegotiation(customer)}
-                          >
-                            Cancelar
-                          </Button>
+                          <ReadOnlyGuard fallback={<span className="text-xs text-muted-foreground">—</span>}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                              onClick={() => handleCancelNegotiation(customer)}
+                            >
+                              Cancelar
+                            </Button>
+                          </ReadOnlyGuard>
                         ) : customer.asaasStatus === "DELETED" ? (
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : !customer.hasNegotiation || customer.isCancelled ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
-                            onClick={() => handleSyncSingleClient(customer)}
-                            disabled={syncingClientId === customer.id}
-                            title="Verificar se este cliente existe no ASAAS"
-                          >
-                            {syncingClientId === customer.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                          </Button>
+                          <ReadOnlyGuard fallback={<span className="text-xs text-muted-foreground">—</span>}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                              onClick={() => handleSyncSingleClient(customer)}
+                              disabled={syncingClientId === customer.id}
+                              title="Verificar se este cliente existe no ASAAS"
+                            >
+                              {syncingClientId === customer.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </ReadOnlyGuard>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}

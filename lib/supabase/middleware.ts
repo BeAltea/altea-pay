@@ -175,13 +175,17 @@ export async function updateSession(request: NextRequest) {
         const getDefaultPath = (role: string) => {
           switch (role) {
             case "super_admin": return "/super-admin"
+            case "viewer": return "/super-admin" // Viewer has read-only access to super-admin
             case "admin": return "/dashboard"
             case "final_client": return "/portal"
             default: return "/user-dashboard"
           }
         }
 
-        if (currentPath.startsWith("/super-admin") && userRole !== "super_admin") {
+        // Allow both super_admin and viewer roles to access super-admin routes
+        // Viewer role is read-only and restricted to their assigned company
+        const superAdminAllowedRoles = ["super_admin", "viewer"]
+        if (currentPath.startsWith("/super-admin") && !superAdminAllowedRoles.includes(userRole)) {
           const url = request.nextUrl.clone()
           url.pathname = getDefaultPath(userRole)
           return NextResponse.redirect(url)

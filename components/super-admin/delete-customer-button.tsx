@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react"
 import { deleteCustomer } from "@/app/actions/delete-customer"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { ReadOnlyGuard } from "@/components/super-admin/read-only-guard"
 
 interface DeleteCustomerButtonProps {
   customerId: string
@@ -33,13 +34,15 @@ export function DeleteCustomerButton({ customerId, customerName, companyId }: De
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="border-red-200 hover:bg-red-50 hover:border-red-300 text-red-600 hover:text-red-700 bg-transparent"
-      onClick={handleDelete}
-    >
-      <Trash2 className="h-4 w-4" />
-    </Button>
+    <ReadOnlyGuard>
+      <Button
+        variant="outline"
+        size="sm"
+        className="border-red-200 hover:bg-red-50 hover:border-red-300 text-red-600 hover:text-red-700 bg-transparent"
+        onClick={handleDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </ReadOnlyGuard>
   )
 }

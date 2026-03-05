@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { ReadOnlyGuard } from "@/components/super-admin/read-only-guard"
 
 interface DeleteCompanyButtonProps {
   companyId: string
@@ -56,28 +57,30 @@ export function DeleteCompanyButton({ companyId, companyName }: DeleteCompanyBut
   }
 
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 bg-transparent">
-          <Trash2 className="h-4 w-4 mr-1" />
-          Excluir
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Esta ação não pode ser desfeita. Isso excluirá permanentemente a empresa <strong>{companyName}</strong> e
-            todos os dados associados.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
-            {isDeleting ? "Excluindo..." : "Excluir Empresa"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ReadOnlyGuard>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 bg-transparent">
+            <Trash2 className="h-4 w-4 mr-1" />
+            Excluir
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Isso excluirá permanentemente a empresa <strong>{companyName}</strong> e
+              todos os dados associados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
+              {isDeleting ? "Excluindo..." : "Excluir Empresa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ReadOnlyGuard>
   )
 }

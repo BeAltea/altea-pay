@@ -1,13 +1,47 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import { SuperAdminSidebar, MobileSuperAdminSidebarContext } from "@/components/super-admin/super-admin-sidebar"
 import { SuperAdminHeader } from "@/components/super-admin/super-admin-header"
+import { Eye } from "lucide-react"
+
+// Context for user role - allows components to check if user is viewer
+interface SuperAdminContextType {
+  user: User | null
+  role: string | null
+  companyId: string | null
+  isViewer: boolean
+  canPerformActions: boolean
+}
+
+const SuperAdminContext = createContext<SuperAdminContextType>({
+  user: null,
+  role: null,
+  companyId: null,
+  isViewer: false,
+  canPerformActions: true,
+})
+
+export function useSuperAdminContext() {
+  return useContext(SuperAdminContext)
+}
+
+// Demo/Viewer banner component
+function DemoBanner() {
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-sm text-amber-800">
+      <Eye className="w-4 h-4 flex-shrink-0" />
+      <span>
+        <strong>Modo Demonstracao</strong> — Voce esta navegando em modo somente leitura.
+        Nenhuma acao pode ser executada nesta conta.
+      </span>
+    </div>
+  )
+}
 
 export function SuperAdminAuthWrapper({
   children,
@@ -16,9 +50,14 @@ export function SuperAdminAuthWrapper({
 }) {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
+  const [role, setRole] = useState<string | null>(null)
+  const [companyId, setCompanyId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const isViewer = role === "viewer"
+  const canPerformActions = role !== "viewer"
 
   useEffect(() => {
     let supabase
@@ -54,7 +93,7 @@ export function SuperAdminAuthWrapper({
           return
         }
 
-        // Check if user has 'super_admin' role
+        // Check if user has allowed role
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("role, company_id")
@@ -67,7 +106,9 @@ export function SuperAdminAuthWrapper({
           return
         }
 
-        if (profile?.role !== "super_admin") {
+        // Allow both super_admin and viewer roles
+        const allowedRoles = ["super_admin", "viewer"]
+        if (!allowedRoles.includes(profile?.role || "")) {
           // Redirect based on role
           if (profile?.role === "admin") {
             router.push("/dashboard")
@@ -80,6 +121,8 @@ export function SuperAdminAuthWrapper({
         }
 
         setUser(user)
+        setRole(profile?.role || null)
+        setCompanyId(profile?.company_id || null)
       } catch (error) {
         console.error("[v0] Auth check error:", error)
         setError("Authentication error. Please try again.")
@@ -105,7 +148,7 @@ export function SuperAdminAuthWrapper({
               />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Erro de Autenticação</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Erro de Autenticacao</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
@@ -134,21 +177,25 @@ export function SuperAdminAuthWrapper({
   }
 
   return (
-    <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
-      <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:block lg:w-64 lg:flex-shrink-0">
-          <SuperAdminSidebar user={user} />
-        </div>
+    <SuperAdminContext.Provider value={{ user, role, companyId, isViewer, canPerformActions }}>
+      <MobileSuperAdminSidebarContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
+        <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
+          {/* Desktop Sidebar */}
+          <div className="hidden lg:block lg:w-64 lg:flex-shrink-0">
+            <SuperAdminSidebar user={user} />
+          </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <SuperAdminHeader user={user} />
-          <main className="flex-1 overflow-y-auto">
-            <div className="p-4 sm:p-6 lg:p-8">{children}</div>
-          </main>
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <SuperAdminHeader user={user} />
+            {/* Demo banner for viewer role */}
+            {isViewer && <DemoBanner />}
+            <main className="flex-1 overflow-y-auto">
+              <div className="p-4 sm:p-6 lg:p-8">{children}</div>
+            </main>
+          </div>
         </div>
-      </div>
-    </MobileSuperAdminSidebarContext.Provider>
+      </MobileSuperAdminSidebarContext.Provider>
+    </SuperAdminContext.Provider>
   )
 }

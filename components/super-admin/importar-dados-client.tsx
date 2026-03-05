@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import * as XLSX from "xlsx"
 import { toast } from "sonner"
+import { ReadOnlyGuard } from "@/components/super-admin/read-only-guard"
 
 interface Company {
   id: string
@@ -1038,13 +1039,19 @@ export function ImportarDadosClient({ companies }: ImportarDadosClientProps) {
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar ao Mapeamento
               </Button>
-              <Button
-                onClick={handleImport}
-                disabled={validRecords.length === 0}
-              >
-                Importar {validRecords.length + duplicateRecords.length} Clientes
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              <ReadOnlyGuard fallback={
+                <span className="text-sm text-muted-foreground px-4 py-2 bg-muted rounded-md">
+                  Somente leitura - importacao desabilitada
+                </span>
+              }>
+                <Button
+                  onClick={handleImport}
+                  disabled={validRecords.length === 0}
+                >
+                  Importar {validRecords.length + duplicateRecords.length} Clientes
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </ReadOnlyGuard>
             </div>
           </div>
         )}

@@ -52,6 +52,7 @@ import {
   XCircle,
   Clock,
 } from "lucide-react"
+import { ReadOnlyGuard, useCanPerformActions } from "@/components/super-admin/read-only-guard"
 
 // LocalStorage key for background jobs
 const BACKGROUND_JOBS_KEY = "alteapay_bulk_email_jobs"
@@ -1355,18 +1356,24 @@ export function SendEmailForm({ companies, recipientsMap, emailTrackingMap }: Se
                 <Eye className="h-4 w-4" />
                 Visualizar
               </Button>
-              <Button
-                onClick={handleSend}
-                disabled={!isFormValid || isSending}
-                className="gap-2"
-              >
-                {isSending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                {isSending ? "Enviando..." : `Enviar para ${recipientCount} destinatário(s)`}
-              </Button>
+              <ReadOnlyGuard fallback={
+                <span className="text-sm text-muted-foreground px-4 py-2 bg-muted rounded-md">
+                  Somente leitura - envio desabilitado
+                </span>
+              }>
+                <Button
+                  onClick={handleSend}
+                  disabled={!isFormValid || isSending}
+                  className="gap-2"
+                >
+                  {isSending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {isSending ? "Enviando..." : `Enviar para ${recipientCount} destinatário(s)`}
+                </Button>
+              </ReadOnlyGuard>
             </div>
           </CardContent>
         </Card>

@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation"
 import { UserX, UserPlus, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { ReadOnlyGuard } from "@/components/super-admin/read-only-guard"
 
 interface UserDetailActionsProps {
   userId: string
@@ -111,7 +112,7 @@ export function UserDetailActions({
   }
 
   return (
-    <>
+    <ReadOnlyGuard>
       {/* Suspend/Reactivate Button */}
       {currentStatus === "suspended" ? (
         <Button
@@ -260,6 +261,6 @@ export function UserDetailActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </ReadOnlyGuard>
   )
 }
