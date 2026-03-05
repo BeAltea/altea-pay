@@ -159,7 +159,7 @@ export async function updateSession(request: NextRequest) {
         const authPagesToRedirect = ["/", "/auth/login", "/auth/register"]
         if (authPagesToRedirect.includes(currentPath) && user) {
           const url = request.nextUrl.clone()
-          if (userRole === "super_admin") {
+          if (userRole === "super_admin" || userRole === "viewer") {
             url.pathname = "/super-admin"
           } else if (userRole === "admin") {
             url.pathname = "/dashboard"
