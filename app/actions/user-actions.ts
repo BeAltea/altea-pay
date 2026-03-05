@@ -3,17 +3,9 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-// User roles in the system
-export type UserRole = "super_admin" | "admin" | "user" | "viewer"
-
-// Viewer role is read-only and can only see assigned company data
-export function isViewerRole(role: string | null | undefined): boolean {
-  return role === "viewer"
-}
-
-export function canPerformActions(role: string | null | undefined): boolean {
-  return !isViewerRole(role)
-}
+// Re-export types and helpers from the utility file
+export type { UserRole } from "@/lib/utils/role-helpers"
+export { isViewerRole, canPerformActions } from "@/lib/utils/role-helpers"
 
 export interface CreateUserParams {
   email: string
