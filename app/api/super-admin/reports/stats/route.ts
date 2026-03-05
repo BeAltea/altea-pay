@@ -61,7 +61,9 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (profile?.role !== "super_admin") {
+    // Allow both super_admin and viewer roles
+    const allowedRoles = ["super_admin", "viewer"]
+    if (!allowedRoles.includes(profile?.role || "")) {
       return NextResponse.json({ error: "Sem permissao" }, { status: 403, headers: noCacheHeaders })
     }
 

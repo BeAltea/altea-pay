@@ -16,8 +16,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Helper to verify super admin
-async function verifySuperAdmin() {
+// Helper to verify super admin (also allows viewer for read operations)
+async function verifySuperAdmin(allowViewer = true) {
   const authSupabase = await createAuthClient()
   const { data: { user } } = await authSupabase.auth.getUser()
 
@@ -31,7 +31,8 @@ async function verifySuperAdmin() {
     .eq("id", user.id)
     .single()
 
-  if (profile?.role !== "super_admin") {
+  const allowedRoles = allowViewer ? ["super_admin", "viewer"] : ["super_admin"]
+  if (!allowedRoles.includes(profile?.role || "")) {
     return { error: "Sem permissao", status: 403 }
   }
 
@@ -89,7 +90,7 @@ export async function GET(
   }
 }
 
-// PUT - Update client data
+// PUT - Update client data (super_admin only, not viewer)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -103,7 +104,7 @@ export async function PUT(
       return NextResponse.json({ error: "tableName is required" }, { status: 400, headers: noCacheHeaders })
     }
 
-    const authResult = await verifySuperAdmin()
+    const authResult = await verifySuperAdmin(false) // Only super_admin can update
     if ("error" in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: noCacheHeaders })
     }
@@ -159,6 +160,7 @@ export async function PUT(
   }
 }
 
+// DELETE - Delete client (super_admin only, not viewer)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -174,7 +176,7 @@ export async function DELETE(
       )
     }
 
-    const authResult = await verifySuperAdmin()
+    const authResult = await verifySuperAdmin(false) // Only super_admin can delete
     if ("error" in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: noCacheHeaders })
     }
