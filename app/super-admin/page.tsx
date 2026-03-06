@@ -16,6 +16,7 @@ import {
   CreditCard,
   Sparkles,
 } from "lucide-react"
+import { PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
 
 interface CompanyStats {
   id: string
@@ -39,11 +40,18 @@ export default async function SuperAdminDashboardPage() {
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name")
 
-  // Fetch completed agreements to identify paid customers
-  const { data: completedAgreements } = await supabase
+  // Fetch all agreements with payment info to identify paid customers
+  // Check status, payment_status, and asaas_status for comprehensive paid detection
+  const { data: allAgreementsRaw } = await supabase
     .from("agreements")
-    .select("id, customer_id, status, company_id")
-    .eq("status", "completed")
+    .select("id, customer_id, status, payment_status, asaas_status, company_id")
+
+  // Filter for paid agreements using all paid status indicators
+  const completedAgreements = (allAgreementsRaw || []).filter(a =>
+    PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+    PAID_PAYMENT_STATUSES.includes(a.payment_status as any) ||
+    PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+  )
 
   // Fetch customers mapping to get documents
   const { data: dbCustomers } = await supabase
@@ -120,11 +128,9 @@ export default async function SuperAdminDashboardPage() {
       const companyPaidDocs = paidDocsByCompany.get(company.id) || new Set<string>()
 
       // Helper to check if a VMAX record is paid
-      // Only explicit payment indicators: negotiation_status === "PAGO" or document in paidDocs (from completed agreements)
-      // Do NOT use dtCancelamento alone - it means "cancelled" not necessarily "paid"
+      // Uses paidDocs (from agreements with any paid status indicator) or VMAX negotiation_status
       const isPaid = (v: any) => {
         const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
-        // Only consider paid if explicit payment status
         return companyPaidDocs.has(doc) || v.negotiation_status === "PAGO"
       }
 

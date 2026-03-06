@@ -1,5 +1,6 @@
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -128,7 +129,13 @@ export async function GET(request: NextRequest) {
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
           docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
-          if (a.status === "completed" || a.status === "paid") {
+          // Check all paid status indicators for consistency with other views
+          const isPaidAgreement =
+            PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+            PAID_PAYMENT_STATUSES.includes(a.payment_status as any) ||
+            PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+
+          if (isPaidAgreement) {
             docsWithPaidAgreements.add(normalizedDoc)
           } else {
             docsWithActiveAgreements.add(normalizedDoc)
