@@ -330,8 +330,9 @@ export async function POST(request: NextRequest) {
 
       if (debt?.external_id) {
         // Update VMAX record
+        // Both PAYMENT_RECEIVED and PAYMENT_CONFIRMED are "paid" states
         const vmaxUpdate: Record<string, any> = {
-          negotiation_status: event === "PAYMENT_RECEIVED" ? "PAGO" :
+          negotiation_status: (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") ? "PAGO" :
                               event === "PAYMENT_OVERDUE" ? "EM_ATRASO" :
                               event === "PAYMENT_DELETED" || event === "PAYMENT_REFUNDED" ? "CANCELADA" :
                               "EM_ANDAMENTO",

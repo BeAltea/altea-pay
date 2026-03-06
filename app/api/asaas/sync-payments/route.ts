@@ -1660,12 +1660,12 @@ export async function POST(request: NextRequest) {
           if (asaasPayment.invoiceUrl) agreementUpdate.asaas_invoice_url = asaasPayment.invoiceUrl
           if (asaasPayment.paymentDate) agreementUpdate.asaas_payment_date = asaasPayment.paymentDate
 
-          // Handle payment received
-          if (newPaymentStatus === "received") {
+          // Handle payment received or confirmed (both are "paid" states)
+          if (newPaymentStatus === "received" || newPaymentStatus === "confirmed") {
             agreementUpdate.status = "completed"  // Use "completed" - it's in the DB constraint
             agreementUpdate.payment_received_at = new Date().toISOString()
 
-            console.log(`[ASAAS Sync] Payment RECEIVED for agreement ${agreement.id}, updating debt and VMAX...`)
+            console.log(`[ASAAS Sync] Payment ${newPaymentStatus.toUpperCase()} for agreement ${agreement.id}, updating debt and VMAX...`)
 
             // Update debt to paid
             if (agreement.debt_id) {

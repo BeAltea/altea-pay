@@ -34,6 +34,7 @@ interface AgreementCustomer {
   paymentStatus: string | null
   asaasStatus: string | null
   createdAt: string | null
+  firstDueDate: string | null
 }
 
 interface AdminAcordosContentProps {
@@ -46,7 +47,7 @@ interface AdminAcordosContentProps {
   }
 }
 
-type SortField = "name" | "debt" | "agreedAmount" | "status" | "daysOverdue"
+type SortField = "name" | "debt" | "agreedAmount" | "dueDate" | "status" | "daysOverdue"
 type SortDirection = "asc" | "desc"
 
 function formatCurrency(value: number): string {
@@ -95,6 +96,11 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
           break
         case "agreedAmount":
           comparison = a.agreedAmount - b.agreedAmount
+          break
+        case "dueDate":
+          const dateA = a.firstDueDate ? new Date(a.firstDueDate).getTime() : 0
+          const dateB = b.firstDueDate ? new Date(b.firstDueDate).getTime() : 0
+          comparison = dateA - dateB
           break
         case "status":
           comparison = a.status.localeCompare(b.status)
@@ -259,6 +265,15 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
                 </th>
                 <th
                   className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                  onClick={() => toggleSort("dueDate")}
+                >
+                  <div className="flex items-center gap-1">
+                    Vencimento
+                    <SortIcon field="dueDate" />
+                  </div>
+                </th>
+                <th
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => toggleSort("daysOverdue")}
                 >
                   <div className="flex items-center gap-1">
@@ -280,7 +295,7 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
             <tbody className="divide-y">
               {paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     <Handshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhum acordo encontrado</p>
                   </td>
@@ -305,6 +320,13 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
                       </td>
                       <td className="px-4 py-4 text-sm">
                         {customer.installments}x
+                      </td>
+                      <td className="px-4 py-4 text-sm">
+                        {customer.firstDueDate ? (
+                          new Date(customer.firstDueDate).toLocaleDateString("pt-BR")
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-sm">
                         {customer.daysOverdue > 0 ? (
