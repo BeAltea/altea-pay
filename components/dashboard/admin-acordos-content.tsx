@@ -2,160 +2,83 @@
 
 import { useState, useMemo } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
+import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
   Search,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Eye,
   ChevronLeft,
   ChevronRight,
   Handshake,
   DollarSign,
   Calendar,
-  CheckCircle,
-  XCircle,
-  CalendarClock,
+  FileText,
 } from "lucide-react"
 
-interface Acordo {
+interface AgreementCustomer {
   id: string
-  customerId: string
-  customerName: string | null
-  customerCpfCnpj: string | null
-  originalAmount: number
-  agreedAmount: number
-  paidAmount: number
-  installments: number
-  paidInstallments: number
-  status: string
-  paymentStatus: string
-  createdAt: string
-  firstDueDate: string
+  name: string
+  document: string
+  totalDebt: number
   daysOverdue: number
+  hasNegotiation: boolean
+  isPaid: boolean
+  isCancelled: boolean
+  agreementId: string | null
+  agreedAmount: number
+  installments: number
+  status: string
+  paymentStatus: string | null
+  asaasStatus: string | null
+  createdAt: string | null
 }
 
 interface AdminAcordosContentProps {
-  acordos: Acordo[]
-  company: { id: string; name: string } | null
+  customers: AgreementCustomer[]
+  stats: {
+    totalCount: number
+    totalAgreedValue: number
+    completedValue: number
+    averageInstallments: number
+  }
 }
 
-type SortField = "cliente" | "valor" | "status" | "data" | "tempo"
+type SortField = "name" | "debt" | "agreedAmount" | "status" | "daysOverdue"
 type SortDirection = "asc" | "desc"
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "—"
-  try {
-    return new Date(dateStr).toLocaleDateString("pt-BR")
-  } catch {
-    return "—"
-  }
-}
-
-function getDebtAgeColor(days: number): { text: string; bg: string } {
-  if (days <= 0) return { text: "var(--admin-green)", bg: "var(--admin-green-bg)" }
-  if (days <= 30) return { text: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
-  if (days <= 90) return { text: "var(--admin-orange)", bg: "var(--admin-orange-bg)" }
-  return { text: "var(--admin-red)", bg: "var(--admin-red-bg)" }
-}
-
-function formatDebtAge(days: number): string {
-  if (days <= 0) return "Em dia"
-  if (days < 30) return `${days} dias`
-  if (days < 365) {
-    const months = Math.floor(days / 30)
-    return `${months} ${months === 1 ? "mês" : "meses"}`
-  }
-  const years = Math.floor(days / 365)
-  const remainingMonths = Math.floor((days % 365) / 30)
-  if (remainingMonths > 0) {
-    return `${years}a ${remainingMonths}m`
-  }
-  return `${years} ${years === 1 ? "ano" : "anos"}`
-}
-
-export function AdminAcordosContent({ acordos, company }: AdminAcordosContentProps) {
+export function AdminAcordosContent({ customers, stats }: AdminAcordosContentProps) {
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortField, setSortField] = useState<SortField>("data")
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+  const [sortField, setSortField] = useState<SortField>("name")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [periodoFilter, setPeriodoFilter] = useState("all")
-  const [valorFilter, setValorFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
 
-  // Stats - only non-cancelled agreements are passed from server (aligns with Dashboard)
-  const stats = useMemo(() => {
-    // Recovered = completed or payment received via ASAAS
-    const recovered = acordos
-      .filter(a => a.status === "completed" || a.paymentStatus === "received" || a.paymentStatus === "confirmed")
-      .reduce((sum, a) => sum + a.agreedAmount, 0)
-
-    // Open value = active/draft agreements minus what's been paid
-    const openValue = acordos
-      .filter(a => a.status === "active" || a.status === "draft")
-      .reduce((sum, a) => sum + (a.agreedAmount - a.paidAmount), 0)
-
-    // Total = all non-cancelled agreements (matches Dashboard "Negociações Enviadas")
-    const total = acordos.length
-
-    // Open = active or draft status
-    const open = acordos.filter(a => a.status === "active" || a.status === "draft").length
-
-    // Completed = agreements marked as completed (paid in full)
-    const completed = acordos.filter(a => a.status === "completed").length
-
-    return { recovered, openValue, total, open, completed }
-  }, [acordos])
-
-  const filteredAndSortedAcordos = useMemo(() => {
-    let filtered = acordos
+  const filteredAndSortedCustomers = useMemo(() => {
+    let filtered = customers
 
     // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(a =>
-        a.customerName?.toLowerCase().includes(term) ||
-        a.customerCpfCnpj?.includes(searchTerm)
+      filtered = filtered.filter(c =>
+        c.name?.toLowerCase().includes(term) ||
+        c.document?.includes(searchTerm)
       )
     }
 
-    // Status filter (cancelled agreements are excluded at the server level)
+    // Status filter
     if (statusFilter !== "all") {
-      filtered = filtered.filter(a => {
-        if (statusFilter === "open") return a.status === "active" || a.status === "draft"
-        if (statusFilter === "completed") return a.status === "completed"
-        if (statusFilter === "overdue") return a.status === "breached" || a.status === "defaulted"
-        return true
-      })
-    }
-
-    // Periodo filter
-    if (periodoFilter !== "all") {
-      const now = new Date()
-      filtered = filtered.filter(a => {
-        const created = new Date(a.createdAt)
-        const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
-        if (periodoFilter === "month") return diffDays <= 30
-        if (periodoFilter === "3months") return diffDays <= 90
-        if (periodoFilter === "6months") return diffDays <= 180
-        if (periodoFilter === "year") return diffDays <= 365
-        return true
-      })
-    }
-
-    // Valor filter
-    if (valorFilter !== "all") {
-      filtered = filtered.filter(a => {
-        if (valorFilter === "under1000") return a.agreedAmount <= 1000
-        if (valorFilter === "1000-5000") return a.agreedAmount > 1000 && a.agreedAmount <= 5000
-        if (valorFilter === "5000-20000") return a.agreedAmount > 5000 && a.agreedAmount <= 20000
-        if (valorFilter === "over20000") return a.agreedAmount > 20000
+      filtered = filtered.filter(c => {
+        if (statusFilter === "active") return c.status === "active" || c.status === "draft"
+        if (statusFilter === "completed") return c.isPaid || c.status === "completed"
+        if (statusFilter === "pending") return !c.isPaid && (c.status === "active" || c.status === "draft")
         return true
       })
     }
@@ -164,19 +87,19 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
     const sorted = [...filtered].sort((a, b) => {
       let comparison = 0
       switch (sortField) {
-        case "cliente":
-          comparison = (a.customerName || "").localeCompare(b.customerName || "")
+        case "name":
+          comparison = (a.name || "").localeCompare(b.name || "")
           break
-        case "valor":
+        case "debt":
+          comparison = a.totalDebt - b.totalDebt
+          break
+        case "agreedAmount":
           comparison = a.agreedAmount - b.agreedAmount
           break
         case "status":
           comparison = a.status.localeCompare(b.status)
           break
-        case "data":
-          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          break
-        case "tempo":
+        case "daysOverdue":
           comparison = a.daysOverdue - b.daysOverdue
           break
       }
@@ -184,14 +107,14 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
     })
 
     return sorted
-  }, [acordos, searchTerm, statusFilter, periodoFilter, valorFilter, sortField, sortDirection])
+  }, [customers, searchTerm, statusFilter, sortField, sortDirection])
 
-  const paginatedAcordos = useMemo(() => {
+  const paginatedCustomers = useMemo(() => {
     const start = (currentPage - 1) * perPage
-    return filteredAndSortedAcordos.slice(start, start + perPage)
-  }, [filteredAndSortedAcordos, currentPage, perPage])
+    return filteredAndSortedCustomers.slice(start, start + perPage)
+  }, [filteredAndSortedCustomers, currentPage, perPage])
 
-  const totalPages = Math.ceil(filteredAndSortedAcordos.length / perPage)
+  const totalPages = Math.ceil(filteredAndSortedCustomers.length / perPage)
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -207,234 +130,144 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
     return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
   }
 
-  // Status config for badges (cancelled agreements are excluded at the server level)
-  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-    draft: { label: "Aberto", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
-    active: { label: "Ativo", color: "var(--admin-blue)", bg: "var(--admin-blue-bg)" },
-    completed: { label: "Concluido", color: "var(--admin-green)", bg: "var(--admin-green-bg)" },
-    breached: { label: "Em atraso", color: "var(--admin-orange)", bg: "var(--admin-orange-bg)" },
-    defaulted: { label: "Inadimplente", color: "var(--admin-red)", bg: "var(--admin-red-bg)" },
+  // Get status badge config
+  const getStatusBadge = (customer: AgreementCustomer) => {
+    if (customer.isPaid || customer.status === "completed") {
+      return { label: "Pago", variant: "default" as const, className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" }
+    }
+    if (customer.asaasStatus === "OVERDUE" || customer.paymentStatus === "overdue") {
+      return { label: "Vencido", variant: "destructive" as const, className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" }
+    }
+    if (customer.status === "active" || customer.status === "draft") {
+      return { label: "Em Aberto", variant: "secondary" as const, className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" }
+    }
+    if (customer.isCancelled) {
+      return { label: "Cancelado", variant: "outline" as const, className: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200" }
+    }
+    return { label: "Pendente", variant: "secondary" as const, className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" }
   }
 
-  const companyName = company?.name || "Empresa"
-
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
+    <div className="container mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">
-          Acordos — {companyName}
-        </h1>
-        <p className="text-muted-foreground mt-1 text-xs sm:text-sm lg:text-base">
-          Acompanhe as negociacoes e acordos com seus clientes
-        </p>
+        <h1 className="text-3xl font-bold">Acordos</h1>
+        <p className="text-muted-foreground">Acompanhe os acordos de negociação com seus clientes</p>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4" style={{ color: "var(--admin-green)" }} />
-            <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Valor Recuperado
-            </span>
+      {/* KPIs */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <Handshake className="h-8 w-8 text-blue-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Total de Acordos</p>
+              <p className="text-2xl font-bold">{stats.totalCount}</p>
+            </div>
           </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-green)" }}>
-            {formatCurrency(stats.recovered)}
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <DollarSign className="h-8 w-8 text-green-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Valor Concluído</p>
+              <p className="text-2xl font-bold">{formatCurrency(stats.completedValue)}</p>
+            </div>
           </div>
-        </div>
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4" style={{ color: "var(--admin-blue)" }} />
-            <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Em Acordos Abertos
-            </span>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <Calendar className="h-8 w-8 text-purple-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Média de Parcelas</p>
+              <p className="text-2xl font-bold">{Number(stats.averageInstallments || 0).toFixed(1)}x</p>
+            </div>
           </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-blue)" }}>
-            {formatCurrency(stats.openValue)}
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <FileText className="h-8 w-8 text-orange-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Valor Total Acordado</p>
+              <p className="text-2xl font-bold">{formatCurrency(stats.totalAgreedValue)}</p>
+            </div>
           </div>
-        </div>
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Handshake className="w-4 h-4" style={{ color: "var(--admin-purple)" }} />
-            <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Total de Acordos
-            </span>
-          </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-text-primary)" }}>
-            {stats.total}
-          </div>
-        </div>
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="w-4 h-4" style={{ color: "var(--admin-orange)" }} />
-            <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Acordos Abertos
-            </span>
-          </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-orange)" }}>
-            {stats.open}
-          </div>
-        </div>
-        <div
-          className="rounded-lg p-4"
-          style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="w-4 h-4" style={{ color: "var(--admin-green)" }} />
-            <span className="text-xs uppercase tracking-wider" style={{ color: "var(--admin-text-muted)" }}>
-              Acordos Concluidos
-            </span>
-          </div>
-          <div className="text-lg font-bold" style={{ color: "var(--admin-green)" }}>
-            {stats.completed}
-          </div>
-        </div>
+        </Card>
       </div>
 
       {/* Filters */}
-      <div
-        className="rounded-xl p-4"
-        style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-      >
-        <div className="flex flex-wrap gap-3">
-          {/* Search */}
-          <div className="flex-1 min-w-[200px]">
-            <div
-              className="flex items-center gap-2 rounded-lg px-3 py-2"
-              style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)" }}
-            >
-              <Search className="w-4 h-4" style={{ color: "var(--admin-text-muted)" }} />
-              <input
-                type="text"
-                placeholder="Buscar por nome, CPF/CNPJ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm w-full"
-                style={{ color: "var(--admin-text-primary)" }}
-              />
-            </div>
-          </div>
-
-          {/* Status Filter */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger
-              className="w-[140px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="open">Aberto/Ativo</SelectItem>
-              <SelectItem value="completed">Concluido</SelectItem>
-              <SelectItem value="overdue">Em atraso</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Periodo Filter */}
-          <Select value={periodoFilter} onValueChange={setPeriodoFilter}>
-            <SelectTrigger
-              className="w-[140px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Periodo" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="month">Ultimo mes</SelectItem>
-              <SelectItem value="3months">Ultimos 3 meses</SelectItem>
-              <SelectItem value="6months">Ultimos 6 meses</SelectItem>
-              <SelectItem value="year">Ultimo ano</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Valor Filter */}
-          <Select value={valorFilter} onValueChange={setValorFilter}>
-            <SelectTrigger
-              className="w-[160px] border-0"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-            >
-              <SelectValue placeholder="Faixa de Valor" />
-            </SelectTrigger>
-            <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="under1000">Ate R$ 1.000</SelectItem>
-              <SelectItem value="1000-5000">R$ 1.000-5.000</SelectItem>
-              <SelectItem value="5000-20000">R$ 5.000-20.000</SelectItem>
-              <SelectItem value="over20000">Acima de R$ 20.000</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="flex gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou documento..."
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            className="pl-10"
+          />
         </div>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="active">Em Aberto</SelectItem>
+            <SelectItem value="completed">Pago</SelectItem>
+            <SelectItem value="pending">Aguardando</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
-      >
+      <div className="rounded-lg border">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
+            <thead className="bg-muted/50">
+              <tr>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("cliente")}
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                  onClick={() => toggleSort("name")}
                 >
                   <div className="flex items-center gap-1">
                     Cliente
-                    <SortIcon field="cliente" />
+                    <SortIcon field="name" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                  style={{ color: "var(--admin-text-muted)" }}
-                >
-                  Valor Original
-                </th>
-                <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("valor")}
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                  onClick={() => toggleSort("debt")}
                 >
                   <div className="flex items-center gap-1">
-                    Valor Negociado
-                    <SortIcon field="valor" />
+                    Dívida Original
+                    <SortIcon field="debt" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                  style={{ color: "var(--admin-text-muted)" }}
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                  onClick={() => toggleSort("agreedAmount")}
                 >
+                  <div className="flex items-center gap-1">
+                    Valor Acordado
+                    <SortIcon field="agreedAmount" />
+                  </div>
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Parcelas
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("tempo")}
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
+                  onClick={() => toggleSort("daysOverdue")}
                 >
                   <div className="flex items-center gap-1">
-                    <CalendarClock className="h-3 w-3" />
-                    Tempo Dívida
-                    <SortIcon field="tempo" />
+                    Dias Atraso
+                    <SortIcon field="daysOverdue" />
                   </div>
                 </th>
                 <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
+                  className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => toggleSort("status")}
                 >
                   <div className="flex items-center gap-1">
@@ -442,133 +275,48 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
                     <SortIcon field="status" />
                   </div>
                 </th>
-                <th
-                  className="text-left px-4 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer"
-                  style={{ color: "var(--admin-text-muted)" }}
-                  onClick={() => toggleSort("data")}
-                >
-                  <div className="flex items-center gap-1">
-                    Data
-                    <SortIcon field="data" />
-                  </div>
-                </th>
-                <th
-                  className="text-right px-4 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                  style={{ color: "var(--admin-text-muted)" }}
-                >
-                  Acoes
-                </th>
               </tr>
             </thead>
-            <tbody>
-              {paginatedAcordos.length === 0 ? (
+            <tbody className="divide-y">
+              {paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: "var(--admin-text-muted)" }}>
-                    <Handshake className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    Nenhum acordo encontrado
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                    <Handshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Nenhum acordo encontrado</p>
                   </td>
                 </tr>
               ) : (
-                paginatedAcordos.map((acordo) => {
-                  const status = statusConfig[acordo.status] || statusConfig.draft
-                  const progress = acordo.installments > 0 ? (acordo.paidInstallments / acordo.installments) * 100 : 0
+                paginatedCustomers.map((customer) => {
+                  const statusBadge = getStatusBadge(customer)
 
                   return (
-                    <tr
-                      key={acordo.id}
-                      className="transition-colors hover:bg-[var(--admin-bg-tertiary)]"
-                      style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}
-                    >
-                      {/* Cliente */}
-                      <td className="px-4 py-3">
-                        <div className="text-[13px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
-                          {acordo.customerName || "Cliente #" + acordo.customerId?.slice(0, 8)}
-                        </div>
-                        <div className="text-[11px]" style={{ color: "var(--admin-text-muted)" }}>
-                          {acordo.customerCpfCnpj || "—"}
-                        </div>
+                    <tr key={customer.id} className="hover:bg-muted/50">
+                      <td className="px-4 py-4">
+                        <div className="font-medium">{customer.name}</div>
+                        <div className="text-sm text-muted-foreground">{customer.document}</div>
                       </td>
-
-                      {/* Valor Original */}
-                      <td className="px-4 py-3">
-                        <span className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
-                          {formatCurrency(acordo.originalAmount)}
+                      <td className="px-4 py-4 text-sm">
+                        {formatCurrency(customer.totalDebt)}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="font-medium text-green-600">
+                          {formatCurrency(customer.agreedAmount)}
                         </span>
                       </td>
-
-                      {/* Valor Negociado */}
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-bold" style={{ color: "var(--admin-text-primary)" }}>
-                          {formatCurrency(acordo.agreedAmount)}
-                        </span>
+                      <td className="px-4 py-4 text-sm">
+                        {customer.installments}x
                       </td>
-
-                      {/* Parcelas */}
-                      <td className="px-4 py-3">
-                        <div className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
-                          {acordo.paidInstallments} de {acordo.installments}
-                        </div>
-                        <div
-                          className="w-16 h-1.5 rounded-full mt-1 overflow-hidden"
-                          style={{ background: "var(--admin-border)" }}
-                        >
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${progress}%`,
-                              background: progress === 100 ? "var(--admin-green)" : "var(--admin-blue)"
-                            }}
-                          />
-                        </div>
+                      <td className="px-4 py-4 text-sm">
+                        {customer.daysOverdue > 0 ? (
+                          <span className="text-red-600">{customer.daysOverdue} dias</span>
+                        ) : (
+                          <span className="text-green-600">Em dia</span>
+                        )}
                       </td>
-
-                      {/* Tempo da Dívida */}
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const debtAgeColors = getDebtAgeColor(acordo.daysOverdue)
-                          return (
-                            <span
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold"
-                              style={{ background: debtAgeColors.bg, color: debtAgeColors.text }}
-                            >
-                              <CalendarClock className="w-3 h-3" />
-                              {formatDebtAge(acordo.daysOverdue)}
-                            </span>
-                          )
-                        })()}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <span
-                          className="inline-flex px-2.5 py-1 rounded-md text-[11px] font-semibold"
-                          style={{ background: status.bg, color: status.color }}
-                        >
-                          {status.label}
-                        </span>
-                      </td>
-
-                      {/* Data */}
-                      <td className="px-4 py-3">
-                        <span className="text-sm" style={{ color: "var(--admin-text-secondary)" }}>
-                          {formatDate(acordo.createdAt)}
-                        </span>
-                      </td>
-
-                      {/* Acoes */}
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/dashboard/clientes/${acordo.customerId}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                          style={{
-                            background: "var(--admin-bg-tertiary)",
-                            color: "var(--admin-text-secondary)",
-                            border: "1px solid var(--admin-border)"
-                          }}
-                        >
-                          <Eye className="w-3 h-3" />
-                          Ver Detalhes
-                        </Link>
+                      <td className="px-4 py-4">
+                        <Badge className={statusBadge.className}>
+                          {statusBadge.label}
+                        </Badge>
                       </td>
                     </tr>
                   )
@@ -579,43 +327,35 @@ export function AdminAcordosContent({ acordos, company }: AdminAcordosContentPro
         </div>
 
         {/* Pagination */}
-        <div
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderTop: "1px solid var(--admin-bg-tertiary)" }}
-        >
-          <div className="text-sm" style={{ color: "var(--admin-text-muted)" }}>
-            Mostrando {filteredAndSortedAcordos.length > 0 ? ((currentPage - 1) * perPage) + 1 : 0} - {Math.min(currentPage * perPage, filteredAndSortedAcordos.length)} de {filteredAndSortedAcordos.length} acordos
+        <div className="flex items-center justify-between px-4 py-3 border-t">
+          <div className="text-sm text-muted-foreground">
+            Mostrando {filteredAndSortedCustomers.length > 0 ? ((currentPage - 1) * perPage) + 1 : 0} - {Math.min(currentPage * perPage, filteredAndSortedCustomers.length)} de {filteredAndSortedCustomers.length} acordos
           </div>
           <div className="flex items-center gap-2">
             <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setCurrentPage(1); }}>
-              <SelectTrigger
-                className="w-[100px] h-8 text-xs border-0"
-                style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
-              >
+              <SelectTrigger className="w-[100px] h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}>
-                <SelectItem value="25">25 / pag</SelectItem>
-                <SelectItem value="50">50 / pag</SelectItem>
-                <SelectItem value="100">100 / pag</SelectItem>
+              <SelectContent>
+                <SelectItem value="25">25 / pág</SelectItem>
+                <SelectItem value="50">50 / pág</SelectItem>
+                <SelectItem value="100">100 / pág</SelectItem>
               </SelectContent>
             </Select>
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-lg transition-colors disabled:opacity-50"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
+              className="p-1.5 rounded-lg border disabled:opacity-50"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm px-2" style={{ color: "var(--admin-text-secondary)" }}>
+            <span className="text-sm px-2">
               {currentPage} / {totalPages || 1}
             </span>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="p-1.5 rounded-lg transition-colors disabled:opacity-50"
-              style={{ background: "var(--admin-bg-tertiary)", color: "var(--admin-text-secondary)" }}
+              className="p-1.5 rounded-lg border disabled:opacity-50"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

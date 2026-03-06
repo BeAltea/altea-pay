@@ -85,19 +85,50 @@ export default async function DashboardPage() {
     page++
   }
 
-  // Fetch agreements/negotiations
-  const { data: agreements } = await supabase
-    .from("agreements")
-    .select("*")
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: false })
+  // Fetch agreements/negotiations with pagination
+  let allAgreements: any[] = []
+  let agreementPage = 0
 
-  // Build customer name lookup map from agreements
-  const agreementCustomerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
+  while (true) {
+    const { data: pageData } = await supabase
+      .from("agreements")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .range(agreementPage * pageSize, (agreementPage + 1) * pageSize - 1)
+
+    if (!pageData || pageData.length === 0) break
+    allAgreements = [...allAgreements, ...pageData]
+    if (pageData.length < pageSize) break
+    agreementPage++
+  }
+
+  // Build customer_id -> document map from customers table
+  const agreementCustomerIds = [...new Set(allAgreements.map((a: any) => a.customer_id).filter(Boolean))]
+  const customerIdToDoc = new Map<string, string>()
   let customerNameMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
 
   if (agreementCustomerIds.length > 0) {
-    // First try VMAX table
+    // Fetch customers in batches
+    for (let i = 0; i < agreementCustomerIds.length; i += 500) {
+      const batch = agreementCustomerIds.slice(i, i + 500)
+      const { data: customersData } = await supabase
+        .from("customers")
+        .select("id, name, document")
+        .in("id", batch)
+
+      if (customersData) {
+        customersData.forEach((c: any) => {
+          const normalizedDoc = (c.document || "").replace(/\D/g, "")
+          if (normalizedDoc) {
+            customerIdToDoc.set(c.id, normalizedDoc)
+          }
+          customerNameMap.set(c.id, { name: c.name, cpfCnpj: c.document })
+        })
+      }
+    }
+
+    // Also try VMAX table for customer names
     const { data: vmaxCustomers } = await supabase
       .from("VMAX")
       .select("id, Cliente, \"CPF/CNPJ\"")
@@ -105,59 +136,48 @@ export default async function DashboardPage() {
 
     if (vmaxCustomers) {
       vmaxCustomers.forEach((c: any) => {
-        customerNameMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"] })
+        if (!customerNameMap.has(c.id)) {
+          customerNameMap.set(c.id, { name: c.Cliente, cpfCnpj: c["CPF/CNPJ"] })
+        }
+        // Also add to doc map if not already there
+        const normalizedDoc = (c["CPF/CNPJ"] || "").replace(/\D/g, "")
+        if (normalizedDoc && !customerIdToDoc.has(c.id)) {
+          customerIdToDoc.set(c.id, normalizedDoc)
+        }
       })
-    }
-
-    // For any customer_ids not found in VMAX, try customers table
-    const missingIds = agreementCustomerIds.filter(id => !customerNameMap.has(id))
-    if (missingIds.length > 0) {
-      const { data: customers } = await supabase
-        .from("customers")
-        .select("id, name, document")
-        .in("id", missingIds)
-
-      if (customers) {
-        customers.forEach((c: any) => {
-          customerNameMap.set(c.id, { name: c.name, cpfCnpj: c.document })
-        })
-      }
     }
   }
 
-  // Build map of customer_id -> agreement status (for ASAAS-backed negotiation status)
-  // This tracks UNIQUE CUSTOMERS to align with Super Admin logic
-  const agreementStatusMap = new Map<string, { hasCharge: boolean; isPaid: boolean; isCancelled: boolean; hasActiveAgreement: boolean }>()
-  const allAgreements = agreements || []
-  // Active agreements exclude cancelled for stats calculation
+  // Build map of DOCUMENT -> agreement status (matching Super Admin logic)
+  // KEY BY DOCUMENT (CPF/CNPJ), not customer_id, for consistent counts
+  const docToStatus = new Map<string, { hasActiveAgreement: boolean; isPaid: boolean }>()
   const activeAgreements = allAgreements.filter((a: any) => a.status !== "cancelled")
 
-  allAgreements.forEach((a: any) => {
-    const customerId = a.customer_id
-    if (!customerId) return
+  for (const a of allAgreements) {
+    const normalizedDoc = customerIdToDoc.get(a.customer_id)
+    if (!normalizedDoc) continue
 
-    const existing = agreementStatusMap.get(customerId) || { hasCharge: false, isPaid: false, isCancelled: false, hasActiveAgreement: false }
+    const existing = docToStatus.get(normalizedDoc) || { hasActiveAgreement: false, isPaid: false }
 
-    // Track if cancelled - cancelled agreements should not count as "sent"
-    if (a.status === "cancelled") {
-      existing.isCancelled = true
-    } else {
-      // Has at least one non-cancelled agreement
+    // Track non-cancelled agreements
+    if (a.status !== "cancelled") {
       existing.hasActiveAgreement = true
     }
 
-    // Check if there's a real ASAAS charge (only count non-cancelled)
-    if (a.asaas_payment_id && a.status !== "cancelled") {
-      existing.hasCharge = true
-    }
-
-    // Check if paid
-    if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+    // Check if paid using all status indicators
+    if (
+      a.payment_status === "received" ||
+      a.payment_status === "confirmed" ||
+      a.status === "completed" ||
+      a.status === "paid" ||
+      a.asaas_status === "RECEIVED" ||
+      a.asaas_status === "CONFIRMED"
+    ) {
       existing.isPaid = true
     }
 
-    agreementStatusMap.set(customerId, existing)
-  })
+    docToStatus.set(normalizedDoc, existing)
+  }
 
   // Calculate stats - MUST MATCH Acordos page counts
   const totalClientes = vmaxRecords.length
@@ -187,21 +207,23 @@ export default async function DashboardPage() {
   })
 
   // Count negotiations - ALIGNED WITH SUPER ADMIN LOGIC
-  // Count UNIQUE CUSTOMERS with non-cancelled agreements (not agreement records)
+  // Match VMAX customers by document (CPF/CNPJ) to get correct counts
   // This ensures consistency between portals
   let customersWithNegotiation = 0
   let customersWithPaidNegotiation = 0
 
-  agreementStatusMap.forEach((status) => {
-    // Customer has at least one non-cancelled agreement
-    if (status.hasActiveAgreement) {
+  // Count by iterating VMAX records and checking document matches
+  for (const vmax of vmaxRecords) {
+    const cpfCnpj = (vmax["CPF/CNPJ"] || "").replace(/\D/g, "")
+    const status = docToStatus.get(cpfCnpj)
+
+    if (status?.hasActiveAgreement) {
       customersWithNegotiation++
     }
-    // Customer has at least one paid agreement
-    if (status.isPaid) {
+    if (status?.isPaid) {
       customersWithPaidNegotiation++
     }
-  })
+  }
 
   const negotiationsEnviadas = customersWithNegotiation
   const negotiationsPendentes = totalClientes - negotiationsEnviadas
