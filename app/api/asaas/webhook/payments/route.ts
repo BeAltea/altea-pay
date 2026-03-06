@@ -42,9 +42,10 @@ const PAYMENT_STATUS_MAP: Record<string, string> = {
 }
 
 // Agreement status based on payment events
+// Note: "completed" is the valid status value, not "paid"
 const AGREEMENT_STATUS_MAP: Record<string, string | null> = {
-  PAYMENT_RECEIVED: "paid",
-  PAYMENT_DUNNING_RECEIVED: "paid",
+  PAYMENT_RECEIVED: "completed",
+  PAYMENT_DUNNING_RECEIVED: "completed",
   PAYMENT_CONFIRMED: null, // Keep current status
   PAYMENT_OVERDUE: null, // Keep current status, just update payment_status
   PAYMENT_REFUNDED: "cancelled",
