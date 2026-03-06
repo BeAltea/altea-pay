@@ -34,7 +34,7 @@ interface AgreementCustomer {
   paymentStatus: string | null
   asaasStatus: string | null
   createdAt: string | null
-  firstDueDate: string | null
+  dueDate: string | null
 }
 
 interface AdminAcordosContentProps {
@@ -98,8 +98,8 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
           comparison = a.agreedAmount - b.agreedAmount
           break
         case "dueDate":
-          const dateA = a.firstDueDate ? new Date(a.firstDueDate).getTime() : 0
-          const dateB = b.firstDueDate ? new Date(b.firstDueDate).getTime() : 0
+          const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0
+          const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0
           comparison = dateA - dateB
           break
         case "status":
@@ -322,8 +322,8 @@ export function AdminAcordosContent({ customers, stats }: AdminAcordosContentPro
                         {customer.installments}x
                       </td>
                       <td className="px-4 py-4 text-sm">
-                        {customer.firstDueDate ? (
-                          new Date(customer.firstDueDate).toLocaleDateString("pt-BR")
+                        {customer.dueDate ? (
+                          new Date(customer.dueDate).toLocaleDateString("pt-BR")
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

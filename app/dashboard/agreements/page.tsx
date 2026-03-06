@@ -21,7 +21,7 @@ interface AgreementCustomer {
   paymentStatus: string | null
   asaasStatus: string | null
   createdAt: string | null
-  firstDueDate: string | null
+  dueDate: string | null
 }
 
 export default async function AgreementsPage() {
@@ -177,7 +177,7 @@ export default async function AgreementsPage() {
       paymentStatus: latestAgreement?.payment_status || null,
       asaasStatus: latestAgreement?.asaas_status || null,
       createdAt: latestAgreement?.created_at || null,
-      firstDueDate: latestAgreement?.first_due_date || null,
+      dueDate: latestAgreement?.due_date || null,
     })
   }
 
