@@ -284,8 +284,8 @@ export async function POST(request: NextRequest) {
       agreementUpdate.due_date = payment.dueDate
     }
 
-    // Set payment_received_at for received events
-    if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_DUNNING_RECEIVED") {
+    // Set payment_received_at for received/confirmed events
+    if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED" || event === "PAYMENT_DUNNING_RECEIVED") {
       agreementUpdate.payment_received_at = new Date().toISOString()
     }
 

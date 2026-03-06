@@ -52,6 +52,11 @@ interface ReportData {
   totalDebtValue: number
   activeNegotiations: number
   recoveryRate: number
+  // Cobranças metrics (agreement-focused)
+  cobrancasEnviadas: number
+  cobrancasPagas: number
+  valorRecebido: number
+  taxaPagamento: number
   debtsByStatus: {
     em_aberto: number
     em_negociacao: number
@@ -244,29 +249,48 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .gte("created_at", startOfDay)
         .lte("created_at", endOfDay)
 
-      // Fetch agreements paid on this date
-      const { data: paidData } = await supabase
+      // Fetch paid agreements with payment_received_at in range
+      const { data: paidWithDate } = await supabase
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .in("payment_status", ["received", "confirmed"])
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
         .gte("payment_received_at", startOfDay)
         .lte("payment_received_at", endOfDay)
 
+      // Fetch paid agreements without payment_received_at but updated in range (fallback)
+      const { data: paidWithoutDate } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("company_id", companyId)
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .is("payment_received_at", null)
+        .gte("updated_at", startOfDay)
+        .lte("updated_at", endOfDay)
+
       const sent = sentData || []
-      const paid = paidData || []
+
+      // Combine and dedupe paid agreements
+      const paidSet = new Set<string>()
+      const paid: any[] = []
+      for (const a of [...(paidWithDate || []), ...(paidWithoutDate || [])]) {
+        if (!paidSet.has(a.id)) {
+          paidSet.add(a.id)
+          paid.push(a)
+        }
+      }
 
       // Get customer info
       const allCustomerIds = [...new Set([
-        ...sent.map(a => a.customer_id),
-        ...paid.map(a => a.customer_id)
+        ...sent.map((a: any) => a.customer_id),
+        ...paid.map((a: any) => a.customer_id)
       ].filter(Boolean))]
       const customerMap = await getCustomerInfo(allCustomerIds)
 
       // Build activities
       const activities: PeriodReportData["activities"] = []
 
-      sent.forEach(a => {
+      sent.forEach((a: any) => {
         const customer = customerMap.get(a.customer_id)
         activities.push({
           id: a.id,
@@ -279,7 +303,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         })
       })
 
-      paid.forEach(a => {
+      paid.forEach((a: any) => {
         // Avoid duplicates if same agreement
         if (!activities.some(act => act.id === a.id && act.type === "paid")) {
           const customer = customerMap.get(a.customer_id)
@@ -289,7 +313,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
             customerDocument: customer?.document || "",
             type: "paid",
             value: Number(a.agreed_amount) || 0,
-            date: a.payment_received_at || a.created_at,
+            date: a.payment_received_at || a.updated_at || a.created_at,
             status: "paid",
           })
         }
@@ -300,14 +324,14 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
 
       const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
 
-      // Count unique customers, not agreement records (to match Ao Vivo's 215)
-      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
-      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
-      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
+      // Count agreement records for "Cobranças" metrics
+      const sentCount = sent.length
+      const paidCount = paid.length
+      const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
       setDailyReport({
-        sent: uniqueSentCustomers,
-        paid: uniquePaidCustomers,
+        sent: sentCount,
+        paid: paidCount,
         revenue,
         paymentRate,
         activities,
@@ -348,19 +372,38 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .gte("created_at", startStr)
         .lte("created_at", endStr)
 
-      // Fetch paid in this week
-      const { data: paidData } = await supabase
+      // Fetch paid agreements with payment_received_at in range
+      const { data: paidWithDate } = await supabase
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .in("payment_status", ["received", "confirmed"])
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
         .gte("payment_received_at", startStr)
         .lte("payment_received_at", endStr)
 
-      const sent = sentData || []
-      const paid = paidData || []
+      // Fetch paid agreements without payment_received_at but updated in range (fallback)
+      const { data: paidWithoutDate } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("company_id", companyId)
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .is("payment_received_at", null)
+        .gte("updated_at", startStr)
+        .lte("updated_at", endStr)
 
-      // Build daily breakdown - count unique customers per day
+      const sent = sentData || []
+
+      // Combine and dedupe paid agreements
+      const paidSet = new Set<string>()
+      const paid: any[] = []
+      for (const a of [...(paidWithDate || []), ...(paidWithoutDate || [])]) {
+        if (!paidSet.has(a.id)) {
+          paidSet.add(a.id)
+          paid.push(a)
+        }
+      }
+
+      // Build daily breakdown - count agreement records per day
       const dailyBreakdown: PeriodReportData["dailyBreakdown"] = []
       const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"]
 
@@ -369,39 +412,39 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         dayDate.setDate(weekStart.getDate() + i)
         const dayStr = dayDate.toISOString().split("T")[0]
 
-        const daySentAgreements = sent.filter(a => a.created_at?.startsWith(dayStr))
-        const dayPaidAgreements = paid.filter(a => a.payment_received_at?.startsWith(dayStr))
-        const dayRevenue = dayPaidAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+        const daySentAgreements = sent.filter((a: any) => a.created_at?.startsWith(dayStr))
+        const dayPaidAgreements = paid.filter((a: any) => {
+          const paymentDate = a.payment_received_at || a.updated_at
+          return paymentDate?.startsWith(dayStr)
+        })
+        const dayRevenue = dayPaidAgreements.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
-        // Count unique customers, not agreement records
-        const daySentCustomers = new Set(daySentAgreements.map(a => a.customer_id)).size
-        const dayPaidCustomers = new Set(dayPaidAgreements.map(a => a.customer_id)).size
-
+        // Count agreement records for "Cobranças" metrics
         dailyBreakdown.push({
           day: dayStr,
           dayLabel: `${dayNames[dayDate.getDay()]} ${dayDate.getDate()}/${dayDate.getMonth() + 1}`,
-          sent: daySentCustomers,
-          paid: dayPaidCustomers,
+          sent: daySentAgreements.length,
+          paid: dayPaidAgreements.length,
           revenue: dayRevenue,
         })
       }
 
-      const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+      const revenue = paid.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
-      // Count unique customers, not agreement records (to match Ao Vivo's 215)
-      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
-      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
-      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
+      // Count agreement records for "Cobranças" metrics
+      const sentCount = sent.length
+      const paidCount = paid.length
+      const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
       // Get customer info for activities
       const allCustomerIds = [...new Set([
-        ...sent.map(a => a.customer_id),
-        ...paid.map(a => a.customer_id)
+        ...sent.map((a: any) => a.customer_id),
+        ...paid.map((a: any) => a.customer_id)
       ].filter(Boolean))]
       const customerMap = await getCustomerInfo(allCustomerIds)
 
       const activities: PeriodReportData["activities"] = []
-      sent.forEach(a => {
+      sent.forEach((a: any) => {
         const customer = customerMap.get(a.customer_id)
         activities.push({
           id: a.id,
@@ -415,8 +458,8 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       })
 
       setWeeklyReport({
-        sent: uniqueSentCustomers,
-        paid: uniquePaidCustomers,
+        sent: sentCount,
+        paid: paidCount,
         revenue,
         paymentRate,
         activities,
@@ -451,14 +494,24 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .gte("created_at", startStr)
         .lte("created_at", endStr)
 
-      // Fetch paid in this month
-      const { data: paidData } = await supabase
+      // Fetch paid agreements with payment_received_at in range
+      const { data: paidWithDate } = await supabase
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .in("payment_status", ["received", "confirmed"])
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
         .gte("payment_received_at", startStr)
         .lte("payment_received_at", endStr)
+
+      // Fetch paid agreements without payment_received_at but updated in range (fallback)
+      const { data: paidWithoutDate } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("company_id", companyId)
+        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .is("payment_received_at", null)
+        .gte("updated_at", startStr)
+        .lte("updated_at", endStr)
 
       // Fetch all agreements for status breakdown
       const { data: allAgreements } = await supabase
@@ -469,10 +522,20 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .lte("created_at", endStr)
 
       const sent = sentData || []
-      const paid = paidData || []
+
+      // Combine and dedupe paid agreements
+      const paidSet = new Set<string>()
+      const paid: any[] = []
+      for (const a of [...(paidWithDate || []), ...(paidWithoutDate || [])]) {
+        if (!paidSet.has(a.id)) {
+          paidSet.add(a.id)
+          paid.push(a)
+        }
+      }
+
       const all = allAgreements || []
 
-      // Build weekly breakdown - count unique customers per week
+      // Build weekly breakdown - count agreement records per week
       const weeklyBreakdown: PeriodReportData["weeklyBreakdown"] = []
       const weeksInMonth = Math.ceil(end.getDate() / 7)
 
@@ -480,49 +543,55 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         const weekStartDay = w * 7 + 1
         const weekEndDay = Math.min((w + 1) * 7, end.getDate())
 
-        const weekSentAgreements = sent.filter(a => {
+        const weekSentAgreements = sent.filter((a: any) => {
           const day = new Date(a.created_at).getDate()
           return day >= weekStartDay && day <= weekEndDay
         })
 
-        const weekPaidAgreements = paid.filter(a => {
-          const day = new Date(a.payment_received_at || a.created_at).getDate()
+        const weekPaidAgreements = paid.filter((a: any) => {
+          const paymentDate = a.payment_received_at || a.updated_at
+          const day = new Date(paymentDate).getDate()
           return day >= weekStartDay && day <= weekEndDay
         })
-        const weekRevenue = weekPaidAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+        const weekRevenue = weekPaidAgreements.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
-        // Count unique customers, not agreement records
-        const weekSentCustomers = new Set(weekSentAgreements.map(a => a.customer_id)).size
-        const weekPaidCustomers = new Set(weekPaidAgreements.map(a => a.customer_id)).size
-
+        // Count agreement records for "Cobranças" metrics
         weeklyBreakdown.push({
           week: `Semana ${w + 1}`,
           weekLabel: `${weekStartDay.toString().padStart(2, "0")}-${weekEndDay.toString().padStart(2, "0")}`,
-          sent: weekSentCustomers,
-          paid: weekPaidCustomers,
+          sent: weekSentAgreements.length,
+          paid: weekPaidAgreements.length,
           revenue: weekRevenue,
         })
       }
 
-      // Status breakdown - count unique customers per status
-      const aguardandoCustomers = new Set(all.filter(a => a.status !== "cancelled" && !["received", "confirmed"].includes(a.payment_status || "") && a.payment_status !== "overdue").map(a => a.customer_id))
-      const pagoCustomers = new Set(all.filter(a => ["received", "confirmed"].includes(a.payment_status || "")).map(a => a.customer_id))
-      const vencidaCustomers = new Set(all.filter(a => a.payment_status === "overdue").map(a => a.customer_id))
-      const canceladaCustomers = new Set(all.filter(a => a.status === "cancelled").map(a => a.customer_id))
+      // Status breakdown - count agreement records per status
+      const aguardandoCount = all.filter((a: any) =>
+        a.status !== "cancelled" &&
+        !["received", "confirmed"].includes(a.payment_status || "") &&
+        !["completed", "paid"].includes(a.status || "") &&
+        a.payment_status !== "overdue"
+      ).length
+      const pagoCount = all.filter((a: any) =>
+        ["received", "confirmed"].includes(a.payment_status || "") ||
+        ["completed", "paid"].includes(a.status || "")
+      ).length
+      const vencidaCount = all.filter((a: any) => a.payment_status === "overdue").length
+      const canceladaCount = all.filter((a: any) => a.status === "cancelled").length
 
       const statusBreakdown = {
-        aguardando: aguardandoCustomers.size,
-        pago: pagoCustomers.size,
-        vencida: vencidaCustomers.size,
-        cancelada: canceladaCustomers.size,
+        aguardando: aguardandoCount,
+        pago: pagoCount,
+        vencida: vencidaCount,
+        cancelada: canceladaCount,
       }
 
-      const revenue = paid.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+      const revenue = paid.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
-      // Count unique customers, not agreement records (to match Ao Vivo's 215)
-      const uniqueSentCustomers = new Set(sent.map(a => a.customer_id)).size
-      const uniquePaidCustomers = new Set(paid.map(a => a.customer_id)).size
-      const paymentRate = uniqueSentCustomers > 0 ? (uniquePaidCustomers / uniqueSentCustomers) * 100 : 0
+      // Count agreement records for "Cobranças" metrics
+      const sentCount = sent.length
+      const paidCount = paid.length
+      const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
       // Get customer info for top payments
       const allCustomerIds = [...new Set(paid.map(a => a.customer_id).filter(Boolean))]
@@ -539,14 +608,14 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
             customerDocument: customer?.document || "",
             type: "paid" as const,
             value: Number(a.agreed_amount) || 0,
-            date: a.payment_received_at || a.created_at,
+            date: a.payment_received_at || a.updated_at || a.created_at,
             status: "paid",
           }
         })
 
       setMonthlyReport({
-        sent: uniqueSentCustomers,
-        paid: uniquePaidCustomers,
+        sent: sentCount,
+        paid: paidCount,
         revenue,
         paymentRate,
         activities,
@@ -669,7 +738,15 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       {/* Live Tab */}
       {activeTab === "live" && (
         <div className="space-y-6">
-          {/* KPIs Row */}
+          {/* Cobranças KPIs Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KPICard icon={Send} label="Cobrancas Enviadas" value={reportData.cobrancasEnviadas.toLocaleString("pt-BR")} color="#EAB308" />
+            <KPICard icon={CheckCircle} label="Cobrancas Pagas" value={reportData.cobrancasPagas.toLocaleString("pt-BR")} color="#22C55E" />
+            <KPICard icon={DollarSign} label="Valor Recebido" value={formatCurrency(reportData.valorRecebido)} color="#22C55E" />
+            <KPICard icon={TrendingUp} label="Taxa de Pagamento" value={`${reportData.taxaPagamento.toFixed(1)}%`} color="var(--admin-blue)" />
+          </div>
+
+          {/* Debt Overview KPIs Row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <KPICard icon={CreditCard} label="Dividas Ativas" value={reportData.totalDebts.toLocaleString("pt-BR")} color="var(--admin-blue)" />
             <KPICard icon={DollarSign} label="Valor em Aberto" value={formatCurrency(reportData.totalDebtValue)} color="var(--admin-red)" />

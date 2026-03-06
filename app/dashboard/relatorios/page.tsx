@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { AdminRelatoriosContent } from "@/components/dashboard/admin-relatorios-content"
+import { PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 
@@ -183,14 +184,32 @@ export default async function RelatoriosPage() {
     }
   }
 
+  // Calculate Cobranças metrics (agreement-level, not customer-level)
+  const nonCancelledAgreements = (agreements || []).filter(a => a.status !== "cancelled")
+  const paidAgreements = nonCancelledAgreements.filter(a =>
+    PAID_AGREEMENT_STATUSES.includes(a.status) ||
+    PAID_PAYMENT_STATUSES.includes(a.payment_status) ||
+    PAID_ASAAS_STATUSES.includes(a.asaas_status)
+  )
+  const cobrancasEnviadas = nonCancelledAgreements.length
+  const cobrancasPagas = paidAgreements.length
+  const valorRecebido = paidAgreements.reduce((sum, a) => sum + (Number(a.agreed_amount) || 0), 0)
+  const taxaPagamento = cobrancasEnviadas > 0 ? (cobrancasPagas / cobrancasEnviadas) * 100 : 0
+
   // Calculate report data - counting VMAX customers (not agreement records)
   const reportData = {
-    // Live stats
+    // Live stats (debt-focused)
     totalDebts: vmaxRecords.length,
     totalDebtValue,
     // Count VMAX customers with active negotiations (matches Super Admin's 215)
     activeNegotiations: totalWithNegotiation,
     recoveryRate: totalDebtValue > 0 ? (totalRecoveredValue / totalDebtValue) * 100 : 0,
+
+    // Cobranças metrics (agreement-focused) - NEW
+    cobrancasEnviadas,
+    cobrancasPagas,
+    valorRecebido,
+    taxaPagamento,
 
     // Debt by status - count VMAX customers (not agreement records)
     debtsByStatus: {
