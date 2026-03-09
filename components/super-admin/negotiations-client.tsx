@@ -178,6 +178,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
   // Selection dropdown state
   const [selectionDropdownOpen, setSelectionDropdownOpen] = useState(false)
+  const [customSelectionCount, setCustomSelectionCount] = useState<string>("")
 
   // Background job tracking state
   const [backgroundJob, setBackgroundJob] = useState<{
@@ -574,9 +575,10 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     }
   }
 
-  // Handle select a specific count from displayed customers
+  // Handle select a specific count from ALL filtered customers (not just displayed)
   const handleSelectCount = (count: number) => {
-    const toSelect = selectableCustomers.slice(0, count)
+    // Use allSelectableFiltered (all filtered, non-paid customers) instead of selectableCustomers (display-limited)
+    const toSelect = allSelectableFiltered.slice(0, count)
     const newSelected = new Set(toSelect.map((c) => c.id))
     setSelectedCustomers(newSelected)
   }
@@ -1482,28 +1484,31 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
 
                 {selectionDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[280px] py-1">
-                    {[50, 100, 150, 200, 300, 500].map((count) => {
-                      const available = selectableCustomers.length
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[300px] py-1">
+                    {/* Quick selection buttons */}
+                    {[50, 100, 200, 500].map((count) => {
+                      // Use allSelectableFiltered (all filtered customers) instead of selectableCustomers (display-limited)
+                      const available = allSelectableFiltered.length
                       const actualCount = Math.min(count, available)
+                      const isDisabled = available === 0 || count > available
                       return (
                         <button
                           key={count}
                           onClick={() => {
-                            handleSelectCount(actualCount)
+                            handleSelectCount(count)
                             setSelectionDropdownOpen(false)
                           }}
-                          disabled={available === 0}
+                          disabled={isDisabled}
                           className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                            available === 0
+                            isDisabled
                               ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
                               : "hover:bg-yellow-50 dark:hover:bg-yellow-950/30 text-gray-700 dark:text-gray-300"
                           }`}
                         >
                           Selecionar {count} primeiros
-                          {available < count && available > 0 && (
+                          {count > available && available > 0 && (
                             <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">
-                              (apenas {available})
+                              (apenas {available.toLocaleString("pt-BR")} disponíveis)
                             </span>
                           )}
                         </button>
@@ -1512,6 +1517,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
                     <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
 
+                    {/* Select all */}
                     <button
                       onClick={() => {
                         handleSelectAllFiltered()
@@ -1529,6 +1535,55 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
 
                     <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
 
+                    {/* Custom number input */}
+                    <div className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={allSelectableFiltered.length}
+                          placeholder="Ex: 347"
+                          className="h-8 text-sm w-24"
+                          value={customSelectionCount}
+                          onChange={(e) => setCustomSelectionCount(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && customSelectionCount) {
+                              const count = parseInt(customSelectionCount, 10)
+                              if (count > 0 && count <= allSelectableFiltered.length) {
+                                handleSelectCount(count)
+                                setSelectionDropdownOpen(false)
+                                setCustomSelectionCount("")
+                              }
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-sm"
+                          disabled={!customSelectionCount || parseInt(customSelectionCount, 10) <= 0 || parseInt(customSelectionCount, 10) > allSelectableFiltered.length}
+                          onClick={() => {
+                            const count = parseInt(customSelectionCount, 10)
+                            if (count > 0 && count <= allSelectableFiltered.length) {
+                              handleSelectCount(count)
+                              setSelectionDropdownOpen(false)
+                              setCustomSelectionCount("")
+                            }
+                          }}
+                        >
+                          Selecionar
+                        </Button>
+                      </div>
+                      {allSelectableFiltered.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Máx: {allSelectableFiltered.length.toLocaleString("pt-BR")}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+
+                    {/* Clear selection */}
                     <button
                       onClick={() => {
                         handleClearSelection()
