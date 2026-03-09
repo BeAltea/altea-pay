@@ -200,6 +200,42 @@ function validateBrazilianPhone(phone: string | null | undefined): {
   return { isValid: true, cleaned };
 }
 
+// Validate and sanitize email for ASAAS
+function validateEmail(email: string | null | undefined): {
+  isValid: boolean;
+  cleaned: string;
+  reason?: string;
+} {
+  if (!email) {
+    return { isValid: false, cleaned: '', reason: 'Email não informado' };
+  }
+
+  // Trim whitespace and convert to lowercase
+  const cleaned = email.trim().toLowerCase();
+
+  if (!cleaned) {
+    return { isValid: false, cleaned: '', reason: 'Email vazio após limpeza' };
+  }
+
+  // Basic email regex validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleaned)) {
+    return { isValid: false, cleaned, reason: 'Formato de email inválido' };
+  }
+
+  // Check for common invalid patterns
+  if (cleaned.includes('..') || cleaned.startsWith('.') || cleaned.endsWith('.')) {
+    return { isValid: false, cleaned, reason: 'Email com pontos inválidos' };
+  }
+
+  // Check minimum length (a@b.co = 6 chars minimum)
+  if (cleaned.length < 6) {
+    return { isValid: false, cleaned, reason: 'Email muito curto' };
+  }
+
+  return { isValid: true, cleaned };
+}
+
 async function processSingleNegotiation(
   vmaxId: string,
   params: BulkNegotiationsJobData,
@@ -261,7 +297,7 @@ async function processSingleNegotiation(
   }
 
   let customerPhone = (vmax['Telefone 1'] || vmax['Telefone 2'] || vmax['Telefone'] || '').replace(/\D/g, '');
-  let customerEmail = vmax.Email || '';
+  let rawEmail = vmax.Email || '';
 
   const { data: existingCustomerData } = await supabase
     .from('customers')
@@ -272,17 +308,24 @@ async function processSingleNegotiation(
 
   if (existingCustomerData) {
     if (existingCustomerData.phone) customerPhone = existingCustomerData.phone.replace(/\D/g, '');
-    if (existingCustomerData.email) customerEmail = existingCustomerData.email;
+    if (existingCustomerData.email) rawEmail = existingCustomerData.email;
   }
 
   const phoneValidation = validateBrazilianPhone(customerPhone);
+  const emailValidation = validateEmail(rawEmail);
+
+  // Use validated/cleaned email for ASAAS, raw email for DB storage
+  const customerEmail = rawEmail.trim(); // For DB storage (preserve original casing)
+  const asaasEmail = emailValidation.isValid ? emailValidation.cleaned : undefined; // For ASAAS API
 
   let notificationChannel: 'whatsapp' | 'email' | 'none' = 'none';
   if (phoneValidation.isValid && params.notificationChannels.includes('whatsapp')) {
     notificationChannel = 'whatsapp';
-  } else if (customerEmail && params.notificationChannels.includes('whatsapp')) {
+  } else if (emailValidation.isValid && params.notificationChannels.includes('email')) {
     notificationChannel = 'email';
     console.log(`[BULK-NEGOTIATIONS] ${customerName}: Phone invalid (${phoneValidation.reason}), using email fallback`);
+  } else if (!phoneValidation.isValid && !emailValidation.isValid) {
+    console.log(`[BULK-NEGOTIATIONS] ${customerName}: No valid contact - Phone: ${phoneValidation.reason}, Email: ${emailValidation.reason}`);
   }
 
   const asaasPhone = phoneValidation.isValid ? phoneValidation.cleaned : undefined;
@@ -410,7 +453,7 @@ async function processSingleNegotiation(
         asaasCustomerCreated = true;
         await updateAsaasCustomer(asaasCustomerId, {
           mobilePhone: asaasPhone,
-          email: customerEmail || undefined,
+          email: asaasEmail, // Use validated email for ASAAS
           notificationDisabled: false,
         });
       } else {
@@ -418,7 +461,7 @@ async function processSingleNegotiation(
           name: customerName,
           cpfCnpj,
           mobilePhone: asaasPhone,
-          email: customerEmail || undefined,
+          email: asaasEmail, // Use validated email for ASAAS
           notificationDisabled: false,
         });
         asaasCustomerId = newAsaas.id;
