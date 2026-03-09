@@ -1482,8 +1482,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
 
                 {selectionDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[260px] py-1">
-                    {[10, 20, 30, 40, 50].map((count) => {
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 min-w-[280px] py-1">
+                    {[50, 100, 150, 200, 300, 500].map((count) => {
                       const available = selectableCustomers.length
                       const actualCount = Math.min(count, available)
                       return (
@@ -1500,17 +1500,11 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                               : "hover:bg-yellow-50 dark:hover:bg-yellow-950/30 text-gray-700 dark:text-gray-300"
                           }`}
                         >
-                          {count === 50 ? (
-                            <>Selecionar {available} (página)</>
-                          ) : (
-                            <>
-                              Selecionar {count} primeiros
-                              {available < count && available > 0 && (
-                                <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">
-                                  (apenas {available})
-                                </span>
-                              )}
-                            </>
+                          Selecionar {count} primeiros
+                          {available < count && available > 0 && (
+                            <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">
+                              (apenas {available})
+                            </span>
                           )}
                         </button>
                       )

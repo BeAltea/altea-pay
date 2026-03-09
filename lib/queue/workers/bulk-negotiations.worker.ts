@@ -96,6 +96,16 @@ const STEP_LABELS: Record<NegotiationStep, string> = {
   completed: 'Concluído',
 };
 
+// Rate limiting configuration
+// ASAAS allows 25,000 requests per 12-hour window
+// Safe throughput: 5 requests/second (well within limits)
+const BATCH_SIZE = 5;
+const BATCH_DELAY_MS = 1000; // 1 second between batches = ~5 req/s
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getSupabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -727,10 +737,13 @@ export const bulkNegotiationsWorker = WorkerManager.registerWorker<BulkNegotiati
     };
 
     const allResults: NegotiationResult[] = [];
-    const CHUNK_SIZE = 5;
+    const totalChunks = Math.ceil(params.customerIds.length / BATCH_SIZE);
 
-    for (let i = 0; i < params.customerIds.length; i += CHUNK_SIZE) {
-      const chunk = params.customerIds.slice(i, i + CHUNK_SIZE);
+    console.log(`[BULK-NEGOTIATIONS] Processing ${params.customerIds.length} negotiations in ${totalChunks} batches of ${BATCH_SIZE} (rate: ~${BATCH_SIZE} req/s)`);
+
+    for (let i = 0; i < params.customerIds.length; i += BATCH_SIZE) {
+      const chunk = params.customerIds.slice(i, i + BATCH_SIZE);
+      const chunkNumber = Math.floor(i / BATCH_SIZE) + 1;
 
       // Process chunk in parallel
       const chunkResults = await Promise.allSettled(
@@ -764,8 +777,14 @@ export const bulkNegotiationsWorker = WorkerManager.registerWorker<BulkNegotiati
       await job.updateProgress(progress);
 
       console.log(
-        `[BULK-NEGOTIATIONS] Progress: ${progress.processed}/${progress.total} (${progress.percentage}%) - Sent: ${progress.sent}, Failed: ${progress.failed}`
+        `[BULK-NEGOTIATIONS] Batch ${chunkNumber}/${totalChunks} complete: ${progress.processed}/${progress.total} (${progress.percentage}%) - Sent: ${progress.sent}, Failed: ${progress.failed}`
       );
+
+      // Rate limiting: pause between batches to stay within ASAAS limits (~5 req/s)
+      // Skip delay on last batch
+      if (i + BATCH_SIZE < params.customerIds.length) {
+        await sleep(BATCH_DELAY_MS);
+      }
     }
 
     // Final progress

@@ -96,40 +96,90 @@ async function getBaseUrl(): Promise<string> {
   return "http://localhost:3000"
 }
 
+const MAX_RATE_LIMIT_RETRIES = 3
+const DEFAULT_RATE_LIMIT_WAIT_MS = 30000 // 30 seconds default
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function asaasRequestDirect(endpoint: string, method = "GET", body?: unknown): Promise<any> {
   const apiKey = process.env.ASAAS_API_KEY!
   const url = `${ASAAS_API_URL}${endpoint}`
 
-  console.log("[ASAAS-DIRECT]", method, endpoint)
+  let attempt = 0
 
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "access_token": apiKey,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  })
+  while (attempt < MAX_RATE_LIMIT_RETRIES) {
+    attempt++
+    console.log("[ASAAS-DIRECT]", method, endpoint, attempt > 1 ? `(attempt ${attempt})` : "")
 
-  const contentType = res.headers.get("content-type") || ""
-  if (!contentType.includes("application/json")) {
-    const text = await res.text()
-    console.error("[ASAAS-DIRECT] Non-JSON response:", res.status, text.substring(0, 300))
-    throw new Error(`Erro ASAAS (status ${res.status})`)
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "access_token": apiKey,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    })
+
+    // Handle rate limiting (HTTP 429)
+    if (res.status === 429) {
+      // Get wait time from headers or use default
+      const retryAfter = res.headers.get("Retry-After")
+      const rateLimitReset = res.headers.get("RateLimit-Reset")
+
+      let waitMs = DEFAULT_RATE_LIMIT_WAIT_MS
+      if (retryAfter) {
+        waitMs = parseInt(retryAfter, 10) * 1000
+      } else if (rateLimitReset) {
+        waitMs = parseInt(rateLimitReset, 10) * 1000
+      }
+
+      // Add small buffer
+      waitMs += 2000
+
+      console.warn(`[ASAAS-DIRECT] Rate limited (429). Waiting ${waitMs}ms before retry ${attempt}/${MAX_RATE_LIMIT_RETRIES}`)
+
+      if (attempt < MAX_RATE_LIMIT_RETRIES) {
+        await sleep(waitMs)
+        continue
+      } else {
+        const error: any = new Error(`ASAAS rate limit exceeded after ${MAX_RATE_LIMIT_RETRIES} retries`)
+        error.response = { status: 429, data: { errors: [{ description: "Rate limit exceeded" }] } }
+        error.rateLimited = true
+        throw error
+      }
+    }
+
+    const contentType = res.headers.get("content-type") || ""
+    if (!contentType.includes("application/json")) {
+      const text = await res.text()
+      console.error("[ASAAS-DIRECT] Non-JSON response:", res.status, text.substring(0, 300))
+      throw new Error(`Erro ASAAS (status ${res.status})`)
+    }
+
+    const json = await res.json()
+
+    if (!res.ok) {
+      const msg = json.errors?.[0]?.description || json.error || `Erro Asaas (${res.status})`
+      console.error("[ASAAS-DIRECT] Error:", res.status, JSON.stringify(json))
+      const error: any = new Error(msg)
+      error.response = { status: res.status, data: json }
+      throw error
+    }
+
+    // Log rate limit headers for monitoring (optional)
+    const rateLimitRemaining = res.headers.get("RateLimit-Remaining")
+    if (rateLimitRemaining && parseInt(rateLimitRemaining, 10) < 100) {
+      console.warn(`[ASAAS-DIRECT] Rate limit low: ${rateLimitRemaining} requests remaining`)
+    }
+
+    return json
   }
 
-  const json = await res.json()
-
-  if (!res.ok) {
-    const msg = json.errors?.[0]?.description || json.error || `Erro Asaas (${res.status})`
-    console.error("[ASAAS-DIRECT] Error:", res.status, JSON.stringify(json))
-    const error: any = new Error(msg)
-    error.response = { status: res.status, data: json }
-    throw error
-  }
-
-  return json
+  // Should never reach here, but just in case
+  throw new Error("ASAAS request failed: max retries exceeded")
 }
 
 async function asaasRequestProxy(endpoint: string, method = "GET", body?: unknown): Promise<any> {
