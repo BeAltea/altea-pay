@@ -141,10 +141,40 @@ export async function GET(request: NextRequest) {
             docsWithActiveAgreements.add(normalizedDoc)
           }
         }
-        // Store the payment status for this customer (latest agreement takes precedence)
-        // Only store if this is the latest non-cancelled agreement OR there's no active agreement
+        // Store the payment status for this customer
+        // Prioritize agreements with asaas_payment_id and due_date over those without
         const existingStatus = docToPaymentStatus.get(normalizedDoc)
-        if (!existingStatus || a.status !== "cancelled") {
+
+        // Calculate a "quality score" for the current agreement
+        // Higher score = better agreement to use for display
+        const currentHasAsaasId = !!a.asaas_payment_id
+        const currentHasDueDate = !!a.due_date
+        const currentIsActive = a.status !== "cancelled"
+
+        // Determine if we should use this agreement over the existing one
+        let shouldUseThisAgreement = false
+
+        if (!existingStatus) {
+          // No existing data, use this one
+          shouldUseThisAgreement = true
+        } else if (!currentIsActive) {
+          // Current agreement is cancelled, don't overwrite with it
+          shouldUseThisAgreement = false
+        } else {
+          // Both exist and current is not cancelled - compare quality
+          const existingHasAsaasId = !!existingStatus.asaasPaymentId
+          const existingHasDueDate = !!existingStatus.dueDate
+
+          // Prioritize: asaas_payment_id + due_date > asaas_payment_id only > due_date only > neither
+          const currentScore = (currentHasAsaasId ? 2 : 0) + (currentHasDueDate ? 1 : 0)
+          const existingScore = (existingHasAsaasId ? 2 : 0) + (existingHasDueDate ? 1 : 0)
+
+          // Only overwrite if current has better or equal score
+          // (equal score means we keep the first one found, which is fine)
+          shouldUseThisAgreement = currentScore > existingScore
+        }
+
+        if (shouldUseThisAgreement) {
           docToPaymentStatus.set(normalizedDoc, {
             paymentStatus: a.payment_status || null,
             asaasStatus: a.asaas_status || null,
