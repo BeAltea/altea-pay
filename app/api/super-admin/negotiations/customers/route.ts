@@ -72,17 +72,59 @@ export async function GET(request: NextRequest) {
     // Include "completed"/"paid" for paid agreements and "cancelled" for cancelled negotiations
     // Also fetch notification viewed fields for visualization tracking
     // JOIN with customers to get document directly (more reliable than separate lookup)
-    const { data: agreements } = await supabase
-      .from("agreements")
-      .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, due_date, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
-      .eq("company_id", companyId)
-      .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
+    // IMPORTANT: Use pagination to avoid Supabase 1000-row default limit
+    let agreements: any[] = []
+    let agreementPage = 0
+    let agreementHasMore = true
+
+    while (agreementHasMore) {
+      const { data: agreementPage_, error: agreementError } = await supabase
+        .from("agreements")
+        .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, due_date, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
+        .eq("company_id", companyId)
+        .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
+        .range(agreementPage * pageSize, (agreementPage + 1) * pageSize - 1)
+
+      if (agreementError) {
+        console.error("[v0] Agreements fetch error:", agreementError.message)
+        break
+      }
+
+      if (agreementPage_ && agreementPage_.length > 0) {
+        agreements = [...agreements, ...agreementPage_]
+        agreementPage++
+        agreementHasMore = agreementPage_.length === pageSize
+      } else {
+        agreementHasMore = false
+      }
+    }
 
     // Load customers mapping (document -> customer data) so we can match agreements and get contact info
-    const { data: dbCustomers } = await supabase
-      .from("customers")
-      .select("id, document, email, phone")
-      .eq("company_id", companyId)
+    // IMPORTANT: Use pagination to avoid Supabase 1000-row default limit
+    let dbCustomers: any[] = []
+    let customerPage = 0
+    let customerHasMore = true
+
+    while (customerHasMore) {
+      const { data: customerPage_, error: customerError } = await supabase
+        .from("customers")
+        .select("id, document, email, phone")
+        .eq("company_id", companyId)
+        .range(customerPage * pageSize, (customerPage + 1) * pageSize - 1)
+
+      if (customerError) {
+        console.error("[v0] Customers fetch error:", customerError.message)
+        break
+      }
+
+      if (customerPage_ && customerPage_.length > 0) {
+        dbCustomers = [...dbCustomers, ...customerPage_]
+        customerPage++
+        customerHasMore = customerPage_.length === pageSize
+      } else {
+        customerHasMore = false
+      }
+    }
 
     // Build maps for document -> customer id and document -> contact info
     // IMPORTANT: All documents must be normalized (digits only) for consistent lookups
