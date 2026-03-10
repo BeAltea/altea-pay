@@ -38,6 +38,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { ReadOnlyGuard, useCanPerformActions } from "@/components/super-admin/read-only-guard"
+import { CreateNegotiationRequestDialog } from "@/components/super-admin/create-negotiation-request-dialog"
 
 type VmaxCustomer = {
   id: string
@@ -1635,7 +1636,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                 </button>
                 <span className="w-[70px] flex-shrink-0 text-center whitespace-nowrap" title="Visualizada">Visual.</span>
                 <span className="w-[70px] flex-shrink-0 text-center whitespace-nowrap">Canc.</span>
-                <span className="w-[80px] flex-shrink-0 text-center">Ações</span>
+                <span className="w-[130px] flex-shrink-0 text-center">Ações</span>
               </div>
               {/* Mobile headers */}
               <div className="flex-1 lg:hidden flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -1770,21 +1771,39 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
                         )}
                       </div>
                       {/* Actions */}
-                      <div className="w-[80px] flex-shrink-0 flex justify-center">
+                      <div className="w-[130px] flex-shrink-0 flex justify-center gap-1">
                         {customer.asaasPaymentId &&
                          customer.asaasStatus !== "RECEIVED" &&
                          customer.asaasStatus !== "CONFIRMED" &&
                          customer.asaasStatus !== "DELETED" ? (
-                          <ReadOnlyGuard fallback={<span className="text-xs text-muted-foreground">—</span>}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                              onClick={() => handleCancelNegotiation(customer)}
-                            >
-                              Cancelar
-                            </Button>
-                          </ReadOnlyGuard>
+                          <>
+                            <ReadOnlyGuard fallback={null}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                onClick={() => handleCancelNegotiation(customer)}
+                              >
+                                Cancelar
+                              </Button>
+                            </ReadOnlyGuard>
+                            <ReadOnlyGuard fallback={null}>
+                              <CreateNegotiationRequestDialog
+                                customer={{
+                                  id: customer.id,
+                                  name: customer.name,
+                                  document: customer.document,
+                                  email: customer.email,
+                                  phone: customer.phone,
+                                  totalDebt: customer.totalDebt,
+                                  agreementId: customer.agreementId,
+                                  asaasPaymentId: customer.asaasPaymentId,
+                                }}
+                                companyId={selectedCompanyId}
+                                onSuccess={() => loadCustomers(selectedCompanyId)}
+                              />
+                            </ReadOnlyGuard>
+                          </>
                         ) : customer.asaasStatus === "DELETED" ? (
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : !customer.hasNegotiation || customer.isCancelled ? (

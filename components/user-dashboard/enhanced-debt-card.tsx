@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils"
 import { PaymentProcessingModal } from "./payment-processing-modal"
 import { CreateNegotiationDialog } from "./create-negotiation-dialog"
 import { MicrocreditOffer } from "./microcredit-offer"
+import { CustomerRequestDialog } from "./customer-request-dialog"
 
 interface EnhancedDebtCardProps {
   debt: {
@@ -264,6 +265,24 @@ export function EnhancedDebtCard({ debt }: EnhancedDebtCardProps) {
                     <Button variant="outline" className="flex-1 bg-transparent">
                       <MessageSquare className="h-4 w-4 mr-2" />
                       Negociar
+                    </Button>
+                  }
+                />
+
+                <CustomerRequestDialog
+                  debt={{
+                    id: debt.id,
+                    description: debt.description,
+                    amount: Number(debt.amount),
+                    company_id: (debt as any).company_id,
+                    company_name: debt.company_name,
+                    agreement_id: debt.agreement_id,
+                    asaasPaymentId: (debt as any).asaas_payment_id,
+                  }}
+                  trigger={
+                    <Button variant="outline" size="sm" className="bg-transparent">
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Solicitar Desconto
                     </Button>
                   }
                 />

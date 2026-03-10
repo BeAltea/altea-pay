@@ -17,7 +17,7 @@ import { usePathname } from "next/navigation"
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useMemo, useCallback, memo } from "react"
 import { X } from "lucide-react"
-import { Home, CreditCard, History, MessageSquare, BarChart3, User, LogOut, ChevronDown } from "lucide-react"
+import { Home, CreditCard, History, MessageSquare, BarChart3, User, LogOut, ChevronDown, MessageSquarePlus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 const navigation = [
@@ -25,6 +25,7 @@ const navigation = [
   { name: "Minhas Dívidas", href: "/user-dashboard/debts", icon: CreditCard },
   { name: "Histórico", href: "/user-dashboard/history", icon: History },
   { name: "Negociação", href: "/user-dashboard/negotiation", icon: MessageSquare },
+  { name: "Minhas Solicitações", href: "/user-dashboard/solicitacoes", icon: MessageSquarePlus },
   { name: "Análise de Propensão", href: "/user-dashboard/propensity", icon: BarChart3 },
   { name: "Perfil", href: "/user-dashboard/profile", icon: User },
 ]

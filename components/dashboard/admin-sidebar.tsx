@@ -11,7 +11,8 @@ import {
   Handshake,
   BarChart3,
   Settings,
-  LogOut
+  LogOut,
+  MessageSquarePlus
 } from "lucide-react"
 
 interface NavItem {
@@ -37,6 +38,7 @@ const navigation: NavSection[] = [
     items: [
       { name: "Clientes", href: "/dashboard/clientes", icon: Users },
       { name: "Acordos", href: "/dashboard/agreements", icon: Handshake },
+      { name: "Solicitacoes", href: "/dashboard/solicitacoes", icon: MessageSquarePlus },
     ]
   },
   {
