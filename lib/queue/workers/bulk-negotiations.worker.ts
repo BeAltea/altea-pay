@@ -577,6 +577,7 @@ async function processSingleNegotiation(
       paymentUrl = asaasPayment.invoiceUrl || null;
 
       // Update agreement with ASAAS payment info
+      // IMPORTANT: Also save the due_date from ASAAS response to ensure it's persisted
       currentStep = 'update_agreement_db';
       const { error: updateError } = await supabase
         .from('agreements')
@@ -585,6 +586,7 @@ async function processSingleNegotiation(
           asaas_payment_url: asaasPayment.invoiceUrl || null,
           asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
           asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+          due_date: asaasPayment.dueDate || dueDateStr || null,
           status: 'active',
         })
         .eq('id', agreement.id);
@@ -598,6 +600,7 @@ async function processSingleNegotiation(
             asaas_payment_url: asaasPayment.invoiceUrl || null,
             asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
             asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+            due_date: asaasPayment.dueDate || dueDateStr || null,
             status: 'active',
           })
           .eq('id', agreement.id);

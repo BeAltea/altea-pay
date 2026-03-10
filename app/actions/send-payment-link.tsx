@@ -147,6 +147,9 @@ export async function sendPaymentLink(
     const asaasPayment = await createAsaasPayment(paymentParams)
 
     // 4. Update agreement
+    // IMPORTANT: Also save the due_date from ASAAS response to ensure it's persisted
+    // The dueDate sent to ASAAS (from agreement.due_date or paymentParams.dueDate)
+    // may differ from what was stored, so save the actual ASAAS response value
     await supabase
       .from("agreements")
       .update({
@@ -154,6 +157,7 @@ export async function sendPaymentLink(
         asaas_payment_url: asaasPayment.invoiceUrl || null,
         asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl || null,
         asaas_boleto_url: asaasPayment.bankSlipUrl || null,
+        due_date: asaasPayment.dueDate || agreement.due_date || null,
         status: "active",
       })
       .eq("id", agreementId)

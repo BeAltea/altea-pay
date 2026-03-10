@@ -104,6 +104,7 @@ async function updateSupabaseRecords(
   const supabase = getSupabaseAdmin();
 
   // Update agreement if exists
+  // IMPORTANT: Also save the due_date from ASAAS response to ensure it's persisted
   if (jobData.agreementId) {
     await (supabase as any)
       .from('agreements')
@@ -113,6 +114,7 @@ async function updateSupabaseRecords(
         asaas_invoice_url: asaasPayment.invoiceUrl,
         asaas_bank_slip_url: asaasPayment.bankSlipUrl,
         asaas_pix_qr_code_url: asaasPayment.pixQrCodeUrl,
+        due_date: asaasPayment.dueDate || null,
         status: 'pending',
         updated_at: new Date().toISOString(),
       })
