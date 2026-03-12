@@ -486,11 +486,12 @@ async function syncFromAsaas(
     const agreementPageSize = 1000
 
     while (true) {
+      // Include all valid agreement statuses - pago_ao_cliente are customers who paid directly to provider
       const { data: agreementPage } = await supabase
         .from("agreements")
         .select("id, customer_id, asaas_customer_id, asaas_payment_id, status, customers(document)")
         .eq("company_id", companyId)
-        .in("status", ["active", "draft", "pending", "completed", "paid"])
+        .in("status", ["active", "draft", "pending", "completed", "paid", "pago_ao_cliente", "broken", "cancelled"])
         .range(agreementOffset, agreementOffset + agreementPageSize - 1)
 
       if (!agreementPage || agreementPage.length === 0) break
