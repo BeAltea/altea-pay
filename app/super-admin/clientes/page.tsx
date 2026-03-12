@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { SuperAdminClientesContent } from "./clientes-content"
+import { PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -39,28 +40,57 @@ export default async function SuperAdminClientesPage() {
     }
   }
 
-  // Fetch agreements for negotiation status
-  const { data: agreements } = await supabase
-    .from("agreements")
-    .select("customer_id, status, payment_status, asaas_payment_id, company_id")
+  // Fetch agreements for negotiation status (paginated to handle large datasets)
+  // IMPORTANT: Must use pagination to avoid Supabase 1000-row default limit
+  let allAgreements: any[] = []
+  let agreementPage = 0
+  let agreementHasMore = true
+
+  while (agreementHasMore) {
+    const { data: agreementPageData, error: agreementPageError } = await supabase
+      .from("agreements")
+      .select("customer_id, status, payment_status, asaas_status, asaas_payment_id, company_id")
+      .range(agreementPage * pageSize, (agreementPage + 1) * pageSize - 1)
+
+    if (agreementPageError) {
+      console.error("Agreements page error:", agreementPageError.message)
+      break
+    }
+
+    if (agreementPageData && agreementPageData.length > 0) {
+      allAgreements = [...allAgreements, ...agreementPageData]
+      agreementPage++
+      agreementHasMore = agreementPageData.length === pageSize
+    } else {
+      agreementHasMore = false
+    }
+  }
+
+  const agreements = allAgreements
 
   // Fetch customers table to map customer_id -> document (CPF/CNPJ)
+  // IMPORTANT: Use pagination to avoid Supabase 1000-row default limit
   const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
   const customerDocMap = new Map<string, string>()
 
   if (customerIds.length > 0) {
-    const { data: customersData } = await supabase
-      .from("customers")
-      .select("id, document")
-      .in("id", customerIds)
+    // Fetch customers in batches (Supabase .in() has limits)
+    const batchSize = 500
+    for (let i = 0; i < customerIds.length; i += batchSize) {
+      const batch = customerIds.slice(i, i + batchSize)
+      const { data: customersData } = await supabase
+        .from("customers")
+        .select("id, document")
+        .in("id", batch)
 
-    if (customersData) {
-      customersData.forEach((c: any) => {
-        const normalizedDoc = (c.document || "").replace(/\D/g, "")
-        if (normalizedDoc) {
-          customerDocMap.set(c.id, normalizedDoc)
-        }
-      })
+      if (customersData) {
+        customersData.forEach((c: any) => {
+          const normalizedDoc = (c.document || "").replace(/\D/g, "")
+          if (normalizedDoc) {
+            customerDocMap.set(c.id, normalizedDoc)
+          }
+        })
+      }
     }
   }
 
@@ -82,11 +112,18 @@ export default async function SuperAdminClientesPage() {
       existing.hasAsaasCharge = true
     }
 
-    if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+    // Check all paid status indicators (aligned with lib/constants/payment-status.ts)
+    const isPaidAgreement =
+      PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
+      PAID_PAYMENT_STATUSES.includes(a.payment_status as any) ||
+      PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+
+    if (isPaidAgreement) {
       existing.isPaid = true
     }
 
-    if ((a.status === "active" || a.status === "draft") && a.payment_status !== "received" && a.payment_status !== "confirmed") {
+    // Active = has agreement but not paid
+    if (!isPaidAgreement && (a.status === "active" || a.status === "draft" || a.status === "pending")) {
       existing.isActive = true
     }
 
