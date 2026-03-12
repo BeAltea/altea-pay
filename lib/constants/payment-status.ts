@@ -6,7 +6,8 @@
  */
 
 // Agreement statuses that indicate the debt is PAID
-export const PAID_AGREEMENT_STATUSES = ["paid", "completed"] as const
+// NOTE: "pago_ao_cliente" = customer paid directly to provider (not via AlteaPay/ASAAS)
+export const PAID_AGREEMENT_STATUSES = ["paid", "completed", "pago_ao_cliente"] as const
 
 // Payment statuses that indicate the payment was CONFIRMED/RECEIVED
 // NOTE: In ASAAS, CONFIRMED means payment confirmed (shows as "Pago" in UI)
@@ -76,6 +77,7 @@ export function isAnyPaidStatus(status?: string | null): boolean {
     normalizedStatus === "RECEIVED" ||
     normalizedStatus === "RECEIVED_IN_CASH" ||
     normalizedStatus === "CONFIRMED" ||
-    normalizedStatus === "PAGO"
+    normalizedStatus === "PAGO" ||
+    normalizedStatus === "PAGO_AO_CLIENTE"
   )
 }
