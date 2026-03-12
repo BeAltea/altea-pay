@@ -78,11 +78,12 @@ export async function GET(request: NextRequest) {
     let agreementHasMore = true
 
     while (agreementHasMore) {
+      // Include pago_ao_cliente status for customers who paid directly to provider
       const { data: agreementPage_, error: agreementError } = await supabase
         .from("agreements")
-        .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, due_date, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
+        .select("id, customer_id, status, payment_status, asaas_status, asaas_payment_id, asaas_customer_id, due_date, notification_viewed, notification_viewed_at, notification_viewed_channel, customers(document)")
         .eq("company_id", companyId)
-        .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled"])
+        .in("status", ["active", "draft", "pending", "completed", "paid", "cancelled", "pago_ao_cliente"])
         .range(agreementPage * pageSize, (agreementPage + 1) * pageSize - 1)
 
       if (agreementError) {
@@ -170,12 +171,20 @@ export async function GET(request: NextRequest) {
           docToCancelledCount.set(normalizedDoc, (docToCancelledCount.get(normalizedDoc) || 0) + 1)
           // Only track as "any negotiation" if not cancelled (cancelled = can send again)
         } else {
-          docsWithAnyNegotiation.add(normalizedDoc) // Track active/pending/completed/paid negotiations
           // Check all paid status indicators for consistency with other views
           const isPaidAgreement =
             PAID_AGREEMENT_STATUSES.includes(a.status as any) ||
             PAID_PAYMENT_STATUSES.includes(a.payment_status as any) ||
             PAID_ASAAS_STATUSES.includes(a.asaas_status as any)
+
+          // Only count as "Enviada" if a negotiation was actually sent through ASAAS
+          // pago_ao_cliente WITHOUT asaas_payment_id means they paid directly to provider without ASAAS
+          const wasSentThroughAsaas = !!(a.asaas_payment_id || a.asaas_customer_id)
+          const isPagoAoClienteDirecto = a.status === "pago_ao_cliente" && !wasSentThroughAsaas
+
+          if (!isPagoAoClienteDirecto) {
+            docsWithAnyNegotiation.add(normalizedDoc) // Track negotiations actually sent
+          }
 
           if (isPaidAgreement) {
             docsWithPaidAgreements.add(normalizedDoc)
@@ -253,11 +262,13 @@ export async function GET(request: NextRequest) {
 
       // Check if ANY negotiation was sent (paid or active, NOT cancelled) - for "Status Negociação" column
       // Cancelled negotiations should NOT count as "Enviada"
+      // NOTE: PAGO is excluded from VMAX fallback - it's only counted if there's an ASAAS agreement
+      // This correctly excludes "pago_ao_cliente" customers who paid directly without ASAAS
       const hasNegotiation =
         !isCancelled && (
           docsWithAnyNegotiation.has(cpfCnpj) ||
           (vmax.negotiation_status &&
-            ["active", "sent", "pending", "in_negotiation", "PAGO"].includes(
+            ["active", "sent", "pending", "in_negotiation"].includes(
               vmax.negotiation_status
             ))
         )
