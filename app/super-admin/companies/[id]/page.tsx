@@ -87,11 +87,13 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   console.log("[v0] TOTAL VMAX records for company (after pagination):", vmaxData.length)
 
   // Fetch completed agreements (paid negotiations) to calculate recovered amount
+  // Include: completed, paid, pago_ao_cliente (paid directly to provider)
+  // Also check asaas_status for RECEIVED/CONFIRMED/RECEIVED_IN_CASH
   const { data: completedAgreements } = await supabase
     .from("agreements")
-    .select("id, agreed_amount, customer_id, debt_id")
+    .select("id, agreed_amount, customer_id, debt_id, status, asaas_status")
     .eq("company_id", id)
-    .eq("status", "completed")
+    .or("status.in.(completed,paid,pago_ao_cliente),asaas_status.in.(RECEIVED,CONFIRMED,RECEIVED_IN_CASH)")
 
   // Get customer IDs with paid agreements
   const { data: customers } = await supabase
@@ -107,11 +109,17 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     }
   }
 
-  // Get documents with paid agreements
+  // Get documents with paid agreements and calculate recovered amount from agreements
   const paidDocs = new Set<string>()
+  const docToAgreedAmount = new Map<string, number>()
+
   for (const a of completedAgreements || []) {
     const doc = customerIdToDoc.get(a.customer_id)
-    if (doc) paidDocs.add(doc)
+    if (doc) {
+      paidDocs.add(doc)
+      // Sum agreed amounts per document (in case of multiple agreements)
+      docToAgreedAmount.set(doc, (docToAgreedAmount.get(doc) || 0) + (a.agreed_amount || 0))
+    }
   }
 
   // Also check VMAX negotiation_status for PAGO
@@ -149,9 +157,15 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
     .reduce((sum, v) => sum + parseVencido(v), 0)
 
   // Calculate recovered amount (paid debts)
+  // Prefer agreement amounts (actual negotiated value) over VMAX Vencido (original debt)
   const vmaxRecoveredAmount = vmaxData
     .filter((v) => isPaid(v))
-    .reduce((sum, v) => sum + parseVencido(v), 0)
+    .reduce((sum, v) => {
+      const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+      // Use agreement amount if available, otherwise fall back to VMAX Vencido
+      const agreedAmount = docToAgreedAmount.get(doc)
+      return sum + (agreedAmount !== undefined ? agreedAmount : parseVencido(v))
+    }, 0)
 
   // Count overdue (only non-paid)
   const vmaxPendingOverdue = vmaxData.filter((v) => {

@@ -51,10 +51,12 @@ async function fetchCompanies() {
   }
 
   // Fetch completed agreements to identify paid customers
+  // Include: completed, paid, pago_ao_cliente (paid directly to provider)
+  // Also check asaas_status for RECEIVED/CONFIRMED/RECEIVED_IN_CASH
   const { data: completedAgreements } = await supabase
     .from("agreements")
-    .select("id, customer_id, status, company_id")
-    .eq("status", "completed")
+    .select("id, customer_id, status, company_id, agreed_amount, asaas_status")
+    .or("status.in.(completed,paid,pago_ao_cliente),asaas_status.in.(RECEIVED,CONFIRMED,RECEIVED_IN_CASH)")
 
   // Fetch customers mapping to get documents
   const { data: dbCustomers } = await supabase
@@ -71,6 +73,8 @@ async function fetchCompanies() {
 
   // Get documents with paid agreements (grouped by company)
   const paidDocsByCompany = new Map<string, Set<string>>()
+  const agreedAmountByCompanyDoc = new Map<string, number>() // company_id:doc -> amount
+
   for (const a of completedAgreements || []) {
     const doc = customerIdToDoc.get(a.customer_id)
     if (doc && a.company_id) {
@@ -78,6 +82,10 @@ async function fetchCompanies() {
         paidDocsByCompany.set(a.company_id, new Set())
       }
       paidDocsByCompany.get(a.company_id)!.add(doc)
+
+      // Track agreed amount per company:doc for accurate recovered calculation
+      const key = `${a.company_id}:${doc}`
+      agreedAmountByCompanyDoc.set(key, (agreedAmountByCompanyDoc.get(key) || 0) + (a.agreed_amount || 0))
     }
   }
 
@@ -175,9 +183,19 @@ async function fetchCompanies() {
         : 0
 
     // Calculate recovered amount (paid debts)
+    // Prefer agreement amounts (actual negotiated value) over VMAX Vencido (original debt)
     const paidAmount = companyVmaxData
       .filter((v) => isPaid(v))
       .reduce((sum, v) => {
+        const doc = (v["CPF/CNPJ"] || "").replace(/\D/g, "")
+        const key = `${company.id}:${doc}`
+        const agreedAmount = agreedAmountByCompanyDoc.get(key)
+
+        // Use agreement amount if available, otherwise fall back to VMAX Vencido
+        if (agreedAmount !== undefined && agreedAmount > 0) {
+          return sum + agreedAmount
+        }
+
         const vencidoStr = String(v.Vencido || "0")
         const cleanValue = vencidoStr.replace(/R\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
         const value = Number(cleanValue) || 0
