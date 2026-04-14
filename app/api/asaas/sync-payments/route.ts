@@ -453,11 +453,13 @@ async function syncFromAsaas(
     syncedDetails: [] as Array<{ name: string; cpfCnpj: string; action: string; asaasPaymentId?: string }>,
   }
 
-  const MAX_SYNC_TIME_MS = 25000 // 25 seconds max
+  const MAX_SYNC_TIME_MS = 25000 // 25 seconds max for processing loop
 
   try {
     // STEP 1: Fetch ALL customers from ASAAS
+    const dataLoadStart = Date.now()
     const asaasCustomers = await fetchAllAsaasCustomers()
+    console.log(`[ASAAS Sync] ASAAS customers fetched in ${Date.now() - dataLoadStart}ms`)
     results.asaasCustomerCount = asaasCustomers.length
 
     if (asaasCustomers.length === 0) {
@@ -536,10 +538,13 @@ async function syncFromAsaas(
 
     console.log(`[ASAAS Sync] Matching ${asaasCustomers.length} ASAAS customers against ${vmaxByCpf.size} VMAX, ${agreementByCpf.size} agreements, ${localCustomerByCpf.size} local customers`)
 
+    // Reset startTime for processing loop - data loading time shouldn't count against processing timeout
+    const processingStartTime = Date.now()
+
     // STEP 5: Process each ASAAS customer
     for (let i = 0; i < asaasCustomers.length; i++) {
-      // Check timeout
-      if (Date.now() - startTime > MAX_SYNC_TIME_MS) {
+      // Check timeout (25 seconds for processing loop only)
+      if (Date.now() - processingStartTime > MAX_SYNC_TIME_MS) {
         console.log(`[ASAAS Sync] Stopping at customer ${i + 1}/${asaasCustomers.length} due to timeout`)
         results.errors.push(`Sync parado por timeout após ${i + 1} clientes`)
         break
