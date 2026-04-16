@@ -28,3 +28,11 @@ yarn-error.log*
 next-env.d.ts
 start-dev.sh
 CLAUDE.md
+
+# Local scripts and reports
+scripts/generate-payment-report-pdf.js
+scripts/generate-vmax-reconciliation-pdf.ts
+reports/
+
+# macOS
+.DS_Store
