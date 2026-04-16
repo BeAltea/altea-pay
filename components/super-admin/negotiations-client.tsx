@@ -39,6 +39,7 @@ import {
 import { toast } from "sonner"
 import { ReadOnlyGuard, useCanPerformActions } from "@/components/super-admin/read-only-guard"
 import { CreateNegotiationRequestDialog } from "@/components/super-admin/create-negotiation-request-dialog"
+import { isPaidStatus } from "@/lib/constants/payment-status"
 
 type VmaxCustomer = {
   id: string
@@ -408,14 +409,12 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
       if (negotiationFilter === "sem_negociacao" && c.hasNegotiation) return false
 
       // Status Dívida filter
-      // CONFIRMED and RECEIVED both mean payment is done (shows as "Pago" in UI)
-      const isPaidStatus = c.isPaid || c.status === "paid" ||
-        c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
-        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+      // Uses centralized isPaidStatus() to check all paid indicators including pago_ao_cliente
+      const customerIsPaid = c.isPaid || isPaidStatus(c.status, c.paymentStatus, c.asaasStatus)
 
       if (debtStatusFilter === "em_aberto") {
         // Em aberto: debt not paid, no ASAAS charge
-        if (isPaidStatus || c.hasNegotiation) return false
+        if (customerIsPaid || c.hasNegotiation) return false
       }
       if (debtStatusFilter === "aguardando") {
         // Aguardando pagamento: ASAAS charge PENDING only (CONFIRMED = paid)
@@ -423,8 +422,8 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
         if (!isAwaiting) return false
       }
       if (debtStatusFilter === "paga") {
-        // Paga: CONFIRMED or RECEIVED status
-        if (!isPaidStatus) return false
+        // Paga: Any paid status indicator
+        if (!customerIsPaid) return false
       }
       if (debtStatusFilter === "vencida") {
         // Vencida: ASAAS status OVERDUE
@@ -539,10 +538,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
   }
 
   // Helper to check if a customer is paid (cannot select for negotiation)
+  // Uses centralized isPaidStatus() to ensure consistency with all paid indicators
   const isCustomerPaid = (c: VmaxCustomer) => {
-    return c.isPaid || c.status === "paid" ||
-      c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
-      c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+    return c.isPaid || isPaidStatus(c.status, c.paymentStatus, c.asaasStatus)
   }
 
   // Only selectable customers (not paid) from displayed list
@@ -622,10 +620,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const selectedData = customers.filter((c) => selectedCustomers.has(c.id))
 
     // 1. BLOCK — clients with paid debts cannot receive new negotiations
+    // Uses centralized isPaidStatus() for consistent paid detection
     const paidClients = selectedData.filter(
-      (c) => c.isPaid || c.status === "paid" ||
-        c.asaasStatus === "RECEIVED" || c.asaasStatus === "CONFIRMED" ||
-        c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+      (c) => c.isPaid || isPaidStatus(c.status, c.paymentStatus, c.asaasStatus)
     )
 
     if (paidClients.length > 0) {
@@ -638,7 +635,7 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     // 2. WARN — clients with active (unpaid, non-cancelled) negotiation
     // Cancelled negotiations don't trigger duplicate warning
     const customersWithExisting = selectedData.filter(
-      (c) => c.hasActiveNegotiation && !c.isPaid && c.status !== "paid" && !c.isCancelled
+      (c) => c.hasActiveNegotiation && !isCustomerPaid(c) && !c.isCancelled
     )
 
     if (customersWithExisting.length > 0) {
@@ -1041,11 +1038,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const total = customers.length
 
     // Paid customers (completed negotiations)
-    // Include all paid status variants: CONFIRMED, RECEIVED, RECEIVED_IN_CASH
+    // Uses centralized isPaidStatus() to include all paid indicators (pago_ao_cliente, RECEIVED_IN_CASH, etc.)
     const paidCustomers = customers.filter((c) =>
-      c.isPaid || c.status === "paid" ||
-      c.asaasStatus === "RECEIVED" || c.asaasStatus === "RECEIVED_IN_CASH" || c.asaasStatus === "CONFIRMED" ||
-      c.paymentStatus === "received" || c.paymentStatus === "confirmed"
+      c.isPaid || isPaidStatus(c.status, c.paymentStatus, c.asaasStatus)
     )
     const paidCount = paidCustomers.length
 
@@ -1073,13 +1068,9 @@ export function NegotiationsClient({ companies }: { companies: Company[] }) {
     const recoveredDebt = paidCustomers.reduce((sum, c) => sum + c.totalDebt, 0)
 
     // Pending debt (non-paid customers)
-    // Exclude all paid status variants
+    // Uses centralized isPaidStatus() to exclude all paid indicators
     const pendingDebt = customers
-      .filter((c) =>
-        !c.isPaid && c.status !== "paid" &&
-        c.asaasStatus !== "RECEIVED" && c.asaasStatus !== "RECEIVED_IN_CASH" && c.asaasStatus !== "CONFIRMED" &&
-        c.paymentStatus !== "received" && c.paymentStatus !== "confirmed"
-      )
+      .filter((c) => !c.isPaid && !isPaidStatus(c.status, c.paymentStatus, c.asaasStatus))
       .reduce((sum, c) => sum + c.totalDebt, 0)
 
     return {

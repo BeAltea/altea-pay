@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertTriangle, Users, CreditCard, Handshake, TrendingUp, ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { isPaidStatus } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 
@@ -164,15 +165,8 @@ export default async function DashboardPage() {
       existing.hasActiveAgreement = true
     }
 
-    // Check if paid using all status indicators
-    if (
-      a.payment_status === "received" ||
-      a.payment_status === "confirmed" ||
-      a.status === "completed" ||
-      a.status === "paid" ||
-      a.asaas_status === "RECEIVED" ||
-      a.asaas_status === "CONFIRMED"
-    ) {
+    // Check if paid using centralized isPaidStatus (includes pago_ao_cliente, RECEIVED_IN_CASH, etc.)
+    if (isPaidStatus(a.status, a.payment_status, a.asaas_status)) {
       existing.isPaid = true
     }
 
@@ -231,9 +225,9 @@ export default async function DashboardPage() {
   // Count paid negotiations (unique customers with paid status)
   const negotiationsPagas = customersWithPaidNegotiation
 
-  // Calculate recovered debt from paid agreements
+  // Calculate recovered debt from paid agreements using centralized isPaidStatus
   const totalRecovered = activeAgreements
-    .filter((a: any) => a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed")
+    .filter((a: any) => isPaidStatus(a.status, a.payment_status, a.asaas_status))
     .reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
 
   const finalRecoveredDebt = totalRecovered

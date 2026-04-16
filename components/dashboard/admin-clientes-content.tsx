@@ -15,6 +15,7 @@ import {
   CreditCard,
   Handshake,
 } from "lucide-react"
+import { isPaidStatus } from "@/lib/constants/payment-status"
 
 interface Cliente {
   id: string
@@ -30,6 +31,7 @@ interface Cliente {
   hasAsaasCharge?: boolean
   hasActiveAgreement?: boolean
   paymentStatus?: string | null // ASAAS payment status: pending, received, confirmed, overdue, etc.
+  asaasStatus?: string | null // Raw ASAAS status: RECEIVED, CONFIRMED, RECEIVED_IN_CASH, OVERDUE, etc.
   "Dias Inad.": number
   Vencido: string
   Vecto?: string
@@ -173,23 +175,25 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
       const diasAtraso = typeof rawDias === "number" && !isNaN(rawDias)
         ? rawDias
         : (typeof rawDias === "string" ? (parseInt(rawDias.replace(/\./g, ""), 10) || 0) : 0)
-      const asaasStatus = cliente.asaasNegotiationStatus
+      const negotiationStatus = cliente.asaasNegotiationStatus
 
-      // Determine debt status using ASAAS payment_status as authoritative source
+      // Determine debt status using centralized isPaidStatus for consistency
+      // This catches all paid indicators: pago_ao_cliente, RECEIVED_IN_CASH, etc.
       const paymentStatus = cliente.paymentStatus // pending, received, confirmed, overdue, etc.
+      const rawAsaasStatus = cliente.asaasStatus // RECEIVED, CONFIRMED, RECEIVED_IN_CASH, etc.
       let debtStatus = "em_aberto"
-      if (asaasStatus === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed") {
+      if (negotiationStatus === "PAGO" || isPaidStatus(undefined, paymentStatus, rawAsaasStatus)) {
         debtStatus = "quitada"
-      } else if (paymentStatus === "overdue") {
+      } else if (paymentStatus === "overdue" || rawAsaasStatus === "OVERDUE") {
         debtStatus = "vencida"
-      } else if (debtValue > 0 && asaasStatus === "ATIVA_ASAAS") {
+      } else if (debtValue > 0 && negotiationStatus === "ATIVA_ASAAS") {
         debtStatus = "aguardando" // Has active negotiation pending payment
       }
 
       // Determine negotiation sort key
-      let negotiationSortKey = STATUS_NEGOCIACAO_ORDER[asaasStatus || "NENHUMA"] || 4
+      let negotiationSortKey = STATUS_NEGOCIACAO_ORDER[negotiationStatus || "NENHUMA"] || 4
       // If has ASAAS charge but overdue, use special "em_atraso" order
-      if (asaasStatus === "ATIVA_ASAAS" && paymentStatus === "overdue") {
+      if (negotiationStatus === "ATIVA_ASAAS" && paymentStatus === "overdue") {
         negotiationSortKey = STATUS_NEGOCIACAO_ORDER["em_atraso"]
       }
 
