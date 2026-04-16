@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { isPaidStatus } from "@/lib/constants/payment-status"
 import {
   CreditCard,
   DollarSign,
@@ -254,7 +255,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .gte("payment_received_at", startOfDay)
         .lte("payment_received_at", endOfDay)
 
@@ -263,7 +264,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .is("payment_received_at", null)
         .gte("updated_at", startOfDay)
         .lte("updated_at", endOfDay)
@@ -281,10 +282,10 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       }
 
       // Get customer info
-      const allCustomerIds = [...new Set([
+      const allCustomerIds = Array.from(new Set([
         ...sent.map((a: any) => a.customer_id),
         ...paid.map((a: any) => a.customer_id)
-      ].filter(Boolean))]
+      ].filter(Boolean)))
       const customerMap = await getCustomerInfo(allCustomerIds)
 
       // Build activities
@@ -377,7 +378,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .gte("payment_received_at", startStr)
         .lte("payment_received_at", endStr)
 
@@ -386,7 +387,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .is("payment_received_at", null)
         .gte("updated_at", startStr)
         .lte("updated_at", endStr)
@@ -437,10 +438,10 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
       // Get customer info for activities
-      const allCustomerIds = [...new Set([
+      const allCustomerIds = Array.from(new Set([
         ...sent.map((a: any) => a.customer_id),
         ...paid.map((a: any) => a.customer_id)
-      ].filter(Boolean))]
+      ].filter(Boolean)))
       const customerMap = await getCustomerInfo(allCustomerIds)
 
       const activities: PeriodReportData["activities"] = []
@@ -499,7 +500,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .gte("payment_received_at", startStr)
         .lte("payment_received_at", endStr)
 
@@ -508,7 +509,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .from("agreements")
         .select("*")
         .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,payment_status.eq.received,payment_status.eq.confirmed")
+        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
         .is("payment_received_at", null)
         .gte("updated_at", startStr)
         .lte("updated_at", endStr)
@@ -566,15 +567,14 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       }
 
       // Status breakdown - count agreement records per status
+      // Use isPaidStatus() to catch all paid indicators
+      const pagoCount = all.filter((a: any) =>
+        isPaidStatus(a.status, a.payment_status, a.asaas_status)
+      ).length
       const aguardandoCount = all.filter((a: any) =>
         a.status !== "cancelled" &&
-        !["received", "confirmed"].includes(a.payment_status || "") &&
-        !["completed", "paid"].includes(a.status || "") &&
+        !isPaidStatus(a.status, a.payment_status, a.asaas_status) &&
         a.payment_status !== "overdue"
-      ).length
-      const pagoCount = all.filter((a: any) =>
-        ["received", "confirmed"].includes(a.payment_status || "") ||
-        ["completed", "paid"].includes(a.status || "")
       ).length
       const vencidaCount = all.filter((a: any) => a.payment_status === "overdue").length
       const canceladaCount = all.filter((a: any) => a.status === "cancelled").length
@@ -594,7 +594,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
       // Get customer info for top payments
-      const allCustomerIds = [...new Set(paid.map(a => a.customer_id).filter(Boolean))]
+      const allCustomerIds = Array.from(new Set(paid.map(a => a.customer_id).filter(Boolean)))
       const customerMap = await getCustomerInfo(allCustomerIds)
 
       const activities: PeriodReportData["activities"] = paid

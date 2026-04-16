@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { AdminRelatoriosContent } from "@/components/dashboard/admin-relatorios-content"
-import { PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
+import { isPaidStatus, PAID_AGREEMENT_STATUSES, PAID_PAYMENT_STATUSES, PAID_ASAAS_STATUSES } from "@/lib/constants/payment-status"
 
 export const dynamic = "force-dynamic"
 
@@ -57,14 +57,26 @@ export default async function RelatoriosPage() {
   }
 
   // Fetch ALL agreements for this company (including cancelled for stats)
-  const { data: agreements } = await supabase
-    .from("agreements")
-    .select("*")
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: false })
+  // Use pagination to avoid Supabase's 1000 row default limit
+  let agreements: any[] = []
+  page = 0
+
+  while (true) {
+    const { data: pageData } = await supabase
+      .from("agreements")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (!pageData || pageData.length === 0) break
+    agreements = [...agreements, ...pageData]
+    if (pageData.length < pageSize) break
+    page++
+  }
 
   // Fetch customers table to map customer_id -> document
-  const customerIds = [...new Set((agreements || []).map(a => a.customer_id).filter(Boolean))]
+  const customerIds = Array.from(new Set((agreements || []).map(a => a.customer_id).filter(Boolean)))
   const customerDocMap = new Map<string, string>()
 
   if (customerIds.length > 0) {
@@ -112,8 +124,9 @@ export default async function RelatoriosPage() {
       existing.hasActiveAgreement = true
       existing.agreedAmount = Math.max(existing.agreedAmount, Number(a.agreed_amount) || 0)
 
-      // Check if paid
-      if (a.payment_status === "received" || a.payment_status === "confirmed" || a.status === "completed") {
+      // Check if paid - use isPaidStatus() to catch all paid indicators
+      // Includes: pago_ao_cliente, RECEIVED_IN_CASH, paid, completed, etc.
+      if (isPaidStatus(a.status, a.payment_status, a.asaas_status)) {
         existing.isPaid = true
       }
     }
@@ -153,7 +166,7 @@ export default async function RelatoriosPage() {
 
   // Build customer name lookup for recent negotiations
   let customerNameMap = new Map<string, { name: string | null; cpfCnpj: string | null }>()
-  const agreementCustomerIds = [...new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean))]
+  const agreementCustomerIds = Array.from(new Set((agreements || []).map((a: any) => a.customer_id).filter(Boolean)))
 
   if (agreementCustomerIds.length > 0) {
     // First try VMAX table
