@@ -163,4 +163,82 @@ export const PAID_ASAAS_STATUSES = ["RECEIVED", "RECEIVED_IN_CASH", "CONFIRMED"]
 
 ---
 
-*Phase 2 complete. Ready for verification and Phase 3 if needed.*
+*Phase 2 complete. Ready for verification.*
+
+---
+
+# Phase 3: Reconciliation API Endpoint
+
+**Date:** 2026-04-16
+**Status:** Completed
+
+## New Endpoint
+
+**`GET /api/super-admin/reconcile?companyId={id}`**
+
+Compares AlteaPay database records with ASAAS API to identify discrepancies.
+
+### Authentication
+- Requires `super_admin` role
+
+### Response Structure
+
+```typescript
+{
+  company: { id: string; name: string },
+  timestamp: string,
+  alteapay: {
+    vmaxCount: number,
+    agreementsCount: number,
+    agreementsWithAsaas: number,
+    paidCount: number,
+    pendingCount: number,
+    cancelledCount: number,
+    totalDebt: number,
+    recoveredDebt: number,
+  },
+  asaas: {
+    customersCount: number,
+    paymentsCount: number,
+    paidCount: number,
+    pendingCount: number,
+    overdueCount: number,
+    totalValue: number,
+    receivedValue: number,
+  },
+  discrepancies: {
+    paidCountDiff: number,
+    valuesDiff: number,
+    customersWithoutPayments: string[],
+    paymentsWithoutAgreements: string[],
+    statusMismatches: Array<{
+      asaasPaymentId: string,
+      customerName: string,
+      asaasStatus: string,
+      alteapayStatus: string | null,
+    }>,
+  },
+  summary: {
+    isReconciled: boolean,
+    issues: string[],
+  },
+}
+```
+
+### Features
+- Fetches all VMAX records with pagination
+- Fetches all agreements with pagination
+- Queries ASAAS API for customer payments
+- Compares paid counts and values
+- Detects status mismatches between systems
+- Returns detailed discrepancy report
+
+### Usage
+```bash
+curl -X GET "https://alteapay.com/api/super-admin/reconcile?companyId=YOUR_COMPANY_ID" \
+  -H "Cookie: your-auth-cookie"
+```
+
+---
+
+*Phase 3 complete. Reconciliation endpoint ready for use.*
