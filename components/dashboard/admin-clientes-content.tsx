@@ -260,7 +260,8 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         const paymentStatus = c.paymentStatus // ASAAS payment status
 
         if (debtStatusFilter === "paga") {
-          return status === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed"
+          // Use isPaidStatus() to catch all paid indicators: RECEIVED_IN_CASH, pago_ao_cliente, etc.
+          return status === "PAGO" || isPaidStatus(undefined, paymentStatus, c.asaasStatus)
         }
         if (debtStatusFilter === "vencida") {
           // Vencida = ASAAS payment status is overdue
@@ -268,10 +269,10 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
         }
         if (debtStatusFilter === "aguardando") {
           // Aguardando = has charge but not overdue and not paid
+          // Use isPaidStatus() to properly exclude all paid indicators
           return (status === "ATIVA_ASAAS" || hasCharge) &&
             paymentStatus !== "overdue" &&
-            paymentStatus !== "received" &&
-            paymentStatus !== "confirmed"
+            !isPaidStatus(undefined, paymentStatus, c.asaasStatus)
         }
         if (debtStatusFilter === "em_aberto") {
           // Em aberto = no negotiation sent
@@ -397,9 +398,10 @@ export function AdminClientesContent({ clientes, company }: AdminClientesContent
     const negotiationStatus = cliente.asaasNegotiationStatus
     const hasCharge = cliente.hasAsaasCharge
     const paymentStatus = cliente.paymentStatus // ASAAS payment status: pending, received, confirmed, overdue, etc.
+    const rawAsaasStatus = cliente.asaasStatus // Raw ASAAS status: RECEIVED, CONFIRMED, RECEIVED_IN_CASH, etc.
 
-    // Paga - if payment received/confirmed via ASAAS or negotiation status is PAGO
-    if (negotiationStatus === "PAGO" || paymentStatus === "received" || paymentStatus === "confirmed") {
+    // Paga - use isPaidStatus() to catch all paid indicators (RECEIVED_IN_CASH, pago_ao_cliente, etc.)
+    if (negotiationStatus === "PAGO" || isPaidStatus(undefined, paymentStatus, rawAsaasStatus)) {
       return { label: "Paga", color: "var(--admin-green)", bg: "var(--admin-green-bg)" }
     }
 
