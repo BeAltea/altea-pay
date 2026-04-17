@@ -7,6 +7,8 @@ import { generateAdminMonthlyReport, MonthlyPaymentRow, MonthlyReportResult } fr
 import { useToast } from "@/hooks/use-toast"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import {
   CreditCard,
   DollarSign,
@@ -15,6 +17,7 @@ import {
   Calendar,
   Loader2,
   FileText,
+  FileSpreadsheet,
   Send,
   CheckCircle,
   Download,
@@ -26,6 +29,7 @@ import {
   ArrowUp,
   ArrowDown,
   Users,
+  ChevronDown,
 } from "lucide-react"
 import {
   BarChart,
@@ -197,6 +201,9 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
   // Sorting state for monthly payments table
   const [sortColumn, setSortColumn] = useState<keyof MonthlyPaymentRow | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+
+  // Export dropdown state
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false)
 
   const { toast } = useToast()
 
@@ -615,18 +622,21 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
     }
   }
 
+  // Helper to check if payment is direct
+  const isDirectPayment = (billingType: string) => billingType === "Pago ao cliente"
+
   // Export monthly report to XLSX
-  async function handleExportMonthlyReport() {
+  async function handleExportXLSX() {
     if (!enhancedMonthlyReport || !company) return
     setExportingMonthly(true)
+    setExportDropdownOpen(false)
 
     try {
       const [year, month] = selectedMonth.split("-").map(Number)
       const monthName = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
 
       // Sheet 1: All payments
-      const isDirectPayment = (billingType: string) => billingType === "Pago ao cliente"
-      const paymentsData = enhancedMonthlyReport.payments.map((p) => ({
+      const paymentsData = sortedPayments.map((p) => ({
         Cliente: p.clientName,
         "CPF/CNPJ": p.cpfCnpj,
         "Valor Pago": p.paidAmount,
@@ -647,6 +657,8 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         { Metrica: "", Valor: "" },
         { Metrica: "Total de Pagamentos", Valor: enhancedMonthlyReport.summary.totalPayments },
         { Metrica: "Valor Total Recebido", Valor: enhancedMonthlyReport.summary.totalReceived },
+        { Metrica: "Recebido via AlteaPay", Valor: enhancedMonthlyReport.summary.totalAsaasReceived },
+        { Metrica: "Pago Direto ao Cliente", Valor: enhancedMonthlyReport.summary.totalDirectReceived },
         ...(enhancedMonthlyReport.setup ? [
           { Metrica: "Comissao AlteaPay", Valor: enhancedMonthlyReport.summary.totalAlteapayProfit },
           { Metrica: `Repasse para ${company.name}`, Valor: enhancedMonthlyReport.summary.totalClientTransfer },
@@ -678,6 +690,156 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       toast({
         title: "Erro ao exportar",
         description: "Nao foi possivel gerar o arquivo. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportingMonthly(false)
+    }
+  }
+
+  // Export monthly report to PDF
+  async function handleExportPDF() {
+    if (!enhancedMonthlyReport || !company) return
+    setExportingMonthly(true)
+    setExportDropdownOpen(false)
+
+    try {
+      const [year, month] = selectedMonth.split("-").map(Number)
+      const monthName = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+
+      const doc = new jsPDF({ orientation: "landscape" })
+
+      // Header
+      doc.setFontSize(18)
+      doc.text("AlteaPay - Relatorio Mensal", 14, 20)
+
+      doc.setFontSize(12)
+      doc.text(`Empresa: ${company.name}`, 14, 30)
+      doc.text(`Periodo: ${monthName}`, 14, 37)
+
+      // Summary
+      doc.setFontSize(10)
+      doc.text(`Total Recebido: ${formatCurrency(enhancedMonthlyReport.summary.totalReceived)}`, 14, 47)
+      doc.text(`Via AlteaPay: ${formatCurrency(enhancedMonthlyReport.summary.totalAsaasReceived)} (${enhancedMonthlyReport.summary.asaasPaymentsCount} pagamentos)`, 14, 53)
+      doc.text(`Direto ao Cliente: ${formatCurrency(enhancedMonthlyReport.summary.totalDirectReceived)} (${enhancedMonthlyReport.summary.directPaymentsCount} pagamentos)`, 14, 59)
+
+      if (enhancedMonthlyReport.setup) {
+        doc.text(`Comissao AlteaPay: ${formatCurrency(enhancedMonthlyReport.summary.totalAlteapayProfit)}`, 14, 65)
+        doc.text(`Repasse para ${company.name}: ${formatCurrency(enhancedMonthlyReport.summary.totalClientTransfer)}`, 14, 71)
+      }
+
+      // Table
+      const tableData = sortedPayments.map((row) => [
+        row.clientName.substring(0, 25),
+        row.cpfCnpj,
+        formatCurrency(row.paidAmount),
+        row.paymentDate,
+        row.billingType,
+        ...(enhancedMonthlyReport.setup
+          ? [
+              isDirectPayment(row.billingType) ? "—" : `${row.profitPercentage ?? "—"}%`,
+              isDirectPayment(row.billingType) ? "—" : formatCurrency(row.alteapayProfit ?? 0),
+              isDirectPayment(row.billingType) ? "—" : formatCurrency(row.clientTransfer ?? 0),
+            ]
+          : []),
+      ])
+
+      const headers = [
+        "Cliente",
+        "CPF/CNPJ",
+        "Valor Pago",
+        "Data Pgto",
+        "Forma",
+        ...(enhancedMonthlyReport.setup ? ["%", "AlteaPay", "Repasse"] : []),
+      ]
+
+      autoTable(doc, {
+        startY: enhancedMonthlyReport.setup ? 78 : 66,
+        head: [headers],
+        body: tableData,
+        theme: "grid",
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [41, 128, 185] },
+      })
+
+      // Footer
+      doc.setFontSize(8)
+      doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")} por AlteaPay`, 14, doc.internal.pageSize.height - 10)
+
+      const fileName = `relatorio_mensal_${company.name.toLowerCase().replace(/\s+/g, "_")}_${selectedMonth}.pdf`
+      doc.save(fileName)
+
+      toast({
+        title: "Relatorio exportado",
+        description: `Arquivo ${fileName} baixado com sucesso.`,
+      })
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+      toast({
+        title: "Erro ao exportar",
+        description: "Nao foi possivel gerar o PDF. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportingMonthly(false)
+    }
+  }
+
+  // Export monthly report to CSV
+  async function handleExportCSV() {
+    if (!enhancedMonthlyReport || !company) return
+    setExportingMonthly(true)
+    setExportDropdownOpen(false)
+
+    try {
+      // UTF-8 BOM + semicolon separator for Brazilian locale
+      const BOM = "\uFEFF"
+
+      const headers = [
+        "Cliente",
+        "CPF/CNPJ",
+        "Valor Pago",
+        "Data Pagamento",
+        "Forma",
+        "ID ASAAS",
+        ...(enhancedMonthlyReport.setup
+          ? ["% AlteaPay", "Comissao AlteaPay", `Repasse ${company.name}`]
+          : []),
+      ].join(";")
+
+      const rows = sortedPayments.map((row) =>
+        [
+          `"${row.clientName}"`,
+          row.cpfCnpj,
+          row.paidAmount.toFixed(2).replace(".", ","),
+          row.paymentDate,
+          row.billingType,
+          row.asaasPaymentId || "—",
+          ...(enhancedMonthlyReport.setup
+            ? [
+                isDirectPayment(row.billingType) ? "—" : (row.profitPercentage ?? "—"),
+                isDirectPayment(row.billingType) ? "—" : (row.alteapayProfit?.toFixed(2).replace(".", ",") ?? "—"),
+                isDirectPayment(row.billingType) ? "—" : (row.clientTransfer?.toFixed(2).replace(".", ",") ?? "—"),
+              ]
+            : []),
+        ].join(";")
+      )
+
+      const csv = BOM + headers + "\n" + rows.join("\n")
+      const fileName = `relatorio_mensal_${company.name.toLowerCase().replace(/\s+/g, "_")}_${selectedMonth}.csv`
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+      saveAs(blob, fileName)
+
+      toast({
+        title: "Relatorio exportado",
+        description: `Arquivo ${fileName} baixado com sucesso.`,
+      })
+    } catch (error) {
+      console.error("Error exporting CSV:", error)
+      toast({
+        title: "Erro ao exportar",
+        description: "Nao foi possivel gerar o CSV. Tente novamente.",
         variant: "destructive",
       })
     } finally {
@@ -1208,23 +1370,63 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
               />
             </div>
             {enhancedMonthlyReport && enhancedMonthlyReport.payments.length > 0 && (
-              <button
-                onClick={handleExportMonthlyReport}
-                disabled={exportingMonthly}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{
-                  background: "var(--admin-gold-400)",
-                  color: "var(--admin-bg-primary)",
-                  opacity: exportingMonthly ? 0.7 : 1,
-                }}
-              >
-                {exportingMonthly ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
+              <div className="relative">
+                <button
+                  onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                  disabled={exportingMonthly}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    background: "var(--admin-gold-400)",
+                    color: "var(--admin-bg-primary)",
+                    opacity: exportingMonthly ? 0.7 : 1,
+                  }}
+                >
+                  {exportingMonthly ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Exportar
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {exportDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setExportDropdownOpen(false)}
+                    />
+                    <div
+                      className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg z-20 py-1"
+                      style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                    >
+                      <button
+                        onClick={handleExportXLSX}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--admin-bg-tertiary)] transition-colors"
+                        style={{ color: "var(--admin-text-primary)" }}
+                      >
+                        <FileSpreadsheet className="w-4 h-4" style={{ color: "#22C55E" }} />
+                        Exportar XLSX
+                      </button>
+                      <button
+                        onClick={handleExportPDF}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--admin-bg-tertiary)] transition-colors"
+                        style={{ color: "var(--admin-text-primary)" }}
+                      >
+                        <FileText className="w-4 h-4" style={{ color: "#EF4444" }} />
+                        Exportar PDF
+                      </button>
+                      <button
+                        onClick={handleExportCSV}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--admin-bg-tertiary)] transition-colors"
+                        style={{ color: "var(--admin-text-primary)" }}
+                      >
+                        <Download className="w-4 h-4" style={{ color: "#3B82F6" }} />
+                        Exportar CSV
+                      </button>
+                    </div>
+                  </>
                 )}
-                Exportar Relatorio
-              </button>
+              </div>
             )}
           </div>
 
