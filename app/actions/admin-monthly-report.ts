@@ -41,9 +41,15 @@ export interface MonthlyReportResult {
   summary: {
     totalPayments: number
     totalReceived: number
+    // ASAAS-specific (payments via AlteaPay)
+    asaasPaymentsCount: number
+    totalAsaasReceived: number
     totalAlteapayProfit: number
-    totalClientTransfer: number
-    alteapayPercentage: number | null // weighted average or null if no setup
+    totalClientTransfer: number // Only from ASAAS payments
+    alteapayPercentage: number | null // weighted average from ASAAS payments only
+    // Direct payments (pago_ao_cliente)
+    directPaymentsCount: number
+    totalDirectReceived: number
   }
   error: string | null
 }
@@ -108,7 +114,17 @@ export async function generateAdminMonthlyReport(
       return {
         payments: [],
         setup: null,
-        summary: { totalPayments: 0, totalReceived: 0, totalAlteapayProfit: 0, totalClientTransfer: 0, alteapayPercentage: null },
+        summary: {
+          totalPayments: 0,
+          totalReceived: 0,
+          asaasPaymentsCount: 0,
+          totalAsaasReceived: 0,
+          totalAlteapayProfit: 0,
+          totalClientTransfer: 0,
+          alteapayPercentage: null,
+          directPaymentsCount: 0,
+          totalDirectReceived: 0,
+        },
         error: agreementsError.message
       }
     }
@@ -221,8 +237,14 @@ export async function generateAdminMonthlyReport(
     // Process all agreements into payment rows
     const payments: MonthlyPaymentRow[] = []
     let totalReceived = 0
+    // ASAAS-specific totals
+    let totalAsaasReceived = 0
     let totalAlteapayProfit = 0
-    let totalClientTransfer = 0
+    let totalClientTransfer = 0 // Only from ASAAS payments
+    let asaasPaymentsCount = 0
+    // Direct payment totals
+    let totalDirectReceived = 0
+    let directPaymentsCount = 0
 
     // Helper to check if direct payment
     const isDirectPayment = (a: any) =>
@@ -286,33 +308,41 @@ export async function generateAdminMonthlyReport(
       let clientTransfer: number | undefined
       let profitPercentage: number | undefined
 
-      if (setup && setup.rules.length > 0 && !isDirect) {
-        // Get days expired from VMAX
-        const externalId = agreement.customers?.external_id
-        const vmaxInfo = externalId ? vmaxMap.get(externalId) : null
-        const daysExpired = vmaxInfo?.diasInad || 0
+      if (isDirect) {
+        // Direct payment - goes straight to client, no split via AlteaPay
+        clientTransfer = paidAmount
+        totalDirectReceived += paidAmount
+        directPaymentsCount++
+      } else {
+        // ASAAS payment - track separately
+        totalAsaasReceived += paidAmount
+        asaasPaymentsCount++
 
-        const matchingRule = findMatchingRule(daysExpired, setup.rules)
+        if (setup && setup.rules.length > 0) {
+          // Get days expired from VMAX
+          const externalId = agreement.customers?.external_id
+          const vmaxInfo = externalId ? vmaxMap.get(externalId) : null
+          const daysExpired = vmaxInfo?.diasInad || 0
 
-        if (matchingRule) {
-          profitPercentage = matchingRule.profit_percentage
-          alteapayProfit = paidAmount * (profitPercentage / 100)
-          clientTransfer = paidAmount - alteapayProfit
+          const matchingRule = findMatchingRule(daysExpired, setup.rules)
 
-          totalAlteapayProfit += alteapayProfit
-          totalClientTransfer += clientTransfer
+          if (matchingRule) {
+            profitPercentage = matchingRule.profit_percentage
+            alteapayProfit = paidAmount * (profitPercentage / 100)
+            clientTransfer = paidAmount - alteapayProfit
+
+            totalAlteapayProfit += alteapayProfit
+            totalClientTransfer += clientTransfer
+          } else {
+            // No matching rule - all goes to client
+            clientTransfer = paidAmount
+            totalClientTransfer += paidAmount
+          }
         } else {
-          // No matching rule - all goes to client
+          // No setup - can't calculate split, all goes to client
           clientTransfer = paidAmount
           totalClientTransfer += paidAmount
         }
-      } else if (isDirect) {
-        // Direct payment - all goes to client, no AlteaPay profit
-        clientTransfer = paidAmount
-        totalClientTransfer += paidAmount
-      } else {
-        // No setup - can't calculate split
-        totalClientTransfer += paidAmount
       }
 
       payments.push({
@@ -339,9 +369,9 @@ export async function generateAdminMonthlyReport(
       return parseDate(b.paymentDate) - parseDate(a.paymentDate)
     })
 
-    // Calculate weighted average percentage
-    const alteapayPercentage = totalReceived > 0 && setup
-      ? (totalAlteapayProfit / totalReceived) * 100
+    // Calculate weighted average percentage (only from ASAAS payments)
+    const alteapayPercentage = totalAsaasReceived > 0 && setup
+      ? (totalAlteapayProfit / totalAsaasReceived) * 100
       : null
 
     return {
@@ -350,9 +380,15 @@ export async function generateAdminMonthlyReport(
       summary: {
         totalPayments: payments.length,
         totalReceived,
+        // ASAAS-specific
+        asaasPaymentsCount,
+        totalAsaasReceived,
         totalAlteapayProfit,
         totalClientTransfer,
         alteapayPercentage,
+        // Direct payments
+        directPaymentsCount,
+        totalDirectReceived,
       },
       error: null,
     }
@@ -361,7 +397,17 @@ export async function generateAdminMonthlyReport(
     return {
       payments: [],
       setup: null,
-      summary: { totalPayments: 0, totalReceived: 0, totalAlteapayProfit: 0, totalClientTransfer: 0, alteapayPercentage: null },
+      summary: {
+        totalPayments: 0,
+        totalReceived: 0,
+        asaasPaymentsCount: 0,
+        totalAsaasReceived: 0,
+        totalAlteapayProfit: 0,
+        totalClientTransfer: 0,
+        alteapayPercentage: null,
+        directPaymentsCount: 0,
+        totalDirectReceived: 0,
+      },
       error: String(error),
     }
   }

@@ -22,6 +22,10 @@ import {
   Coins,
   Wallet,
   AlertTriangle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Users,
 } from "lucide-react"
 import {
   BarChart,
@@ -189,6 +193,10 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
   const [loadingWeekly, setLoadingWeekly] = useState(false)
   const [loadingMonthly, setLoadingMonthly] = useState(false)
   const [exportingMonthly, setExportingMonthly] = useState(false)
+
+  // Sorting state for monthly payments table
+  const [sortColumn, setSortColumn] = useState<keyof MonthlyPaymentRow | null>(null)
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
   const { toast } = useToast()
 
@@ -707,6 +715,61 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
 
   const totalDebtsByStatus = Object.values(reportData.debtsByStatus).reduce((a, b) => a + b, 0)
 
+  // Sorted payments for the monthly table
+  const sortedPayments = useMemo(() => {
+    if (!enhancedMonthlyReport?.payments) return []
+    if (!sortColumn) return enhancedMonthlyReport.payments
+
+    const sorted = [...enhancedMonthlyReport.payments].sort((a, b) => {
+      let aVal: any = a[sortColumn]
+      let bVal: any = b[sortColumn]
+
+      // Handle date sorting (DD/MM/YYYY format)
+      if (sortColumn === "paymentDate") {
+        const parseDate = (str: string) => {
+          const [d, m, y] = str.split("/").map(Number)
+          return new Date(y, m - 1, d).getTime()
+        }
+        aVal = parseDate(aVal)
+        bVal = parseDate(bVal)
+      }
+
+      // Handle string sorting
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDirection === "asc"
+          ? aVal.localeCompare(bVal, "pt-BR")
+          : bVal.localeCompare(aVal, "pt-BR")
+      }
+
+      // Handle number sorting
+      aVal = aVal ?? 0
+      bVal = bVal ?? 0
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal
+    })
+
+    return sorted
+  }, [enhancedMonthlyReport?.payments, sortColumn, sortDirection])
+
+  // Handle column sort click
+  const handleSort = (column: keyof MonthlyPaymentRow) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortColumn(column)
+      setSortDirection("desc")
+    }
+  }
+
+  // Sort icon component
+  const SortIcon = ({ column }: { column: keyof MonthlyPaymentRow }) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />
+    }
+    return sortDirection === "asc"
+      ? <ArrowUp className="w-3 h-3 ml-1" />
+      : <ArrowDown className="w-3 h-3 ml-1" />
+  }
+
   // KPI Card Component
   const KPICard = ({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color?: string }) => (
     <div
@@ -1176,31 +1239,94 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                 <KPICard icon={TrendingUp} label="Taxa de Pagamento" value={`${monthlyReport.paymentRate.toFixed(1)}%`} color="var(--admin-blue)" />
               </div>
 
-              {/* Split Cards - Only show if setup exists */}
-              {enhancedMonthlyReport.setup ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Total Received */}
+              {/* Split Cards - Show breakdown of ASAAS vs Direct payments */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Received */}
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg" style={{ background: "rgba(34, 197, 94, 0.1)" }}>
+                      <Wallet className="w-5 h-5" style={{ color: "#22C55E" }} />
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: "var(--admin-text-muted)" }}>
+                      Total Recebido no Mes
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold" style={{ color: "#22C55E" }}>
+                    {formatCurrency(enhancedMonthlyReport.summary.totalReceived)}
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--admin-text-muted)" }}>
+                    {enhancedMonthlyReport.summary.totalPayments} pagamentos confirmados
+                  </div>
+                </div>
+
+                {/* Received via AlteaPay (ASAAS) */}
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg" style={{ background: "rgba(59, 130, 246, 0.1)" }}>
+                      <CreditCard className="w-5 h-5" style={{ color: "#3B82F6" }} />
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: "var(--admin-text-muted)" }}>
+                      Recebido via AlteaPay
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold" style={{ color: "#3B82F6" }}>
+                    {formatCurrency(enhancedMonthlyReport.summary.totalAsaasReceived)}
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--admin-text-muted)" }}>
+                    {enhancedMonthlyReport.summary.asaasPaymentsCount} pagamentos (Pix, Boleto, Cartao)
+                  </div>
+                </div>
+
+                {/* Direct Payments */}
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg" style={{ background: "rgba(234, 179, 8, 0.1)" }}>
+                      <Users className="w-5 h-5" style={{ color: "#EAB308" }} />
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: "var(--admin-text-muted)" }}>
+                      Pago Direto ao Cliente
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold" style={{ color: "#EAB308" }}>
+                    {formatCurrency(enhancedMonthlyReport.summary.totalDirectReceived)}
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--admin-text-muted)" }}>
+                    {enhancedMonthlyReport.summary.directPaymentsCount} pagamentos diretos
+                  </div>
+                </div>
+
+                {/* Empty placeholder or alert if no setup */}
+                {!enhancedMonthlyReport.setup && (
                   <div
-                    className="rounded-xl p-5"
-                    style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                    className="rounded-xl p-5 flex flex-col justify-center"
+                    style={{ background: "rgba(234, 179, 8, 0.05)", border: "1px dashed rgba(234, 179, 8, 0.3)" }}
                   >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 rounded-lg" style={{ background: "rgba(34, 197, 94, 0.1)" }}>
-                        <Wallet className="w-5 h-5" style={{ color: "#22C55E" }} />
-                      </div>
-                      <span className="text-sm font-medium" style={{ color: "var(--admin-text-muted)" }}>
-                        Total Recebido no Mes
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4" style={{ color: "#EAB308" }} />
+                      <span className="text-sm font-medium" style={{ color: "#EAB308" }}>
+                        Split nao configurado
                       </span>
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: "#22C55E" }}>
-                      {formatCurrency(enhancedMonthlyReport.summary.totalReceived)}
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: "var(--admin-text-muted)" }}>
-                      {enhancedMonthlyReport.summary.totalPayments} pagamentos confirmados
-                    </div>
+                    <span className="text-xs" style={{ color: "var(--admin-text-muted)" }}>
+                      Entre em contato com a AlteaPay
+                    </span>
                   </div>
+                )}
+              </div>
 
-                  {/* Client Transfer */}
+              {/* Split Details - Only show if setup exists and has ASAAS payments */}
+              {enhancedMonthlyReport.setup && enhancedMonthlyReport.summary.asaasPaymentsCount > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Client Transfer (from ASAAS only) */}
                   <div
                     className="rounded-xl p-5"
                     style={{ background: "linear-gradient(135deg, #0A0F1E 0%, #1a2744 100%)", border: "1px solid #2a3f5f" }}
@@ -1210,18 +1336,18 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                         <Building2 className="w-5 h-5" style={{ color: "#60A5FA" }} />
                       </div>
                       <span className="text-sm font-medium" style={{ color: "#94A3B8" }}>
-                        Devido a {companyName}
+                        Devido a {companyName} (via AlteaPay)
                       </span>
                     </div>
                     <div className="text-2xl font-bold" style={{ color: "#60A5FA" }}>
                       {formatCurrency(enhancedMonthlyReport.summary.totalClientTransfer)}
                     </div>
                     <div className="text-xs mt-1" style={{ color: "#94A3B8" }}>
-                      {((1 - (enhancedMonthlyReport.summary.alteapayPercentage || 0) / 100) * 100).toFixed(1)}% do total recebido
+                      {((1 - (enhancedMonthlyReport.summary.alteapayPercentage || 0) / 100) * 100).toFixed(1)}% dos {formatCurrency(enhancedMonthlyReport.summary.totalAsaasReceived)} via AlteaPay
                     </div>
                   </div>
 
-                  {/* AlteaPay Commission */}
+                  {/* AlteaPay Commission (from ASAAS only) */}
                   <div
                     className="rounded-xl p-5"
                     style={{ background: "linear-gradient(135deg, #78350F 0%, #92400E 100%)", border: "1px solid #B45309" }}
@@ -1238,19 +1364,9 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                       {formatCurrency(enhancedMonthlyReport.summary.totalAlteapayProfit)}
                     </div>
                     <div className="text-xs mt-1" style={{ color: "#FDE68A" }}>
-                      {enhancedMonthlyReport.summary.alteapayPercentage?.toFixed(1) || 0}% success fee
+                      {enhancedMonthlyReport.summary.alteapayPercentage?.toFixed(1) || 0}% success fee sobre AlteaPay
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div
-                  className="rounded-xl p-4 flex items-center gap-3"
-                  style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)" }}
-                >
-                  <AlertTriangle className="w-5 h-5" style={{ color: "#EAB308" }} />
-                  <span className="text-sm" style={{ color: "#EAB308" }}>
-                    Split de receita ainda nao configurado. Entre em contato com a AlteaPay para configurar.
-                  </span>
                 </div>
               )}
 
@@ -1322,7 +1438,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                 )}
               </div>
 
-              {/* Full Payments Table with Scroll */}
+              {/* Full Payments Table with Scroll and Sortable Columns */}
               {enhancedMonthlyReport.payments.length > 0 ? (
                 <div
                   className="rounded-xl overflow-hidden"
@@ -1341,18 +1457,72 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                       <thead className="sticky top-0" style={{ background: "var(--admin-bg-tertiary)" }}>
                         <tr style={{ borderBottom: "1px solid var(--admin-border)" }}>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>#</th>
-                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Cliente</th>
-                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>CPF/CNPJ</th>
-                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Valor</th>
-                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Data</th>
-                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Forma</th>
+                          <th
+                            onClick={() => handleSort("clientName")}
+                            className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                            style={{ color: "var(--admin-text-muted)" }}
+                          >
+                            <div className="flex items-center">
+                              Cliente
+                              <SortIcon column="clientName" />
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("cpfCnpj")}
+                            className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                            style={{ color: "var(--admin-text-muted)" }}
+                          >
+                            <div className="flex items-center">
+                              CPF/CNPJ
+                              <SortIcon column="cpfCnpj" />
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("paidAmount")}
+                            className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                            style={{ color: "var(--admin-text-muted)" }}
+                          >
+                            <div className="flex items-center">
+                              Valor
+                              <SortIcon column="paidAmount" />
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("paymentDate")}
+                            className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                            style={{ color: "var(--admin-text-muted)" }}
+                          >
+                            <div className="flex items-center">
+                              Data
+                              <SortIcon column="paymentDate" />
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("billingType")}
+                            className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                            style={{ color: "var(--admin-text-muted)" }}
+                          >
+                            <div className="flex items-center">
+                              Forma
+                              <SortIcon column="billingType" />
+                            </div>
+                          </th>
                           {enhancedMonthlyReport.setup && (
-                            <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Repasse</th>
+                            <th
+                              onClick={() => handleSort("clientTransfer")}
+                              className="text-right px-5 py-3 text-[11px] uppercase tracking-wider font-semibold cursor-pointer hover:bg-[var(--admin-bg-secondary)] transition-colors"
+                              style={{ color: "var(--admin-text-muted)" }}
+                            >
+                              <div className="flex items-center justify-end">
+                                Repasse
+                                <SortIcon column="clientTransfer" />
+                              </div>
+                            </th>
                           )}
                         </tr>
                       </thead>
                       <tbody>
-                        {enhancedMonthlyReport.payments.map((payment, index) => (
+                        {sortedPayments.map((payment, index) => (
                           <tr key={payment.id} className="transition-colors hover:bg-[var(--admin-bg-tertiary)]" style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
                             <td className="px-5 py-3">
                               <span
