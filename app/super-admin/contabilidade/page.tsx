@@ -240,6 +240,10 @@ export default function ContabilidadePage() {
   const [directPaymentsData, setDirectPaymentsData] = useState<DirectPaymentRow[]>([])
   const [reportLoading, setReportLoading] = useState(false)
 
+  // Sorting state
+  const [sortField, setSortField] = useState<"paymentDate" | "daysExpired" | null>("paymentDate")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [setupToDelete, setSetupToDelete] = useState<Setup | null>(null)
@@ -623,6 +627,44 @@ export default function ContabilidadePage() {
     }
   }
 
+  // Sort handler for clickable columns
+  const handleSort = (field: "paymentDate" | "daysExpired") => {
+    if (sortField === field) {
+      if (sortDirection === "desc") {
+        setSortDirection("asc")
+      } else {
+        // Reset to no sort
+        setSortField(null)
+        setSortDirection("desc")
+      }
+    } else {
+      setSortField(field)
+      setSortDirection("desc")
+    }
+  }
+
+  // Sorted report data
+  const sortedReportData = useMemo(() => {
+    if (!sortField) return reportData
+    return [...reportData].sort((a, b) => {
+      let valA: number
+      let valB: number
+      if (sortField === "paymentDate") {
+        // Parse DD/MM/YYYY to Date
+        const parseDate = (str: string) => {
+          const [d, m, y] = str.split("/").map(Number)
+          return new Date(y, m - 1, d).getTime()
+        }
+        valA = parseDate(a.paymentDate)
+        valB = parseDate(b.paymentDate)
+      } else {
+        valA = a.daysExpired
+        valB = b.daysExpired
+      }
+      return sortDirection === "asc" ? valA - valB : valB - valA
+    })
+  }, [reportData, sortField, sortDirection])
+
   // Calculate summary
   const reportSummary = useMemo(() => {
     const byRule: Record<string, { count: number; received: number; alteapay: number; transfer: number }> = {}
@@ -658,7 +700,7 @@ export default function ContabilidadePage() {
   const handleExportPDF = () => {
     if (!selectedCompany || !selectedSetup) return
 
-    const doc = new jsPDF()
+    const doc = new jsPDF({ orientation: "landscape" })
     const { start, end } = getDateRange(
       periodType,
       customStartDate ? new Date(customStartDate) : undefined,
@@ -674,11 +716,13 @@ export default function ContabilidadePage() {
     doc.text(`Setup: ${selectedSetup.name}`, 14, 37)
     doc.text(`Periodo: ${formatDate(start)} a ${formatDate(end)}`, 14, 44)
 
-    // Table
-    const tableData = reportData.map((row) => [
+    // Main table with all columns including Data Venc. Original
+    const tableData = sortedReportData.map((row) => [
       row.clientName.substring(0, 20),
       row.cpfCnpj,
       formatBRL(row.paidAmount),
+      row.paymentDate,
+      row.dueDate,
       row.daysExpired.toString(),
       row.ruleLabel,
       `${row.profitPercentage}%`,
@@ -688,24 +732,58 @@ export default function ContabilidadePage() {
 
     autoTable(doc, {
       startY: 55,
-      head: [["Cliente", "CPF/CNPJ", "Pago", "Dias", "Faixa", "%", "AlteaPay", "Repasse"]],
+      head: [["Cliente", "CPF/CNPJ", "Valor Pago", "Data Pgto", "Data Venc. Original", "Dias Venc.", "Faixa", "%", "AlteaPay", "Repasse"]],
       body: tableData,
       theme: "grid",
-      styles: { fontSize: 8 },
+      styles: { fontSize: 7 },
       headStyles: { fillColor: [41, 128, 185] },
     })
 
     // Summary
-    const finalY = (doc as any).lastAutoTable.finalY + 10
+    let currentY = (doc as any).lastAutoTable.finalY + 10
 
     doc.setFontSize(12)
-    doc.text("RESUMO", 14, finalY)
+    doc.text("RESUMO", 14, currentY)
 
     doc.setFontSize(10)
-    doc.text(`Total de Pagamentos: ${reportSummary.totalPayments}`, 14, finalY + 8)
-    doc.text(`Valor Total Recebido: ${formatBRL(reportSummary.totalReceived)}`, 14, finalY + 15)
-    doc.text(`LUCRO ALTEAPAY TOTAL: ${formatBRL(reportSummary.totalAlteapay)}`, 14, finalY + 22)
-    doc.text(`REPASSE PARA ${selectedCompany.name.toUpperCase()}: ${formatBRL(reportSummary.totalTransfer)}`, 14, finalY + 29)
+    doc.text(`Total de Pagamentos via ASAAS: ${reportSummary.totalPayments}`, 14, currentY + 8)
+    doc.text(`Valor Total Recebido: ${formatBRL(reportSummary.totalReceived)}`, 14, currentY + 15)
+    doc.text(`LUCRO ALTEAPAY TOTAL: ${formatBRL(reportSummary.totalAlteapay)}`, 14, currentY + 22)
+    doc.text(`REPASSE PARA ${selectedCompany.name.toUpperCase()}: ${formatBRL(reportSummary.totalTransfer)}`, 14, currentY + 29)
+
+    currentY += 45
+
+    // Direct payments section
+    doc.setFontSize(12)
+    doc.text(`PAGAMENTOS DIRETOS A ${selectedCompany.name.toUpperCase()}`, 14, currentY)
+
+    doc.setFontSize(10)
+    doc.text(`${directPaymentsData.length} pagamento(s) realizado(s) diretamente ao cliente`, 14, currentY + 8)
+
+    if (directPaymentsData.length > 0) {
+      const directTableData = directPaymentsData.map((row) => [
+        row.clientName.substring(0, 25),
+        row.cpfCnpj,
+        formatBRL(row.debtAmount),
+        formatBRL(row.paidAmount),
+        row.paymentDate,
+      ])
+
+      autoTable(doc, {
+        startY: currentY + 15,
+        head: [["Cliente", "CPF/CNPJ", "Valor Divida", "Valor Pago", "Data Pgto"]],
+        body: directTableData,
+        theme: "grid",
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [230, 126, 34] },
+      })
+
+      const directTotal = directPaymentsData.reduce((sum, r) => sum + r.paidAmount, 0)
+      const directFinalY = (doc as any).lastAutoTable.finalY + 5
+      doc.text(`Total pagamentos diretos: ${formatBRL(directTotal)}`, 14, directFinalY)
+    } else {
+      doc.text("Nenhum pagamento direto no periodo", 14, currentY + 15)
+    }
 
     // Footer
     doc.setFontSize(8)
@@ -723,13 +801,14 @@ export default function ContabilidadePage() {
       customEndDate ? new Date(customEndDate) : undefined
     )
 
-    // Sheet 1: Detail
-    const detailData = reportData.map((row) => ({
+    // Sheet 1: Detail (with Data Venc. Original column)
+    const detailData = sortedReportData.map((row) => ({
       Cliente: row.clientName,
       "CPF/CNPJ": row.cpfCnpj,
       "Valor Divida": row.debtAmount,
       "Valor Pago": row.paidAmount,
       "Data Pagamento": row.paymentDate,
+      "Data Venc. Original": row.dueDate,
       "Dias Vencidos": row.daysExpired,
       Faixa: row.ruleLabel,
       "% AlteaPay": row.profitPercentage,
@@ -743,11 +822,23 @@ export default function ContabilidadePage() {
       { Metrica: "Setup", Valor: selectedSetup.name },
       { Metrica: "Periodo", Valor: `${formatDate(start)} a ${formatDate(end)}` },
       { Metrica: "", Valor: "" },
-      { Metrica: "Total de Pagamentos", Valor: reportSummary.totalPayments },
+      { Metrica: "Total de Pagamentos via ASAAS", Valor: reportSummary.totalPayments },
       { Metrica: "Valor Total Recebido", Valor: reportSummary.totalReceived },
       { Metrica: "Lucro AlteaPay Total", Valor: reportSummary.totalAlteapay },
       { Metrica: `Repasse para ${selectedCompany.name}`, Valor: reportSummary.totalTransfer },
+      { Metrica: "", Valor: "" },
+      { Metrica: "Pagamentos Diretos", Valor: directPaymentsData.length },
+      { Metrica: "Total Pagamentos Diretos", Valor: directPaymentsData.reduce((sum, r) => sum + r.paidAmount, 0) },
     ]
+
+    // Sheet 3: Direct Payments
+    const directPaymentsSheetData = directPaymentsData.map((row) => ({
+      Cliente: row.clientName,
+      "CPF/CNPJ": row.cpfCnpj,
+      "Valor Divida": row.debtAmount,
+      "Valor Pago": row.paidAmount,
+      "Data Pagamento": row.paymentDate,
+    }))
 
     const wb = XLSX.utils.book_new()
 
@@ -756,6 +847,9 @@ export default function ContabilidadePage() {
 
     const ws2 = XLSX.utils.json_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(wb, ws2, "Resumo")
+
+    const ws3 = XLSX.utils.json_to_sheet(directPaymentsSheetData)
+    XLSX.utils.book_append_sheet(wb, ws3, "Pagamentos Diretos")
 
     const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
     saveAs(
@@ -781,6 +875,7 @@ export default function ContabilidadePage() {
       "Valor Divida",
       "Valor Pago",
       "Data Pagamento",
+      "Data Venc. Original",
       "Dias Vencidos",
       "Faixa",
       "% AlteaPay",
@@ -788,13 +883,14 @@ export default function ContabilidadePage() {
       "Repasse Cliente",
     ].join(";")
 
-    const rows = reportData.map((row) =>
+    const rows = sortedReportData.map((row) =>
       [
         `"${row.clientName}"`,
         row.cpfCnpj,
         row.debtAmount.toFixed(2).replace(".", ","),
         row.paidAmount.toFixed(2).replace(".", ","),
         row.paymentDate,
+        row.dueDate,
         row.daysExpired,
         row.ruleLabel,
         row.profitPercentage,
@@ -803,7 +899,34 @@ export default function ContabilidadePage() {
       ].join(";")
     )
 
-    const csv = BOM + headers + "\n" + rows.join("\n")
+    // Direct payments section
+    const directHeaders = [
+      "",
+      "",
+      `PAGAMENTOS DIRETOS A ${selectedCompany.name.toUpperCase()}`,
+      "",
+      "",
+    ].join(";")
+
+    const directSubHeaders = [
+      "Cliente",
+      "CPF/CNPJ",
+      "Valor Divida",
+      "Valor Pago",
+      "Data Pagamento",
+    ].join(";")
+
+    const directRows = directPaymentsData.map((row) =>
+      [
+        `"${row.clientName}"`,
+        row.cpfCnpj,
+        row.debtAmount.toFixed(2).replace(".", ","),
+        row.paidAmount.toFixed(2).replace(".", ","),
+        row.paymentDate,
+      ].join(";")
+    )
+
+    const csv = BOM + headers + "\n" + rows.join("\n") + "\n\n" + directHeaders + "\n" + directSubHeaders + "\n" + directRows.join("\n")
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     saveAs(
@@ -1241,8 +1364,19 @@ export default function ContabilidadePage() {
                             <th className="text-left p-3 font-medium">Cliente</th>
                             <th className="text-left p-3 font-medium">CPF/CNPJ</th>
                             <th className="text-right p-3 font-medium">Valor Pago</th>
-                            <th className="text-right p-3 font-medium">Data Pgto</th>
-                            <th className="text-right p-3 font-medium">Dias Venc.</th>
+                            <th
+                              className="text-right p-3 font-medium cursor-pointer select-none hover:bg-muted/80"
+                              onClick={() => handleSort("paymentDate")}
+                            >
+                              Data Pgto {sortField === "paymentDate" && (sortDirection === "asc" ? "▲" : "▼")}
+                            </th>
+                            <th className="text-right p-3 font-medium">Data Venc. Original</th>
+                            <th
+                              className="text-right p-3 font-medium cursor-pointer select-none hover:bg-muted/80"
+                              onClick={() => handleSort("daysExpired")}
+                            >
+                              Dias Venc. {sortField === "daysExpired" && (sortDirection === "asc" ? "▲" : "▼")}
+                            </th>
                             <th className="text-center p-3 font-medium">Faixa</th>
                             <th className="text-right p-3 font-medium">% AlteaPay</th>
                             <th className="text-right p-3 font-medium">Lucro AlteaPay</th>
@@ -1250,12 +1384,13 @@ export default function ContabilidadePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {reportData.map((row, i) => (
+                          {sortedReportData.map((row, i) => (
                             <tr key={i} className="border-t">
                               <td className="p-3 font-medium truncate max-w-[150px]">{row.clientName}</td>
                               <td className="p-3 text-muted-foreground">{row.cpfCnpj}</td>
                               <td className="p-3 text-right">{formatBRL(row.paidAmount)}</td>
                               <td className="p-3 text-right">{row.paymentDate}</td>
+                              <td className="p-3 text-right text-muted-foreground">{row.dueDate}</td>
                               <td className="p-3 text-right">{row.daysExpired}</td>
                               <td className="p-3 text-center">
                                 <Badge variant="outline">{row.ruleLabel}</Badge>
@@ -1269,9 +1404,9 @@ export default function ContabilidadePage() {
                               </td>
                             </tr>
                           ))}
-                          {reportData.length === 0 && (
+                          {sortedReportData.length === 0 && (
                             <tr>
-                              <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                              <td colSpan={10} className="p-8 text-center text-muted-foreground">
                                 Nenhum pagamento encontrado no periodo selecionado
                               </td>
                             </tr>
