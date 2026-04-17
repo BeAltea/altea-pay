@@ -42,7 +42,7 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
-import { PAID_ASAAS_STATUSES, PAID_PAYMENT_STATUSES, PAID_AGREEMENT_STATUSES } from "@/lib/constants/payment-status"
+import { generateContabilidadeReport, ContabilidadeReportRow } from "@/app/actions/contabilidade-report"
 
 // Types
 interface Company {
@@ -569,7 +569,7 @@ export default function ContabilidadePage() {
     setCurrentStep("period")
   }
 
-  // Report generation
+  // Report generation - uses server action to bypass RLS for super-admin cross-company access
   const handleGenerateReport = async () => {
     if (!selectedCompany || !selectedSetup) return
 
@@ -583,136 +583,37 @@ export default function ContabilidadePage() {
         customEndDate ? new Date(customEndDate) : undefined
       )
 
-      // Fetch VMAX data for this company
-      let allVmax: VmaxRecord[] = []
-      let page = 0
-      const pageSize = 1000
-      let hasMore = true
+      // Call server action that uses supabaseAdmin to bypass RLS
+      const { data: rows, error } = await generateContabilidadeReport(
+        selectedCompany.id,
+        start,
+        end,
+        selectedSetup.rules
+      )
 
-      while (hasMore) {
-        const { data: vmaxPage } = await supabase
-          .from("VMAX")
-          .select('id, id_company, Cliente, "CPF/CNPJ", Vencido, "Dias Inad.", negotiation_status')
-          .eq("id_company", selectedCompany.id)
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-
-        if (vmaxPage && vmaxPage.length > 0) {
-          allVmax = [...allVmax, ...vmaxPage]
-          page++
-          hasMore = vmaxPage.length === pageSize
-        } else {
-          hasMore = false
-        }
+      if (error) {
+        console.error("[Contabilidade] Report generation error:", error)
+        setReportData([])
+      } else {
+        // Map the server action response to the local ReportRow type
+        const mappedRows: ReportRow[] = rows.map((row: ContabilidadeReportRow) => ({
+          clientName: row.clientName,
+          cpfCnpj: row.cpfCnpj,
+          debtAmount: row.debtAmount,
+          paidAmount: row.paidAmount,
+          paymentDate: row.paymentDate,
+          dueDate: row.dueDate,
+          daysExpired: row.daysExpired,
+          ruleLabel: row.ruleLabel,
+          profitPercentage: row.profitPercentage,
+          alteapayProfit: row.alteapayProfit,
+          clientTransfer: row.clientTransfer,
+        }))
+        setReportData(mappedRows)
       }
-
-      // Fetch agreements (paid) for this company in the period
-      // Filter by paid status indicators (asaas_status, payment_status, or status)
-      // Filter by payment_received_at (when the payment was actually received)
-      const { data: agreementsData } = await supabase
-        .from("agreements")
-        .select("id, customer_id, company_id, status, payment_status, asaas_status, agreed_amount, created_at, payment_received_at, updated_at")
-        .eq("company_id", selectedCompany.id)
-        .or(`status.in.(${PAID_AGREEMENT_STATUSES.join(",")}),payment_status.in.(${PAID_PAYMENT_STATUSES.join(",")}),asaas_status.in.(${PAID_ASAAS_STATUSES.join(",")})`)
-
-      // Filter by payment_received_at (or fallback to updated_at if not set)
-      const paidAgreementsInPeriod = (agreementsData || []).filter((a: any) => {
-        const paymentDate = a.payment_received_at || a.updated_at
-        if (!paymentDate) return false
-        const date = new Date(paymentDate)
-        return date >= start && date <= end
-      })
-
-      // Build customer_id -> VMAX lookup map
-      // Relationship: agreement.customer_id -> customers.id -> customers.external_id -> VMAX.id
-      const customerIds = Array.from(new Set(paidAgreementsInPeriod.map((a: any) => a.customer_id).filter(Boolean)))
-      const customerToVmaxMap = new Map<string, VmaxRecord>()
-
-      if (customerIds.length > 0) {
-        // Fetch customers to get external_id mapping
-        const { data: customersData } = await supabase
-          .from("customers")
-          .select("id, external_id")
-          .in("id", customerIds)
-
-        if (customersData) {
-          // Build map of external_id -> customer_id
-          const externalToCustomerId = new Map<string, string>()
-          for (const c of customersData) {
-            if (c.external_id) {
-              externalToCustomerId.set(c.external_id, c.id)
-            }
-          }
-
-          // Match VMAX records via external_id
-          for (const vmax of allVmax) {
-            const customerId = externalToCustomerId.get(vmax.id)
-            if (customerId) {
-              customerToVmaxMap.set(customerId, vmax)
-            }
-          }
-        }
-      }
-
-      // Process data
-      const rows: ReportRow[] = []
-
-      for (const agreement of paidAgreementsInPeriod) {
-        // Find matching VMAX record via the customer mapping
-        const vmaxRecord = customerToVmaxMap.get(agreement.customer_id)
-
-        if (!vmaxRecord) continue
-
-        // Calculate days expired (from VMAX "Dias Inad.")
-        const diasInadStr = String(vmaxRecord["Dias Inad."] || "0")
-        const daysExpired = Number(diasInadStr.replace(/\./g, "")) || 0
-
-        // Find matching rule based on operator
-        let matchingRule = selectedSetup.rules.find((rule) => {
-          switch (rule.operator) {
-            case "=":
-              return daysExpired === rule.min_days
-            case "<=":
-              return daysExpired <= rule.min_days
-            case ">=":
-              return daysExpired >= rule.min_days
-            case "entre":
-            default:
-              if (rule.max_days === null) {
-                return daysExpired >= rule.min_days
-              }
-              return daysExpired >= rule.min_days && daysExpired <= rule.max_days
-          }
-        })
-
-        // Default to first rule if no match
-        if (!matchingRule && selectedSetup.rules.length > 0) {
-          matchingRule = selectedSetup.rules[0]
-        }
-
-        if (!matchingRule) continue
-
-        const paidAmount = agreement.agreed_amount || 0
-        const alteapayProfit = paidAmount * (matchingRule.profit_percentage / 100)
-        const clientTransfer = paidAmount - alteapayProfit
-
-        rows.push({
-          clientName: vmaxRecord.Cliente || "N/A",
-          cpfCnpj: formatCpfCnpj(vmaxRecord["CPF/CNPJ"] || ""),
-          debtAmount: parseVencido(vmaxRecord.Vencido),
-          paidAmount,
-          paymentDate: formatDate(new Date(agreement.payment_received_at || agreement.updated_at || agreement.created_at)),
-          dueDate: "N/A", // Would need due date from VMAX
-          daysExpired,
-          ruleLabel: getRuleLabel(matchingRule),
-          profitPercentage: matchingRule.profit_percentage,
-          alteapayProfit,
-          clientTransfer,
-        })
-      }
-
-      setReportData(rows)
     } catch (error) {
       console.error("[Contabilidade] Error generating report:", error)
+      setReportData([])
     } finally {
       setReportLoading(false)
     }
