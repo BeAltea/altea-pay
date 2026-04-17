@@ -42,7 +42,7 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
-import { generateContabilidadeReport, ContabilidadeReportRow } from "@/app/actions/contabilidade-report"
+import { generateContabilidadeReport, ContabilidadeReportRow, DirectPaymentRow } from "@/app/actions/contabilidade-report"
 
 // Types
 interface Company {
@@ -237,6 +237,7 @@ export default function ContabilidadePage() {
 
   // Report state
   const [reportData, setReportData] = useState<ReportRow[]>([])
+  const [directPaymentsData, setDirectPaymentsData] = useState<DirectPaymentRow[]>([])
   const [reportLoading, setReportLoading] = useState(false)
 
   // Delete confirmation
@@ -584,7 +585,7 @@ export default function ContabilidadePage() {
       )
 
       // Call server action that uses supabaseAdmin to bypass RLS
-      const { data: rows, error } = await generateContabilidadeReport(
+      const { asaasPayments, directPayments, error } = await generateContabilidadeReport(
         selectedCompany.id,
         start,
         end,
@@ -594,9 +595,10 @@ export default function ContabilidadePage() {
       if (error) {
         console.error("[Contabilidade] Report generation error:", error)
         setReportData([])
+        setDirectPaymentsData([])
       } else {
         // Map the server action response to the local ReportRow type
-        const mappedRows: ReportRow[] = rows.map((row: ContabilidadeReportRow) => ({
+        const mappedRows: ReportRow[] = asaasPayments.map((row: ContabilidadeReportRow) => ({
           clientName: row.clientName,
           cpfCnpj: row.cpfCnpj,
           debtAmount: row.debtAmount,
@@ -610,10 +612,12 @@ export default function ContabilidadePage() {
           clientTransfer: row.clientTransfer,
         }))
         setReportData(mappedRows)
+        setDirectPaymentsData(directPayments)
       }
     } catch (error) {
       console.error("[Contabilidade] Error generating report:", error)
       setReportData([])
+      setDirectPaymentsData([])
     } finally {
       setReportLoading(false)
     }
@@ -1222,9 +1226,10 @@ export default function ContabilidadePage() {
               {/* Report Table */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Detalhamento de Pagamentos</CardTitle>
+                  <CardTitle>Detalhamento de Pagamentos via AlteaPay</CardTitle>
                   <CardDescription>
-                    {reportData.length} pagamento(s) encontrado(s) no periodo selecionado
+                    {reportData.length} pagamento(s) via ASAAS
+                    {directPaymentsData.length > 0 && ` + ${directPaymentsData.length} pagamento(s) direto à ${selectedCompany?.name}`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1332,6 +1337,56 @@ export default function ContabilidadePage() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Direct Payments Section (pago_ao_cliente) */}
+              {directPaymentsData.length > 0 && (
+                <Card className="border-amber-500/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <AlertCircle className="h-5 w-5" />
+                      Pagamentos Diretos à {selectedCompany?.name}
+                    </CardTitle>
+                    <CardDescription>
+                      {directPaymentsData.length} pagamento(s) realizados diretamente ao cliente (sem comissao AlteaPay)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[200px]">
+                      <div className="rounded-md border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 sticky top-0">
+                            <tr>
+                              <th className="text-left p-3 font-medium">Cliente</th>
+                              <th className="text-left p-3 font-medium">CPF/CNPJ</th>
+                              <th className="text-right p-3 font-medium">Valor da Divida</th>
+                              <th className="text-right p-3 font-medium">Valor Pago</th>
+                              <th className="text-right p-3 font-medium">Data Pgto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {directPaymentsData.map((row, i) => (
+                              <tr key={i} className="border-t">
+                                <td className="p-3 font-medium truncate max-w-[150px]">{row.clientName}</td>
+                                <td className="p-3 text-muted-foreground">{row.cpfCnpj}</td>
+                                <td className="p-3 text-right">{formatBRL(row.debtAmount)}</td>
+                                <td className="p-3 text-right">{formatBRL(row.paidAmount)}</td>
+                                <td className="p-3 text-right">{row.paymentDate}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </ScrollArea>
+                    <div className="mt-4 p-3 bg-amber-500/10 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Total pagamentos diretos: <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {formatBRL(directPaymentsData.reduce((sum, r) => sum + r.paidAmount, 0))}
+                        </span>
+                      </p>
                     </div>
                   </CardContent>
                 </Card>

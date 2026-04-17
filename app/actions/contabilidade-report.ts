@@ -4,30 +4,6 @@ import { createClient } from "@supabase/supabase-js"
 import { PAID_ASAAS_STATUSES, PAID_PAYMENT_STATUSES, PAID_AGREEMENT_STATUSES } from "@/lib/constants/payment-status"
 
 // Types
-interface ReportAgreement {
-  id: string
-  customer_id: string
-  company_id: string
-  debt_id: string | null
-  agreed_amount: number | null
-  asaas_status: string | null
-  payment_status: string | null
-  payment_received_at: string | null
-  due_date: string | null
-  updated_at: string | null
-  created_at: string | null
-  customers: {
-    id: string
-    name: string | null
-    document: string | null
-  } | null
-  debts: {
-    id: string
-    due_date: string | null
-    amount: number | null
-  } | null
-}
-
 interface SetupRule {
   id: string
   operator: string
@@ -51,16 +27,34 @@ export interface ContabilidadeReportRow {
   clientTransfer: number
 }
 
+export interface DirectPaymentRow {
+  clientName: string
+  cpfCnpj: string
+  debtAmount: number
+  paidAmount: number
+  paymentDate: string
+}
+
+export interface ContabilidadeReportResult {
+  asaasPayments: ContabilidadeReportRow[]
+  directPayments: DirectPaymentRow[]
+  error: string | null
+}
+
 /**
  * Generate contabilidade report using admin client to bypass RLS
  * This is necessary because super-admin needs to query other companies' data
+ *
+ * Returns two separate lists:
+ * - asaasPayments: Payments via ASAAS (with profit calculation)
+ * - directPayments: Payments directly to client (pago_ao_cliente, no profit)
  */
 export async function generateContabilidadeReport(
   companyId: string,
   startDate: Date,
   endDate: Date,
   rules: SetupRule[]
-): Promise<{ data: ContabilidadeReportRow[]; error: string | null }> {
+): Promise<ContabilidadeReportResult> {
   try {
     // Use service role client to bypass RLS
     const supabaseAdmin = createClient(
@@ -68,7 +62,7 @@ export async function generateContabilidadeReport(
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Fetch paid agreements with related customer and debt data
+    // Fetch paid agreements with related customer data
     // Use .range(0, 99999) to bypass the 1000-row default limit
     const paidStatusFilter = `asaas_status.in.(${PAID_ASAAS_STATUSES.join(",")}),payment_status.in.(${PAID_PAYMENT_STATUSES.join(",")}),status.in.(${PAID_AGREEMENT_STATUSES.join(",")})`
 
@@ -89,7 +83,8 @@ export async function generateContabilidadeReport(
         customers (
           id,
           name,
-          document
+          document,
+          external_id
         ),
         debts (
           id,
@@ -103,7 +98,7 @@ export async function generateContabilidadeReport(
 
     if (agreementsError) {
       console.error("[Contabilidade] Query error:", agreementsError)
-      return { data: [], error: agreementsError.message }
+      return { asaasPayments: [], directPayments: [], error: agreementsError.message }
     }
 
     // Filter by payment date (payment_received_at with updated_at fallback)
@@ -115,12 +110,11 @@ export async function generateContabilidadeReport(
       if (!paymentDateStr) return false
       const paymentDate = new Date(paymentDateStr)
       return paymentDate.getTime() >= startTime && paymentDate.getTime() <= endTime
-    }) as ReportAgreement[]
+    })
 
     console.log(`[Contabilidade] Found ${paidAgreementsInPeriod.length} paid agreements in period for company ${companyId}`)
 
     // Also fetch agreements where payment_received_at is NULL but status is pago_ao_cliente
-    // These might use updated_at as the payment date
     const { data: directPaidData } = await supabaseAdmin
       .from("agreements")
       .select(`
@@ -138,7 +132,8 @@ export async function generateContabilidadeReport(
         customers (
           id,
           name,
-          document
+          document,
+          external_id
         ),
         debts (
           id,
@@ -154,9 +149,9 @@ export async function generateContabilidadeReport(
       .range(0, 99999)
 
     // Combine and deduplicate by id
-    const existingIds = new Set(paidAgreementsInPeriod.map(a => a.id))
+    const existingIds = new Set(paidAgreementsInPeriod.map((a: any) => a.id))
     const allAgreements = [...paidAgreementsInPeriod]
-    for (const a of (directPaidData || []) as ReportAgreement[]) {
+    for (const a of (directPaidData || [])) {
       if (!existingIds.has(a.id)) {
         allAgreements.push(a)
       }
@@ -164,28 +159,75 @@ export async function generateContabilidadeReport(
 
     console.log(`[Contabilidade] Total agreements after dedup: ${allAgreements.length}`)
 
+    // Get all customer external_ids to fetch VMAX data for "Dias Inad."
+    const externalIds = allAgreements
+      .map((a: any) => a.customers?.external_id)
+      .filter(Boolean)
+
+    // Fetch VMAX records to get original "Dias Inad." (days overdue from original debt date)
+    let vmaxMap = new Map<string, { diasInad: number; vecto: string | null }>()
+
+    if (externalIds.length > 0) {
+      const { data: vmaxData } = await supabaseAdmin
+        .from("VMAX")
+        .select('id, "Dias Inad.", Vecto')
+        .in("id", externalIds)
+        .range(0, 99999)
+
+      if (vmaxData) {
+        for (const v of vmaxData) {
+          const diasInadStr = String(v["Dias Inad."] || "0")
+          const diasInad = parseInt(diasInadStr.replace(/\./g, "")) || 0
+          vmaxMap.set(v.id, { diasInad, vecto: v.Vecto })
+        }
+      }
+    }
+
+    console.log(`[Contabilidade] Fetched ${vmaxMap.size} VMAX records for days calculation`)
+
+    // Separate ASAAS payments from direct payments (pago_ao_cliente)
+    const asaasAgreements = allAgreements.filter((a: any) =>
+      a.payment_status !== "pago_ao_cliente" &&
+      PAID_ASAAS_STATUSES.includes(a.asaas_status)
+    )
+
+    const directAgreements = allAgreements.filter((a: any) =>
+      a.payment_status === "pago_ao_cliente"
+    )
+
+    console.log(`[Contabilidade] ASAAS payments: ${asaasAgreements.length}, Direct payments: ${directAgreements.length}`)
+
     // Sort rules by sort_order for proper matching
     const sortedRules = [...rules].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
 
-    // Process data into report rows
-    const rows: ContabilidadeReportRow[] = []
+    // Process ASAAS payments (with profit calculation)
+    const asaasPayments: ContabilidadeReportRow[] = []
 
-    for (const agreement of allAgreements) {
-      // Payment date: prefer payment_received_at, fallback to updated_at
+    for (const agreement of asaasAgreements) {
       const paymentDateStr = agreement.payment_received_at || agreement.updated_at || agreement.created_at
       if (!paymentDateStr) continue
 
       const paymentDate = new Date(paymentDateStr)
 
-      // Original debt due date: from debts table, fallback to agreement.due_date
-      const originalDueDate = agreement.debts?.due_date || agreement.due_date
+      // Get "Dias Inad." from VMAX (the REAL days overdue from original debt date)
+      const externalId = agreement.customers?.external_id
+      const vmaxInfo = externalId ? vmaxMap.get(externalId) : null
 
-      // Calculate days overdue (at time of payment)
+      // Use VMAX "Dias Inad." if available, otherwise calculate from debts.due_date
       let daysExpired = 0
-      if (originalDueDate) {
-        const dueDate = new Date(originalDueDate)
-        const diffMs = paymentDate.getTime() - dueDate.getTime()
-        daysExpired = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+      let originalDueDate: string | null = null
+
+      if (vmaxInfo) {
+        daysExpired = vmaxInfo.diasInad
+        originalDueDate = vmaxInfo.vecto || null
+      } else {
+        // Fallback: calculate from debts.due_date (less accurate)
+        originalDueDate = agreement.debts?.due_date || agreement.due_date
+        if (originalDueDate) {
+          const dueDate = new Date(originalDueDate)
+          const diffMs = paymentDate.getTime() - dueDate.getTime()
+          daysExpired = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+        }
       }
 
       // Find matching rule based on operator (first match wins)
@@ -219,7 +261,7 @@ export async function generateContabilidadeReport(
 
       // Skip if no matching rule
       if (!matchingRule) {
-        console.log(`[Contabilidade] No matching rule for ${daysExpired} days overdue`)
+        console.log(`[Contabilidade] No matching rule for ${daysExpired} days overdue (${agreement.customers?.name})`)
         continue
       }
 
@@ -228,11 +270,9 @@ export async function generateContabilidadeReport(
       const alteapayProfit = paidAmount * (matchingRule.profit_percentage / 100)
       const clientTransfer = paidAmount - alteapayProfit
 
-      // Client info from customers join
+      // Client info
       const clientName = agreement.customers?.name || "N/A"
       const cpfCnpj = agreement.customers?.document || "N/A"
-
-      // Debt amount from debts join
       const debtAmount = Number(agreement.debts?.amount) || paidAmount
 
       // Format rule label
@@ -247,13 +287,13 @@ export async function generateContabilidadeReport(
         ruleLabel = `= ${matchingRule.min_days} dias`
       }
 
-      rows.push({
+      asaasPayments.push({
         clientName,
         cpfCnpj: formatCpfCnpj(cpfCnpj),
         debtAmount,
         paidAmount,
         paymentDate: formatDate(paymentDate),
-        dueDate: originalDueDate ? formatDate(new Date(originalDueDate)) : "N/A",
+        dueDate: originalDueDate ? formatDateBR(originalDueDate) : "N/A",
         daysExpired,
         ruleLabel,
         profitPercentage: matchingRule.profit_percentage,
@@ -262,12 +302,34 @@ export async function generateContabilidadeReport(
       })
     }
 
-    console.log(`[Contabilidade] Generated ${rows.length} report rows`)
+    // Process direct payments (pago_ao_cliente - no profit calculation)
+    const directPayments: DirectPaymentRow[] = []
 
-    return { data: rows, error: null }
+    for (const agreement of directAgreements) {
+      const paymentDateStr = agreement.payment_received_at || agreement.updated_at || agreement.created_at
+      if (!paymentDateStr) continue
+
+      const paymentDate = new Date(paymentDateStr)
+      const paidAmount = Number(agreement.agreed_amount) || 0
+      const clientName = agreement.customers?.name || "N/A"
+      const cpfCnpj = agreement.customers?.document || "N/A"
+      const debtAmount = Number(agreement.debts?.amount) || paidAmount
+
+      directPayments.push({
+        clientName,
+        cpfCnpj: formatCpfCnpj(cpfCnpj),
+        debtAmount,
+        paidAmount,
+        paymentDate: formatDate(paymentDate),
+      })
+    }
+
+    console.log(`[Contabilidade] Generated ${asaasPayments.length} ASAAS rows, ${directPayments.length} direct rows`)
+
+    return { asaasPayments, directPayments, error: null }
   } catch (error) {
     console.error("[Contabilidade] Error generating report:", error)
-    return { data: [], error: String(error) }
+    return { asaasPayments: [], directPayments: [], error: String(error) }
   }
 }
 
@@ -287,4 +349,18 @@ function formatDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const year = date.getFullYear()
   return `${day}/${month}/${year}`
+}
+
+// Format date from DD/MM/YYYY string (VMAX Vecto format)
+function formatDateBR(dateStr: string): string {
+  // If already in DD/MM/YYYY format, return as-is
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    return dateStr
+  }
+  // If ISO format, convert to DD/MM/YYYY
+  const date = new Date(dateStr)
+  if (!isNaN(date.getTime())) {
+    return formatDate(date)
+  }
+  return dateStr
 }
