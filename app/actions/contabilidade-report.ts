@@ -9,7 +9,6 @@ interface ReportAgreement {
   customer_id: string
   company_id: string
   debt_id: string | null
-  total_amount: number | null
   agreed_amount: number | null
   asaas_status: string | null
   payment_status: string | null
@@ -80,7 +79,6 @@ export async function generateContabilidadeReport(
         customer_id,
         company_id,
         debt_id,
-        total_amount,
         agreed_amount,
         asaas_status,
         payment_status,
@@ -130,7 +128,6 @@ export async function generateContabilidadeReport(
         customer_id,
         company_id,
         debt_id,
-        total_amount,
         agreed_amount,
         asaas_status,
         payment_status,
@@ -227,7 +224,7 @@ export async function generateContabilidadeReport(
       }
 
       // Calculate amounts
-      const paidAmount = Number(agreement.agreed_amount || agreement.total_amount) || 0
+      const paidAmount = Number(agreement.agreed_amount) || 0
       const alteapayProfit = paidAmount * (matchingRule.profit_percentage / 100)
       const clientTransfer = paidAmount - alteapayProfit
 
