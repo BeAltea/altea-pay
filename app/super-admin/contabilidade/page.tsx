@@ -42,6 +42,7 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
+import { PAID_ASAAS_STATUSES, PAID_PAYMENT_STATUSES, PAID_AGREEMENT_STATUSES } from "@/lib/constants/payment-status"
 
 // Types
 interface Company {
@@ -605,20 +606,59 @@ export default function ContabilidadePage() {
       }
 
       // Fetch agreements (paid) for this company in the period
+      // Filter by paid status indicators (asaas_status, payment_status, or status)
+      // Filter by payment_received_at (when the payment was actually received)
       const { data: agreementsData } = await supabase
         .from("agreements")
-        .select("id, customer_id, company_id, status, agreed_amount, created_at, payment_received_at")
+        .select("id, customer_id, company_id, status, payment_status, asaas_status, agreed_amount, created_at, payment_received_at, updated_at")
         .eq("company_id", selectedCompany.id)
-        .in("status", ["completed", "paid"])
-        .gte("created_at", start.toISOString())
-        .lte("created_at", end.toISOString())
+        .or(`status.in.(${PAID_AGREEMENT_STATUSES.join(",")}),payment_status.in.(${PAID_PAYMENT_STATUSES.join(",")}),asaas_status.in.(${PAID_ASAAS_STATUSES.join(",")})`)
+
+      // Filter by payment_received_at (or fallback to updated_at if not set)
+      const paidAgreementsInPeriod = (agreementsData || []).filter((a: any) => {
+        const paymentDate = a.payment_received_at || a.updated_at
+        if (!paymentDate) return false
+        const date = new Date(paymentDate)
+        return date >= start && date <= end
+      })
+
+      // Build customer_id -> VMAX lookup map
+      // Relationship: agreement.customer_id -> customers.id -> customers.external_id -> VMAX.id
+      const customerIds = Array.from(new Set(paidAgreementsInPeriod.map((a: any) => a.customer_id).filter(Boolean)))
+      const customerToVmaxMap = new Map<string, VmaxRecord>()
+
+      if (customerIds.length > 0) {
+        // Fetch customers to get external_id mapping
+        const { data: customersData } = await supabase
+          .from("customers")
+          .select("id, external_id")
+          .in("id", customerIds)
+
+        if (customersData) {
+          // Build map of external_id -> customer_id
+          const externalToCustomerId = new Map<string, string>()
+          for (const c of customersData) {
+            if (c.external_id) {
+              externalToCustomerId.set(c.external_id, c.id)
+            }
+          }
+
+          // Match VMAX records via external_id
+          for (const vmax of allVmax) {
+            const customerId = externalToCustomerId.get(vmax.id)
+            if (customerId) {
+              customerToVmaxMap.set(customerId, vmax)
+            }
+          }
+        }
+      }
 
       // Process data
       const rows: ReportRow[] = []
 
-      for (const agreement of agreementsData || []) {
-        // Find matching VMAX record
-        const vmaxRecord = allVmax.find((v) => v.id === agreement.customer_id)
+      for (const agreement of paidAgreementsInPeriod) {
+        // Find matching VMAX record via the customer mapping
+        const vmaxRecord = customerToVmaxMap.get(agreement.customer_id)
 
         if (!vmaxRecord) continue
 
@@ -660,7 +700,7 @@ export default function ContabilidadePage() {
           cpfCnpj: formatCpfCnpj(vmaxRecord["CPF/CNPJ"] || ""),
           debtAmount: parseVencido(vmaxRecord.Vencido),
           paidAmount,
-          paymentDate: formatDate(new Date(agreement.payment_received_at || agreement.created_at)),
+          paymentDate: formatDate(new Date(agreement.payment_received_at || agreement.updated_at || agreement.created_at)),
           dueDate: "N/A", // Would need due date from VMAX
           daysExpired,
           ruleLabel: getRuleLabel(matchingRule),
