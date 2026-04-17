@@ -3,6 +3,10 @@
 import { useState, useEffect, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { isPaidStatus } from "@/lib/constants/payment-status"
+import { generateAdminMonthlyReport, MonthlyPaymentRow, MonthlyReportResult } from "@/app/actions/admin-monthly-report"
+import { useToast } from "@/hooks/use-toast"
+import * as XLSX from "xlsx"
+import { saveAs } from "file-saver"
 import {
   CreditCard,
   DollarSign,
@@ -13,6 +17,11 @@ import {
   FileText,
   Send,
   CheckCircle,
+  Download,
+  Building2,
+  Coins,
+  Wallet,
+  AlertTriangle,
 } from "lucide-react"
 import {
   BarChart,
@@ -172,10 +181,16 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
   const [weeklyReport, setWeeklyReport] = useState<PeriodReportData | null>(null)
   const [monthlyReport, setMonthlyReport] = useState<PeriodReportData | null>(null)
 
+  // NEW: Enhanced monthly report with split calculation
+  const [enhancedMonthlyReport, setEnhancedMonthlyReport] = useState<MonthlyReportResult | null>(null)
+
   // Loading states
   const [loadingDaily, setLoadingDaily] = useState(false)
   const [loadingWeekly, setLoadingWeekly] = useState(false)
   const [loadingMonthly, setLoadingMonthly] = useState(false)
+  const [exportingMonthly, setExportingMonthly] = useState(false)
+
+  const { toast } = useToast()
 
   const companyName = company?.name || "Empresa"
   const companyId = company?.id
@@ -474,7 +489,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
     }
   }
 
-  // Fetch Monthly Report
+  // Fetch Monthly Report - now uses server action with split calculation
   async function fetchMonthlyReport(monthStr: string) {
     if (!companyId || !monthStr) return
     setLoadingMonthly(true)
@@ -486,7 +501,11 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const startStr = start.toISOString()
       const endStr = end.toISOString()
 
-      // Fetch sent in this month
+      // Fetch enhanced report with split calculation via server action
+      const enhancedResult = await generateAdminMonthlyReport(companyId, year, month)
+      setEnhancedMonthlyReport(enhancedResult)
+
+      // Also fetch the regular metrics for charts (sent count, status breakdown)
       const { data: sentData } = await supabase
         .from("agreements")
         .select("*")
@@ -495,26 +514,6 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .gte("created_at", startStr)
         .lte("created_at", endStr)
 
-      // Fetch paid agreements with payment_received_at in range
-      const { data: paidWithDate } = await supabase
-        .from("agreements")
-        .select("*")
-        .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
-        .gte("payment_received_at", startStr)
-        .lte("payment_received_at", endStr)
-
-      // Fetch paid agreements without payment_received_at but updated in range (fallback)
-      const { data: paidWithoutDate } = await supabase
-        .from("agreements")
-        .select("*")
-        .eq("company_id", companyId)
-        .or("status.eq.completed,status.eq.paid,status.eq.pago_ao_cliente,payment_status.eq.received,payment_status.eq.confirmed,asaas_status.eq.RECEIVED,asaas_status.eq.RECEIVED_IN_CASH,asaas_status.eq.CONFIRMED")
-        .is("payment_received_at", null)
-        .gte("updated_at", startStr)
-        .lte("updated_at", endStr)
-
-      // Fetch all agreements for status breakdown
       const { data: allAgreements } = await supabase
         .from("agreements")
         .select("*")
@@ -523,20 +522,9 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         .lte("created_at", endStr)
 
       const sent = sentData || []
-
-      // Combine and dedupe paid agreements
-      const paidSet = new Set<string>()
-      const paid: any[] = []
-      for (const a of [...(paidWithDate || []), ...(paidWithoutDate || [])]) {
-        if (!paidSet.has(a.id)) {
-          paidSet.add(a.id)
-          paid.push(a)
-        }
-      }
-
       const all = allAgreements || []
 
-      // Build weekly breakdown - count agreement records per week
+      // Build weekly breakdown
       const weeklyBreakdown: PeriodReportData["weeklyBreakdown"] = []
       const weeksInMonth = Math.ceil(end.getDate() / 7)
 
@@ -549,25 +537,24 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
           return day >= weekStartDay && day <= weekEndDay
         })
 
-        const weekPaidAgreements = paid.filter((a: any) => {
-          const paymentDate = a.payment_received_at || a.updated_at
-          const day = new Date(paymentDate).getDate()
+        // Use enhanced report for paid count per week
+        const weekPaidPayments = enhancedResult.payments.filter((p) => {
+          const [d, m, y] = p.paymentDate.split("/").map(Number)
+          const day = d
           return day >= weekStartDay && day <= weekEndDay
         })
-        const weekRevenue = weekPaidAgreements.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
+        const weekRevenue = weekPaidPayments.reduce((sum, p) => sum + p.paidAmount, 0)
 
-        // Count agreement records for "Cobranças" metrics
         weeklyBreakdown.push({
           week: `Semana ${w + 1}`,
           weekLabel: `${weekStartDay.toString().padStart(2, "0")}-${weekEndDay.toString().padStart(2, "0")}`,
           sent: weekSentAgreements.length,
-          paid: weekPaidAgreements.length,
+          paid: weekPaidPayments.length,
           revenue: weekRevenue,
         })
       }
 
-      // Status breakdown - count agreement records per status
-      // Use isPaidStatus() to catch all paid indicators
+      // Status breakdown
       const pagoCount = all.filter((a: any) =>
         isPaidStatus(a.status, a.payment_status, a.asaas_status)
       ).length
@@ -586,32 +573,21 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         cancelada: canceladaCount,
       }
 
-      const revenue = paid.reduce((sum: number, a: any) => sum + (Number(a.agreed_amount) || 0), 0)
-
-      // Count agreement records for "Cobranças" metrics
       const sentCount = sent.length
-      const paidCount = paid.length
+      const paidCount = enhancedResult.summary.totalPayments
+      const revenue = enhancedResult.summary.totalReceived
       const paymentRate = sentCount > 0 ? (paidCount / sentCount) * 100 : 0
 
-      // Get customer info for top payments
-      const allCustomerIds = Array.from(new Set(paid.map(a => a.customer_id).filter(Boolean)))
-      const customerMap = await getCustomerInfo(allCustomerIds)
-
-      const activities: PeriodReportData["activities"] = paid
-        .sort((a, b) => (Number(b.agreed_amount) || 0) - (Number(a.agreed_amount) || 0))
-        .slice(0, 10)
-        .map(a => {
-          const customer = customerMap.get(a.customer_id)
-          return {
-            id: a.id,
-            customerName: customer?.name || "Cliente",
-            customerDocument: customer?.document || "",
-            type: "paid" as const,
-            value: Number(a.agreed_amount) || 0,
-            date: a.payment_received_at || a.updated_at || a.created_at,
-            status: "paid",
-          }
-        })
+      // Activities from enhanced report (all payments, not just top 10)
+      const activities: PeriodReportData["activities"] = enhancedResult.payments.map(p => ({
+        id: p.id,
+        customerName: p.clientName,
+        customerDocument: p.cpfCnpj,
+        type: "paid" as const,
+        value: p.paidAmount,
+        date: p.paymentDate,
+        status: "paid",
+      }))
 
       setMonthlyReport({
         sent: sentCount,
@@ -625,8 +601,78 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
     } catch (error) {
       console.error("Error fetching monthly report:", error)
       setMonthlyReport(null)
+      setEnhancedMonthlyReport(null)
     } finally {
       setLoadingMonthly(false)
+    }
+  }
+
+  // Export monthly report to XLSX
+  async function handleExportMonthlyReport() {
+    if (!enhancedMonthlyReport || !company) return
+    setExportingMonthly(true)
+
+    try {
+      const [year, month] = selectedMonth.split("-").map(Number)
+      const monthName = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+
+      // Sheet 1: All payments
+      const paymentsData = enhancedMonthlyReport.payments.map((p) => ({
+        Cliente: p.clientName,
+        "CPF/CNPJ": p.cpfCnpj,
+        "Valor Pago": p.paidAmount,
+        "Data Pagamento": p.paymentDate,
+        Forma: p.billingType,
+        "ID ASAAS": p.asaasPaymentId || "—",
+        ...(enhancedMonthlyReport.setup ? {
+          "% AlteaPay": p.profitPercentage ?? "—",
+          "Comissao AlteaPay": p.alteapayProfit ?? "—",
+          [`Repasse ${company.name}`]: p.clientTransfer ?? "—",
+        } : {}),
+      }))
+
+      // Sheet 2: Summary
+      const summaryData = [
+        { Metrica: "Empresa", Valor: company.name },
+        { Metrica: "Periodo", Valor: monthName },
+        { Metrica: "", Valor: "" },
+        { Metrica: "Total de Pagamentos", Valor: enhancedMonthlyReport.summary.totalPayments },
+        { Metrica: "Valor Total Recebido", Valor: enhancedMonthlyReport.summary.totalReceived },
+        ...(enhancedMonthlyReport.setup ? [
+          { Metrica: "Comissao AlteaPay", Valor: enhancedMonthlyReport.summary.totalAlteapayProfit },
+          { Metrica: `Repasse para ${company.name}`, Valor: enhancedMonthlyReport.summary.totalClientTransfer },
+          { Metrica: "% Medio AlteaPay", Valor: `${enhancedMonthlyReport.summary.alteapayPercentage?.toFixed(2) || 0}%` },
+        ] : [
+          { Metrica: "Split", Valor: "Nao configurado" },
+        ]),
+      ]
+
+      const wb = XLSX.utils.book_new()
+
+      const ws1 = XLSX.utils.json_to_sheet(paymentsData)
+      XLSX.utils.book_append_sheet(wb, ws1, "Pagamentos")
+
+      const ws2 = XLSX.utils.json_to_sheet(summaryData)
+      XLSX.utils.book_append_sheet(wb, ws2, "Resumo")
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const fileName = `relatorio_mensal_${company.name.toLowerCase().replace(/\s+/g, "_")}_${selectedMonth}.xlsx`
+
+      saveAs(new Blob([wbout], { type: "application/octet-stream" }), fileName)
+
+      toast({
+        title: "Relatorio exportado",
+        description: `Arquivo ${fileName} baixado com sucesso.`,
+      })
+    } catch (error) {
+      console.error("Error exporting report:", error)
+      toast({
+        title: "Erro ao exportar",
+        description: "Nao foi possivel gerar o arquivo. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setExportingMonthly(false)
     }
   }
 
@@ -1079,27 +1125,48 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       {/* Monthly Tab */}
       {activeTab === "monthly" && (
         <div className="space-y-6">
-          {/* Month Picker */}
+          {/* Month Picker with Export Button */}
           <div
-            className="rounded-xl p-4 flex items-center gap-4"
+            className="rounded-xl p-4 flex items-center justify-between flex-wrap gap-4"
             style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
           >
-            <Calendar className="w-5 h-5" style={{ color: "var(--admin-gold-400)" }} />
-            <span className="text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
-              Selecione o mes:
-            </span>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-4 py-2 rounded-lg text-sm"
-              style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)", color: "var(--admin-text-primary)" }}
-            />
+            <div className="flex items-center gap-4">
+              <Calendar className="w-5 h-5" style={{ color: "var(--admin-gold-400)" }} />
+              <span className="text-sm font-medium" style={{ color: "var(--admin-text-primary)" }}>
+                Selecione o mes:
+              </span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: "var(--admin-bg-tertiary)", border: "1px solid var(--admin-border)", color: "var(--admin-text-primary)" }}
+              />
+            </div>
+            {enhancedMonthlyReport && enhancedMonthlyReport.payments.length > 0 && (
+              <button
+                onClick={handleExportMonthlyReport}
+                disabled={exportingMonthly}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{
+                  background: "var(--admin-gold-400)",
+                  color: "var(--admin-bg-primary)",
+                  opacity: exportingMonthly ? 0.7 : 1,
+                }}
+              >
+                {exportingMonthly ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                Exportar Relatorio
+              </button>
+            )}
           </div>
 
           {loadingMonthly ? (
             <LoadingState />
-          ) : monthlyReport ? (
+          ) : monthlyReport && enhancedMonthlyReport ? (
             <>
               {/* KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1108,6 +1175,84 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                 <KPICard icon={DollarSign} label="Valor Recebido" value={formatCurrency(monthlyReport.revenue)} color="#22C55E" />
                 <KPICard icon={TrendingUp} label="Taxa de Pagamento" value={`${monthlyReport.paymentRate.toFixed(1)}%`} color="var(--admin-blue)" />
               </div>
+
+              {/* Split Cards - Only show if setup exists */}
+              {enhancedMonthlyReport.setup ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Total Received */}
+                  <div
+                    className="rounded-xl p-5"
+                    style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg" style={{ background: "rgba(34, 197, 94, 0.1)" }}>
+                        <Wallet className="w-5 h-5" style={{ color: "#22C55E" }} />
+                      </div>
+                      <span className="text-sm font-medium" style={{ color: "var(--admin-text-muted)" }}>
+                        Total Recebido no Mes
+                      </span>
+                    </div>
+                    <div className="text-2xl font-bold" style={{ color: "#22C55E" }}>
+                      {formatCurrency(enhancedMonthlyReport.summary.totalReceived)}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: "var(--admin-text-muted)" }}>
+                      {enhancedMonthlyReport.summary.totalPayments} pagamentos confirmados
+                    </div>
+                  </div>
+
+                  {/* Client Transfer */}
+                  <div
+                    className="rounded-xl p-5"
+                    style={{ background: "linear-gradient(135deg, #0A0F1E 0%, #1a2744 100%)", border: "1px solid #2a3f5f" }}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg" style={{ background: "rgba(59, 130, 246, 0.2)" }}>
+                        <Building2 className="w-5 h-5" style={{ color: "#60A5FA" }} />
+                      </div>
+                      <span className="text-sm font-medium" style={{ color: "#94A3B8" }}>
+                        Devido a {companyName}
+                      </span>
+                    </div>
+                    <div className="text-2xl font-bold" style={{ color: "#60A5FA" }}>
+                      {formatCurrency(enhancedMonthlyReport.summary.totalClientTransfer)}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: "#94A3B8" }}>
+                      {((1 - (enhancedMonthlyReport.summary.alteapayPercentage || 0) / 100) * 100).toFixed(1)}% do total recebido
+                    </div>
+                  </div>
+
+                  {/* AlteaPay Commission */}
+                  <div
+                    className="rounded-xl p-5"
+                    style={{ background: "linear-gradient(135deg, #78350F 0%, #92400E 100%)", border: "1px solid #B45309" }}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg" style={{ background: "rgba(234, 179, 8, 0.2)" }}>
+                        <Coins className="w-5 h-5" style={{ color: "#FCD34D" }} />
+                      </div>
+                      <span className="text-sm font-medium" style={{ color: "#FDE68A" }}>
+                        Comissao AlteaPay
+                      </span>
+                    </div>
+                    <div className="text-2xl font-bold" style={{ color: "#FCD34D" }}>
+                      {formatCurrency(enhancedMonthlyReport.summary.totalAlteapayProfit)}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: "#FDE68A" }}>
+                      {enhancedMonthlyReport.summary.alteapayPercentage?.toFixed(1) || 0}% success fee
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="rounded-xl p-4 flex items-center gap-3"
+                  style={{ background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)" }}
+                >
+                  <AlertTriangle className="w-5 h-5" style={{ color: "#EAB308" }} />
+                  <span className="text-sm" style={{ color: "#EAB308" }}>
+                    Split de receita ainda nao configurado. Entre em contato com a AlteaPay para configurar.
+                  </span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 {/* Weekly Breakdown Chart */}
@@ -1177,43 +1322,66 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                 )}
               </div>
 
-              {/* Top Payments Table */}
-              {monthlyReport.activities.length > 0 ? (
+              {/* Full Payments Table with Scroll */}
+              {enhancedMonthlyReport.payments.length > 0 ? (
                 <div
                   className="rounded-xl overflow-hidden"
                   style={{ background: "var(--admin-bg-secondary)", border: "1px solid var(--admin-border)" }}
                 >
-                  <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
+                  <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
                     <span className="text-[15px] font-semibold" style={{ color: "var(--admin-text-primary)" }}>
-                      Maiores Pagamentos Recebidos
+                      Pagamentos Recebidos no Mes
+                    </span>
+                    <span className="text-sm" style={{ color: "var(--admin-text-muted)" }}>
+                      {enhancedMonthlyReport.payments.length} pagamentos - Total: {formatCurrency(enhancedMonthlyReport.summary.totalReceived)}
                     </span>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="max-h-[500px] overflow-y-auto">
                     <table className="w-full">
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
+                      <thead className="sticky top-0" style={{ background: "var(--admin-bg-tertiary)" }}>
+                        <tr style={{ borderBottom: "1px solid var(--admin-border)" }}>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>#</th>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Cliente</th>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>CPF/CNPJ</th>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Valor</th>
                           <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Data</th>
+                          <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Forma</th>
+                          {enhancedMonthlyReport.setup && (
+                            <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wider font-semibold" style={{ color: "var(--admin-text-muted)" }}>Repasse</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
-                        {monthlyReport.activities.map((act, index) => (
-                          <tr key={act.id} className="transition-colors hover:bg-[var(--admin-bg-tertiary)]" style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
+                        {enhancedMonthlyReport.payments.map((payment, index) => (
+                          <tr key={payment.id} className="transition-colors hover:bg-[var(--admin-bg-tertiary)]" style={{ borderBottom: "1px solid var(--admin-bg-tertiary)" }}>
                             <td className="px-5 py-3">
                               <span
                                 className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                                style={{ background: index < 3 ? "var(--admin-gold-400)" : "var(--admin-border)", color: index < 3 ? "var(--admin-bg-primary)" : "var(--admin-text-muted)" }}
+                                style={{ background: "var(--admin-border)", color: "var(--admin-text-muted)" }}
                               >
                                 {index + 1}
                               </span>
                             </td>
-                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-primary)" }}>{act.customerName}</td>
-                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-muted)" }}>{act.customerDocument}</td>
-                            <td className="px-5 py-3 text-sm font-bold" style={{ color: "#22C55E" }}>{formatCurrency(act.value)}</td>
-                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-muted)" }}>{formatDate(act.date)}</td>
+                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-primary)" }}>{payment.clientName}</td>
+                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-muted)" }}>{payment.cpfCnpj}</td>
+                            <td className="px-5 py-3 text-sm font-bold" style={{ color: "#22C55E" }}>{formatCurrency(payment.paidAmount)}</td>
+                            <td className="px-5 py-3 text-sm" style={{ color: "var(--admin-text-muted)" }}>{payment.paymentDate}</td>
+                            <td className="px-5 py-3">
+                              <span
+                                className="px-2 py-1 rounded-md text-[11px] font-semibold"
+                                style={{
+                                  background: payment.billingType === "Pago ao cliente" ? "rgba(234, 179, 8, 0.1)" : "rgba(59, 130, 246, 0.1)",
+                                  color: payment.billingType === "Pago ao cliente" ? "#EAB308" : "#3B82F6"
+                                }}
+                              >
+                                {payment.billingType}
+                              </span>
+                            </td>
+                            {enhancedMonthlyReport.setup && (
+                              <td className="px-5 py-3 text-sm text-right font-medium" style={{ color: "#60A5FA" }}>
+                                {payment.clientTransfer !== undefined ? formatCurrency(payment.clientTransfer) : "—"}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
