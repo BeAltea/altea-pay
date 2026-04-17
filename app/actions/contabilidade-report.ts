@@ -76,6 +76,7 @@ export async function generateContabilidadeReport(
         agreed_amount,
         asaas_status,
         payment_status,
+        status,
         payment_received_at,
         due_date,
         updated_at,
@@ -115,6 +116,7 @@ export async function generateContabilidadeReport(
     console.log(`[Contabilidade] Found ${paidAgreementsInPeriod.length} paid agreements in period for company ${companyId}`)
 
     // Also fetch agreements where payment_received_at is NULL but status is pago_ao_cliente
+    // Check both payment_status and status fields for "pago_ao_cliente"
     const { data: directPaidData } = await supabaseAdmin
       .from("agreements")
       .select(`
@@ -125,6 +127,7 @@ export async function generateContabilidadeReport(
         agreed_amount,
         asaas_status,
         payment_status,
+        status,
         payment_received_at,
         due_date,
         updated_at,
@@ -142,7 +145,7 @@ export async function generateContabilidadeReport(
         )
       `)
       .eq("company_id", companyId)
-      .eq("payment_status", "pago_ao_cliente")
+      .or("payment_status.eq.pago_ao_cliente,status.eq.pago_ao_cliente")
       .is("payment_received_at", null)
       .gte("updated_at", startDate.toISOString())
       .lte("updated_at", endDate.toISOString())
@@ -185,15 +188,17 @@ export async function generateContabilidadeReport(
 
     console.log(`[Contabilidade] Fetched ${vmaxMap.size} VMAX records for days calculation`)
 
+    // Helper to check if agreement is a direct payment (paid directly to client, not via ASAAS)
+    // Check both payment_status AND status fields for "pago_ao_cliente"
+    const isDirectPayment = (a: any) =>
+      a.payment_status === "pago_ao_cliente" || a.status === "pago_ao_cliente"
+
     // Separate ASAAS payments from direct payments (pago_ao_cliente)
     const asaasAgreements = allAgreements.filter((a: any) =>
-      a.payment_status !== "pago_ao_cliente" &&
-      PAID_ASAAS_STATUSES.includes(a.asaas_status)
+      !isDirectPayment(a) && PAID_ASAAS_STATUSES.includes(a.asaas_status)
     )
 
-    const directAgreements = allAgreements.filter((a: any) =>
-      a.payment_status === "pago_ao_cliente"
-    )
+    const directAgreements = allAgreements.filter(isDirectPayment)
 
     console.log(`[Contabilidade] ASAAS payments: ${asaasAgreements.length}, Direct payments: ${directAgreements.length}`)
 
