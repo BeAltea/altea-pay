@@ -24,7 +24,7 @@ interface ReportAgreement {
   debts: {
     id: string
     due_date: string | null
-    original_amount: number | null
+    amount: number | null
   } | null
 }
 
@@ -94,7 +94,7 @@ export async function generateContabilidadeReport(
         debts (
           id,
           due_date,
-          original_amount
+          amount
         )
       `)
       .eq("company_id", companyId)
@@ -143,7 +143,7 @@ export async function generateContabilidadeReport(
         debts (
           id,
           due_date,
-          original_amount
+          amount
         )
       `)
       .eq("company_id", companyId)
@@ -233,7 +233,7 @@ export async function generateContabilidadeReport(
       const cpfCnpj = agreement.customers?.document || "N/A"
 
       // Debt amount from debts join
-      const debtAmount = Number(agreement.debts?.original_amount) || paidAmount
+      const debtAmount = Number(agreement.debts?.amount) || paidAmount
 
       // Format rule label
       let ruleLabel = "Sem faixa"
