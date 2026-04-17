@@ -669,12 +669,12 @@ export default function ContabilidadePage() {
   const reportSummary = useMemo(() => {
     const byRule: Record<string, { count: number; received: number; alteapay: number; transfer: number }> = {}
 
-    let totalReceived = 0
+    let asaasReceived = 0
     let totalAlteapay = 0
     let totalTransfer = 0
 
     for (const row of reportData) {
-      totalReceived += row.paidAmount
+      asaasReceived += row.paidAmount
       totalAlteapay += row.alteapayProfit
       totalTransfer += row.clientTransfer
 
@@ -687,14 +687,32 @@ export default function ContabilidadePage() {
       byRule[row.ruleLabel].transfer += row.clientTransfer
     }
 
+    // Calculate direct payments total
+    const directReceived = directPaymentsData.reduce((sum, r) => sum + r.paidAmount, 0)
+    const directCount = directPaymentsData.length
+
+    // Grand total = ASAAS + Direct
+    const grandTotal = asaasReceived + directReceived
+    const grandTotalCount = reportData.length + directCount
+
     return {
-      totalPayments: reportData.length,
-      totalReceived,
+      // Grand totals (all payments)
+      grandTotalCount,
+      grandTotal,
+      // ASAAS-specific
+      asaasPayments: reportData.length,
+      asaasReceived,
       totalAlteapay,
       totalTransfer,
+      // Direct-specific
+      directCount,
+      directReceived,
+      // Legacy alias for backward compatibility
+      totalPayments: reportData.length,
+      totalReceived: asaasReceived,
       byRule,
     }
-  }, [reportData])
+  }, [reportData, directPaymentsData])
 
   // Export functions
   const handleExportPDF = () => {
@@ -1419,7 +1437,7 @@ export default function ContabilidadePage() {
               </Card>
 
               {/* Summary */}
-              {reportData.length > 0 && (
+              {(reportData.length > 0 || directPaymentsData.length > 0) && (
                 <Card className="bg-muted/30">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -1428,28 +1446,64 @@ export default function ContabilidadePage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="p-4 bg-background rounded-lg">
-                        <p className="text-sm text-muted-foreground">Total de Pagamentos</p>
-                        <p className="text-2xl font-bold">{reportSummary.totalPayments}</p>
-                      </div>
-                      <div className="p-4 bg-background rounded-lg">
-                        <p className="text-sm text-muted-foreground">Valor Total Recebido</p>
-                        <p className="text-2xl font-bold">{formatBRL(reportSummary.totalReceived)}</p>
-                      </div>
-                      <div className="p-4 bg-background rounded-lg border-2 border-green-500/50">
-                        <p className="text-sm text-muted-foreground">Lucro AlteaPay Total</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                          {formatBRL(reportSummary.totalAlteapay)}
+                    {/* Top row: Grand totals split by source */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 bg-background rounded-lg border-2 border-emerald-500/50">
+                        <p className="text-sm text-muted-foreground">Total Recebido no Periodo</p>
+                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatBRL(reportSummary.grandTotal)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {reportSummary.grandTotalCount} pagamentos confirmados
                         </p>
                       </div>
-                      <div className="p-4 bg-background rounded-lg border-2 border-blue-500/50">
-                        <p className="text-sm text-muted-foreground">Repasse para {selectedCompany?.name}</p>
+                      <div className="p-4 bg-background rounded-lg">
+                        <p className="text-sm text-muted-foreground">Recebido via AlteaPay</p>
                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          {formatBRL(reportSummary.totalTransfer)}
+                          {formatBRL(reportSummary.asaasReceived)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {reportSummary.asaasPayments} pagamentos (Pix, Boleto, Cartao)
+                        </p>
+                      </div>
+                      <div className="p-4 bg-background rounded-lg">
+                        <p className="text-sm text-muted-foreground">Pago Direto ao Cliente</p>
+                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                          {formatBRL(reportSummary.directReceived)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {reportSummary.directCount} pagamentos diretos
                         </p>
                       </div>
                     </div>
+
+                    {/* Bottom row: Split calculation (only from ASAAS payments) */}
+                    {reportData.length > 0 && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-background rounded-lg border-2 border-blue-500/50">
+                          <p className="text-sm text-muted-foreground">Repasse para {selectedCompany?.name} (via AlteaPay)</p>
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                            {formatBRL(reportSummary.totalTransfer)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {reportSummary.asaasReceived > 0
+                              ? ((reportSummary.totalTransfer / reportSummary.asaasReceived) * 100).toFixed(1)
+                              : 0}% dos {formatBRL(reportSummary.asaasReceived)} via AlteaPay
+                          </p>
+                        </div>
+                        <div className="p-4 bg-background rounded-lg border-2 border-green-500/50">
+                          <p className="text-sm text-muted-foreground">Comissao AlteaPay</p>
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                            {formatBRL(reportSummary.totalAlteapay)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {reportSummary.asaasReceived > 0
+                              ? ((reportSummary.totalAlteapay / reportSummary.asaasReceived) * 100).toFixed(1)
+                              : 0}% success fee sobre AlteaPay
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <Separator />
 
