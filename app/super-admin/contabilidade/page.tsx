@@ -423,20 +423,52 @@ export default function ContabilidadePage() {
       }
     }
 
-    // Check for overlaps
+    // Helper to compute effective range based on operator
+    const getEffectiveRange = (rule: SetupRule): [number, number] => {
+      switch (rule.operator) {
+        case "<=":
+          // <= X means range [0, X]
+          return [0, rule.min_days]
+        case ">=":
+          // >= X means range [X, Infinity]
+          return [rule.min_days, Infinity]
+        case "=":
+          // = X means range [X, X]
+          return [rule.min_days, rule.min_days]
+        case "entre":
+        default:
+          // entre X-Y means range [X, Y] or [X, Infinity] if max is null
+          return [rule.min_days, rule.max_days ?? Infinity]
+      }
+    }
+
+    // Check for overlaps - two ranges [startA, endA] and [startB, endB] overlap if startA <= endB && startB <= endA
     for (let i = 0; i < setupRules.length; i++) {
       for (let j = i + 1; j < setupRules.length; j++) {
-        const a = setupRules[i]
-        const b = setupRules[j]
-        const aMax = a.max_days ?? Infinity
-        const bMax = b.max_days ?? Infinity
+        const [startA, endA] = getEffectiveRange(setupRules[i])
+        const [startB, endB] = getEffectiveRange(setupRules[j])
 
-        if (
-          (a.min_days <= b.min_days && b.min_days <= aMax) ||
-          (b.min_days <= a.min_days && a.min_days <= bMax)
-        ) {
+        if (startA <= endB && startB <= endA) {
           errors.push(`Regras ${i + 1} e ${j + 1} possuem intervalos sobrepostos`)
         }
+      }
+    }
+
+    // Check for gaps (warning only, don't block save)
+    // Sort rules by effective start for gap detection
+    const sortedRules = [...setupRules].map((rule, idx) => ({
+      rule,
+      idx: idx + 1,
+      range: getEffectiveRange(rule)
+    })).sort((a, b) => a.range[0] - b.range[0])
+
+    for (let i = 0; i < sortedRules.length - 1; i++) {
+      const current = sortedRules[i]
+      const next = sortedRules[i + 1]
+      // Gap exists if current end + 1 < next start
+      if (current.range[1] !== Infinity && current.range[1] + 1 < next.range[0]) {
+        // This is a warning, not an error - we could add it to a separate warnings array
+        // For now, we just allow it without blocking
       }
     }
 
