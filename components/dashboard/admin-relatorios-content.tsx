@@ -625,6 +625,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
       const monthName = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
 
       // Sheet 1: All payments
+      const isDirectPayment = (billingType: string) => billingType === "Pago ao cliente"
       const paymentsData = enhancedMonthlyReport.payments.map((p) => ({
         Cliente: p.clientName,
         "CPF/CNPJ": p.cpfCnpj,
@@ -633,9 +634,9 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
         Forma: p.billingType,
         "ID ASAAS": p.asaasPaymentId || "—",
         ...(enhancedMonthlyReport.setup ? {
-          "% AlteaPay": p.profitPercentage ?? "—",
-          "Comissao AlteaPay": p.alteapayProfit ?? "—",
-          [`Repasse ${company.name}`]: p.clientTransfer ?? "—",
+          "% AlteaPay": isDirectPayment(p.billingType) ? "—" : (p.profitPercentage ?? "—"),
+          "Comissao AlteaPay": isDirectPayment(p.billingType) ? "—" : (p.alteapayProfit ?? "—"),
+          [`Repasse ${company.name}`]: isDirectPayment(p.billingType) ? "—" : (p.clientTransfer ?? "—"),
         } : {}),
       }))
 
@@ -1549,7 +1550,7 @@ export function AdminRelatoriosContent({ reportData, company }: AdminRelatoriosC
                             </td>
                             {enhancedMonthlyReport.setup && (
                               <td className="px-5 py-3 text-sm text-right font-medium" style={{ color: "#60A5FA" }}>
-                                {payment.clientTransfer !== undefined ? formatCurrency(payment.clientTransfer) : "—"}
+                                {payment.billingType === "Pago ao cliente" ? "—" : (payment.clientTransfer !== undefined ? formatCurrency(payment.clientTransfer) : "—")}
                               </td>
                             )}
                           </tr>
