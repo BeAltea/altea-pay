@@ -165,6 +165,8 @@ export async function updateSession(request: NextRequest) {
             url.pathname = "/dashboard"
           } else if (userRole === "final_client") {
             url.pathname = "/portal"
+          } else if (userRole === "localize_only") {
+            url.pathname = "/localize"
           } else {
             url.pathname = "/user-dashboard"
           }
@@ -178,6 +180,7 @@ export async function updateSession(request: NextRequest) {
             case "viewer": return "/super-admin" // Viewer has read-only access to super-admin
             case "admin": return "/dashboard"
             case "final_client": return "/portal"
+            case "localize_only": return "/localize"
             default: return "/user-dashboard"
           }
         }
@@ -211,6 +214,21 @@ export async function updateSession(request: NextRequest) {
         if (currentPath.startsWith("/portal") && userRole !== "final_client") {
           const url = request.nextUrl.clone()
           url.pathname = getDefaultPath(userRole)
+          return NextResponse.redirect(url)
+        }
+
+        // Localize page: only localize_only and super_admin can access
+        const localizeAllowedRoles = ["localize_only", "super_admin"]
+        if (currentPath.startsWith("/localize") && !localizeAllowedRoles.includes(userRole)) {
+          const url = request.nextUrl.clone()
+          url.pathname = getDefaultPath(userRole)
+          return NextResponse.redirect(url)
+        }
+
+        // localize_only users can ONLY access /localize (restrict from all other dashboards)
+        if (userRole === "localize_only" && !currentPath.startsWith("/localize")) {
+          const url = request.nextUrl.clone()
+          url.pathname = "/localize"
           return NextResponse.redirect(url)
         }
       } catch (error) {
