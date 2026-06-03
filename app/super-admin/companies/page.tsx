@@ -202,9 +202,14 @@ async function fetchCompanies() {
         return sum + value
       }, 0)
 
-    // Calculate recovery rate properly
-    const totalOriginalAmount = vmaxTotalAmount + paidAmount
-    const recoveryRate = totalOriginalAmount > 0 ? (paidAmount / totalOriginalAmount) * 100 : 0
+    // Recovery rate: count-based (paid clients / negotiations sent), matching the
+    // Negociações page "% das enviadas". A paid client counts as a sent negotiation.
+    const sentStatuses = new Set(["active", "sent", "pending", "in_negotiation"])
+    const paidCount = companyVmaxData.filter((v) => isPaid(v)).length
+    const negotiationsSent = companyVmaxData.filter(
+      (v) => v.negotiation_status !== "CANCELADA" && (isPaid(v) || sentStatuses.has(v.negotiation_status)),
+    ).length
+    const recoveryRate = negotiationsSent > 0 ? (paidCount / negotiationsSent) * 100 : 0
 
     const totalCustomers = companyVmaxData.length
     const totalDebts = companyVmaxData.filter((v) => !isPaid(v)).length

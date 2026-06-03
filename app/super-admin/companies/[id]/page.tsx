@@ -26,6 +26,9 @@ import {
 } from "lucide-react"
 import { formatCurrency } from "@/lib/format-currency"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0 // Always reflect latest payments/recovery rate (no cache)
+
 interface CompanyDetailsProps {
   params: Promise<{
     id: string
@@ -89,17 +92,57 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   // Fetch completed agreements (paid negotiations) to calculate recovered amount
   // Include: completed, paid, pago_ao_cliente (paid directly to provider)
   // Also check asaas_status for RECEIVED/CONFIRMED/RECEIVED_IN_CASH
-  const { data: completedAgreements } = await supabase
-    .from("agreements")
-    .select("id, agreed_amount, customer_id, debt_id, status, asaas_status")
-    .eq("company_id", id)
-    .or("status.in.(completed,paid,pago_ao_cliente),asaas_status.in.(RECEIVED,CONFIRMED,RECEIVED_IN_CASH)")
+  // IMPORTANT: paginate to avoid Supabase 1000-row default limit
+  let completedAgreements: any[] = []
+  {
+    let aPage = 0
+    let aHasMore = true
+    while (aHasMore) {
+      const { data: aPageData, error: aErr } = await supabase
+        .from("agreements")
+        .select("id, agreed_amount, customer_id, debt_id, status, asaas_status")
+        .eq("company_id", id)
+        .or("status.in.(completed,paid,pago_ao_cliente),asaas_status.in.(RECEIVED,CONFIRMED,RECEIVED_IN_CASH)")
+        .range(aPage * pageSize, (aPage + 1) * pageSize - 1)
+      if (aErr) {
+        console.log("[v0] Agreements page error:", aErr.message)
+        break
+      }
+      if (aPageData && aPageData.length > 0) {
+        completedAgreements = [...completedAgreements, ...aPageData]
+        aPage++
+        aHasMore = aPageData.length === pageSize
+      } else {
+        aHasMore = false
+      }
+    }
+  }
 
   // Get customer IDs with paid agreements
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id, document")
-    .eq("company_id", id)
+  // IMPORTANT: paginate to avoid Supabase 1000-row default limit (VMAX has >2500 customers)
+  let customers: any[] = []
+  {
+    let cPage = 0
+    let cHasMore = true
+    while (cHasMore) {
+      const { data: cPageData, error: cErr } = await supabase
+        .from("customers")
+        .select("id, document")
+        .eq("company_id", id)
+        .range(cPage * pageSize, (cPage + 1) * pageSize - 1)
+      if (cErr) {
+        console.log("[v0] Customers page error:", cErr.message)
+        break
+      }
+      if (cPageData && cPageData.length > 0) {
+        customers = [...customers, ...cPageData]
+        cPage++
+        cHasMore = cPageData.length === pageSize
+      } else {
+        cHasMore = false
+      }
+    }
+  }
 
   // Build map of customer_id -> document
   const customerIdToDoc = new Map<string, string>()
@@ -179,7 +222,15 @@ export default async function CompanyDetailsPage({ params }: CompanyDetailsProps
   const totalOriginalAmount = vmaxPendingAmount + vmaxRecoveredAmount
   const totalAmount = vmaxPendingAmount // Display pending amount (same as list page "Volume")
   const recoveredAmount = vmaxRecoveredAmount
-  const recoveryRate = totalOriginalAmount > 0 ? (recoveredAmount / totalOriginalAmount) * 100 : 0
+
+  // Taxa de Recuperação: count-based (paid clients / negotiations sent), matching the
+  // Negociações page "% das enviadas". A paid client counts as a sent negotiation.
+  const sentStatuses = new Set(["active", "sent", "pending", "in_negotiation"])
+  const paidCount = vmaxData.filter((v) => isPaid(v)).length
+  const negotiationsSent = vmaxData.filter(
+    (v) => v.negotiation_status !== "CANCELADA" && (isPaid(v) || sentStatuses.has(v.negotiation_status)),
+  ).length
+  const recoveryRate = negotiationsSent > 0 ? (paidCount / negotiationsSent) * 100 : 0
   const totalOverdueDebts = vmaxPendingOverdue
 
   const admins = adminsData?.length || 0
