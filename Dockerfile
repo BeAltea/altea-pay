@@ -18,6 +18,17 @@ RUN npm install -g pnpm@9
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Algumas rotas (ex.: app/api/asaas/*) constroem o cliente Supabase em escopo de
+# modulo; o `next build` (collect page data) falha com "supabaseUrl is required"
+# sem env. Variaveis NEXT_PUBLIC_* sao inlinadas no build, entao injetamos aqui
+# os valores reais do Supabase local (URL alcancavel pelos pods). A
+# SUPABASE_SERVICE_ROLE_KEY nao e inlinada (lida em runtime via Secret); no build
+# basta um placeholder nao-vazio para a construcao do cliente nao lancar.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    SUPABASE_SERVICE_ROLE_KEY=build-placeholder-overridden-at-runtime
 RUN pnpm build
 
 FROM node:20-alpine AS run

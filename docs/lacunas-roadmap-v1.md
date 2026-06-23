@@ -144,3 +144,28 @@ exata e libera `main-*`/`main2`.
 **Decisão:** toda deleção em WS-1b segue pelo caminho `git push origin --delete
 <branch>` (sem `gh api` de bypass). `enforce_admins` agora `true` e o hook v2 é a
 defesa em profundidade. WS-1b só roda após WS-7 verde.
+
+---
+
+## 10. Bring-up local WS-7 (observado no deploy de 2026-06-23)
+
+**Estado:** deploy local validado (3 namespaces, 15 pods Running, app responde,
+webhook handshake OK, close-agreement e2e OK). Itens abertos durante o bring-up:
+
+- `negotiation-agent` (protótipo) expõe `/health` e `/chat`, mas **não** `/readyz`
+  nem `/session/start` (Contrato A). readinessProbe ajustado para `/health`;
+  implementar `/readyz` (LLM-gated) e `/session/start` é follow-up.
+- Schema local é o **subconjunto mínimo** (`scripts/ws7-local-bootstrap.sql`), não
+  os 116 `scripts/*.sql`; faltam as RPCs `start_batch_processing`,
+  `increment_batch_failed`, `check_and_finalize_batch` (o worker loga erro de RPC,
+  não fatal). Replay completo do schema é tarefa de migração separada.
+- Cobrança ASAAS real exige `ASAAS_API_KEY` de sandbox (hoje placeholder → worker
+  falha em "chave de API inválida", esperado). O fluxo negociação-primeiro
+  (agreement + batch + enfileiramento) está validado.
+- Rename dos repos para `BeAltea/alteapay` e `BeAltea/alteapay-agents` aplicado:
+  remotes atualizados, hook v3 aceita nome novo e antigo (redirect), docs/URLs
+  atualizados. `main` de produção intocada (`dfeceb2`).
+- `client.ts` (browser) usa `NEXT_PUBLIC_SUPABASE_URL` inlinado
+  (`host.orb.internal`), não resolvível pelo navegador; ok para validação
+  server-side desta fase (ver item 8c).
+- Runbook reproduzível em `docs/ws7-local-bringup.md`.
