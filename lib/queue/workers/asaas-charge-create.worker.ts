@@ -111,9 +111,12 @@ async function updateSupabaseRecords(
       .update({
         asaas_payment_id: asaasPayment.id,
         asaas_customer_id: asaasCustomerId,
+        // Colunas reais da tabela agreements (DDL: scripts/024,025,1001).
+        // Antes gravava asaas_bank_slip_url / asaas_pix_qr_code_url, que NAO
+        // existem na tabela (no-op silencioso). Corrigido em WS-3 (roadmap-v1).
         asaas_invoice_url: asaasPayment.invoiceUrl,
-        asaas_bank_slip_url: asaasPayment.bankSlipUrl,
-        asaas_pix_qr_code_url: asaasPayment.pixQrCodeUrl,
+        asaas_boleto_url: asaasPayment.bankSlipUrl,
+        asaas_pix_qrcode_url: asaasPayment.pixQrCodeUrl,
         due_date: asaasPayment.dueDate || null,
         status: 'pending',
         updated_at: new Date().toISOString(),

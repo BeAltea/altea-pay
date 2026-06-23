@@ -112,6 +112,10 @@ template, web, workers, networkpolicy, kustomization — **sem** Postgres.
 **Decisão:** criar `StatefulSet postgres-app` (+ Service) em WS-3, e os Postgres
 `postgres-neg` / `postgres-platform` nos namespaces de agentes.
 
+**✅ RESOLVIDO (WS-3):** `k8s/base/postgres-app.yaml` (StatefulSet + Service, PVC
+2Gi) criado em `altea-pay` (feature/roadmap-v1). `postgres-neg`/`postgres-platform`
+já criados na WS-2 (`altea-pay-agents/deploy/k8s/roadmap-v1`).
+
 ---
 
 ## 8. Estratégia Auth/RLS/Storage em `local-postgres`
@@ -120,8 +124,14 @@ template, web, workers, networkpolicy, kustomization — **sem** Postgres.
 decidir entre subir o stack self-hosted do Supabase (Postgres+Auth+Storage) ou
 Postgres puro com shim de auth documentado.
 
-**Decisão:** decidir e registrar em `docs/db-local-strategy.md` na **WS-3**
-(escolher o caminho mais confiável para o bring-up). Pendência até lá.
+**✅ DECIDIDO (WS-3):** caminho **Supabase self-hosted local** (preserva
+Auth/RLS/Storage e o mesmo `@supabase/supabase-js`; sem reescrita de queries).
+Registrado em `docs/db-local-strategy.md`. Abstração implementada em
+`lib/db/target.ts` (+ `pg.ts` e adapters skeleton aurora/cloudsql), com
+`server.ts`/`admin.ts` resolvendo por ela. **Follow-ups (abertos):** (a) manifests
+do stack Supabase self-hosted (GoTrue/PostgREST/Storage/Kong) → WS-7; (b) migrar
+os `getSupabaseAdmin` ad-hoc dos workers para `lib/db/target` (hoje funcionam via
+vars padrão); (c) `client.ts` browser precisaria de `NEXT_PUBLIC_DATABASE_TARGET`.
 
 ---
 

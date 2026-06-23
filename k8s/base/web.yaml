@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alteapay-web
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: alteapay-web, tier: frontend }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: alteapay-web } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: alteapay-web, tier: frontend }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: web
+          image: alteapay/app:local        # build: docker build -f Dockerfile -t alteapay/app:local .
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 3000 }]
+          envFrom:
+            - secretRef: { name: alteapay-app-secrets }
+            - configMapRef: { name: alteapay-app-config }
+          readinessProbe:
+            httpGet: { path: /api/ready, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 768Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alteapay-web
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: alteapay-web }
+spec:
+  selector: { app.kubernetes.io/name: alteapay-web }
+  ports: [{ port: 3000, targetPort: 3000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: alteapay-web
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: alteapay-web }
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }

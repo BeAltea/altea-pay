@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alteapay-workers
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: alteapay-workers, tier: worker }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: alteapay-workers } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: alteapay-workers, tier: worker }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: workers
+          image: alteapay/workers:local    # build: docker build -f Dockerfile.workers -t alteapay/workers:local .
+          imagePullPolicy: IfNotPresent
+          # CMD default da imagem: npx tsx lib/queue/start-workers.ts
+          envFrom:
+            - secretRef: { name: alteapay-app-secrets }
+            - configMapRef: { name: alteapay-app-config }
+          ports: [{ containerPort: 3001 }]
+          readinessProbe:
+            httpGet: { path: /health, port: 3001 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alteapay-workers
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: alteapay-workers } }
