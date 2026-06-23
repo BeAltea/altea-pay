@@ -201,9 +201,9 @@ Diagnostico local especifico antes de codar; nomes exatos, nunca "adaptar".
 
 ### WS-2 - Microservico de agentes (repo altea-pay-agents)
 Base canonica: `alteapay-agents` (mais completo: orchestrator, bus, fulfillment,
-negotiation v4, trainer, redteam). Portar do `altea-negotiation-agent` o que for
-superset util (reconciliar 9 vs 7 personas e 27+ vs 29 ataques; preferir o
-conjunto mais amplo e marcar o que foi unificado). Estrutura monorepo de
+negotiation v4, trainer, redteam). Conferir conteudo do `altea-negotiation-agent`,
+mas sem reconciliacao numerica: ambos os repos tem 13 personas e 29 ataques
+(identicos); `alteapay-agents` e o conjunto canonico. Estrutura monorepo de
 microservicos:
 ```
 altea-pay-agents/

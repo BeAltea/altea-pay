@@ -65,6 +65,25 @@ a cobranca so e gerada apos o acordo, nunca na abertura da conversa.
 - Escritas no banco pela app seguem o Contrato D (service-role, `.select()`
   encadeado, etc.).
 
+### Colunas ASAAS reais em `agreements` (autoritativo via DDL)
+
+Verificado no DDL (`scripts/024`, `scripts/025`, `scripts/1001`), **não** por
+contagem de uso. Colunas que existem de fato na tabela `agreements`:
+
+| Coluna real (`TEXT`)   | Campo da API ASAAS        | Definida em      |
+| ---------------------- | ------------------------- | ---------------- |
+| `asaas_invoice_url`    | `invoiceUrl`              | `scripts/1001`   |
+| `asaas_payment_url`    | checkout / `paymentLink`  | `scripts/024/025`|
+| `asaas_boleto_url`     | `bankSlipUrl`             | `scripts/024/025`|
+| `asaas_pix_qrcode_url` | `pixQrCodeUrl`            | `scripts/024/025`|
+
+**Não são colunas** (nunca definidas em DDL; não usar): `asaas_bank_slip_url`,
+`asaas_pix_qr_code_url`. Há gravação nessas duas em
+`lib/queue/workers/asaas-charge-create.worker.ts:115-116` — bug latente,
+registrado em `docs/lacunas-roadmap-v1.md` (item 1) para correção em WS-3/WS-5.
+Mapeamento correto: `bankSlipUrl→asaas_boleto_url`,
+`pixQrCodeUrl→asaas_pix_qrcode_url`.
+
 ---
 
 ## Contrato D - abstracao de banco de dados
@@ -101,6 +120,48 @@ self-hosted do Supabase localmente, ou se usa Postgres puro com shim de auth.
 - Comunicacao cross-namespace via FQDN do service:
   `negotiation-agent.alteapay-negotiation.svc.cluster.local`.
 
+### Estrutura real de `alteapay-agents` (preservar — NÃO renomear para `services/`)
+
+O repo canônico já é monorepo com layout `orchestrator/` + `agents/` +
+`platform/`. "Microserviço" se expressa por **Dockerfile + Deployment por
+agente**, não por mover pastas para `services/<nome>/`. Layout preservado:
+
+```
+altea-pay-agents/
+  orchestrator/      # cto-alpha.ts, cto-beta.ts, decision-log.ts, pipelines.ts
+  agents/
+    negotiation/     # app/ (FastAPI+LangGraph), trainer/, redteam/ — PRODUÇÃO
+    refactor/        # exposto como "dev" no deploy
+    qa-code/         # parte de "qa"
+    qa-e2e/          # parte de "qa"
+    security/
+    project-manager/ # NOVO (criado na WS-2)
+  platform/          # bus/ (Redis Streams), tasks/ (Postgres), llm/, telemetry/
+  deploy/k8s/        # manifests por serviço (namespaces neg e dev)
+  docker/            # Dockerfile por serviço (+ Dockerfile.agent existente)
+```
+
+### Mapeamento de agentes (alvo ↔ real)
+
+| Alvo do prompt    | Implementação real                          | Namespace             |
+| ----------------- | ------------------------------------------- | --------------------- |
+| negociação        | `agents/negotiation/app`                    | `alteapay-negotiation`|
+| treino            | `agents/negotiation/trainer`                | `alteapay-negotiation`|
+| treino malicioso  | `agents/negotiation/redteam`                | `alteapay-negotiation`|
+| cto-alpha         | `orchestrator/cto-alpha.ts`                 | `alteapay-dev-agents` |
+| cto-beta          | `orchestrator/cto-beta.ts`                  | `alteapay-dev-agents` |
+| dev               | `agents/refactor` (reuso)                   | `alteapay-dev-agents` |
+| qa                | `agents/qa-code` + `agents/qa-e2e`          | `alteapay-dev-agents` |
+| project-manager   | **NOVO** `agents/project-manager`           | `alteapay-dev-agents` |
+| (extra) security  | `agents/security`                           | `alteapay-dev-agents` |
+
+### Personas e ataques (canônico)
+
+Ambos os repos (`alteapay-agents` e `altea-negotiation-agent`) têm **13 personas**
+e **29 ataques**, idênticos. `alteapay-agents` é o conjunto canônico. Não há
+reconciliação numérica a fazer (a menção a "9 vs 7" / "27+ vs 29" no prompt mestre
+está desatualizada e foi corrigida em WS-2).
+
 ---
 
 ## LLM provider local (Ollama) - fase atual
@@ -109,6 +170,10 @@ Decisao desta fase: **todas as classes de agente rodam em Ollama local**, sem
 Anthropic key. Isso sobrepoe o default anthropic dos agentes de engenharia
 (ADR-0013): ajustar o provider de engenharia para `ollama` em
 `platform/llm/defaults.ts` (ou via env), nao deixar anthropic como default.
+Concretamente: o default de classe de engenharia em `platform/llm/defaults.ts`
+passa a `ollama`, e `platform/llm/index.ts` nao deve derrubar o servico (503 em
+`/readyz`) por ausencia de `ANTHROPIC_API_KEY` nesta fase — com provider `ollama`
+resolvido, o `AnthropicProvider` (que lanca erro sem a chave) nao e instanciado.
 
 ### Restricao de RAM (critica)
 O MacBook tem 16GB e o `qwen2.5:14b` ocupa ~10GB carregado. Principio firme do

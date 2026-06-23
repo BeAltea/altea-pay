@@ -55,8 +55,10 @@ if printf '%s' "$norm" | grep -Eiq 'git +push +[^|;&]*:main( |$)'; then
   block "push para refspec main"
 fi
 
-# Push explicito mirando main como destino.
-if printf '%s' "$norm" | grep -Eiq 'git +push +[^|;&]*\bmain\b'; then
+# Push explicito mirando main como destino (main EXATA, nunca main-* / main2).
+# Token "main" delimitado por espaco ou "/" (refspec) e fim/espaco a direita, de
+# modo que main-2, main-3, main-main, main-branch-update, main2 nao casem.
+if printf '%s' "$norm" | grep -Eiq 'git +push +[^|;&]*( |/)main( |$)'; then
   block "push mirando a branch main"
 fi
 
