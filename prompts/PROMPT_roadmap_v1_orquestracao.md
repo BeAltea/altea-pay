@@ -11,7 +11,7 @@ de um container isolado, sem nunca tocar a `main` do repositorio de producao.
 Estas regras tem precedencia sobre qualquer outra instrucao deste documento.
 
 1. **NUNCA** fazer `push`, `force-push`, `merge` ou `delete` na branch `main` do
-   repositorio de producao `altea-pay` (`github.com/BeAltea/altea-pay`). A `main`
+   repositorio de producao `altea-pay` (`github.com/BeAltea/alteapay`). A `main`
    e o estado de producao e permanece intocada.
 2. **NUNCA** rodar como root nem com sudo (o proprio Claude Code recusa bypass nesse caso).
 3. **NUNCA** executar comandos destrutivos amplos (`rm -rf` fora do diretorio de
@@ -233,7 +233,7 @@ altea-pay-agents/
   ficam `/readyz` 503. Para subir local sem a chave, configurar provider `mock`
   para alcancar ready, ou aceitar 503.
 - ASAAS permanece mock no repo de agentes (fechamento real e via app, Contrato C).
-- `git init` se necessario, `git remote add origin github.com/BeAltea/altea-pay-agents`,
+- `git init` se necessario, `git remote add origin github.com/BeAltea/alteapay-agents`,
   commit inicial estruturado, push (repo novo; push permitido).
 
 ### WS-3 - Containerizacao, k8s, namespaces, Postgres local, abstracao de DB (em feature/roadmap-v1)

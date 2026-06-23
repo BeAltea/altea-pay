@@ -5,13 +5,16 @@
 # IfNotPresent usa a imagem local sem registry.
 FROM node:20-alpine AS deps
 WORKDIR /app
-RUN corepack enable
+# pnpm via npm (mesmo metodo do Dockerfile.workers). NAO usar `corepack enable`:
+# o corepack baixa pnpm 11.x, que exige Node 22 (usa node:sqlite) e quebra no
+# node:20-alpine. pnpm@9 le o pnpm-lock.yaml e roda no Node 20.
+RUN npm install -g pnpm@9
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 FROM node:20-alpine AS build
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@9
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1

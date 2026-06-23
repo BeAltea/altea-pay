@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# pre-bash-guard.sh  (v3 - escopado ao repo de producao BeAltea/altea-pay)
+# pre-bash-guard.sh  (v3 - escopado ao repo de producao BeAltea/alteapay)
 # Hook PreToolUse do Claude Code: so enforce a protecao de main quando o comando
-# alveja o repositorio BeAltea/altea-pay. Em outros repos (ex.: altea-pay-agents,
-# onde main e a branch de trabalho legitima), NAO interfere. Alinhado a RED FLAG
+# alveja o repositorio de producao BeAltea/alteapay (aceita tambem o nome antigo
+# BeAltea/altea-pay via redirect). Em outros repos (ex.: alteapay-agents, onde
+# main e a branch de trabalho legitima), NAO interfere. Alinhado a RED FLAG
 # #5. Garantia autoritativa continua sendo a branch protection (enforce_admins
 # ON) no GitHub, que e server-side e nao depende deste hook.
 #
@@ -38,11 +39,14 @@ fi
 remote_url="$(git -C "$target_dir" remote get-url origin 2>/dev/null || echo '')"
 repo_path="$(printf '%s' "$remote_url" | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')"
 
-# Fora do BeAltea/altea-pay de producao, o guard nao interfere.
-if [ "$repo_path" != "BeAltea/altea-pay" ]; then
-  exit 0
-fi
-# --- A partir daqui, alvo confirmado = BeAltea/altea-pay ---
+# Fora do repo de producao, o guard nao interfere. Aceita o nome NOVO
+# (BeAltea/alteapay) e o ANTIGO (BeAltea/altea-pay, ainda valido via redirect do
+# GitHub) para nao perder a protecao durante/apos o rename do repositorio.
+case "$repo_path" in
+  BeAltea/alteapay|BeAltea/altea-pay) ;;
+  *) exit 0 ;;
+esac
+# --- A partir daqui, alvo confirmado = repo de producao (alteapay) ---
 
 block() {
   echo "BLOQUEADO pelo guard de main (altea-pay): $1" >&2

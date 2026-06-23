@@ -6,7 +6,7 @@
 ## 1. altea-pay (repo de producao)
 
 - **Branch default:** `origin/main` (HEAD aponta para main).
-- **Remote:** `https://github.com/BeAltea/altea-pay.git`
+- **Remote:** `https://github.com/BeAltea/alteapay.git`
 - **main:** `dfeceb2`, Fabio Moura Barros, 2026-06-03. **Unica branch atualizada.**
 
 Todas as outras branches estao **centenas de commits atras de main** (ou seja, ja mergeadas/historicas ou abandonadas). O `git fetch --prune` removeu 12 branches remotas ja deletadas no origin.

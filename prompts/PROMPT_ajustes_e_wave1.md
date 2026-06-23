@@ -16,7 +16,7 @@ push/force/delete na `main` de producao; nenhuma deleção de branch nesta etapa
 Apenas conferir e reportar. Se algo nao estiver satisfeito, PARAR e avisar.
 
 1. `enforce_admins` ativo na main:
-   `gh api repos/BeAltea/altea-pay/branches/main/protection/enforce_admins --jq .enabled`
+   `gh api repos/BeAltea/alteapay/branches/main/protection/enforce_admins --jq .enabled`
    deve retornar `true`.
 2. Hook v2 em vigor: `tools/pre-bash-guard.sh` deve existir, ser executavel e
    conter o comportamento de "main exata" (bloqueia `main`, libera `main-*`).
@@ -132,7 +132,7 @@ worktrees distintos e integrar no fim. Nenhuma deleção nesta wave.
   classes; garantir que sem `ANTHROPIC_API_KEY` os servicos ainda alcancem ready
   (nao 503) nesta fase.
 - ASAAS permanece mock no repo de agentes (fechamento real e via app, Contrato C).
-- `git init` se preciso, `git remote add origin https://github.com/BeAltea/altea-pay-agents.git`,
+- `git init` se preciso, `git remote add origin https://github.com/BeAltea/alteapay-agents.git`,
   definir branch default `main`, commit inicial estruturado, push (repo novo,
   permitido). Decidir se os guard-rails locais (`.claude/`, `tools/`) entram no
   commit ou no `.gitignore`; se entrarem, ignorar `settings.local.json`.

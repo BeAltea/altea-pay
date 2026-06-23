@@ -12,7 +12,7 @@
 | alteapay-agents (plataforma multi-agente TS) | `/Users/seufabio/git/alteapay-agents` | `main` | `b8868d6` | 2026-06-15 |
 | alteapay-refactored (refactor do app) | `/Users/seufabio/git/alteapay-refactored` | `main` | `3ebb8a9` | 2026-06-11 |
 
-> Os 3 repos de agentes sao **locais, sem remote configurado** (existem apenas na maquina do autor). Apenas `altea-pay` tem remote (`https://github.com/BeAltea/altea-pay.git`).
+> Os 3 repos de agentes sao **locais, sem remote configurado** (existem apenas na maquina do autor). Apenas `altea-pay` tem remote (`https://github.com/BeAltea/alteapay.git`).
 
 ## Mapa dos documentos
 

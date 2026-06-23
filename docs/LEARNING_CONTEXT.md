@@ -1534,7 +1534,7 @@ CREATE TABLE integration_logs (
 
 \`\`\`bash
 # Clone repository
-git clone https://github.com/BeAltea/altea-pay.git
+git clone https://github.com/BeAltea/alteapay.git
 cd altea-pay
 
 # Install dependencies
