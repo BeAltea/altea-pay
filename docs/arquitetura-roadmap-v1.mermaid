@@ -29,11 +29,12 @@ flowchart TB
 
         subgraph NS_DEV[namespace alteapay-dev-agents]
             orch[orchestrator]
-            pm[project-manager]
+            pm[project-manager - NOVO]
             cto_a[cto-alpha]
             cto_b[cto-beta]
-            dev[dev]
-            qa[qa]
+            dev[dev - reusa refactor]
+            qa[qa - qa-code e qa-e2e]
+            sec[security]
             bus[(Redis Streams - bus)]
             devpg[(Postgres - tasks e decisions)]
         end
@@ -67,10 +68,12 @@ flowchart TB
     cto_a -- propoe pipeline --> cto_b
     cto_b -- valida e aprova --> dev
     cto_b -- valida e aprova --> qa
+    cto_b -- valida e aprova --> sec
     cto_a <--> bus
     cto_b <--> bus
     dev <--> bus
     qa <--> bus
+    sec <--> bus
     orch --> devpg
     dev -. gera e refatora codigo .-> NS_APP
     dev -. gera e refatora codigo .-> NS_NEG
