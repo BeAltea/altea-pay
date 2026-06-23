@@ -147,6 +147,21 @@ export const QUEUE_CONFIG = {
     removeOnComplete: { age: 86400 }, // Keep for 24h for status polling
     removeOnFail: { age: 604800 }, // Keep failures for 7 days
   },
+  // WhatsApp Inbound Queue (roadmap-v1 WS-4) - inbound messages from the
+  // official WhatsApp Cloud API webhook. WS-5 will add the consumer worker
+  // that forwards these to the negotiation agent.
+  whatsappInbound: {
+    name: 'alteapay-whatsapp-inbound',
+    retries: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential' as const,
+        delay: 2000,
+      },
+    },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 1000 },
+  },
 } as const;
 
 // ASAAS notification defaults - WhatsApp + SMS enabled, email disabled (we use SendGrid)

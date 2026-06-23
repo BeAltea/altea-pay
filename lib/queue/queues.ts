@@ -126,3 +126,17 @@ export const bulkNegotiationsQueue = new Queue(QUEUE_CONFIG.bulkNegotiations.nam
     removeOnFail: QUEUE_CONFIG.bulkNegotiations.removeOnFail,
   },
 });
+
+// WhatsApp Inbound Queue (roadmap-v1 WS-4) - inbound messages from the
+// official WhatsApp Cloud API webhook are enqueued here.
+// WS-5: the consumer worker that forwards these jobs to the negotiation agent
+// will be added later. For now this queue only has a producer (the webhook).
+export const whatsappInboundQueue = new Queue(QUEUE_CONFIG.whatsappInbound.name, {
+  connection: getConnection(),
+  defaultJobOptions: {
+    attempts: QUEUE_CONFIG.whatsappInbound.retries.attempts,
+    backoff: QUEUE_CONFIG.whatsappInbound.retries.backoff,
+    removeOnComplete: QUEUE_CONFIG.whatsappInbound.removeOnComplete,
+    removeOnFail: QUEUE_CONFIG.whatsappInbound.removeOnFail,
+  },
+});
