@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { whatsappInboundQueue } from "@/lib/queue"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
  * WhatsApp Cloud API Webhook (roadmap-v1 WS-4)
@@ -24,26 +25,43 @@ export const dynamic = "force-dynamic"
  * Resolve company_id SERVER-SIDE from the business phone_number_id that received
  * the message. The company_id is NEVER trusted from the webhook payload body.
  *
- * There is no phone_number_id -> company_id mapping table yet.
- *   (a) If the configured WHATSAPP_PHONE_NUMBER_ID matches, return
- *       WHATSAPP_DEFAULT_COMPANY_ID (or "" if unset).
- *   (b) Otherwise return "" and log.
- *
- * TODO(WS-5): introduce a real phone_number_id -> company_id mapping table so
- * multiple companies (each with their own WhatsApp number) can be resolved.
- * This single-number fallback is a known gap recorded for WS-5.
+ * WS-5: consulta a tabela `whatsapp_phone_mapping` (via service-role, bypassa RLS)
+ * pelo phone_number_id ativo. Multi-tenant: cada empresa tem seu número/WABA.
+ * Fallback (single-number) por env mantido para bootstrap: se o phone_number_id
+ * casar com WHATSAPP_PHONE_NUMBER_ID, usa WHATSAPP_DEFAULT_COMPANY_ID.
  */
-function resolveCompanyIdFromPhoneNumberId(phoneNumberId: string | undefined): string {
-  const configuredPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+async function resolveCompanyIdFromPhoneNumberId(phoneNumberId: string | undefined): Promise<string> {
+  if (!phoneNumberId) return ""
 
-  if (phoneNumberId && configuredPhoneNumberId && phoneNumberId === configuredPhoneNumberId) {
+  // 1) Tabela de mapeamento (fonte autoritativa, multi-tenant).
+  try {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from("whatsapp_phone_mapping")
+      .select("company_id")
+      .eq("phone_number_id", phoneNumberId)
+      .eq("is_active", true)
+      .maybeSingle()
+
+    if (error) {
+      console.error("[WhatsApp Webhook] Erro ao consultar whatsapp_phone_mapping:", error.message)
+    } else if (data?.company_id) {
+      return data.company_id as string
+    }
+  } catch (err) {
+    console.error("[WhatsApp Webhook] Falha no mapeamento phone_number_id->company_id:", (err as Error).message)
+  }
+
+  // 2) Fallback single-number por env (bootstrap).
+  const configuredPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  if (configuredPhoneNumberId && phoneNumberId === configuredPhoneNumberId) {
     return process.env.WHATSAPP_DEFAULT_COMPANY_ID ?? ""
   }
 
   console.warn(
-    "[WhatsApp Webhook] Não foi possível resolver company_id para phone_number_id:",
+    "[WhatsApp Webhook] company_id não resolvido para phone_number_id:",
     phoneNumberId,
-    "(sem tabela de mapeamento — TODO WS-5)"
+    "(sem linha em whatsapp_phone_mapping e sem fallback por env)"
   )
   return ""
 }
@@ -137,7 +155,7 @@ export async function POST(request: NextRequest) {
 
         // Derive company_id SERVER-SIDE from the receiving business number
         const phoneNumberId: string | undefined = value?.metadata?.phone_number_id
-        const companyId = resolveCompanyIdFromPhoneNumberId(phoneNumberId)
+        const companyId = await resolveCompanyIdFromPhoneNumberId(phoneNumberId)
 
         for (const message of messages) {
           const from = (message?.from || "").replace(/\D/g, "") // E.164 without +

@@ -11,6 +11,7 @@ import './workers/asaas-sync.worker';
 import './workers/assertiva-localize.worker';
 import './workers/bulk-email.worker';
 import './workers/bulk-negotiations.worker';
+import './workers/whatsapp-inbound.worker';
 
 import {
   emailQueue,
@@ -23,6 +24,7 @@ import {
   assertivaLocalizeQueue,
   bulkEmailQueue,
   bulkNegotiationsQueue,
+  whatsappInboundQueue,
 } from './queues';
 import { startHealthCheck } from './health';
 
@@ -43,6 +45,7 @@ startHealthCheck({
   assertivaLocalizeQueue,
   bulkEmailQueue,
   bulkNegotiationsQueue,
+  whatsappInboundQueue,
 });
 
 // Log worker status
