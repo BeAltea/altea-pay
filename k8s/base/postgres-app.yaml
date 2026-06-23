@@ -1,0 +1,48 @@
+# Postgres local da app (Contrato D / WS-3). StatefulSet com volume persistente.
+# Em local-postgres, é o banco do stack Supabase self-hosted (ou Postgres puro com
+# shim de auth). Ver docs/db-local-strategy.md.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-app
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: postgres-app }
+spec:
+  serviceName: postgres-app
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: postgres-app } }
+  template:
+    metadata: { labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: postgres-app } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: POSTGRES_USER, value: altea }
+            - { name: POSTGRES_DB, value: alteapay }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: alteapay-app-secrets, key: POSTGRES_PASSWORD } }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "altea", "-d", "alteapay"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: ["ReadWriteOnce"], resources: { requests: { storage: 2Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-app
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: postgres-app }
+spec:
+  selector: { app.kubernetes.io/name: postgres-app }
+  ports: [{ port: 5432, targetPort: 5432 }]

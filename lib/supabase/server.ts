@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { resolveSupabaseUrl, resolveSupabaseAnonKey, resolveSupabaseServiceRoleKey } from "../db/target"
 
 /**
  * Especially important if using Fluid compute: Don't put this client in a
@@ -10,11 +11,8 @@ export async function createClient() {
   try {
     const cookieStore = await cookies()
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      throw new Error("Missing Supabase environment variables")
-    }
-
-    const client = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    // Contrato D: URL/anon resolvidos pela camada de abstração (DATABASE_TARGET).
+    const client = createServerClient(resolveSupabaseUrl(), resolveSupabaseAnonKey(), {
       cookies: {
         getAll() {
           return cookieStore.getAll()
@@ -36,15 +34,8 @@ export async function createClient() {
 }
 
 export function createAdminClient() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable")
-  }
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable")
-  }
-
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  // Contrato D: URL/service-role resolvidos pela camada de abstração.
+  return createServerClient(resolveSupabaseUrl(), resolveSupabaseServiceRoleKey(), {
     cookies: {
       getAll() {
         return []
