@@ -1,83 +1,114 @@
 # Estado do roadmap-v1 (documento de retomada)
 
-Checkpoint salvo no Sync Point 3. Objetivo: retomar amanha, possivelmente em
-sessao nova sem o contexto desta. Gerado em 2026-06-22.
+Ponto de retomada para uma sessao nova sem o contexto anterior. Atualizado em
+2026-06-25. Para continuar, basta pedir "continuar de onde paramos no alteapay" e
+ler este arquivo. Sem em-dash.
 
 Regras invioláveis seguem valendo: nada de push, force, merge ou delete na branch
-`main` de producao do `altea-pay`. A `main` permanece intocada.
+`main` de producao. A `main` permanece intocada.
 
 Fontes de verdade: `prompts/PROMPT_roadmap_v1_orquestracao.md`,
 `docs/contratos-roadmap-v1.md`, `docs/arquitetura-roadmap-v1.mermaid`,
-`docs/lacunas-roadmap-v1.md`, `docs/db-local-strategy.md`.
+`docs/lacunas-roadmap-v1.md`, `docs/db-local-strategy.md`,
+`docs/ws7-local-bringup.md` (runbook do deploy local).
 
 ---
 
-## 2.1 Status das waves
+## IMPORTANTE: rename dos repositorios (feito em 2026-06-23)
+
+Os repos GitHub foram renomeados (o GitHub redireciona os nomes antigos):
+- `BeAltea/altea-pay`        -> **`BeAltea/alteapay`**
+- `BeAltea/altea-pay-agents` -> **`BeAltea/alteapay-agents`**
+
+Os **diretorios locais NAO mudaram**: continuam `/Users/seufabio/git/altea-pay` e
+`/Users/seufabio/git/altea-pay-agents`. Os remotes ja apontam para os nomes novos.
+O hook `tools/pre-bash-guard.sh` (v3) aceita o nome novo e o antigo, entao a
+protecao da main de producao nao lapsa.
+
+## Status das waves
 
 | Wave | Conteudo | Status |
 | ---- | -------- | ------ |
-| Wave 0 | Fase 0 (diagnostico) + contratos | CONCLUIDA |
+| Wave 0 | Fase 0 + contratos | CONCLUIDA |
 | Wave 1 | WS-1a (push + arquivamento), WS-2 (repo de agentes), WS-6 (diagrama) | CONCLUIDA |
-| Wave 2 | WS-3 (Docker/k8s/Postgres/DATABASE_TARGET/fix worker), WS-4 (WhatsApp Cloud API + webhook) | CONCLUIDA |
-| Wave 3 | WS-5 (worker inbound, endpoint de fechamento, tabela phone->company, link mock removido) | CONCLUIDA |
-| Wave 4 | WS-7 (deploy local: 3 namespaces, imagens ARM64, bring-up, validacao) | PENDENTE (proxima) |
-| Wave 5 | WS-1b (deleção das 29 branches antigas) | PENDENTE (apos WS-7 validado) |
+| Wave 2 | WS-3 (Docker/k8s/Postgres/DATABASE_TARGET/fix worker), WS-4 (WhatsApp Cloud API) | CONCLUIDA |
+| Wave 3 | WS-5 (worker inbound, close-agreement, tabela phone->company, link mock removido) | CONCLUIDA |
+| Wave 4 | WS-7 (deploy local, 3 namespaces, bring-up, validacao) | CONCLUIDA e VALIDADA (2026-06-23) |
+| Wave 5 | WS-1b (deleção das 29 branches antigas) | PENDENTE (proxima, destrutiva, pede OK explicito) |
 
-## 2.2 Estado por repositorio (SHAs reais)
+## Estado por repositorio (SHAs reais em 2026-06-25)
 
-- `altea-pay` `feature/roadmap-v1` @ `d2d459efb89d345728d735eba2d4f07686ae7678` (pushado, em sincronia com o remote). Observacao: este documento gera um commit novo por cima desse SHA.
-- `altea-pay-agents` `main` @ `1e8e017214f31492feec21145f2684541805cb33` (pushado, em sincronia).
-- `altea-pay` `main` de producao @ `dfeceb2dfde89942719635cb27738c9e8e63223b` (baseline, intocada).
-- Arquivo das branches antigas: 29 tags `archive/*` no remote do `altea-pay` + bundle local `backups/altea-pay-branches-2026-06-22.bundle` (17 MB, fora do git via .gitignore). Nenhuma branch foi apagada ainda.
+- `altea-pay` (local) `feature/roadmap-v1` @ `d1958b83bb313ff116070c2db8836b0312fb0f5b`
+  (remote `BeAltea/alteapay`, em sincronia, tree limpo).
+- `altea-pay-agents` (local) `main` @ `58d1f633549b04b2786f502299f61827d73a4e89`
+  (remote `BeAltea/alteapay-agents`, em sincronia, tree limpo).
+- `alteapay` `main` de producao @ `dfeceb2dfde89942719635cb27738c9e8e63223b`
+  (baseline, INTOCADA). branch protection com `enforce_admins` ON.
+- Arquivo das branches antigas: 29 tags `archive/*` no remote do `alteapay` +
+  bundle local `backups/altea-pay-branches-2026-06-22.bundle`. Nenhuma branch
+  apagada ainda.
 
-## 2.3 O que ja esta pronto (resumo)
+## Estado do deploy local (cluster) AGORA
 
-- Guard-rails: hook `tools/pre-bash-guard.sh` v3 escopado ao remote `BeAltea/altea-pay` (so bloqueia a main desse repo; libera `main-*` e o repo de agentes); branch protection com `enforce_admins` ON, force-push e delete bloqueados, PR obrigatorio.
-- Documentacao: contratos A a E, `docs/estado-atual/*`, `docs/lacunas-roadmap-v1.md`, `docs/db-local-strategy.md`, diagrama `docs/arquitetura-roadmap-v1.mermaid` coerente com o implementado.
-- `altea-pay-agents`: estrutura de microservicos (orchestrator + agents + platform) com manifests para 3 namespaces em `deploy/k8s/roadmap-v1`; `project-manager` novo; `dev` = reuso do `refactor`; `qa` = `qa-code` + `qa-e2e`; LLM em ollama para todas as classes; ASAAS mock; link de pagamento mock removido (agora chama `/api/agents/close-agreement`). 13 personas e 29 ataques (canonico).
-- `altea-pay` `feature/roadmap-v1`:
-  - `Dockerfile` (web Next.js, pnpm, ARM64, non-root) e `Dockerfile.workers` (ARM64).
-  - `k8s/base` (ns `alteapay-app`): web (Deploy+Service+HPA), workers (Deploy+PDB), redis, `postgres-app` StatefulSet, configmap, secret template, networkpolicy, kustomization.
-  - Abstracao de banco `lib/db` (`DATABASE_TARGET`: supabase default, local-postgres, skeleton aurora/cloudsql); `server.ts` e `admin.ts` resolvem por ela.
-  - Fix do worker `asaas-charge-create` (colunas reais `asaas_boleto_url` e `asaas_pix_qrcode_url`).
-  - WhatsApp Cloud API: `lib/notifications/whatsapp-cloud.ts` + webhook `app/api/whatsapp/webhook/route.ts` (handshake GET, HMAC SHA-256 no POST), fila `alteapay-whatsapp-inbound`.
-  - Worker `whatsapp-inbound` repassa ao `negotiation-agent` (Contrato A) e responde via Cloud API.
-  - Endpoint `app/api/agents/close-agreement` (Contrato C, negociacao-primeiro) enfileira `alteapay-asaas-charge-create`.
-  - Migracao `supabase/migrations/20260622_create_whatsapp_phone_mapping.sql` (tabela `whatsapp_phone_mapping`, phone_number_id -> company_id, com RLS).
+O cluster local e o Supabase local NAO estao rodando neste momento (a maquina foi
+reiniciada apos a validacao de 2026-06-23). O deploy FOI validado com 15 pods
+Running nos 3 namespaces. Para subir de novo, seguir `docs/ws7-local-bringup.md`
+(supabase start, aplicar `scripts/ws7-local-bootstrap.sql` + grants, build das 4
+imagens, aplicar manifests, secret real, validar). Resumo do que foi validado:
+- 3 namespaces: `alteapay-app`, `alteapay-negotiation`, `alteapay-dev-agents`.
+- app responde (`/api/health`, `/api/ready` com `databaseTarget=local-postgres`).
+- webhook WhatsApp handshake OK (200 + challenge; 403 token errado).
+- agentes prontos (negotiation 1/1; dev-agents 9/9; project-manager up).
+- e2e `/api/agents/close-agreement` (Contrato C, negociacao-primeiro): cria
+  agreement + batch + enfileira `alteapay-asaas-charge-create`; worker processa o
+  job e falha so na chamada real ao ASAAS (chave placeholder, esperado).
 
-## 2.4 Follow-ups abertos
+## O que ja esta pronto (resumo)
 
-- CRITICO para validar a Wave 4: o agente busca debito e ofertas de dados mock (`fulfillment.yaml`). Para validar o fluxo real ponta a ponta no deploy, decidir entre: (a) implementar a busca de debito e ofertas na app (seta "negagent -> consulta divida e ofertas -> web" do diagrama), ou (b) semear dados de teste no Postgres local para a demo. Sem um dos dois, o end-to-end nao fecha em WS-7.
-- Supabase self-hosted: os manifests de GoTrue, PostgREST, Storage e Kong ficaram para a WS-7. Avaliar a alternativa mais leve de rodar `supabase start` (CLI, em Docker no host) e apontar a app in-cluster para ele, em vez de implantar os quatro servicos no cluster.
-- Confirmar lockfile do pnpm (`pnpm-lock.yaml`) antes do build da imagem; se o repo passar a usar `package-lock.json`, ajustar o Dockerfile. (Hoje o repo usa pnpm-lock.yaml.)
-- Migrar os `getSupabaseAdmin` ad-hoc dos workers para `lib/db/target`.
-- `client.ts` (browser) precisa de `NEXT_PUBLIC_DATABASE_TARGET` para trocar destino no cliente.
-- Endurecer egress das NetworkPolicies (hoje so o ingress e default-deny).
-- Contrato C nao transmite o desconto negociado (usa valor do debito mais parcelas derivadas do offer_id); refinar no futuro.
+- Guard-rails: hook v3 escopado a `BeAltea/alteapay` (aceita nome antigo via
+  redirect); branch protection `enforce_admins` ON.
+- Contratos A a E, `docs/estado-atual/*`, lacunas, db-local-strategy, runbook
+  WS-7, diagrama coerente.
+- `alteapay-agents`: microservicos (orchestrator + agents + platform), manifests
+  3 namespaces em `deploy/k8s/roadmap-v1`; `project-manager` novo; `dev`=refactor;
+  `qa`=qa-code+qa-e2e; LLM ollama; ASAAS mock; link mock removido (chama
+  `/api/agents/close-agreement`). readinessProbe do negotiation usa `/health`.
+- `alteapay` `feature/roadmap-v1`: Dockerfile(s) ARM64 (app usa pnpm@9 e build-args
+  NEXT_PUBLIC_SUPABASE_*), `k8s/base` (ns alteapay-app, postgres-app StatefulSet,
+  redis, web HPA, workers), abstracao `DATABASE_TARGET` (`lib/db`), fix do worker
+  (asaas_boleto_url / asaas_pix_qrcode_url), WhatsApp Cloud API
+  (`lib/notifications/whatsapp-cloud.ts`) + webhook (HMAC/verify), fila
+  `alteapay-whatsapp-inbound`, worker inbound -> negotiation-agent, endpoint
+  `/api/agents/close-agreement`, tabela `whatsapp_phone_mapping`,
+  `scripts/ws7-local-bootstrap.sql`.
 
-## 2.5 Checklist de ambiente para retomar amanha
+## Follow-ups abertos (ver docs/lacunas-roadmap-v1.md, itens 1 a 10)
 
-- Ollama no host (GPU Metal). Comando exato:
+- CRITICO p/ e2e real: o agente usa debito/ofertas mock (`fulfillment.yaml`). Para
+  o fluxo real ponta a ponta, implementar a busca de debito/ofertas na app
+  (seta "negagent -> consulta divida e ofertas -> web") ou seguir semeando dados
+  (hoje ha 1 debito de teste id `...d1`).
+- negotiation-agent nao implementa `/readyz` nem `/session/start` (Contrato A).
+- schema local e o subconjunto minimo (nao os 116 `scripts/*.sql`); faltam as RPCs
+  `start_batch_processing` / `increment_batch_*` / `check_and_finalize_batch`.
+- cobranca ASAAS real exige `ASAAS_API_KEY` de sandbox.
+- migrar `getSupabaseAdmin` ad-hoc dos workers para `lib/db/target`.
+- `client.ts` (browser) precisa de `NEXT_PUBLIC_DATABASE_TARGET`.
+- endurecer egress das NetworkPolicies.
+- Contrato C nao transmite o desconto negociado.
+
+## Proximos passos
+
+- **Wave 5 (WS-1b)** quando autorizado: apagar as 29 branches antigas via
+  `git push origin --delete <branch>` (o hook v3 libera `main-*`, nunca a `main`).
+  Confirmar antes que o archive (tags + bundle) existe. Lista das 29 branches em
+  `prompts/PROMPT_ajustes_e_wave1.md` (secao WS-1a) e em git.
+- Opcional antes da Wave 5: re-subir o deploy local (runbook) se quiser revalidar.
+
+## Checklist de ambiente para retomar
+
+- Ollama no host (GPU Metal):
   `nohup env OLLAMA_CONTEXT_LENGTH=8192 OLLAMA_KEEP_ALIVE=12h ollama serve > ~/ollama.log 2>&1 & disown`
-  e confirmar com `ollama ps` (qwen2.5:14b, CONTEXT 8192). Se a porta 11434 estiver ocupada pelo Ollama.app, sair por ele no menu do macOS antes.
-- `kubectl config current-context` deve ser `orbstack`; `kubectl get nodes` deve estar Ready.
-- Tomar a decisao do Supabase local (item 2.4) antes de subir a app.
-
-## 2.6 Proximos passos
-
-- Wave 4 (WS-7) conforme `prompts/PROMPT_roadmap_v1_orquestracao.md`: criar os 3 namespaces (`alteapay-app`, `alteapay-negotiation`, `alteapay-dev-agents`), build das imagens ARM64 (app, workers, negotiation, agente TS unificado), subir app + workers + `postgres-app`, negotiation + trainer (replicas 0) + redteam (replicas 0) + ollama (host) + `postgres-neg`, dev-agents (cto-alpha, cto-beta, project-manager, dev, qa-code, qa-e2e, security) + bus + `postgres-platform`, apontar `DATABASE_TARGET=local-postgres`, e validar os criterios de aceite. Incorporar as decisoes do Supabase local e do sourcing ou seed de dados.
-- Wave 5 (WS-1b) apos WS-7 validado: apagar as 29 branches via `git push origin --delete <branch>` (o hook v3 libera `main-*`; nunca a `main`). Confirmar antes que o archive (tags mais bundle) existe.
-
----
-
-## Criterios de aceite (acompanhamento)
-
-- [x] Fase 0 reportada e aprovada antes de qualquer alteracao.
-- [x] `main` do `altea-pay` intocada (mesmo SHA `dfeceb2`); branch protection ativa (enforce_admins ON).
-- [ ] `altea-pay` com apenas `main` + `feature/roadmap-v1` (branches arquivadas e removidas). Arquivadas: SIM (29 tags + bundle). Removidas: PENDENTE (Wave 5).
-- [x] `altea-pay-agents` populado e com push (negociacao, treino, treino malicioso, cto-alpha, cto-beta, project-manager, qa-code, qa-e2e, security/dev, com Dockerfile e manifest).
-- [x] `feature/roadmap-v1` contem Docker/k8s, namespaces, Postgres local, abstracao de DB, WhatsApp Cloud API (lib + webhook verify/HMAC), integracao com o agente (Contratos A/B/C).
-- [ ] Cluster local rodando com 3 namespaces (Wave 4).
-- [ ] App e agentes usando Postgres local; webhook WhatsApp passa no handshake (Wave 4).
-- [x] Diagrama coerente com o implementado.
-- [x] `docs/lacunas-roadmap-v1.md`, `docs/db-local-strategy.md`, `docs/contratos-roadmap-v1.md` gerados.
+  e `ollama ps` (qwen2.5:14b).
+- `kubectl config current-context` = `orbstack`; `kubectl get nodes` Ready.
+- supabase CLI instalado (`supabase --version`); `cd /tmp/sb-local && supabase start`.
