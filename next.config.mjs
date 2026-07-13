@@ -10,6 +10,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [
+      { source: "/politica-de-privacidade", destination: "/politica-de-privacidade.html" },
+      { source: "/termos-de-uso", destination: "/termos-de-uso.html" },
+    ]
+  },
   async headers() {
     return [
       {

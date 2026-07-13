@@ -344,6 +344,20 @@ export default function HomePage() {
                 Ao enviar seus dados, você concorda com o tratamento para contato e envio de comunicações sobre produtos
                 e serviços da Altea Pay. Você pode solicitar a exclusão a qualquer momento.
               </p>
+              <div className="space-y-2 text-sm">
+                <a
+                  href="/politica-de-privacidade"
+                  className="block text-blue-100 hover:text-altea-gold transition-colors cursor-pointer"
+                >
+                  Política de Privacidade
+                </a>
+                <a
+                  href="/termos-de-uso"
+                  className="block text-blue-100 hover:text-altea-gold transition-colors cursor-pointer"
+                >
+                  Termos de Uso
+                </a>
+              </div>
             </div>
           </div>
 

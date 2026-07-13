@@ -9,6 +9,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Páginas legais públicas: sem auth, sem redirect (exigência Meta/ANPD)
+  if (currentPath === "/politica-de-privacidade" || currentPath === "/termos-de-uso") {
+    return NextResponse.next()
+  }
+
   return await updateSession(request)
 }
 
