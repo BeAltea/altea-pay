@@ -362,7 +362,7 @@ export default function HomePage() {
           </div>
 
           <div className="border-t border-white/20 mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-xs sm:text-sm text-blue-100">
-            <p>© 2025 Altea Pay. Todos os direitos reservados. Uma empresa do grupo Altea · CNPJ 60.410.775/0001-67.</p>
+            <p>© 2025 Altea Pay. Todos os direitos reservados. Uma empresa do grupo Altea · CNPJ 65.041.795/0001-21.</p>
           </div>
         </div>
       </footer>
