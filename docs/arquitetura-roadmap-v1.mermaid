@@ -1,0 +1,79 @@
+flowchart TB
+    debtor([Devedor ou cliente final])
+
+    subgraph EXT[Servicos externos]
+        meta[Meta WhatsApp Cloud API]
+        asaas[ASAAS - pagamento e fonte da verdade]
+        sendgrid[SendGrid - email]
+        assertiva[Assertiva - credito]
+        supa[(Supabase Cloud - DB de producao atual)]
+    end
+
+    subgraph CLUSTER[Cluster Kubernetes local - OrbStack k8s ARM64]
+        direction TB
+
+        subgraph NS_APP[namespace alteapay-app]
+            web[Next.js web, API e webhook WhatsApp - HPA]
+            workers[Workers BullMQ]
+            appredis[(Redis - filas da app)]
+            apppg[(Postgres local - app)]
+        end
+
+        subgraph NS_NEG[namespace alteapay-negotiation]
+            negagent[negotiation-agent - LangGraph e FastAPI]
+            trainer[trainer - personas de devedor]
+            redteam[redteam - treino malicioso adversarial]
+            ollama[Ollama - qwen2.5]
+            negpg[(Postgres - checkpoints e episodios)]
+        end
+
+        subgraph NS_DEV[namespace alteapay-dev-agents]
+            orch[orchestrator]
+            pm[project-manager - NOVO]
+            cto_a[cto-alpha]
+            cto_b[cto-beta]
+            dev[dev - reusa refactor]
+            qa[qa - qa-code e qa-e2e]
+            sec[security]
+            bus[(Redis Streams - bus)]
+            devpg[(Postgres - tasks e decisions)]
+        end
+    end
+
+    dbfuture[/Futuro: Aurora RDS ou Cloud SQL em Azure ou GCP via camada de abstracao de DB/]
+
+    %% Plano de dados em runtime
+    debtor -- WhatsApp --> meta
+    meta -- inbound webhook --> web
+    web -- enfileira inbound --> appredis
+    appredis --> workers
+    workers -- repassa conversa --> negagent
+    negagent -- consulta divida e ofertas --> web
+    negagent -- acordo fechado --> web
+    web -- cria cobranca apos acordo --> asaas
+    asaas -- webhook pagamento --> web
+    web -- envio de email --> sendgrid
+    workers -- enriquecimento de credito --> assertiva
+    web -. DB cloud atual .-> supa
+    web == DB local ==> apppg
+    apppg -. evolucao futura .-> dbfuture
+    negagent --> ollama
+    negagent --> negpg
+    trainer -- treina contra --> negagent
+    redteam -- ataca para validar --> negagent
+
+    %% Plano de desenvolvimento dos agentes
+    pm --> orch
+    orch --> cto_a
+    cto_a -- propoe pipeline --> cto_b
+    cto_b -- valida e aprova --> dev
+    cto_b -- valida e aprova --> qa
+    cto_b -- valida e aprova --> sec
+    cto_a <--> bus
+    cto_b <--> bus
+    dev <--> bus
+    qa <--> bus
+    sec <--> bus
+    orch --> devpg
+    dev -. gera e refatora codigo .-> NS_APP
+    dev -. gera e refatora codigo .-> NS_NEG

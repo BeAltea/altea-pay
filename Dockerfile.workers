@@ -1,3 +1,6 @@
+# AlteaPay BullMQ workers — imagem local p/ k8s (OrbStack, ARM64 nativo no Mac via
+# $TARGETPLATFORM; imagePullPolicy IfNotPresent, sem registry). Copia lib/ (inclui
+# lib/db da abstração DATABASE_TARGET — Contrato D) e services/; roda via tsx.
 FROM --platform=$TARGETPLATFORM node:20-alpine
 
 WORKDIR /app

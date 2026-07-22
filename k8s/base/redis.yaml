@@ -1,0 +1,31 @@
+# Redis in-cluster para as filas BullMQ da app (em produção: Upstash).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: redis }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: redis } }
+  template:
+    metadata: { labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["--save", "60", "1", "--appendonly", "yes"]
+          ports: [{ containerPort: 6379 }]
+          readinessProbe: { exec: { command: ["redis-cli", "ping"] }, initialDelaySeconds: 3, periodSeconds: 5 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: alteapay-app
+  labels: { app.kubernetes.io/part-of: alteapay, app.kubernetes.io/name: redis }
+spec:
+  selector: { app.kubernetes.io/name: redis }
+  ports: [{ port: 6379, targetPort: 6379 }]
